@@ -73,7 +73,7 @@ jobs:
         run: npm run build -w packages/shared
 
       - name: Run API tests
-        run: npm run test:api
+        run: npm run test -w apps/api -- --passWithNoTests
         env:
           DATABASE_URL: postgresql://portage:portage@localhost:5432/portage
           JWT_SECRET: ci-test-secret-that-is-at-least-32-chars
@@ -94,5 +94,11 @@ jobs:
 
       - run: npm ci
 
-      - name: Build all
-        run: npm run build
+      - name: Build shared
+        run: npm run build -w packages/shared
+
+      - name: Build API
+        run: npm run build -w apps/api
+
+      - name: Build web
+        run: npm run build -w apps/web
