@@ -58,8 +58,8 @@ export function BeforeAfterSlider({ beforeUrl, afterUrl, alt }: BeforeAfterSlide
         <img
           src={beforeUrl}
           alt={`${alt} – original`}
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ width: `${containerRef.current?.offsetWidth ?? 0}px` }}
+          className="absolute inset-0 h-full object-cover"
+          style={{ width: `${100 / (position / 100)}%`, maxWidth: "none" }}
         />
       </div>
 

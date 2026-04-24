@@ -10,6 +10,8 @@ export function useAdminApi<T>(path: string, deps: unknown[] = []) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const depsKey = JSON.stringify(deps);
+
   const refetch = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
@@ -22,8 +24,7 @@ export function useAdminApi<T>(path: string, deps: unknown[] = []) {
     } finally {
       setIsLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, path, ...deps]);
+  }, [token, path, depsKey]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
