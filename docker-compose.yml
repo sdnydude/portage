@@ -1,0 +1,74 @@
+services:
+  portage-db:
+    image: postgres:15-alpine
+    container_name: portage-db
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_USER: portage
+      POSTGRES_PASSWORD: portage
+      POSTGRES_DB: portage
+    volumes:
+      - portage-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portage"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - portage-network
+
+  portage-api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: portage-api
+    ports:
+      - "8016:8016"
+    environment:
+      NODE_ENV: production
+      API_PORT: "8016"
+      DATABASE_URL: postgresql://portage:portage@portage-db:5432/portage
+    env_file:
+      - .env
+    depends_on:
+      portage-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8016/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - portage-network
+
+  portage-app:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: portage-app
+    ports:
+      - "3002:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://portage-api:8016
+    depends_on:
+      portage-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - portage-network
+
+volumes:
+  portage-pgdata:
+
+networks:
+  portage-network:
+    driver: bridge

@@ -1,0 +1,21 @@
+services:
+  portage-api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - ./packages/shared/src:/app/packages/shared/src
+
+  portage-app:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:8016
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./apps/web/public:/app/apps/web/public
