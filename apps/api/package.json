@@ -19,7 +19,7 @@
     "@anthropic-ai/sdk": "^0.91.0",
     "@aws-sdk/client-s3": "^3.1036.0",
     "@portage/shared": "*",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.39.0",
