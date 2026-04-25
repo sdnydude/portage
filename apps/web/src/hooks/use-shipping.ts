@@ -135,7 +135,7 @@ export function useShippingRates(orderId: string, dimensions?: PackageDimensions
     } finally {
       setIsLoading(false);
     }
-  }, [token, orderId, dimensions?.packageType, dimensions?.length, dimensions?.width, dimensions?.height, dimensions?.weightLbs, dimensions?.weightOz]);
+  }, [token, orderId, dimensions]);
 
   return { rates, isLoading, error, fetchRates };
 }

@@ -17,12 +17,18 @@ const CONFETTI_COLORS = [
   "#F59E0B", "#3B82F6", "#8B5CF6", "#EC4899",
 ];
 
+// Deterministic pseudo-random from index to avoid impure render calls
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed * 9301 + 49297) * 233280;
+  return x - Math.floor(x);
+}
+
 function ConfettiPiece({ index }: { index: number }) {
   const color = CONFETTI_COLORS[index % CONFETTI_COLORS.length];
-  const leftPct = Math.random() * 100;
-  const delay = Math.random() * 2;
-  const duration = 2 + Math.random() * 2;
-  const size = 6 + Math.random() * 6;
+  const leftPct = seededRandom(index * 4 + 0) * 100;
+  const delay = seededRandom(index * 4 + 1) * 2;
+  const duration = 2 + seededRandom(index * 4 + 2) * 2;
+  const size = 6 + seededRandom(index * 4 + 3) * 6;
 
   return (
     <div

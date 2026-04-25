@@ -4,7 +4,6 @@ import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { DisclaimerSheet } from "./disclaimer-sheet";
-import { useDisclaimer } from "@/hooks/use-disclaimer";
 
 interface CreateListingSheetProps {
   itemId: string;
@@ -21,7 +20,6 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
-  const { acceptTerms } = useDisclaimer();
 
   const handleCreate = async () => {
     const priceNum = parseFloat(price);
