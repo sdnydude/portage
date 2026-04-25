@@ -8,6 +8,8 @@ export const listingStatusEnum = pgEnum('listing_status', ['draft', 'active', 's
 export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered']);
 export const notificationTypeEnum = pgEnum('notification_type', ['sale', 'buyer_message', 'listing_expiry', 'price_alert', 'shipping_reminder']);
 export const referenceTypeEnum = pgEnum('reference_type', ['order', 'listing', 'item']);
+export const shippingProviderEnum = pgEnum('shipping_provider', ['shippo', 'easypost', 'pirate_ship']);
+export const packageTypeEnum = pgEnum('package_type', ['box', 'envelope', 'poly_mailer']);
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -29,6 +31,8 @@ export const users = pgTable('users', {
   lastActiveAt: timestamp('last_active_at'),
   refreshTokenHash: text('refresh_token_hash'),
   pushSubscription: jsonb('push_subscription'),
+  shipFromAddress: jsonb('ship_from_address'),
+  shippingAutoMark: boolean('shipping_auto_mark').notNull().default(false),
   hintsDismissed: jsonb('hints_dismissed').notNull().default([]),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
@@ -135,4 +139,38 @@ export const appSettings = pgTable('app_settings', {
   value: jsonb('value').notNull(),
   updatedBy: uuid('updated_by').references(() => users.id),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const shippingPresets = pgTable('shipping_presets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  packageType: packageTypeEnum('package_type').notNull(),
+  length: real('length').notNull(),
+  width: real('width').notNull(),
+  height: real('height').notNull(),
+  weightLbs: integer('weight_lbs').notNull().default(0),
+  weightOz: real('weight_oz').notNull().default(0),
+  isDefault: boolean('is_default').notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const shippingProviders = pgTable('shipping_providers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  provider: shippingProviderEnum('provider').notNull(),
+  apiKeyEncrypted: text('api_key_encrypted').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const disclaimerAcceptances = pgTable('disclaimer_acceptances', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  listingId: uuid('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  disclaimerVersion: integer('disclaimer_version').notNull(),
+  acceptedAt: timestamp('accepted_at').notNull().defaultNow(),
+  ipAddress: varchar('ip_address', { length: 45 }),
 });
