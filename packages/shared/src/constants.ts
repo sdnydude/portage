@@ -11,3 +11,7 @@ export const FREE_TIER_LIMITS = {
   porterMessagesPerDay: 20,
   marketplaces: 1,
 } as const;
+
+export const PACKAGE_TYPES = ['box', 'envelope', 'poly_mailer'] as const;
+export const SHIPPING_PROVIDERS = ['shippo', 'easypost', 'pirate_ship'] as const;
+export const CURRENT_DISCLAIMER_VERSION = 1;
