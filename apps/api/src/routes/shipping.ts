@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { eq, and, asc } from 'drizzle-orm';
 import { pino } from 'pino';
 import { db } from '../db/index.js';
-import { shippingPresets, users } from '../db/schema.js';
+import { shippingPresets, shippingProviders, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
+import { encrypt, decrypt } from '../lib/crypto.js';
 
 const logger = pino({ name: 'shipping' });
 
@@ -150,6 +151,119 @@ shippingRouter.delete('/presets/:id', async (req, res, next) => {
     logger.info({ userId, presetId: req.params.id }, 'Shipping preset deleted');
 
     res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Provider Management ────────────────────────────────────
+
+const setProviderSchema = z.object({
+  provider: z.enum(['shippo', 'easypost', 'pirate_ship']),
+  apiKey: z.string().min(1, 'API key is required'),
+  isActive: z.boolean().default(true),
+});
+
+const PROVIDER_KEY_PATTERNS: Record<string, RegExp> = {
+  shippo: /^shippo_(test|live)_[a-f0-9]{40}$/,
+  easypost: /^EZ[A-Za-z0-9]{58}$/,
+  pirate_ship: /^.{8,}$/,
+};
+
+// GET /shipping/provider — get user's configured provider (without decrypted key)
+shippingRouter.get('/provider', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    const [provider] = await db.select()
+      .from(shippingProviders)
+      .where(and(eq(shippingProviders.userId, userId), eq(shippingProviders.isActive, true)))
+      .limit(1);
+
+    if (!provider) {
+      res.json({ provider: null });
+      return;
+    }
+
+    // Return provider info without the encrypted API key
+    res.json({
+      provider: {
+        id: provider.id,
+        provider: provider.provider,
+        isActive: provider.isActive,
+        createdAt: provider.createdAt,
+        hasApiKey: true,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /shipping/provider — set or update the shipping provider
+shippingRouter.put('/provider', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const body = setProviderSchema.parse(req.body);
+
+    const apiKeyEncrypted = encrypt(body.apiKey);
+
+    // Upsert: deactivate any existing providers, then insert new one
+    await db.update(shippingProviders)
+      .set({ isActive: false })
+      .where(eq(shippingProviders.userId, userId));
+
+    const [provider] = await db.insert(shippingProviders).values({
+      userId,
+      provider: body.provider,
+      apiKeyEncrypted,
+      isActive: body.isActive,
+    }).returning();
+
+    logger.info({ userId, provider: body.provider }, 'Shipping provider configured');
+
+    res.json({
+      provider: {
+        id: provider.id,
+        provider: provider.provider,
+        isActive: provider.isActive,
+        createdAt: provider.createdAt,
+        hasApiKey: true,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /shipping/provider/test — test provider connection (format validation only for now)
+shippingRouter.post('/provider/test', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    const [provider] = await db.select()
+      .from(shippingProviders)
+      .where(and(eq(shippingProviders.userId, userId), eq(shippingProviders.isActive, true)))
+      .limit(1);
+
+    if (!provider) {
+      throw new AppError(404, 'NO_PROVIDER', 'No shipping provider configured');
+    }
+
+    // Decrypt and validate format
+    const apiKey = decrypt(provider.apiKeyEncrypted);
+    const pattern = PROVIDER_KEY_PATTERNS[provider.provider];
+    const formatValid = pattern ? pattern.test(apiKey) : apiKey.length >= 8;
+
+    logger.info({ userId, provider: provider.provider, formatValid }, 'Shipping provider test');
+
+    res.json({
+      provider: provider.provider,
+      formatValid,
+      message: formatValid
+        ? 'API key format is valid. Live connection test will be available when provider integration is complete.'
+        : 'API key format does not match expected pattern. Please verify your key.',
+    });
   } catch (err) {
     next(err);
   }
