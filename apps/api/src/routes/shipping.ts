@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, and, asc } from 'drizzle-orm';
 import { pino } from 'pino';
 import { db } from '../db/index.js';
-import { shippingPresets, shippingProviders, orders, users } from '../db/schema.js';
+import { shippingPresets, shippingProviders, orders, users, disclaimerAcceptances, listings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
@@ -503,6 +503,61 @@ shippingRouter.post('/orders/:id/ship', async (req, res, next) => {
     logger.info({ userId, orderId: updated.id, trackingNumber: updated.trackingNumber }, 'Order marked as shipped');
 
     res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Disclaimer Acceptance ──────────────────────────────────
+
+const CURRENT_DISCLAIMER_VERSION = 1;
+
+const acceptTermsSchema = z.object({
+  disclaimerVersion: z.number().int().positive().optional(),
+});
+
+// POST /shipping/listings/:id/accept-terms — record disclaimer acceptance
+shippingRouter.post('/listings/:id/accept-terms', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const body = acceptTermsSchema.parse(req.body);
+    const version = body.disclaimerVersion ?? CURRENT_DISCLAIMER_VERSION;
+
+    // Verify the listing belongs to this user
+    const [listing] = await db.select({ id: listings.id })
+      .from(listings)
+      .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
+      .limit(1);
+
+    if (!listing) throw new AppError(404, 'NOT_FOUND', 'Listing not found');
+
+    // Get client IP (handles proxied requests)
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+      || req.socket.remoteAddress
+      || null;
+
+    const [acceptance] = await db.insert(disclaimerAcceptances).values({
+      userId,
+      listingId: req.params.id,
+      disclaimerVersion: version,
+      ipAddress: ipAddress?.slice(0, 45) ?? null,
+    }).returning();
+
+    logger.info({ userId, listingId: req.params.id, version, ipAddress }, 'Disclaimer accepted');
+
+    res.status(201).json(acceptance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /shipping/disclaimer/version — get current disclaimer version
+shippingRouter.get('/disclaimer/version', async (_req, res, next) => {
+  try {
+    res.json({
+      version: CURRENT_DISCLAIMER_VERSION,
+      effectiveDate: '2026-04-25',
+    });
   } catch (err) {
     next(err);
   }
