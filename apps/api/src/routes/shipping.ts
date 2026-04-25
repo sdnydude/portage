@@ -562,3 +562,77 @@ shippingRouter.get('/disclaimer/version', async (_req, res, next) => {
     next(err);
   }
 });
+
+// ─── Ship-From Address ──────────────────────────────────────
+
+const shipFromAddressSchema = z.object({
+  name: z.string().min(1).max(255),
+  street1: z.string().min(1).max(255),
+  street2: z.string().max(255).optional(),
+  city: z.string().min(1).max(255),
+  state: z.string().min(2).max(2),
+  zip: z.string().min(5).max(10),
+  country: z.string().min(2).max(2).default('US'),
+});
+
+const shippingSettingsSchema = z.object({
+  shipFromAddress: shipFromAddressSchema.optional(),
+  shippingAutoMark: z.boolean().optional(),
+});
+
+// GET /shipping/settings — get user's shipping settings
+shippingRouter.get('/settings', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    const [user] = await db.select({
+      shipFromAddress: users.shipFromAddress,
+      shippingAutoMark: users.shippingAutoMark,
+    })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) throw new AppError(404, 'NOT_FOUND', 'User not found');
+
+    res.json({
+      shipFromAddress: user.shipFromAddress,
+      shippingAutoMark: user.shippingAutoMark,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /shipping/settings — update user's shipping settings
+shippingRouter.put('/settings', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const body = shippingSettingsSchema.parse(req.body);
+
+    const updates: Record<string, unknown> = {};
+    if (body.shipFromAddress !== undefined) updates.shipFromAddress = body.shipFromAddress;
+    if (body.shippingAutoMark !== undefined) updates.shippingAutoMark = body.shippingAutoMark;
+
+    if (Object.keys(updates).length === 0) {
+      throw new AppError(400, 'NO_UPDATES', 'No valid fields to update');
+    }
+
+    const [updated] = await db.update(users)
+      .set(updates)
+      .where(eq(users.id, userId))
+      .returning({
+        shipFromAddress: users.shipFromAddress,
+        shippingAutoMark: users.shippingAutoMark,
+      });
+
+    logger.info({ userId }, 'Shipping settings updated');
+
+    res.json({
+      shipFromAddress: updated.shipFromAddress,
+      shippingAutoMark: updated.shippingAutoMark,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
