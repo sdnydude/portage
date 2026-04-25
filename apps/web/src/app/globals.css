@@ -174,6 +174,22 @@ body {
   50% { box-shadow: 0 0 0 8px rgba(45, 90, 39, 0); }
 }
 
+@keyframes confetti-fall {
+  0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}
+
+@keyframes check-draw {
+  0% { stroke-dashoffset: 48; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.animate-check-draw {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: check-draw 0.6s ease-out 0.3s forwards;
+}
+
 .animate-spring-in {
   animation: spring-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
@@ -211,7 +227,8 @@ body {
   .animate-fade-in,
   .animate-slide-up,
   .animate-slide-up-full,
-  .animate-pulse-glow {
+  .animate-pulse-glow,
+  .animate-check-draw {
     animation: none !important;
     opacity: 1;
     transform: none;
