@@ -10,6 +10,7 @@ export default function TabsLayout({
       <main className="flex-1 pb-20">
         {children}
       </main>
+      {/* TabBar includes scan flow modal — no separate scan route needed */}
       <TabBar />
     </div>
   );
