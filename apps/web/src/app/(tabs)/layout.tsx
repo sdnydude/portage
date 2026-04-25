@@ -1,5 +1,4 @@
 import { TabBar } from "@/components/layout/tab-bar";
-import { ScanFab } from "@/components/capture/scan-fab";
 
 export default function TabsLayout({
   children,
@@ -11,7 +10,7 @@ export default function TabsLayout({
       <main className="flex-1 pb-20">
         {children}
       </main>
-      <ScanFab />
+      {/* TabBar includes scan flow modal — no separate scan route needed */}
       <TabBar />
     </div>
   );

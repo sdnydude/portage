@@ -141,3 +141,59 @@ export interface LoginRequest {
   email: string;
   password: string;
 }
+
+export interface ShipFromAddress {
+  name: string;
+  street1: string;
+  street2?: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+}
+
+export type PackageType = 'box' | 'envelope' | 'poly_mailer';
+export type ShippingProviderType = 'shippo' | 'easypost' | 'pirate_ship';
+
+export interface ShippingPreset {
+  id: string;
+  userId: string;
+  name: string;
+  packageType: PackageType;
+  length: number;
+  width: number;
+  height: number;
+  weightLbs: number;
+  weightOz: number;
+  isDefault: boolean;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ShippingProvider {
+  id: string;
+  userId: string;
+  provider: ShippingProviderType;
+  isActive: boolean;
+  createdAt: Date;
+}
+
+export interface ShippingRate {
+  rateId: string;
+  carrier: string;
+  service: string;
+  price: number;
+  currency: string;
+  estimatedDays: number;
+  source: 'marketplace' | 'shippo' | 'easypost' | 'pirate_ship';
+}
+
+export interface DisclaimerAcceptance {
+  id: string;
+  userId: string;
+  listingId: string;
+  disclaimerVersion: number;
+  acceptedAt: Date;
+  ipAddress?: string;
+}

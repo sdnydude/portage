@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { DisclaimerSheet } from "./disclaimer-sheet";
 
 interface CreateListingSheetProps {
   itemId: string;
@@ -18,6 +19,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
   const [publishNow, setPublishNow] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
 
   const handleCreate = async () => {
     const priceNum = parseFloat(price);
@@ -116,21 +118,41 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
           <span className="text-sm text-text-primary">Publish immediately</span>
         </label>
 
-        <div className="flex gap-3 pt-2">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-text-primary"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleCreate}
-            disabled={isCreating || !price}
-            className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium disabled:opacity-50"
-          >
-            {isCreating ? "Creating..." : publishNow ? "List Now" : "Save Draft"}
-          </button>
-        </div>
+        {/* Disclaimer — shown when publish is toggled on */}
+        {publishNow && showDisclaimer && (
+          <DisclaimerSheet
+            listingId={itemId}
+            isFirstTime={true}
+            onAccept={async () => {
+              await handleCreate();
+            }}
+            onCancel={() => setShowDisclaimer(false)}
+          />
+        )}
+
+        {!showDisclaimer && (
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-text-primary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (publishNow) {
+                  setShowDisclaimer(true);
+                } else {
+                  handleCreate();
+                }
+              }}
+              disabled={isCreating || !price}
+              className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium disabled:opacity-50"
+            >
+              {isCreating ? "Creating..." : publishNow ? "Review Terms" : "Save Draft"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

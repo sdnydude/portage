@@ -4,63 +4,57 @@ import { useState, useEffect, useCallback } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "./use-auth";
 
-interface DashboardItemPhoto {
-  url: string;
-  key: string;
-  isPrimary?: boolean;
-}
-
-interface RecentItem {
+interface RecentListing {
   id: string;
-  title: string;
-  category: string;
-  photos: DashboardItemPhoto[];
-  estimatedValueRecommended: number | null;
+  itemId: string;
+  marketplace: "ebay" | "etsy";
+  status: "draft" | "active" | "sold" | "archived";
+  price: number;
+  currency: string;
   createdAt: string;
+  publishedAt: string | null;
+  itemTitle: string;
+  itemPhotoUrl: string | null;
 }
 
-interface RecentOrder {
+interface PendingShipment {
   id: string;
-  salePrice: number;
-  marketplace: string;
+  marketplace: "ebay" | "etsy";
   buyerUsername: string;
+  salePrice: number;
+  currency: string;
   status: string;
   soldAt: string;
+  itemTitle: string;
+}
+
+interface DashboardStats {
+  activeListings: number;
+  draftListings: number;
+  soldListings: number;
+  totalOrders: number;
+  totalRevenue: number;
+}
+
+interface Portfolio {
+  totalItems: number;
+  totalValueLow: number;
+  totalValueHigh: number;
+  totalValueRecommended: number;
 }
 
 export interface DashboardData {
-  portfolio: {
-    totalItems: number;
-    estimatedValue: {
-      low: number;
-      high: number;
-      recommended: number;
-    };
-  };
-  listings: {
-    active: number;
-    drafts: number;
-    sold: number;
-    activeValue: number;
-  };
-  sales: {
-    ordersThisMonth: number;
-    revenueThisMonth: number;
-    feesThisMonth: number;
-    netRevenueThisMonth: number;
-  };
-  recentItems: RecentItem[];
-  recentOrders: RecentOrder[];
-  momentum: {
-    unlistedItems: number;
-    connectedMarketplaces: string[];
-  };
+  displayName: string;
+  portfolio: Portfolio;
+  recentListings: RecentListing[];
+  pendingShipments: PendingShipment[];
+  stats: DashboardStats;
 }
 
 export function useDashboard() {
   const { token } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchDashboard = useCallback(async () => {
@@ -72,7 +66,9 @@ export function useDashboard() {
       const result = await api<DashboardData>("/dashboard", { token });
       setData(result);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load dashboard");
+      setError(
+        err instanceof ApiError ? err.message : "Failed to load dashboard"
+      );
     } finally {
       setIsLoading(false);
     }
