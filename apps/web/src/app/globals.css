@@ -26,6 +26,32 @@
   --accent-success: #2D5A27;
   --accent-info: #3B82F6;
 
+  /* Apple Glass materials */
+  --glass-thick-blur: 30px;
+  --glass-thick-bg: rgba(255, 255, 255, 0.72);
+  --glass-thick-border: rgba(255, 255, 255, 0.3);
+
+  --glass-regular-blur: 20px;
+  --glass-regular-bg: rgba(255, 255, 255, 0.60);
+  --glass-regular-border: rgba(255, 255, 255, 0.2);
+
+  --glass-thin-blur: 10px;
+  --glass-thin-bg: rgba(255, 255, 255, 0.40);
+  --glass-thin-border: rgba(255, 255, 255, 0.15);
+
+  /* Shadow depth system */
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-floating: 0 16px 48px rgba(0, 0, 0, 0.16);
+
+  /* Typography scale */
+  --text-display: 2rem;       /* 32px */
+  --text-title: 1.5rem;       /* 24px */
+  --text-headline: 1.25rem;   /* 20px */
+  --text-body: 1rem;          /* 16px */
+  --text-caption: 0.8125rem;  /* 13px */
+
   --tab-bar-height: 5rem;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -80,6 +106,22 @@
     --forest-green-dark: #388E3C;
     --forest-green-50: #1A2E1A;
     --forest-green-100: #243824;
+
+    /* Apple Glass materials — dark */
+    --glass-thick-bg: rgba(26, 31, 26, 0.75);
+    --glass-thick-border: rgba(255, 255, 255, 0.08);
+
+    --glass-regular-bg: rgba(26, 31, 26, 0.60);
+    --glass-regular-border: rgba(255, 255, 255, 0.06);
+
+    --glass-thin-bg: rgba(26, 31, 26, 0.40);
+    --glass-thin-border: rgba(255, 255, 255, 0.04);
+
+    /* Shadow depth — dark */
+    --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --shadow-floating: 0 16px 48px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -104,4 +146,96 @@ body {
 
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
+}
+
+@keyframes spring-in {
+  0% { transform: scale(0.85); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up-full {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(45, 90, 39, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(45, 90, 39, 0); }
+}
+
+.animate-spring-in {
+  animation: spring-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.animate-slide-up-full {
+  animation: slide-up-full 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* WCAG: backdrop-filter fallback */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-fallback {
+    background: var(--surface) !important;
+    opacity: 0.98;
+  }
+}
+
+/* WCAG: reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spring-in,
+  .animate-shimmer,
+  .animate-fade-in,
+  .animate-slide-up,
+  .animate-slide-up-full,
+  .animate-pulse-glow {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Glass utility classes */
+.glass-thick {
+  backdrop-filter: blur(var(--glass-thick-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-thick-blur)) saturate(180%);
+  background: var(--glass-thick-bg);
+  border-color: var(--glass-thick-border);
+}
+
+.glass-regular {
+  backdrop-filter: blur(var(--glass-regular-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-regular-blur)) saturate(180%);
+  background: var(--glass-regular-bg);
+  border-color: var(--glass-regular-border);
+}
+
+.glass-thin {
+  backdrop-filter: blur(var(--glass-thin-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-thin-blur)) saturate(180%);
+  background: var(--glass-thin-bg);
+  border-color: var(--glass-thin-border);
 }
