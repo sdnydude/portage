@@ -1,17 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { pino } from 'pino';
-import { env } from './env.js';
-
-const logger = pino({ name: 'vision' });
-
-let _client: Anthropic | null = null;
-
-function getClient(): Anthropic {
-  if (!_client) {
-    _client = new Anthropic({ apiKey: env().ANTHROPIC_API_KEY! });
-  }
-  return _client;
-}
+import { analyzeImage } from './ai-client.js';
 
 export interface VisionResult {
   name: string;
@@ -44,40 +31,12 @@ Analyze the image and return a JSON object with these fields:
 Respond with ONLY valid JSON. No markdown, no explanation.`;
 
 export async function identifyItem(imageBase64: string, mediaType: string): Promise<VisionResult> {
-  const startTime = Date.now();
+  const { text } = await analyzeImage(
+    imageBase64,
+    mediaType,
+    SYSTEM_PROMPT,
+    'Identify this item for marketplace listing.',
+  );
 
-  const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
-              data: imageBase64,
-            },
-          },
-          { type: 'text', text: 'Identify this item for marketplace listing.' },
-        ],
-      },
-    ],
-    system: SYSTEM_PROMPT,
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const elapsed = Date.now() - startTime;
-
-  logger.info({
-    model: response.model,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    elapsed,
-  }, 'Vision analysis complete');
-
-  const result = JSON.parse(text) as VisionResult;
-  return result;
+  return JSON.parse(text) as VisionResult;
 }

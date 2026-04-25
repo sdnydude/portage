@@ -15,6 +15,7 @@ import { porterRouter } from './routes/porter.js';
 import { ebayAuthRouter } from './routes/marketplace/ebay-auth.js';
 import { etsyAuthRouter } from './routes/marketplace/etsy-auth.js';
 import { adminRouter } from './routes/admin.js';
+import { dashboardRouter } from './routes/dashboard.js';
 
 const config = loadEnv();
 
@@ -42,6 +43,7 @@ app.use('/porter', porterRouter);
 app.use('/marketplace/ebay', ebayAuthRouter);
 app.use('/marketplace/etsy', etsyAuthRouter);
 app.use('/admin', adminRouter);
+app.use('/dashboard', dashboardRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

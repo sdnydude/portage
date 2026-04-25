@@ -138,10 +138,12 @@ npx tsx apps/api/src/scripts/promote-admin.ts <email>
 
 ## Progress
 
-31/46 tasks complete. See `docs/TODO.md` for full roadmap.
+29/52 tasks complete, 4 partial. See `docs/TODO.md` for full roadmap.
 
-**Done:** Foundation, AI scanning, image pipeline, marketplace adapters (eBay + Etsy), Porter AI, auth, admin panel (17 endpoints, 9 pages).
+**Done:** Foundation (7/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy), Porter AI, auth, admin panel (17 endpoints, 9 pages), repo infrastructure (2/3).
 
-**Remaining:** Shipping (EasyPost), payments (Stripe), notifications, dashboard, onboarding, PWA service worker, bulk operations, buyer messaging, settings pages, production config, testing.
+**Partial:** Camera capture (components built, no UI entry point), listings UI (create works, detail page 404), dashboard (data works, no trends/insights, nav issues), PWA (manifest only, no icons/SW).
+
+**Remaining:** Scan FAB, dashboard fixes + trends, listing detail page, shipping (EasyPost), payments (Stripe), notifications, onboarding, settings pages, bulk operations, buyer messaging, production config, testing.
 
 **Demo account:** demo@portage.app / demo1234demo1234

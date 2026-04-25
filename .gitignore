@@ -12,3 +12,8 @@ coverage/
 *.tsbuildinfo
 drizzle/meta/
 .worktrees/
+.codegraph/
+.serena/
+.playwright-mcp/
+.remember/
+*.png

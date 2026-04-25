@@ -2,23 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { eq, desc, and, ilike, sql } from 'drizzle-orm';
 import { pino } from 'pino';
-import Anthropic from '@anthropic-ai/sdk';
 import { db } from '../db/index.js';
 import { conversations, items, listings, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
-import { env } from '../lib/env.js';
+import { chat, type ToolDef } from '../lib/ai-client.js';
 import { FREE_TIER_LIMITS } from '@portage/shared';
 
 const logger = pino({ name: 'porter' });
-
-function getClient(): Anthropic {
-  const config = env();
-  if (!config.ANTHROPIC_API_KEY) {
-    throw new AppError(503, 'AI_NOT_CONFIGURED', 'AI assistant is not configured');
-  }
-  return new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
-}
 
 const PORTER_SYSTEM = `You are Porter, an AI assistant for the Portage app — a personal effects inventory and marketplace seller tool.
 
@@ -35,12 +26,12 @@ When users ask about items, use the search_inventory tool. When they ask about v
 
 Always be direct and actionable. If you don't know something, say so.`;
 
-const tools: Anthropic.Tool[] = [
+const tools: ToolDef[] = [
   {
     name: 'search_inventory',
     description: 'Search the user\'s inventory items by keyword, category, or condition.',
-    input_schema: {
-      type: 'object' as const,
+    parameters: {
+      type: 'object',
       properties: {
         query: { type: 'string', description: 'Search query to match against item titles' },
         category: { type: 'string', description: 'Filter by category' },
@@ -52,8 +43,8 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'get_inventory_stats',
     description: 'Get summary statistics about the user\'s inventory: total items, total estimated value, breakdown by category.',
-    input_schema: {
-      type: 'object' as const,
+    parameters: {
+      type: 'object',
       properties: {},
       required: [],
     },
@@ -61,8 +52,8 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'suggest_listing',
     description: 'Generate a marketplace listing suggestion for an inventory item including title, description, and price.',
-    input_schema: {
-      type: 'object' as const,
+    parameters: {
+      type: 'object',
       properties: {
         itemId: { type: 'string', description: 'The inventory item ID to create a listing for' },
         marketplace: { type: 'string', enum: ['ebay', 'etsy'], description: 'Which marketplace to optimize the listing for' },
@@ -257,52 +248,17 @@ porterRouter.post('/message', async (req, res, next) => {
     const history = conv.messages as Array<{ role: string; content: string }>;
     history.push({ role: 'user', content: message });
 
-    const anthropicMessages = history.map(m => ({
+    const chatMessages = history.map(m => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
 
-    const client = getClient();
-
-    let response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: PORTER_SYSTEM,
+    const { text: assistantMessage } = await chat(
+      chatMessages,
+      PORTER_SYSTEM,
       tools,
-      messages: anthropicMessages,
-    });
-
-    while (response.stop_reason === 'tool_use') {
-      const toolUseBlocks = response.content.filter(
-        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
-      );
-
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      for (const toolUse of toolUseBlocks) {
-        const result = await executeToolCall(userId, toolUse.name, toolUse.input as Record<string, unknown>);
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: toolUse.id,
-          content: result,
-        });
-      }
-
-      anthropicMessages.push({ role: 'assistant', content: response.content as unknown as string });
-      anthropicMessages.push({ role: 'user', content: toolResults as unknown as string });
-
-      response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: PORTER_SYSTEM,
-        tools,
-        messages: anthropicMessages,
-      });
-    }
-
-    const textBlocks = response.content.filter(
-      (block): block is Anthropic.TextBlock => block.type === 'text',
+      (name, input) => executeToolCall(userId, name, input),
     );
-    const assistantMessage = textBlocks.map(b => b.text).join('\n');
 
     history.push({ role: 'assistant', content: assistantMessage });
 

@@ -22,7 +22,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
 
   if (isAuthenticated) {
-    router.replace("/inventory");
+    router.replace("/home");
     return null;
   }
 
@@ -48,7 +48,7 @@ export default function RegisterPage() {
         body: { email, password },
       });
       login(data.token, data.refreshToken, data.user);
-      router.replace("/inventory");
+      router.replace("/home");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Registration failed");
       setIsLoading(false);

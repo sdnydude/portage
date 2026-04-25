@@ -5,6 +5,11 @@ import { usePathname } from "next/navigation";
 
 const tabs = [
   {
+    name: "Home",
+    href: "/home",
+    icon: HomeIcon,
+  },
+  {
     name: "Inventory",
     href: "/inventory",
     icon: InventoryIcon,
@@ -13,11 +18,6 @@ const tabs = [
     name: "Listings",
     href: "/listings",
     icon: ListingsIcon,
-  },
-  {
-    name: "Porter",
-    href: "/porter",
-    icon: PorterIcon,
   },
   {
     name: "Orders",
@@ -72,6 +72,16 @@ function InventoryIcon({ active }: { active: boolean }) {
   );
 }
 
+function HomeIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor"
+      strokeWidth={active ? 0 : 2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" />
+      {!active && <path d="M9 21V12h6v9" />}
+    </svg>
+  );
+}
+
 function ListingsIcon({ active }: { active: boolean }) {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -79,22 +89,6 @@ function ListingsIcon({ active }: { active: boolean }) {
       <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
       <rect x="9" y="3" width="6" height="4" rx="1" />
       <path d="M9 14h6M9 18h6M9 10h6" />
-    </svg>
-  );
-}
-
-function PorterIcon({ active }: { active: boolean }) {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor"
-      strokeWidth={active ? 0 : 2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2C6.48 2 2 6 2 10.5c0 2.5 1.2 4.7 3 6.3V21l3.5-2c1.1.3 2.3.5 3.5.5 5.52 0 10-4 10-8.5S17.52 2 12 2z" />
-      {active && (
-        <>
-          <circle cx="8" cy="10.5" r="1" fill="var(--background)" />
-          <circle cx="12" cy="10.5" r="1" fill="var(--background)" />
-          <circle cx="16" cy="10.5" r="1" fill="var(--background)" />
-        </>
-      )}
     </svg>
   );
 }
