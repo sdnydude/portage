@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, and, asc } from 'drizzle-orm';
 import { pino } from 'pino';
 import { db } from '../db/index.js';
-import { shippingPresets, shippingProviders, users } from '../db/schema.js';
+import { shippingPresets, shippingProviders, orders, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
@@ -263,6 +263,123 @@ shippingRouter.post('/provider/test', async (req, res, next) => {
       message: formatValid
         ? 'API key format is valid. Live connection test will be available when provider integration is complete.'
         : 'API key format does not match expected pattern. Please verify your key.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Rate Fetching ──────────────────────────────────────────
+
+const getRatesSchema = z.object({
+  orderId: z.string().uuid(),
+  packageType: z.enum(['box', 'envelope', 'poly_mailer']).optional(),
+  length: z.number().positive().optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+  weightLbs: z.number().int().min(0).optional(),
+  weightOz: z.number().min(0).optional(),
+});
+
+// GET /shipping/rates — get rates for an order (stub: returns mock marketplace rates)
+shippingRouter.get('/rates', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    // Parse query params as the schema expects
+    const params = getRatesSchema.parse({
+      orderId: req.query.orderId,
+      packageType: req.query.packageType,
+      length: req.query.length ? Number(req.query.length) : undefined,
+      width: req.query.width ? Number(req.query.width) : undefined,
+      height: req.query.height ? Number(req.query.height) : undefined,
+      weightLbs: req.query.weightLbs ? Number(req.query.weightLbs) : undefined,
+      weightOz: req.query.weightOz ? Number(req.query.weightOz) : undefined,
+    });
+
+    // Verify the order belongs to this user
+    const [order] = await db.select()
+      .from(orders)
+      .where(and(eq(orders.id, params.orderId), eq(orders.userId, userId)))
+      .limit(1);
+
+    if (!order) throw new AppError(404, 'NOT_FOUND', 'Order not found');
+
+    // Stub rates — marketplace-native rates based on the order's marketplace
+    const marketplace = order.marketplace;
+    const stubRates = [
+      {
+        rateId: `${marketplace}-ground-${order.id.slice(0, 8)}`,
+        carrier: marketplace === 'ebay' ? 'USPS' : 'USPS',
+        service: 'Ground Advantage',
+        price: 5.99,
+        currency: 'USD',
+        estimatedDays: 5,
+        source: 'marketplace' as const,
+      },
+      {
+        rateId: `${marketplace}-priority-${order.id.slice(0, 8)}`,
+        carrier: 'USPS',
+        service: 'Priority Mail',
+        price: 8.49,
+        currency: 'USD',
+        estimatedDays: 3,
+        source: 'marketplace' as const,
+      },
+      {
+        rateId: `${marketplace}-express-${order.id.slice(0, 8)}`,
+        carrier: 'USPS',
+        service: 'Priority Mail Express',
+        price: 26.95,
+        currency: 'USD',
+        estimatedDays: 1,
+        source: 'marketplace' as const,
+      },
+      {
+        rateId: `${marketplace}-ups-ground-${order.id.slice(0, 8)}`,
+        carrier: 'UPS',
+        service: 'Ground',
+        price: 9.99,
+        currency: 'USD',
+        estimatedDays: 5,
+        source: 'marketplace' as const,
+      },
+    ];
+
+    // Check if user has a third-party provider configured
+    const [provider] = await db.select()
+      .from(shippingProviders)
+      .where(and(eq(shippingProviders.userId, userId), eq(shippingProviders.isActive, true)))
+      .limit(1);
+
+    // If provider configured, add stub third-party rates for side-by-side comparison
+    const thirdPartyRates = provider ? [
+      {
+        rateId: `${provider.provider}-ground-${order.id.slice(0, 8)}`,
+        carrier: 'USPS',
+        service: 'Ground Advantage',
+        price: 5.49,
+        currency: 'USD',
+        estimatedDays: 5,
+        source: provider.provider as 'shippo' | 'easypost' | 'pirate_ship',
+      },
+      {
+        rateId: `${provider.provider}-priority-${order.id.slice(0, 8)}`,
+        carrier: 'USPS',
+        service: 'Priority Mail',
+        price: 7.99,
+        currency: 'USD',
+        estimatedDays: 3,
+        source: provider.provider as 'shippo' | 'easypost' | 'pirate_ship',
+      },
+    ] : [];
+
+    logger.info({ userId, orderId: params.orderId, rateCount: stubRates.length + thirdPartyRates.length }, 'Rates fetched (stub)');
+
+    res.json({
+      orderId: params.orderId,
+      rates: [...stubRates, ...thirdPartyRates],
+      isStub: true,
     });
   } catch (err) {
     next(err);
