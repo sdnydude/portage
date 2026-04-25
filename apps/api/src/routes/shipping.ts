@@ -385,3 +385,125 @@ shippingRouter.get('/rates', async (req, res, next) => {
     next(err);
   }
 });
+
+// ─── Label Purchase ─────────────────────────────────────────
+
+const purchaseLabelSchema = z.object({
+  orderId: z.string().uuid(),
+  rateId: z.string().min(1),
+  packageType: z.enum(['box', 'envelope', 'poly_mailer']).optional(),
+  length: z.number().positive().optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+  weightLbs: z.number().int().min(0).optional(),
+  weightOz: z.number().min(0).optional(),
+});
+
+// POST /shipping/labels — purchase a shipping label (stub)
+shippingRouter.post('/labels', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const body = purchaseLabelSchema.parse(req.body);
+
+    // Verify the order belongs to this user and is in the right status
+    const [order] = await db.select()
+      .from(orders)
+      .where(and(eq(orders.id, body.orderId), eq(orders.userId, userId)))
+      .limit(1);
+
+    if (!order) throw new AppError(404, 'NOT_FOUND', 'Order not found');
+
+    if (order.status !== 'payment_received') {
+      throw new AppError(400, 'INVALID_STATUS', `Cannot purchase label for order in "${order.status}" status. Order must be in "payment_received" status.`);
+    }
+
+    // Stub: generate fake tracking number and label URL
+    const trackingNumber = `STUB${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const carrier = body.rateId.includes('ups') ? 'UPS' : 'USPS';
+    const shippingLabelUrl = `https://labels.portage.app/stub/${order.id}/${trackingNumber}.pdf`;
+
+    // Update the order with label data
+    const [updated] = await db.update(orders)
+      .set({
+        trackingNumber,
+        carrier,
+        shippingLabelUrl,
+        status: 'label_purchased',
+      })
+      .where(eq(orders.id, body.orderId))
+      .returning();
+
+    logger.info({ userId, orderId: updated.id, trackingNumber, carrier }, 'Label purchased (stub)');
+
+    res.status(201).json({
+      orderId: updated.id,
+      trackingNumber,
+      carrier,
+      shippingLabelUrl,
+      status: updated.status,
+      isStub: true,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /shipping/labels/:orderId — get label PDF URL for an order
+shippingRouter.get('/labels/:orderId', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    const [order] = await db.select()
+      .from(orders)
+      .where(and(eq(orders.id, req.params.orderId), eq(orders.userId, userId)))
+      .limit(1);
+
+    if (!order) throw new AppError(404, 'NOT_FOUND', 'Order not found');
+
+    if (!order.shippingLabelUrl) {
+      throw new AppError(404, 'NO_LABEL', 'No shipping label has been purchased for this order');
+    }
+
+    res.json({
+      orderId: order.id,
+      trackingNumber: order.trackingNumber,
+      carrier: order.carrier,
+      shippingLabelUrl: order.shippingLabelUrl,
+      status: order.status,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /shipping/orders/:id/ship — mark order as shipped
+shippingRouter.post('/orders/:id/ship', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    const [order] = await db.select()
+      .from(orders)
+      .where(and(eq(orders.id, req.params.id), eq(orders.userId, userId)))
+      .limit(1);
+
+    if (!order) throw new AppError(404, 'NOT_FOUND', 'Order not found');
+
+    if (order.status !== 'label_purchased') {
+      throw new AppError(400, 'INVALID_STATUS', `Cannot mark order as shipped from "${order.status}" status. Order must have a purchased label first.`);
+    }
+
+    const [updated] = await db.update(orders)
+      .set({
+        status: 'shipped',
+        shippedAt: new Date(),
+      })
+      .where(eq(orders.id, req.params.id))
+      .returning();
+
+    logger.info({ userId, orderId: updated.id, trackingNumber: updated.trackingNumber }, 'Order marked as shipped');
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
