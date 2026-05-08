@@ -1,12 +1,14 @@
 import { pino } from 'pino';
 import { env } from '../lib/env.js';
-import { getEbayAccessToken } from './token-manager.js';
+import { getEbayAccessToken, getEbayAppToken, invalidateEbayAppToken } from './token-manager.js';
 import type {
   MarketplaceAdapter,
   MarketplaceListingInput,
   MarketplaceListingResult,
   MarketplaceOrderResult,
   MarketplaceCategoryResult,
+  CompListing,
+  CompResult,
 } from '@portage/shared';
 
 const logger = pino({ name: 'ebay-adapter' });
@@ -250,5 +252,104 @@ export class EbayAdapter implements MarketplaceAdapter {
         isLeaf: true,
       };
     });
+  }
+
+  static async searchComps(query: string, category?: string): Promise<CompResult> {
+    const token = await getEbayAppToken();
+    const baseUrl = env().EBAY_SANDBOX
+      ? 'https://api.sandbox.ebay.com'
+      : 'https://api.ebay.com';
+
+    const fetchListings = async (filters: string[]): Promise<CompListing[]> => {
+      const params = new URLSearchParams({
+        q: query,
+        limit: '10',
+      });
+      for (const f of filters) {
+        params.append('filter', f);
+      }
+      if (category) {
+        params.append('category_ids', category);
+      }
+
+      const response = await fetch(`${baseUrl}/buy/browse/v1/item_summary/search?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+        },
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        logger.error({ status: response.status, body, query }, 'eBay Browse API error');
+        if (response.status === 401 || response.status === 403) {
+          invalidateEbayAppToken();
+        }
+        throw new Error(`eBay search failed (HTTP ${response.status})`);
+      }
+
+      const data = await response.json() as {
+        itemSummaries?: Array<{
+          title: string;
+          price: { value: string; currency: string };
+          condition: string;
+          image?: { imageUrl: string };
+          itemWebUrl: string;
+          itemEndDate?: string;
+        }>;
+      };
+
+      return (data.itemSummaries ?? []).map((item) => ({
+        title: item.title,
+        price: parseFloat(item.price.value),
+        currency: item.price.currency,
+        condition: item.condition ?? 'Unknown',
+        imageUrl: item.image?.imageUrl ?? null,
+        listingUrl: item.itemWebUrl,
+        soldDate: item.itemEndDate ?? null,
+      }));
+    };
+
+    const [activeResult, soldResult] = await Promise.allSettled([
+      fetchListings(['buyingOptions:{FIXED_PRICE}']),
+      fetchListings(['buyingOptions:{FIXED_PRICE}', 'soldItemsOnly:true']),
+    ]);
+
+    const active = activeResult.status === 'fulfilled' ? activeResult.value : [];
+    const sold = soldResult.status === 'fulfilled' ? soldResult.value : [];
+
+    if (activeResult.status === 'rejected' && soldResult.status === 'rejected') {
+      throw activeResult.reason;
+    }
+
+    const median = (prices: number[]): number | null => {
+      if (prices.length === 0) return null;
+      const sorted = [...prices].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    };
+
+    const avg = (prices: number[]): number | null => {
+      if (prices.length === 0) return null;
+      return Math.round(prices.reduce((s, p) => s + p, 0) / prices.length * 100) / 100;
+    };
+
+    const soldPrices = sold.map((s) => s.price);
+    const activePrices = active.map((a) => a.price);
+
+    const partial = activeResult.status === 'rejected' || soldResult.status === 'rejected';
+
+    return {
+      sold,
+      active,
+      stats: {
+        soldMedian: median(soldPrices),
+        soldAvg: avg(soldPrices),
+        activeMedian: median(activePrices),
+        activeAvg: avg(activePrices),
+        sampleSize: sold.length + active.length,
+      },
+      ...(partial && { partial: true }),
+    };
   }
 }

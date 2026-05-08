@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Portage Listing Flow Mockups</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --background: #F8F7F4;
+    --surface: #FFFFFF;
+    --muted: #F5F3EF;
+    --border: #E8E5DE;
+    --border-focus: #2D5A27;
+    --text-primary: #1A1A1A;
+    --text-secondary: #6B6B6B;
+    --text-placeholder: #A3A3A3;
+    --forest-green: #2D5A27;
+    --forest-green-light: #3D7A35;
+    --forest-green-dark: #1E3D1A;
+    --forest-green-50: #F0F7EF;
+    --forest-green-100: #D4E8D1;
+    --accent-warm: #D4A574;
+    --accent-error: #DC3545;
+    --accent-warning: #F59E0B;
+    --accent-info: #3B82F6;
+    --shadow-subtle: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-medium: 0 4px 12px rgba(0,0,0,0.08);
+    --shadow-elevated: 0 8px 24px rgba(0,0,0,0.12);
+    --shadow-floating: 0 16px 48px rgba(0,0,0,0.16);
+    --font-instrument: 'Instrument Sans', sans-serif;
+    --font-plus-jakarta: 'Plus Jakarta Sans', sans-serif;
+    --font-jetbrains: 'JetBrains Mono', monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #0F1210;
+      --surface: #1A1F1A;
+      --muted: #232823;
+      --border: #2E352E;
+      --border-focus: #4CAF50;
+      --text-primary: #E8E8E8;
+      --text-secondary: #9A9A9A;
+      --text-placeholder: #5A5A5A;
+      --forest-green: #4CAF50;
+      --forest-green-light: #66BB6A;
+      --forest-green-dark: #388E3C;
+      --forest-green-50: rgba(76,175,80,0.08);
+      --forest-green-100: rgba(76,175,80,0.15);
+      --accent-warm: #D4A574;
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-plus-jakarta);
+    background: var(--background);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* Screen navigator */
+  .screen-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .screen-nav button {
+    font-family: var(--font-plus-jakarta);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--muted);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .screen-nav button.active {
+    background: var(--forest-green);
+    color: white;
+    border-color: var(--forest-green);
+  }
+
+  /* Screens */
+  .screen {
+    display: none;
+    max-width: 430px;
+    margin: 0 auto;
+    min-height: 100dvh;
+    padding-top: calc(52px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    position: relative;
+  }
+
+  .screen.active { display: block; }
+
+  /* Sticky header */
+  .page-header {
+    position: sticky;
+    top: calc(52px + env(safe-area-inset-top, 0px));
+    z-index: 50;
+    background: rgba(248,247,244,0.95);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .page-header {
+      background: rgba(15,18,16,0.95);
+    }
+  }
+
+  .page-header .back-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: var(--forest-green);
+    font-family: var(--font-plus-jakarta);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 4px 0;
+  }
+
+  .page-header h1 {
+    font-family: var(--font-instrument);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-primary);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  /* Content areas */
+  .content { padding: 16px; }
+  .content > * + * { margin-top: 12px; }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    box-shadow: var(--shadow-subtle);
+  }
+
+  .card-body { padding: 16px; }
+  .card-body > * + * { margin-top: 12px; }
+
+  /* Image gallery placeholder */
+  .image-gallery {
+    aspect-ratio: 4/3;
+    background: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .image-gallery svg {
+    width: 48px;
+    height: 48px;
+    color: var(--text-placeholder);
+  }
+
+  .image-count {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    backdrop-filter: blur(8px);
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .badge-green { background: var(--forest-green-50); color: var(--forest-green); }
+  .badge-amber { background: rgba(245,158,11,0.1); color: #D97706; }
+  .badge-gray { background: var(--muted); color: var(--text-secondary); }
+  .badge-blue { background: rgba(59,130,246,0.1); color: #2563EB; }
+  .badge-ebay { background: #E53238; color: white; }
+  .badge-reverb { background: #F15A22; color: white; }
+
+  .badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* Labels */
+  .label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+
+  /* Section header */
+  .section-header {
+    font-family: var(--font-instrument);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+
+  /* Detail rows */
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .detail-row:last-child { border-bottom: none; }
+
+  .detail-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .detail-value {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 600;
+    text-align: right;
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail-value.editable {
+    color: var(--forest-green);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .detail-value.editable::after {
+    content: '';
+    width: 12px;
+    height: 12px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%232D5A27' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 2 4 4'/%3E%3Cpath d='m17.5 2.5-12 12V19h4.5l12-12'/%3E%3C/svg%3E") no-repeat center;
+    flex-shrink: 0;
+  }
+
+  /* Buttons */
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 13px 20px;
+    border-radius: 14px;
+    font-family: var(--font-plus-jakarta);
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn:active { transform: scale(0.97); }
+
+  .btn-primary {
+    background: var(--forest-green);
+    color: white;
+  }
+
+  .btn-secondary {
+    background: var(--muted);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+  }
+
+  .btn-danger {
+    background: rgba(220,53,69,0.08);
+    color: var(--accent-error);
+    border: 1px solid rgba(220,53,69,0.2);
+  }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--forest-green);
+    border: 1.5px solid var(--forest-green);
+  }
+
+  .btn-sm {
+    padding: 10px 16px;
+    font-size: 13px;
+    border-radius: 12px;
+  }
+
+  .btn-group {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-group .btn { flex: 1; }
+
+  /* Marketplace pills */
+  .marketplace-pills {
+    display: flex;
+    gap: 8px;
+    padding: 4px;
+    background: var(--muted);
+    border-radius: 14px;
+  }
+
+  .marketplace-pill {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 11px;
+    font-family: var(--font-plus-jakarta);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+    color: var(--text-secondary);
+    position: relative;
+  }
+
+  .marketplace-pill.active {
+    background: var(--surface);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-medium);
+  }
+
+  .marketplace-pill.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .marketplace-pill .pill-badge {
+    position: absolute;
+    top: 2px;
+    right: 6px;
+    font-size: 8px;
+    font-weight: 700;
+    color: var(--text-placeholder);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* Comps card */
+  .comps-card {
+    background: var(--forest-green-50);
+    border: 1px solid var(--forest-green-100);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+
+  .comps-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .comps-header svg {
+    width: 16px;
+    height: 16px;
+    color: var(--forest-green);
+  }
+
+  .comps-header span {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--forest-green);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .comps-stats {
+    display: grid;
+    grid-template-columns: 1fr 1px 1fr;
+    gap: 0;
+  }
+
+  .comps-stat {
+    text-align: center;
+    padding: 0 12px;
+  }
+
+  .comps-divider {
+    background: var(--forest-green);
+    opacity: 0.15;
+  }
+
+  .comps-stat-value {
+    font-family: var(--font-instrument);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--forest-green);
+    line-height: 1.1;
+  }
+
+  .comps-stat-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    font-weight: 500;
+  }
+
+  .comps-stat-range {
+    font-size: 10px;
+    font-family: var(--font-jetbrains);
+    color: var(--text-placeholder);
+    margin-top: 1px;
+  }
+
+  /* Form fields */
+  .form-group { margin-bottom: 14px; }
+
+  .form-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 11px 14px;
+    background: var(--muted);
+    border: 1.5px solid transparent;
+    border-radius: 12px;
+    font-family: var(--font-plus-jakarta);
+    font-size: 14px;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .form-input:focus { border-color: var(--forest-green); }
+  .form-input::placeholder { color: var(--text-placeholder); }
+
+  .form-input-price {
+    font-family: var(--font-instrument);
+    font-size: 24px;
+    font-weight: 700;
+    text-align: center;
+    padding: 14px;
+  }
+
+  .form-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .form-hint svg {
+    width: 12px;
+    height: 12px;
+    color: var(--forest-green);
+    flex-shrink: 0;
+  }
+
+  .form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B6B6B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+  }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  /* Suggested price tag */
+  .suggested-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--forest-green);
+    background: var(--forest-green-50);
+    padding: 2px 8px;
+    border-radius: 6px;
+    margin-top: 4px;
+  }
+
+  /* Bottom sheet overlay */
+  .sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 60;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+  }
+
+  .sheet-overlay.visible { display: flex; }
+
+  .sheet {
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 430px;
+    max-height: 92dvh;
+    overflow-y: auto;
+    padding: 0 20px 20px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    animation: slideUp 0.3s ease-out;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .sheet-handle {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    margin: 10px auto 16px;
+  }
+
+  .sheet-title {
+    font-family: var(--font-instrument);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+  }
+
+  .sheet > * + * { margin-top: 0; }
+
+  /* Tab bar mockup */
+  .tab-bar {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 430px;
+    z-index: 50;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    height: 64px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .tab-bar {
+      background: rgba(26,31,26,0.85);
+    }
+  }
+
+  .tab-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 12px;
+  }
+
+  .tab-item.active { color: var(--forest-green); font-weight: 600; }
+
+  .tab-item svg { width: 22px; height: 22px; }
+
+  .tab-fab {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--forest-green);
+    border: none;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: -24px;
+    box-shadow: var(--shadow-elevated);
+    cursor: pointer;
+  }
+
+  .tab-fab svg { width: 24px; height: 24px; }
+
+  /* External link */
+  .external-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--forest-green);
+    text-decoration: none;
+    padding: 10px 0;
+  }
+
+  .external-link svg { width: 14px; height: 14px; }
+
+  /* Reverb-specific fields */
+  .reverb-fields {
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  .reverb-fields-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #F15A22;
+  }
+
+  /* Confirmation dialog */
+  .confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 70;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .confirm-overlay.visible { display: flex; }
+
+  .confirm-dialog {
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 24px;
+    width: 100%;
+    max-width: 340px;
+    text-align: center;
+    box-shadow: var(--shadow-floating);
+    animation: scaleIn 0.2s ease-out;
+  }
+
+  @keyframes scaleIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  .confirm-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: rgba(220,53,69,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 14px;
+    color: var(--accent-error);
+  }
+
+  .confirm-title {
+    font-family: var(--font-instrument);
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .confirm-text {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 18px;
+    line-height: 1.5;
+  }
+
+  /* Sync warning */
+  .sync-warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #D97706;
+    font-weight: 500;
+  }
+
+  .sync-warning svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+  /* Marketplace icon next to listing ID */
+  .marketplace-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 800;
+    color: white;
+    flex-shrink: 0;
+  }
+
+  .marketplace-icon.ebay { background: #E53238; }
+  .marketplace-icon.reverb { background: #F15A22; }
+
+  /* Item preview row */
+  .item-preview {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .item-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    background: var(--muted);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .item-thumb svg { width: 24px; height: 24px; color: var(--text-placeholder); }
+
+  .item-info { flex: 1; min-width: 0; }
+
+  .item-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .item-subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 16px 0;
+  }
+
+  /* Action list row */
+  .action-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .action-row:hover { background: var(--muted); }
+
+  .action-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .action-icon.green { background: var(--forest-green-50); color: var(--forest-green); }
+  .action-icon.orange { background: rgba(241,90,34,0.1); color: #F15A22; }
+  .action-icon.gray { background: var(--muted); color: var(--text-secondary); }
+
+  .action-icon svg { width: 20px; height: 20px; }
+
+  .action-content { flex: 1; }
+
+  .action-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .action-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 1px;
+  }
+
+  .action-chevron {
+    color: var(--text-placeholder);
+  }
+
+  .action-chevron svg { width: 16px; height: 16px; }
+
+  /* Condition badges */
+  .condition-badge {
+    padding: 3px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .condition-excellent { background: #ECFDF5; color: #059669; }
+  .condition-good { background: #EFF6FF; color: #2563EB; }
+  .condition-fair { background: #FFFBEB; color: #D97706; }
+</style>
+</head>
+<body>
+
+<!-- Screen Navigator -->
+<div class="screen-nav">
+  <button class="active" onclick="showScreen('item-detail')">1. Item Detail</button>
+  <button onclick="showScreen('create-sheet')">2. Create Listing</button>
+  <button onclick="showScreen('create-reverb')">3. Reverb Fields</button>
+  <button onclick="showScreen('listing-detail')">4. Listing Detail</button>
+  <button onclick="showScreen('listing-draft')">5. Draft State</button>
+</div>
+
+<!-- ============================================ -->
+<!-- SCREEN 1: Item Detail Page with List Button  -->
+<!-- ============================================ -->
+<div id="item-detail" class="screen active">
+  <div class="page-header">
+    <button class="back-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      Inventory
+    </button>
+    <div class="header-actions">
+      <button class="icon-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+      </button>
+      <button class="icon-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Item photo -->
+  <div class="image-gallery">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+    <span class="image-count">1 / 4</span>
+  </div>
+
+  <div class="content">
+    <!-- Item header -->
+    <div>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <span class="badge badge-green"><span class="badge-dot"></span> Excellent</span>
+        <span class="badge badge-blue">AI Scanned</span>
+      </div>
+      <h2 style="font-family:var(--font-instrument); font-size:22px; font-weight:700; line-height:1.25; margin-top:8px;">Fender American Professional II Stratocaster</h2>
+      <p style="font-size:13px; color:var(--text-secondary); margin-top:4px;">Electric Guitar - 3-Color Sunburst, Rosewood</p>
+    </div>
+
+    <!-- AI Scan summary -->
+    <div class="card">
+      <div class="card-body">
+        <div class="label">AI Scan Results</div>
+        <div class="detail-row">
+          <span class="detail-label">Category</span>
+          <span class="detail-value">Electric Guitars</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Estimated Value</span>
+          <span class="detail-value" style="color:var(--forest-green); font-family:var(--font-instrument); font-size:16px;">$1,249 - $1,549</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Condition</span>
+          <span class="detail-value"><span class="condition-badge condition-excellent">Excellent</span></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Confidence</span>
+          <span class="detail-value">94%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- LIST FOR SALE - Primary CTA -->
+    <div class="card" style="border-color: var(--forest-green-100); background: var(--forest-green-50);">
+      <div class="card-body" style="padding: 14px 16px;">
+        <div style="font-size:12px; font-weight:600; color:var(--forest-green); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:10px;">Ready to Sell?</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-primary" style="flex:1;" onclick="showScreen('create-sheet')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg>
+            List for Sale
+          </button>
+        </div>
+        <div style="display:flex; gap:16px; margin-top:10px; justify-content:center;">
+          <span style="display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-secondary);">
+            <span class="marketplace-icon ebay" style="width:14px;height:14px;font-size:7px;">eB</span> eBay
+          </span>
+          <span style="display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-secondary);">
+            <span class="marketplace-icon reverb" style="width:14px;height:14px;font-size:7px;">R</span> Reverb
+          </span>
+          <span style="display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-placeholder);">
+            <span class="marketplace-icon" style="width:14px;height:14px;font-size:7px;background:var(--border);">Et</span> Etsy (soon)
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Item details -->
+    <div class="card">
+      <div class="card-body">
+        <div class="label">Details</div>
+        <div class="detail-row">
+          <span class="detail-label">Make</span>
+          <span class="detail-value">Fender</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Model</span>
+          <span class="detail-value">American Professional II Stratocaster</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Finish</span>
+          <span class="detail-value">3-Color Sunburst</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Year</span>
+          <span class="detail-value">2023</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Added</span>
+          <span class="detail-value">May 5, 2026</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      Home
+    </button>
+    <button class="tab-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m20 7-8-4-8 4m16 0-8 4m8-4v10l-8 4M4 7l8 4M4 7v10l8 4m0-10v10"/></svg>
+      Inventory
+    </button>
+    <button class="tab-fab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    </button>
+    <button class="tab-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
+      Listings
+    </button>
+    <button class="tab-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.73 12.73 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      Settings
+    </button>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SCREEN 2: Create Listing Sheet (eBay)        -->
+<!-- ============================================ -->
+<div id="create-sheet" class="screen">
+  <div class="page-header">
+    <button class="back-btn" onclick="showScreen('item-detail')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      Back
+    </button>
+    <h1>List for Sale</h1>
+    <div style="width:60px"></div>
+  </div>
+
+  <div class="content">
+    <!-- Item being listed -->
+    <div class="item-preview">
+      <div class="item-thumb">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+      </div>
+      <div class="item-info">
+        <div class="item-title">Fender American Professional II Stratocaster</div>
+        <div class="item-subtitle">Electric Guitar - 3-Color Sunburst</div>
+      </div>
+    </div>
+
+    <!-- Marketplace selector -->
+    <div class="form-group">
+      <div class="form-label">Marketplace</div>
+      <div class="marketplace-pills">
+        <button class="marketplace-pill active" onclick="selectMarketplace(this, 'ebay')">eBay</button>
+        <button class="marketplace-pill" onclick="selectMarketplace(this, 'reverb')">Reverb</button>
+        <button class="marketplace-pill disabled">
+          Etsy
+          <span class="pill-badge">Soon</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Comps inline -->
+    <div class="comps-card">
+      <div class="comps-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        <span>Market Comps</span>
+      </div>
+      <div class="comps-stats">
+        <div class="comps-stat">
+          <div class="comps-stat-value">$1,349</div>
+          <div class="comps-stat-label">Sold Median</div>
+          <div class="comps-stat-range">$1,149 - $1,599</div>
+        </div>
+        <div class="comps-divider"></div>
+        <div class="comps-stat">
+          <div class="comps-stat-value">$1,449</div>
+          <div class="comps-stat-label">Active Median</div>
+          <div class="comps-stat-range">24 listings</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Price -->
+    <div class="form-group">
+      <div class="form-label">Your Price</div>
+      <input type="text" class="form-input form-input-price" value="$1,349" />
+      <div class="suggested-tag">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>
+        Suggested from sold comps
+      </div>
+    </div>
+
+    <!-- Title -->
+    <div class="form-group">
+      <div class="form-label">Title</div>
+      <input type="text" class="form-input" value="Fender American Professional II Stratocaster - 3-Color Sunburst 2023" />
+    </div>
+
+    <!-- Category & Condition -->
+    <div class="form-row">
+      <div class="form-group">
+        <div class="form-label">Category</div>
+        <select class="form-input form-select">
+          <option>Electric Guitars</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Condition</div>
+        <select class="form-input form-select">
+          <option>Like New</option>
+          <option>New</option>
+          <option>Very Good</option>
+          <option>Good</option>
+          <option>Acceptable</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Description -->
+    <div class="form-group">
+      <div class="form-label">Description</div>
+      <textarea class="form-input" rows="4" style="resize:none;">Fender American Professional II Stratocaster in pristine condition. 3-Color Sunburst finish with rosewood fingerboard. Includes original hardshell case, tremolo arm, and all documentation. No dings, scratches, or fret wear. Non-smoking home.</textarea>
+    </div>
+
+    <!-- Publish button -->
+    <button class="btn btn-primary" style="margin-top:8px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      Publish on eBay
+    </button>
+
+    <p style="font-size:11px; color:var(--text-placeholder); text-align:center; margin-top:8px; line-height:1.5;">By publishing, you agree to eBay's seller terms. Your listing will go live immediately.</p>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SCREEN 3: Create Listing (Reverb selected)   -->
+<!-- ============================================ -->
+<div id="create-reverb" class="screen">
+  <div class="page-header">
+    <button class="back-btn" onclick="showScreen('item-detail')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      Back
+    </button>
+    <h1>List for Sale</h1>
+    <div style="width:60px"></div>
+  </div>
+
+  <div class="content">
+    <!-- Item being listed -->
+    <div class="item-preview">
+      <div class="item-thumb">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+      </div>
+      <div class="item-info">
+        <div class="item-title">Fender American Professional II Stratocaster</div>
+        <div class="item-subtitle">Electric Guitar - 3-Color Sunburst</div>
+      </div>
+    </div>
+
+    <!-- Marketplace selector - Reverb active -->
+    <div class="form-group">
+      <div class="form-label">Marketplace</div>
+      <div class="marketplace-pills">
+        <button class="marketplace-pill" onclick="selectMarketplace(this, 'ebay')">eBay</button>
+        <button class="marketplace-pill active" onclick="selectMarketplace(this, 'reverb')">Reverb</button>
+        <button class="marketplace-pill disabled">
+          Etsy
+          <span class="pill-badge">Soon</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Comps (same eBay data as pricing context) -->
+    <div class="comps-card">
+      <div class="comps-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        <span>Market Comps</span>
+        <span style="font-size:10px; font-weight:500; color:var(--text-placeholder); margin-left:auto;">via eBay</span>
+      </div>
+      <div class="comps-stats">
+        <div class="comps-stat">
+          <div class="comps-stat-value">$1,349</div>
+          <div class="comps-stat-label">Sold Median</div>
+          <div class="comps-stat-range">$1,149 - $1,599</div>
+        </div>
+        <div class="comps-divider"></div>
+        <div class="comps-stat">
+          <div class="comps-stat-value">$1,449</div>
+          <div class="comps-stat-label">Active Median</div>
+          <div class="comps-stat-range">24 listings</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Price -->
+    <div class="form-group">
+      <div class="form-label">Your Price</div>
+      <input type="text" class="form-input form-input-price" value="$1,349" />
+      <div class="suggested-tag">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>
+        Suggested from sold comps
+      </div>
+    </div>
+
+    <!-- Title -->
+    <div class="form-group">
+      <div class="form-label">Title</div>
+      <input type="text" class="form-input" value="Fender American Professional II Stratocaster - 3-Color Sunburst 2023" />
+    </div>
+
+    <!-- Reverb-specific fields -->
+    <div class="reverb-fields">
+      <div class="reverb-fields-header">
+        <span class="marketplace-icon reverb" style="width:16px;height:16px;font-size:8px;">R</span>
+        Reverb Details
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <div class="form-label">Make *</div>
+          <input type="text" class="form-input" value="Fender" />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Model *</div>
+          <input type="text" class="form-input" value="American Pro II Strat" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <div class="form-label">Finish</div>
+          <input type="text" class="form-input" value="3-Color Sunburst" />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Year</div>
+          <input type="text" class="form-input" value="2023" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <div class="form-label">Condition *</div>
+          <select class="form-input form-select">
+            <option>Mint</option>
+            <option>Excellent</option>
+            <option>Very Good</option>
+            <option>Good</option>
+            <option>Fair</option>
+            <option>Poor</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <div class="form-label">Offers</div>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+            <div style="width:40px; height:24px; border-radius:12px; background:var(--forest-green); position:relative; cursor:pointer;">
+              <div style="width:18px; height:18px; border-radius:50%; background:white; position:absolute; top:3px; right:3px; box-shadow:var(--shadow-subtle);"></div>
+            </div>
+            <span style="font-size:13px; color:var(--text-secondary);">Enabled</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Category -->
+    <div class="form-group">
+      <div class="form-label">Category</div>
+      <select class="form-input form-select">
+        <option>Electric Guitars > Solid Body</option>
+      </select>
+    </div>
+
+    <!-- Description -->
+    <div class="form-group">
+      <div class="form-label">Description</div>
+      <textarea class="form-input" rows="4" style="resize:none;">Fender American Professional II Stratocaster in pristine condition. 3-Color Sunburst finish with rosewood fingerboard. Includes original hardshell case, tremolo arm, and all documentation. No dings, scratches, or fret wear. Non-smoking home.</textarea>
+    </div>
+
+    <!-- Publish button -->
+    <button class="btn btn-primary" style="margin-top:8px; background:#F15A22;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      Publish on Reverb
+    </button>
+
+    <p style="font-size:11px; color:var(--text-placeholder); text-align:center; margin-top:8px; line-height:1.5;">By publishing, you agree to Reverb's seller terms. Your listing will go live immediately.</p>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SCREEN 4: Listing Detail (Active)            -->
+<!-- ============================================ -->
+<div id="listing-detail" class="screen">
+  <div class="page-header">
+    <button class="back-btn" onclick="showScreen('item-detail')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      Listings
+    </button>
+    <h1>Listing Detail</h1>
+    <div style="width:60px"></div>
+  </div>
+
+  <div class="content">
+    <!-- Status + marketplace -->
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span class="badge badge-green"><span class="badge-dot"></span> Active</span>
+      <span class="badge badge-ebay">eBay</span>
+    </div>
+
+    <!-- Item preview -->
+    <div class="card">
+      <div class="image-gallery" style="aspect-ratio:16/9;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:36px;height:36px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        <span class="image-count">1 / 4</span>
+      </div>
+      <div class="card-body">
+        <h2 style="font-family:var(--font-instrument); font-size:18px; font-weight:700; line-height:1.3;">Fender American Professional II Stratocaster - 3-Color Sunburst 2023</h2>
+        <p style="font-size:13px; color:var(--text-secondary); margin-top:4px; line-height:1.5;">Fender American Professional II Stratocaster in pristine condition. 3-Color Sunburst finish with rosewood fingerboard.</p>
+      </div>
+    </div>
+
+    <!-- Listing details -->
+    <div class="card">
+      <div class="card-body">
+        <div class="label">Listing Details</div>
+        <div class="detail-row">
+          <span class="detail-label">Price</span>
+          <span class="detail-value editable" style="font-family:var(--font-instrument); font-size:18px;">$1,349.00</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Title</span>
+          <span class="detail-value editable">Fender American Prof...</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Description</span>
+          <span class="detail-value editable">Fender American Prof...</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Category</span>
+          <span class="detail-value">Electric Guitars</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Condition</span>
+          <span class="detail-value"><span class="condition-badge condition-excellent">Like New</span></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">SKU</span>
+          <span class="detail-value" style="font-family:var(--font-jetbrains); font-size:12px;">PTG-A7F3K</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Published</span>
+          <span class="detail-value">May 7, 2026</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- External link -->
+    <div class="card">
+      <div class="card-body" style="padding:12px 16px;">
+        <a href="#" class="external-link">
+          <span class="marketplace-icon ebay">eB</span>
+          View on eBay
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="btn-group">
+      <button class="btn btn-primary">Save Changes</button>
+    </div>
+    <button class="btn btn-danger" onclick="document.getElementById('confirm-end').classList.add('visible')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+      End Listing
+    </button>
+  </div>
+
+  <!-- End listing confirmation -->
+  <div id="confirm-end" class="confirm-overlay" onclick="this.classList.remove('visible')">
+    <div class="confirm-dialog" onclick="event.stopPropagation()">
+      <div class="confirm-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+      </div>
+      <div class="confirm-title">End this listing?</div>
+      <div class="confirm-text">This will remove your listing from eBay. You can relist the item later.</div>
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('confirm-end').classList.remove('visible')">Cancel</button>
+        <button class="btn btn-danger btn-sm">End Listing</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SCREEN 5: Listing Detail (Draft state)       -->
+<!-- ============================================ -->
+<div id="listing-draft" class="screen">
+  <div class="page-header">
+    <button class="back-btn" onclick="showScreen('item-detail')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      Listings
+    </button>
+    <h1>Listing Detail</h1>
+    <div style="width:60px"></div>
+  </div>
+
+  <div class="content">
+    <!-- Status -->
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span class="badge badge-amber"><span class="badge-dot"></span> Draft</span>
+      <span class="badge badge-reverb">Reverb</span>
+    </div>
+
+    <!-- Sync warning -->
+    <div class="sync-warning">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      Publishing failed: Missing required field "shipping". Fix and retry below.
+    </div>
+
+    <!-- Item preview -->
+    <div class="card">
+      <div class="image-gallery" style="aspect-ratio:16/9;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:36px;height:36px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+      </div>
+      <div class="card-body">
+        <h2 style="font-family:var(--font-instrument); font-size:18px; font-weight:700; line-height:1.3;">Fender American Professional II Stratocaster - 3-Color Sunburst 2023</h2>
+      </div>
+    </div>
+
+    <!-- Listing details -->
+    <div class="card">
+      <div class="card-body">
+        <div class="label">Listing Details</div>
+        <div class="detail-row">
+          <span class="detail-label">Price</span>
+          <span class="detail-value editable" style="font-family:var(--font-instrument); font-size:18px;">$1,349.00</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Title</span>
+          <span class="detail-value editable">Fender American Prof...</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Make</span>
+          <span class="detail-value editable">Fender</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Model</span>
+          <span class="detail-value editable">American Pro II Strat</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Condition</span>
+          <span class="detail-value"><span class="condition-badge condition-excellent">Mint</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action buttons for draft -->
+    <button class="btn btn-primary" style="background:#F15A22;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      Retry Publish on Reverb
+    </button>
+    <div class="btn-group">
+      <button class="btn btn-secondary btn-sm">Save Draft</button>
+      <button class="btn btn-danger btn-sm">Delete Draft</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.screen-nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const buttons = document.querySelectorAll('.screen-nav button');
+  const screenIds = ['item-detail','create-sheet','create-reverb','listing-detail','listing-draft'];
+  const idx = screenIds.indexOf(id);
+  if (idx >= 0) buttons[idx].classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function selectMarketplace(el, marketplace) {
+  if (marketplace === 'ebay') showScreen('create-sheet');
+  if (marketplace === 'reverb') showScreen('create-reverb');
+}
+</script>
+
+</body>
+</html>

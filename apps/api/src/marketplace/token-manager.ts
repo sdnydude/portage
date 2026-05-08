@@ -79,3 +79,66 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
 
   return data.access_token;
 }
+
+let cachedAppToken: { token: string; expiresAt: number } | null = null;
+let pendingAppTokenRequest: Promise<string> | null = null;
+
+export function invalidateEbayAppToken(): void {
+  cachedAppToken = null;
+}
+
+export async function getEbayAppToken(): Promise<string> {
+  if (cachedAppToken && Date.now() < cachedAppToken.expiresAt - REFRESH_BUFFER_MS) {
+    return cachedAppToken.token;
+  }
+
+  if (pendingAppTokenRequest) return pendingAppTokenRequest;
+
+  pendingAppTokenRequest = fetchEbayAppToken().finally(() => {
+    pendingAppTokenRequest = null;
+  });
+  return pendingAppTokenRequest;
+}
+
+async function fetchEbayAppToken(): Promise<string> {
+  const config = env();
+  if (!config.EBAY_CLIENT_ID || !config.EBAY_CLIENT_SECRET) {
+    throw new Error('eBay credentials not configured');
+  }
+
+  const credentials = Buffer.from(`${config.EBAY_CLIENT_ID}:${config.EBAY_CLIENT_SECRET}`).toString('base64');
+  const baseUrl = config.EBAY_SANDBOX
+    ? 'https://api.sandbox.ebay.com'
+    : 'https://api.ebay.com';
+
+  const response = await fetch(`${baseUrl}/identity/v1/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${credentials}`,
+    },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      scope: 'https://api.ebay.com/oauth/api_scope',
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    logger.error({ status: response.status, body: errorBody }, 'eBay app token request failed');
+    throw new Error('Failed to get eBay app token');
+  }
+
+  const data = await response.json() as {
+    access_token: string;
+    expires_in: number;
+  };
+
+  cachedAppToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
+
+  logger.info('eBay app token acquired');
+  return data.access_token;
+}

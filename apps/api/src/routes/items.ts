@@ -6,6 +6,7 @@ import { db } from '../db/index.js';
 import { items } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
+import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 
 const logger = pino({ name: 'items' });
 
@@ -98,6 +99,26 @@ itemsRouter.get('/:id', async (req, res, next) => {
     }
 
     res.json(item);
+  } catch (err) {
+    next(err);
+  }
+});
+
+itemsRouter.get('/:id/comps', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const [item] = await db.select().from(items)
+      .where(and(eq(items.id, req.params.id), eq(items.userId, userId)))
+      .limit(1);
+
+    if (!item) {
+      throw new AppError(404, 'NOT_FOUND', 'Item not found');
+    }
+
+    const comps = await EbayAdapter.searchComps(item.title, item.category || undefined);
+
+    logger.info({ userId, itemId: item.id, sampleSize: comps.stats.sampleSize }, 'Comps fetched');
+    res.json(comps);
   } catch (err) {
     next(err);
   }

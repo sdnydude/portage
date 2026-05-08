@@ -166,6 +166,33 @@ export const shippingProviders = pgTable('shipping_providers', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const designSurveyResponses = pgTable('design_survey_responses', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  preferredDirection: varchar('preferred_direction', { length: 1 }).notNull(),
+  ratingsEaseA: integer('ratings_ease_a'),
+  ratingsEaseB: integer('ratings_ease_b'),
+  ratingsEaseC: integer('ratings_ease_c'),
+  ratingsAppealA: integer('ratings_appeal_a'),
+  ratingsAppealB: integer('ratings_appeal_b'),
+  ratingsAppealC: integer('ratings_appeal_c'),
+  likedMost: text('liked_most'),
+  concerns: text('concerns'),
+  additionalFeedback: text('additional_feedback'),
+  detailedResponses: jsonb('detailed_responses'),
+  respondentName: varchar('respondent_name', { length: 255 }),
+  respondentRole: varchar('respondent_role', { length: 100 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const designReviewComments = pgTable('design_review_comments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  direction: varchar('direction', { length: 30 }).notNull(),
+  stepNumber: integer('step_number'),
+  comment: text('comment').notNull(),
+  reviewerName: varchar('reviewer_name', { length: 255 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 export const disclaimerAcceptances = pgTable('disclaimer_acceptances', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

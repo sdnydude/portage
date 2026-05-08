@@ -126,6 +126,31 @@ export interface MarketplaceAccount {
   createdAt: Date;
 }
 
+export interface CompListing {
+  title: string;
+  price: number;
+  currency: string;
+  condition: string;
+  imageUrl: string | null;
+  listingUrl: string;
+  soldDate: string | null;
+}
+
+export interface CompStats {
+  soldMedian: number | null;
+  soldAvg: number | null;
+  activeMedian: number | null;
+  activeAvg: number | null;
+  sampleSize: number;
+}
+
+export interface CompResult {
+  sold: CompListing[];
+  active: CompListing[];
+  stats: CompStats;
+  partial?: boolean;
+}
+
 export interface AuthResponse {
   token: string;
   refreshToken: string;

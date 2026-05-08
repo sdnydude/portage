@@ -8,6 +8,8 @@ import { BgRemovalPanel } from "@/components/image/bg-removal-panel";
 import { useEnhance } from "@/hooks/use-enhance";
 import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
+import { useComps } from "@/hooks/use-comps";
+import type { CompListing } from "@portage/shared";
 
 const conditionLabels: Record<string, string> = {
   new: "New",
@@ -36,6 +38,7 @@ export default function ItemDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBgRemoval, setShowBgRemoval] = useState(false);
   const [showListingSheet, setShowListingSheet] = useState(false);
+  const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(params.id);
 
   if (!isAuthenticated) {
     router.replace("/inventory");
@@ -356,6 +359,77 @@ export default function ItemDetailPage() {
             List on Marketplace
           </button>
 
+          {/* Comparable Listings */}
+          <div className="space-y-3">
+            {compsLoading ? (
+              <div className="flex items-center justify-center gap-2 py-6">
+                <div className="w-5 h-5 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm text-text-secondary">Searching eBay...</span>
+              </div>
+            ) : compsError && !comps ? (
+              <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 space-y-2">
+                <p className="text-sm text-red-700 dark:text-red-300">{compsError}</p>
+                <button onClick={fetchComps} className="text-xs font-medium text-red-600 dark:text-red-400">
+                  Try Again
+                </button>
+              </div>
+            ) : comps ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-medium text-text-secondary uppercase tracking-wider">eBay Comps</h2>
+                  <button onClick={fetchComps} className="text-xs text-forest-green font-medium">
+                    Refresh
+                  </button>
+                </div>
+
+                {comps.partial && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">Some eBay results could not be loaded</p>
+                )}
+
+                {comps.stats.sampleSize === 0 ? (
+                  <p className="text-sm text-text-secondary py-3 text-center">No comparable listings found on eBay</p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      {comps.stats.soldAvg != null && (
+                        <div className="bg-surface border border-border rounded-xl p-3 text-center">
+                          <span className="text-xs text-text-secondary">Sold Avg</span>
+                          <p className="text-lg font-semibold text-text-primary">${comps.stats.soldAvg.toFixed(0)}</p>
+                          <span className="text-xs text-text-secondary">
+                            median ${comps.stats.soldMedian?.toFixed(0)}
+                          </span>
+                        </div>
+                      )}
+                      {comps.stats.activeAvg != null && (
+                        <div className="bg-surface border border-border rounded-xl p-3 text-center">
+                          <span className="text-xs text-text-secondary">Active Avg</span>
+                          <p className="text-lg font-semibold text-text-primary">${comps.stats.activeAvg.toFixed(0)}</p>
+                          <span className="text-xs text-text-secondary">
+                            median ${comps.stats.activeMedian?.toFixed(0)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {comps.sold.length > 0 && (
+                      <CompSection title="Recently Sold" listings={comps.sold} />
+                    )}
+                    {comps.active.length > 0 && (
+                      <CompSection title="Active Listings" listings={comps.active} />
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={fetchComps}
+                className="w-full py-3 rounded-xl border-2 border-dashed border-border text-sm font-medium text-text-secondary hover:border-forest-green hover:text-forest-green transition-colors"
+              >
+                Check eBay Comps
+              </button>
+            )}
+          </div>
+
           {/* Timestamps */}
           <div className="border-t border-border pt-3 flex items-center justify-between text-xs text-text-secondary">
             <span>Added {new Date(item.createdAt).toLocaleDateString()}</span>
@@ -417,6 +491,45 @@ function DetailField({ label, value }: { label: string; value: string }) {
     <div>
       <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">{label}</span>
       <p className="text-sm text-text-primary mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+function CompSection({ title, listings }: { title: string; listings: CompListing[] }) {
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-text-secondary mb-2">{title}</h3>
+      <div className="space-y-2">
+        {listings.map((comp) => (
+          <a
+            key={comp.listingUrl}
+            href={comp.listingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 bg-surface border border-border rounded-xl p-2.5 hover:border-forest-green/50 transition-colors"
+          >
+            {comp.imageUrl ? (
+              <img src={comp.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+            ) : (
+              <div className="w-12 h-12 rounded-lg bg-muted flex-shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-text-primary truncate">{comp.title}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-text-secondary">{comp.condition}</span>
+                {comp.soldDate && (
+                  <span className="text-xs text-text-secondary">
+                    {new Date(comp.soldDate).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+            </div>
+            <span className="text-sm font-semibold text-forest-green flex-shrink-0">
+              ${comp.price.toFixed(0)}
+            </span>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }

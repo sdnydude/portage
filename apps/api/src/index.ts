@@ -1,5 +1,9 @@
 import express from 'express';
 import cors from 'cors';
+import https from 'node:https';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pinoHttp } from 'pino-http';
 import { loadEnv } from './lib/env.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -17,6 +21,7 @@ import { ebayAuthRouter } from './routes/marketplace/ebay-auth.js';
 import { etsyAuthRouter } from './routes/marketplace/etsy-auth.js';
 import { adminRouter } from './routes/admin.js';
 import { shippingRouter } from './routes/shipping.js';
+import { surveyRouter } from './routes/survey.js';
 
 const config = loadEnv();
 
@@ -25,7 +30,7 @@ const app = express();
 app.use(cors({
   origin: config.NODE_ENV === 'production'
     ? ['https://portage.digitalharmonyai.com']
-    : ['http://10.0.0.251:3002', 'http://10.0.0.251:3000'],
+    : ['http://10.0.0.251:3002', 'http://10.0.0.251:3000', 'https://10.0.0.251:3002', 'https://portage.digitalharmonyai.com', 'https://rehearsal.digitalharmonyai.com'],
   credentials: true,
 }));
 
@@ -46,10 +51,29 @@ app.use('/marketplace/ebay', ebayAuthRouter);
 app.use('/marketplace/etsy', etsyAuthRouter);
 app.use('/admin', adminRouter);
 app.use('/shipping', shippingRouter);
+app.use('/survey', surveyRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-app.listen(config.API_PORT, () => {
-  console.log(`portage-api listening on port ${config.API_PORT}`);
-});
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const certDir = resolve(__dirname, '../../../certs');
+
+try {
+  const sslOptions = {
+    key: readFileSync(resolve(certDir, 'key.pem')),
+    cert: readFileSync(resolve(certDir, 'cert.pem')),
+  };
+  https.createServer(sslOptions, app).listen(config.API_PORT, () => {
+    console.log(`portage-api listening on https://10.0.0.251:${config.API_PORT}`);
+  });
+} catch (err) {
+  if (config.NODE_ENV === 'production') {
+    console.error('FATAL: HTTPS certs missing in production:', (err as Error).message);
+    process.exit(1);
+  }
+  console.warn('HTTPS disabled (dev):', (err as Error).message);
+  app.listen(config.API_PORT, () => {
+    console.log(`portage-api listening on http://10.0.0.251:${config.API_PORT}`);
+  });
+}
