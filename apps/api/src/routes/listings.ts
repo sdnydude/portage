@@ -8,6 +8,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
+import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
+import { env } from '../lib/env.js';
 import type { MarketplaceAdapter } from '@portage/shared';
 
 const logger = pino({ name: 'listings' });
@@ -16,7 +18,11 @@ function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): Ma
   switch (marketplace) {
     case 'ebay': return new EbayAdapter(userId);
     case 'etsy': return new EtsyAdapter(userId);
-    case 'reverb': throw new AppError(501, 'NOT_IMPLEMENTED', 'Reverb adapter not yet available');
+    case 'reverb': {
+      const reverbToken = env().REVERB_API_TOKEN;
+      if (!reverbToken) throw new AppError(400, 'NOT_CONFIGURED', 'Reverb API token not configured');
+      return new ReverbAdapter(reverbToken);
+    }
   }
 }
 
