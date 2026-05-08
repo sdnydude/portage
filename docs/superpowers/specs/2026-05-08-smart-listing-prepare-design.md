@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-08
 **Extends:** 2026-05-08-three-interface-listing-flow-design.md
-**Scope:** Auto-comps pricing widget, AI second-pass field generation, seller profile settings, condition cross-referencing
+**Scope:** Multi-photo capture with editing, auto-comps pricing widget, AI second-pass field generation, seller profile settings, condition cross-referencing
 
 ---
 
@@ -15,16 +15,208 @@ The three-interface listing flow (PR #25) handles photo capture → AI recogniti
 3. **No condition cross-referencing.** The AI grades condition from photos but doesn't compare against what similar items sold for at that condition level.
 4. **No seller profile.** eBay business policies (fulfillment/payment/return) are required to publish but currently passed ad-hoc from `marketplaceSpecific`. No UI to set them.
 5. **No Reverb fields.** The Reverb adapter is designed but fields like make, year, finish, condition UUID, and category UUID aren't generated.
+6. **Single-photo capture.** `PhotoCapture` takes one photo and exits. eBay best practices require 4-12 photos (hero + angles + details + flaws). No crop, rotate, or per-photo editing within the capture flow.
 
 ## Solution
 
-A single `POST /api/items/:id/prepare-listing` endpoint that runs comps + category lookup + AI field generation in parallel, returning a fully-populated preview card. Combined with a **Seller Profile** settings page that captures global fields (business policies, shipping defaults, marketplace preferences) set once and reused across all listings.
+A **multi-photo capture flow** (4-12 photos with crop, rotate, and existing enhancement tools per photo), a single `POST /api/items/:id/prepare-listing` endpoint that runs comps + category lookup + AI field generation in parallel, returning a fully-populated preview card, and a **Seller Profile** settings page for global fields reused across all listings.
 
 ---
 
-## 1. Seller Profile (Global Settings)
+## 1. Multi-Photo Capture Flow
 
-### 1a. New Schema: `seller_profiles` Table
+### 1a. Overview
+
+Replace the current single-photo `PhotoCapture` component with a multi-photo capture experience. The user stays in the capture flow until they have 4-12 photos, with per-photo editing tools available before finalizing.
+
+**Flow:**
+```
+[Grid View: 12 slots] → [Capture/Select] → [Per-Photo Editor] → [Back to Grid]
+                                                                       │
+                                                              (repeat until 4+ photos)
+                                                                       │
+                                                               [Done] → AI Scan
+```
+
+### 1b. Photo Grid View
+
+The grid is the home screen of the capture flow. It shows all 12 slots in a 3×4 grid:
+
+```
+┌──────────────────────────────────────┐
+│  ← Add Photos              3/12     │
+│                          (min 4)     │
+│  ┌────────┐ ┌────────┐ ┌────────┐   │
+│  │ HERO   │ │ photo  │ │ photo  │   │
+│  │ ★ img1 │ │  img2  │ │  img3  │   │
+│  │    [✕]  │ │    [✕]  │ │    [✕]  │   │
+│  └────────┘ └────────┘ └────────┘   │
+│  ┌────────┐ ┌────────┐ ┌────────┐   │
+│  │   +    │ │   +    │ │   +    │   │
+│  │  add   │ │  add   │ │  add   │   │
+│  │        │ │        │ │        │   │
+│  └────────┘ └────────┘ └────────┘   │
+│  ┌────────┐ ┌────────┐ ┌────────┐   │
+│  │        │ │        │ │        │   │
+│  │        │ │        │ │        │   │
+│  └────────┘ └────────┘ └────────┘   │
+│  ┌────────┐ ┌────────┐ ┌────────┐   │
+│  │        │ │        │ │        │   │
+│  │        │ │        │ │        │   │
+│  └────────┘ └────────┘ └────────┘   │
+│                                      │
+│  ┌──────────────────────────────┐    │
+│  │     Done (need 1 more)      │    │ ← disabled until 4
+│  └──────────────────────────────┘    │
+│                                      │
+│  Tip: First photo is the hero.       │
+│  Show front, back, sides, and        │
+│  any flaws.                          │
+└──────────────────────────────────────┘
+```
+
+**Behaviors:**
+- Filled slots show thumbnail with [✕] delete button (top-right corner)
+- Tap a filled slot → opens per-photo editor
+- Tap an empty slot or the first empty "+" slot → opens choose mode (camera / upload / library)
+- Long-press + drag to reorder (slot 1 is always the hero, marked with ★)
+- Counter shows `{count}/12` with `(min 4)` hint until minimum met
+- Done button disabled until 4+ photos; shows "need N more" text when < 4
+- Done button enabled at 4+ shows "Done — scan with AI"
+
+### 1c. Per-Photo Editor
+
+After capturing or selecting a photo, the user sees a full-screen editor with a toolbar at the bottom. This replaces the current simple preview/confirm screen.
+
+```
+┌──────────────────────────────────────┐
+│  ←                          Done     │
+│                                      │
+│  ┌──────────────────────────────┐    │
+│  │                              │    │
+│  │                              │    │
+│  │         [photo]              │    │
+│  │                              │    │
+│  │                              │    │
+│  └──────────────────────────────┘    │
+│                                      │
+│  ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌──┐          │
+│  │⟲ │ │⬒ │ │✦ │ │◐ │ │✓ │          │
+│  │rot│ │crp│ │enh│ │bg │ │use│          │
+│  └──┘ └──┘ └──┘ └──┘ └──┘          │
+│                                      │
+│  Rotate  Crop  Enhance  BG Remove   │
+└──────────────────────────────────────┘
+```
+
+**Tools (left to right):**
+
+| Tool | Action | Implementation |
+|------|--------|----------------|
+| **Rotate** | 90° clockwise per tap | Client-side canvas rotation. New: `POST /images/rotate` server endpoint using Sharp `.rotate(90)` for lossless rotation of the uploaded image |
+| **Crop** | Free-form or aspect ratio (1:1, 4:3, 3:4) | Client-side crop UI with drag handles. New: `POST /images/crop` server endpoint using Sharp `.extract()` to crop the uploaded image |
+| **Enhance** | Auto-improve (brightness, sharpness, color) | Existing `useEnhance` hook → `POST /images/enhance` → Sharp pipeline |
+| **BG Remove** | Remove background | Existing `useBgRemoval` hook → `POST /images/remove-bg` → rembg Docker service |
+
+- Each tool applies to the currently displayed photo
+- Operations are non-destructive: original upload preserved, edits create new versions
+- After editing, "Done" returns to the grid with the edited version in the slot
+- "←" back discards edits and returns to grid with the original
+
+### 1d. Crop Mode
+
+When the user taps Crop, the photo enters crop mode:
+
+```
+┌──────────────────────────────────────┐
+│  Cancel                     Apply    │
+│                                      │
+│  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │
+│  ░░┌─────────────────────┐░░░░░░░░  │
+│  ░░│                     │░░░░░░░░  │
+│  ░░│   [crop region]     │░░░░░░░░  │
+│  ░░│                     │░░░░░░░░  │
+│  ░░└─────────────────────┘░░░░░░░░  │
+│  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │
+│                                      │
+│  [Free] [1:1] [4:3] [3:4]           │
+└──────────────────────────────────────┘
+```
+
+- Drag corners/edges to resize crop region
+- Drag inside region to pan
+- Aspect ratio buttons lock the ratio
+- "Free" allows any ratio
+- Dimmed area (░) shows what will be removed
+- Apply → sends crop coordinates to server, replaces photo
+- Cancel → returns to editor without changes
+
+### 1e. Rotate & Crop Server Endpoints
+
+Two new endpoints on the existing images router:
+
+**`POST /api/images/rotate`**
+```typescript
+{ imageUrl: string; degrees: 90 | 180 | 270 }
+→ { image: { key, url, width, height, size } }
+```
+
+**`POST /api/images/crop`**
+```typescript
+{ imageUrl: string; crop: { x: number; y: number; width: number; height: number } }
+→ { image: { key, url, width, height, size } }
+```
+
+Both fetch the source image from R2, apply the Sharp operation, upload the result as a new R2 object, and return the new URL. Original is preserved.
+
+### 1f. Component Architecture
+
+```
+PhotoCaptureFlow (new, replaces PhotoCapture)
+├── PhotoGrid              — 3×4 grid with reorder, delete, add
+├── ChooseMode             — existing: camera / upload / library picker
+├── CameraMode             — existing: viewfinder + shutter
+└── PhotoEditor            — new: full-screen editor per photo
+    ├── RotateTool         — 90° rotation with preview
+    ├── CropTool           — crop UI with aspect ratio presets
+    ├── EnhanceButton      — wired to existing useEnhance
+    └── BgRemovalButton    — wired to existing useBgRemoval
+```
+
+### 1g. Props & Integration
+
+```typescript
+interface PhotoCaptureFlowProps {
+  onComplete: (photos: CapturedPhoto[]) => void;  // called when user taps Done (4+ photos)
+  onCancel: () => void;
+  initialPhotos?: CapturedPhoto[];                 // for re-editing from a draft
+  minPhotos?: number;                              // default 4
+  maxPhotos?: number;                              // default 12
+}
+```
+
+The three listing interfaces (Conversational, Swipe, Hybrid) replace their current `<PhotoCapture>` with `<PhotoCaptureFlow>`. The `onComplete` callback receives the ordered array of photos, with slot 0 as the hero.
+
+### 1h. Photo Guidance Tips
+
+Context-sensitive tips shown below the grid based on photo count:
+
+| Count | Tip |
+|-------|-----|
+| 0 | "Start with the front of the item — this becomes your hero photo" |
+| 1 | "Now capture the back" |
+| 2 | "Add side views and any labels or serial numbers" |
+| 3 | "One more needed! Show any flaws, scratches, or wear" |
+| 4-7 | "Looking good! More angles help buyers feel confident" |
+| 8-11 | "Great coverage! Add detail shots of unique features" |
+| 12 | "Maximum photos reached" |
+
+---
+
+## 2. Seller Profile (Global Settings)
+
+
+### 2a. New Schema: `seller_profiles` Table
 
 ```sql
 seller_profiles (
@@ -57,11 +249,11 @@ seller_profiles (
 )
 ```
 
-### 1b. Why a Separate Table (Not More JSONB on `users`)
+### 2b. Why a Separate Table (Not More JSONB on `users`)
 
 The `users` table already has 30+ columns including `shipFromAddress`, `address`, notification prefs, listing prefs, milestones, etc. Seller profile data is a distinct domain — marketplace account configuration — that will grow as we add marketplaces. A dedicated table keeps `users` focused on identity/auth and makes seller profile queries cheaper (no loading password hashes to read shipping prefs).
 
-### 1c. Seller Profile API
+### 2c. Seller Profile API
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -71,7 +263,7 @@ The `users` table already has 30+ columns including `shipFromAddress`, `address`
 
 The `ebay-policies` endpoint calls eBay's Account API to list the user's fulfillment, payment, and return policies, returning them as selectable options for the profile form.
 
-### 1d. Seller Profile UI
+### 2d. Seller Profile UI
 
 Settings page at `/settings/seller-profile` with sections:
 
@@ -82,15 +274,15 @@ Settings page at `/settings/seller-profile` with sections:
 
 Each section is a card with inline editing. Save on field blur or explicit save button.
 
-### 1e. Onboarding Gate
+### 2e. Onboarding Gate
 
 Before first listing, check if seller profile has required fields (at minimum: one marketplace connected + business policies set for that marketplace). If not, redirect to seller profile with a banner: "Set up your seller profile to start listing."
 
 ---
 
-## 2. Prepare Listing Endpoint
+## 3. Prepare Listing Endpoint
 
-### 2a. Endpoint: `POST /api/items/:id/prepare-listing`
+### 3a. Endpoint: `POST /api/items/:id/prepare-listing`
 
 **Request body:**
 ```typescript
@@ -127,7 +319,7 @@ Steps 1, 2, 3 run in **parallel**. Step 4 waits for all three.
 
 **Missing seller profile handling:** If the user hasn't set up a seller profile, `prepare-listing` still runs (comps + AI fields are independent of profile). The response includes `warnings: ["Seller profile incomplete — set up business policies before publishing"]` and the publish buttons are disabled until the profile is configured. The preview card shows a banner linking to `/settings/seller-profile`.
 
-### 2b. Response: `PreparedListingData`
+### 3b. Response: `PreparedListingData`
 
 ```typescript
 interface PreparedListingData {
@@ -199,7 +391,7 @@ interface PreparedListingData {
 }
 ```
 
-### 2c. AI Prompt Design
+### 3c. AI Prompt Design
 
 The Claude call receives:
 
@@ -246,7 +438,7 @@ SELLER PROFILE:
 {defaultWeightUnit, defaultDimensionUnit, defaultPackageType, currency}
 ```
 
-### 2d. Condition Cross-Referencing
+### 3d. Condition Cross-Referencing
 
 After the AI grades condition and comps are fetched:
 
@@ -259,9 +451,9 @@ The pricing widget displays this confidence level so the user knows how reliable
 
 ---
 
-## 3. Comps Pricing Widget
+## 4. Comps Pricing Widget
 
-### 3a. Widget Design (Embedded in Preview Card)
+### 4a. Widget Design (Embedded in Preview Card)
 
 ```
 ┌─────────────────────────────────────┐
@@ -290,7 +482,7 @@ The pricing widget displays this confidence level so the user knows how reliable
 - Scrollable list of individual comps (sold on left, active on right)
 - Marketplace tabs switch between eBay and Reverb comps
 
-### 3b. Widget Component
+### 4b. Widget Component
 
 `apps/web/src/components/listing/comps-pricing-widget.tsx`
 
@@ -306,7 +498,7 @@ Props:
 
 ---
 
-## 4. Preview Card Integration
+## 5. Preview Card Integration
 
 The existing three interfaces (Conversational, Swipe, Hybrid) each have a review/confirm step. The `prepare-listing` response populates that step as a **preview card** (not a form):
 
@@ -345,9 +537,9 @@ Every text field is tap-to-edit inline. Tapping opens a small editor overlay —
 
 ---
 
-## 5. eBay Field Inventory (Confirmed via API Documentation)
+## 6. eBay Field Inventory (Confirmed via API Documentation)
 
-### 5a. Inventory Item (`createOrReplaceInventoryItem`)
+### 6a. Inventory Item (`createOrReplaceInventoryItem`)
 
 | Field | Type | Required | AI Fills | Source |
 |-------|------|----------|----------|--------|
@@ -368,7 +560,7 @@ Every text field is tap-to-edit inline. Tapping opens a small editor overlay —
 
 *Required for some categories via aspects
 
-### 5b. Offer (`createOffer`)
+### 6b. Offer (`createOffer`)
 
 | Field | Type | Required | Source |
 |-------|------|----------|--------|
@@ -383,7 +575,7 @@ Every text field is tap-to-edit inline. Tapping opens a small editor overlay —
 | listingPolicies.paymentPolicyId | string | Yes | From seller profile |
 | listingPolicies.returnPolicyId | string | Yes | From seller profile |
 
-### 5c. Current Code Gaps (6 items)
+### 6c. Current Code Gaps (6 items)
 
 | # | Gap | Fix |
 |---|-----|-----|
@@ -396,9 +588,9 @@ Every text field is tap-to-edit inline. Tapping opens a small editor overlay —
 
 ---
 
-## 6. Reverb Field Inventory (Confirmed via Live API Testing)
+## 7. Reverb Field Inventory (Confirmed via Live API Testing)
 
-### 6a. Listing (`POST /api/listings`)
+### 7a. Listing (`POST /api/listings`)
 
 | Field | Type | Required | AI Fills | Source |
 |-------|------|----------|----------|--------|
@@ -421,7 +613,7 @@ Every text field is tap-to-edit inline. Tapping opens a small editor overlay —
 
 **Note:** Reverb requires at minimum one shipping rate for US Continental. The seller profile's `reverb_default_shipping` must include this region or the listing will fail validation.
 
-### 6b. Reverb Condition Mapping
+### 7b. Reverb Condition Mapping
 
 | Reverb Condition | UUID | Portage Grade |
 |-----------------|------|---------------|
@@ -438,7 +630,7 @@ The AI picks the specific Reverb condition (e.g., Excellent vs Mint for `like_ne
 
 ---
 
-## 7. Files to Create/Modify
+## 8. Files to Create/Modify
 
 | # | File | Action | Purpose |
 |---|------|--------|---------|
@@ -454,13 +646,18 @@ The AI picks the specific Reverb condition (e.g., Excellent vs Mint for `like_ne
 | 10 | `apps/web/src/hooks/use-prepare-listing.ts` | Create | Hook calling prepare endpoint |
 | 11 | `apps/web/src/app/settings/seller-profile/page.tsx` | Create | Seller profile settings page |
 | 12 | `apps/api/src/index.ts` | Modify | Register new routes |
-| 13 | `apps/web/src/components/listing/conversational-flow.tsx` | Modify | Integrate preview card + comps widget |
-| 14 | `apps/web/src/components/listing/swipe-flow.tsx` | Modify | Integrate preview card + comps widget |
-| 15 | `apps/web/src/components/listing/hybrid-flow.tsx` | Modify | Integrate preview card + comps widget |
+| 13 | `apps/web/src/components/listing-flow/conversational-flow.tsx` | Modify | Replace PhotoCapture with PhotoCaptureFlow + integrate preview card |
+| 14 | `apps/web/src/components/listing-flow/swipe-flow.tsx` | Modify | Replace PhotoCapture with PhotoCaptureFlow + integrate preview card |
+| 15 | `apps/web/src/components/listing-flow/hybrid-flow.tsx` | Modify | Replace PhotoCapture with PhotoCaptureFlow + integrate preview card |
+| 16 | `apps/web/src/components/listing-flow/photo-capture-flow.tsx` | Create | Multi-photo grid + capture loop (replaces photo-capture.tsx) |
+| 17 | `apps/web/src/components/listing-flow/photo-editor.tsx` | Create | Per-photo editor with rotate/crop/enhance/bg-remove toolbar |
+| 18 | `apps/web/src/components/listing-flow/photo-grid.tsx` | Create | 3×4 grid with reorder, delete, add, hero badge |
+| 19 | `apps/web/src/components/listing-flow/crop-tool.tsx` | Create | Crop UI with drag handles + aspect ratio presets |
+| 20 | `apps/api/src/routes/images.ts` | Modify | Add rotate and crop endpoints |
 
 ---
 
-## 8. Condition Cross-Reference Algorithm
+## 9. Condition Cross-Reference Algorithm
 
 ```
 Given: aiCondition (from photo analysis), soldComps[]
@@ -489,7 +686,7 @@ Given: aiCondition (from photo analysis), soldComps[]
 
 ---
 
-## 9. Non-Goals (Explicitly Out of Scope)
+## 10. Non-Goals (Explicitly Out of Scope)
 
 - Etsy adapter (third marketplace, separate spec)
 - Auction format (FIXED_PRICE only)
