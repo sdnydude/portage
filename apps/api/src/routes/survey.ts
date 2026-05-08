@@ -1,10 +1,21 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { eq, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { designSurveyResponses, designReviewComments } from '../db/schema.js';
 
 export const surveyRouter = Router();
+
+const surveyLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' },
+});
+
+surveyRouter.use(surveyLimiter);
 
 const surveySchema = z.object({
   preferredDirection: z.enum(['A', 'B', 'C']),

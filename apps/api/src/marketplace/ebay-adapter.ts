@@ -255,12 +255,12 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   static async searchComps(query: string, category?: string): Promise<CompResult> {
-    const token = await getEbayAppToken();
     const baseUrl = env().EBAY_SANDBOX
       ? 'https://api.sandbox.ebay.com'
       : 'https://api.ebay.com';
 
-    const fetchListings = async (filters: string[]): Promise<CompListing[]> => {
+    const fetchListings = async (filters: string[], retry = true): Promise<CompListing[]> => {
+      const token = await getEbayAppToken();
       const params = new URLSearchParams({
         q: query,
         limit: '10',
@@ -282,8 +282,9 @@ export class EbayAdapter implements MarketplaceAdapter {
       if (!response.ok) {
         const body = await response.text();
         logger.error({ status: response.status, body, query }, 'eBay Browse API error');
-        if (response.status === 401 || response.status === 403) {
+        if ((response.status === 401 || response.status === 403) && retry) {
           invalidateEbayAppToken();
+          return fetchListings(filters, false);
         }
         throw new Error(`eBay search failed (HTTP ${response.status})`);
       }

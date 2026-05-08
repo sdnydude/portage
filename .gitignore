@@ -16,4 +16,5 @@ drizzle/meta/
 .serena/
 .playwright-mcp/
 .remember/
+certs/
 *.png

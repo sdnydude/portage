@@ -44,6 +44,7 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_EMAIL: z.string().optional(),
+  REMBG_URL: z.string().default('http://localhost:7000'),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -53,6 +54,7 @@ let _env: Env | null = null;
 export function loadEnv(): Env {
   if (_env) return _env;
   dotenv.config({ path: resolve(process.cwd(), '.env') });
+  dotenv.config({ path: resolve(process.cwd(), '../../.env') });
   const result = envSchema.safeParse(process.env);
   if (!result.success) {
     console.error('Invalid environment variables:');

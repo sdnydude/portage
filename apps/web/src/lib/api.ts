@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://10.0.0.251:8016";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://portage-api.digitalharmonyai.com";
 
 export class ApiError extends Error {
   constructor(

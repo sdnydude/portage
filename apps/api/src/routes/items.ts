@@ -18,11 +18,13 @@ const photoSchema = z.object({
   isPrimary: z.boolean().optional(),
 });
 
+const validConditions = ['new', 'like_new', 'good', 'fair', 'poor'] as const;
+
 const createItemSchema = z.object({
   title: z.string().min(1).max(500),
   description: z.string().max(2000).optional(),
   category: z.string().max(255).optional(),
-  condition: z.enum(['new', 'like_new', 'good', 'fair', 'poor']).optional(),
+  condition: z.enum(validConditions).optional(),
   conditionNotes: z.string().max(500).optional(),
   brand: z.string().max(255).optional(),
   model: z.string().max(255).optional(),
@@ -55,7 +57,8 @@ itemsRouter.get('/', async (req, res, next) => {
 
     const conditions = [eq(items.userId, userId)];
     if (query.search) {
-      conditions.push(ilike(items.title, `%${query.search}%`));
+      const escaped = query.search.replace(/%/g, '\\%').replace(/_/g, '\\_');
+      conditions.push(ilike(items.title, `%${escaped}%`));
     }
     if (query.category) {
       conditions.push(eq(items.category, query.category));
@@ -115,7 +118,14 @@ itemsRouter.get('/:id/comps', async (req, res, next) => {
       throw new AppError(404, 'NOT_FOUND', 'Item not found');
     }
 
-    const comps = await EbayAdapter.searchComps(item.title, item.category || undefined);
+    const searchQuery = item.title.slice(0, 200);
+    let comps;
+    try {
+      comps = await EbayAdapter.searchComps(searchQuery, item.category || undefined);
+    } catch (ebayErr) {
+      logger.warn({ userId, itemId: item.id, error: (ebayErr as Error).message }, 'eBay comps lookup failed');
+      throw new AppError(503, 'MARKETPLACE_UNAVAILABLE', 'eBay comps lookup is currently unavailable');
+    }
 
     logger.info({ userId, itemId: item.id, sampleSize: comps.stats.sampleSize }, 'Comps fetched');
     res.json(comps);

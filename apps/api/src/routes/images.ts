@@ -3,14 +3,23 @@ import multer from 'multer';
 import { pino } from 'pino';
 import { requireAuth } from '../middleware/auth.js';
 import { processImage, generateThumbnail, enhanceImage } from '../lib/image.js';
-import { uploadImage, deleteImage } from '../lib/storage.js';
+import { uploadImage, deleteImage, getImage } from '../lib/storage.js';
 import { z } from 'zod';
 import { AppError } from '../middleware/error.js';
+import { env } from '../lib/env.js';
 
 const logger = pino({ name: 'images' });
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FETCH_SIZE = 20 * 1024 * 1024;
+
+function isAllowedImageOrigin(url: string): boolean {
+  const r2Public = env().R2_PUBLIC_URL;
+  if (r2Public && url.startsWith(r2Public)) return true;
+  if (url.startsWith('https://portage-images.digitalharmonyai.com/')) return true;
+  return false;
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -74,6 +83,10 @@ imagesRouter.post('/enhance', async (req, res, next) => {
     const userId = req.user!.sub;
     const { imageUrl } = enhanceSchema.parse(req.body);
 
+    if (!isAllowedImageOrigin(imageUrl)) {
+      throw new AppError(400, 'INVALID_ORIGIN', 'Image URL must be from Portage storage');
+    }
+
     logger.info({ userId, imageUrl }, 'Enhance started');
 
     const response = await fetch(imageUrl);
@@ -81,7 +94,15 @@ imagesRouter.post('/enhance', async (req, res, next) => {
       throw new AppError(400, 'FETCH_FAILED', 'Could not fetch the image to enhance');
     }
 
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+
     const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
     const inputBuffer = Buffer.from(arrayBuffer);
 
     const enhanced = await enhanceImage(inputBuffer);
@@ -99,6 +120,90 @@ imagesRouter.post('/enhance', async (req, res, next) => {
         size: enhanced.size,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const removeBgSchema = z.object({
+  imageUrl: z.string().url(),
+});
+
+imagesRouter.post('/remove-bg', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { imageUrl } = removeBgSchema.parse(req.body);
+
+    if (!isAllowedImageOrigin(imageUrl)) {
+      throw new AppError(400, 'INVALID_ORIGIN', 'Image URL must be from Portage storage');
+    }
+
+    logger.info({ userId, imageUrl }, 'Background removal started');
+
+    const imgResponse = await fetch(imageUrl);
+    if (!imgResponse.ok) {
+      throw new AppError(400, 'FETCH_FAILED', 'Could not fetch the image');
+    }
+
+    const contentLength = Number(imgResponse.headers.get('content-length') || 0);
+    if (contentLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+
+    const imgArrayBuffer = await imgResponse.arrayBuffer();
+    if (imgArrayBuffer.byteLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+    const imgBuffer = Buffer.from(imgArrayBuffer);
+
+    const srcType = imgResponse.headers.get('content-type') || 'image/webp';
+    const ext = srcType.includes('png') ? 'image.png' : srcType.includes('jpeg') ? 'image.jpg' : 'image.webp';
+    const formData = new FormData();
+    formData.append('file', new Blob([imgBuffer]), ext);
+    formData.append('model', 'isnet-general-use');
+
+    const rembgResponse = await fetch(`${env().REMBG_URL}/api/remove`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!rembgResponse.ok) {
+      const detail = await rembgResponse.text().catch(() => 'unknown');
+      logger.error({ userId, status: rembgResponse.status, detail }, 'rembg failed');
+      throw new AppError(502, 'BG_REMOVAL_FAILED', 'Background removal service error');
+    }
+
+    const resultBuffer = Buffer.from(await rembgResponse.arrayBuffer());
+    const uploaded = await uploadImage(userId, resultBuffer, 'image/png', '_nobg.png');
+
+    logger.info({ userId, key: uploaded.key, size: resultBuffer.length }, 'Background removal complete');
+
+    res.json({
+      image: {
+        key: uploaded.key,
+        url: uploaded.url,
+        size: resultBuffer.length,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+imagesRouter.get('/r2/*path', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const key = Array.isArray(req.params.path) ? req.params.path.join('/') : req.params.path;
+    if (!key) throw new AppError(400, 'MISSING_KEY', 'Image key required');
+
+    if (!key.startsWith(`items/${userId}/`)) {
+      throw new AppError(403, 'FORBIDDEN', 'Cannot access images belonging to another user');
+    }
+
+    const { body, contentType } = await getImage(key);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    body.pipe(res);
   } catch (err) {
     next(err);
   }

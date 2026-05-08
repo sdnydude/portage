@@ -6,18 +6,18 @@ import { BeforeAfterSlider } from "./before-after-slider";
 interface BgRemovalPanelProps {
   imageUrl: string;
   alt: string;
-  onSave?: (blob: Blob) => void;
+  onSave?: (url: string) => void;
   onClose: () => void;
 }
 
 export function BgRemovalPanel({ imageUrl, alt, onSave, onClose }: BgRemovalPanelProps) {
-  const { isProcessing, progress, resultUrl, result, error, removeBackground, reset } = useBgRemoval();
+  const { isProcessing, resultUrl, error, removeBackground, reset } = useBgRemoval();
 
   const handleStart = () => removeBackground(imageUrl);
 
   const handleSave = () => {
-    if (result && onSave) {
-      onSave(result);
+    if (resultUrl && onSave) {
+      onSave(resultUrl);
     }
     onClose();
   };
@@ -49,13 +49,7 @@ export function BgRemovalPanel({ imageUrl, alt, onSave, onClose }: BgRemovalPane
         <div className="aspect-square bg-muted rounded-xl flex flex-col items-center justify-center">
           <div className="w-10 h-10 border-2 border-forest-green border-t-transparent rounded-full animate-spin mb-3" />
           <p className="text-sm font-medium text-text-primary">Removing background...</p>
-          <p className="text-xs text-text-secondary mt-1">{progress}%</p>
-        </div>
-        <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-          <div
-            className="h-full bg-forest-green rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
+          <p className="text-xs text-text-secondary mt-1">Processing on server</p>
         </div>
       </div>
     );

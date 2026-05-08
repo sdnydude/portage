@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { pino } from 'pino';
 import { env } from './env.js';
 import crypto from 'node:crypto';
@@ -47,6 +47,20 @@ export async function uploadImage(
   const url = `${config.R2_PUBLIC_URL}/${key}`;
   logger.info({ userId, key, size: buffer.length }, 'Image uploaded');
   return { key, url };
+}
+
+export async function getImage(key: string): Promise<{ body: import('node:stream').Readable; contentType: string }> {
+  const config = env();
+  const { Readable } = await import('node:stream');
+  const result = await getClient().send(new GetObjectCommand({
+    Bucket: config.R2_BUCKET_NAME!,
+    Key: key,
+  }));
+  if (!result.Body) throw new Error(`Empty body for key: ${key}`);
+  const body = result.Body instanceof Readable
+    ? result.Body
+    : Readable.fromWeb(result.Body as import('stream/web').ReadableStream);
+  return { body, contentType: result.ContentType || 'image/webp' };
 }
 
 export async function deleteImage(key: string): Promise<void> {

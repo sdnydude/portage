@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
-import { eq, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { FREE_TIER_LIMITS } from '@portage/shared';
 
 const logger = pino({ name: 'usage' });
@@ -44,23 +44,28 @@ usageRouter.post('/bg-removal', async (req, res, next) => {
     const tier = req.user!.tier;
 
     if (tier === 'free') {
-      const [user] = await db.select({ bgRemovalsThisMonth: users.bgRemovalsThisMonth })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
+      const result = await db.update(users)
+        .set({ bgRemovalsThisMonth: sql`${users.bgRemovalsThisMonth} + 1` })
+        .where(and(
+          eq(users.id, userId),
+          sql`${users.bgRemovalsThisMonth} < ${FREE_TIER_LIMITS.bgRemovalsPerMonth}`,
+        ))
+        .returning({ bgRemovalsThisMonth: users.bgRemovalsThisMonth });
 
-      if (user && user.bgRemovalsThisMonth >= FREE_TIER_LIMITS.bgRemovalsPerMonth) {
+      if (result.length === 0) {
         throw new AppError(429, 'BG_REMOVAL_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.bgRemovalsPerMonth} background removals per month. Upgrade to Pro for unlimited.`);
       }
+
+      logger.info({ userId, used: result[0].bgRemovalsThisMonth }, 'Background removal credit consumed (free tier)');
+    } else {
+      await db.update(users)
+        .set({ bgRemovalsThisMonth: sql`${users.bgRemovalsThisMonth} + 1` })
+        .where(eq(users.id, userId));
+
+      logger.info({ userId }, 'Background removal credit consumed (pro)');
     }
 
-    await db.update(users)
-      .set({ bgRemovalsThisMonth: sql`${users.bgRemovalsThisMonth} + 1` })
-      .where(eq(users.id, userId));
-
-    logger.info({ userId }, 'Background removal credit consumed');
-
-    res.json({ consumed: true });
+    res.json({ allowed: true });
   } catch (err) {
     next(err);
   }

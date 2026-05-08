@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback } from "react";
 
 interface UseCameraOptions {
   facingMode?: "user" | "environment";
@@ -11,7 +11,6 @@ interface UseCameraOptions {
 interface UseCameraReturn {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
-  stream: MediaStream | null;
   isReady: boolean;
   error: string | null;
   start: () => Promise<void>;
@@ -25,48 +24,61 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const facingRef = useRef(facingMode);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentFacing, setCurrentFacing] = useState(facingMode);
 
   const stop = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
+    const s = streamRef.current;
+    if (s) {
+      s.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
       setIsReady(false);
     }
-  }, [stream]);
+  }, []);
 
   const start = useCallback(async () => {
+    stop();
     try {
       setError(null);
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: currentFacing,
+          facingMode: facingRef.current,
           width: { ideal: width },
           height: { ideal: height },
         },
         audio: false,
       });
 
+      streamRef.current = mediaStream;
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play();
-        setStream(mediaStream);
+
+        try {
+          await videoRef.current.play();
+        } catch (e) {
+          if (e instanceof DOMException && e.name === "AbortError") return;
+          throw e;
+        }
+
         setIsReady(true);
+      } else {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Camera access denied";
       setError(message);
       setIsReady(false);
     }
-  }, [currentFacing, width, height]);
+  }, [stop, width, height]);
 
   const capture = useCallback(async (): Promise<Blob | null> => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !isReady) return null;
+    if (!video || !canvas || !streamRef.current) return null;
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -78,24 +90,13 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
     return new Promise((resolve) => {
       canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.92);
     });
-  }, [isReady]);
+  }, []);
 
   const switchCamera = useCallback(async () => {
     stop();
-    setCurrentFacing((prev) => (prev === "environment" ? "user" : "environment"));
-  }, [stop]);
+    facingRef.current = facingRef.current === "environment" ? "user" : "environment";
+    await start();
+  }, [stop, start]);
 
-  useEffect(() => {
-    if (currentFacing && !stream) {
-      // Auto-restart after camera switch
-    }
-  }, [currentFacing, stream]);
-
-  useEffect(() => {
-    return () => {
-      stream?.getTracks().forEach((track) => track.stop());
-    };
-  }, [stream]);
-
-  return { videoRef, canvasRef, stream, isReady, error, start, stop, capture, switchCamera };
+  return { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera };
 }

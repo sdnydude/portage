@@ -66,6 +66,21 @@ services:
     networks:
       - portage-network
 
+  portage-rembg:
+    image: danielgatis/rembg:latest
+    container_name: portage-rembg
+    command: s --port 7000 --no-ui
+    ports:
+      - "7000:7000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - portage-network
+
 volumes:
   portage-pgdata:
 

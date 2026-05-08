@@ -24,6 +24,17 @@ export function ReviewComments({ direction, currentStep }: { direction: string; 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const loadComments = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/${direction}`);
+      if (res.ok) {
+        const data = await res.json();
+        setComments(data.reverse());
+        setBadge(data.length);
+      }
+    } catch { /* offline */ }
+  }, [direction]);
+
   const handleSelection = useCallback(() => {
     const sel = document.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
@@ -36,7 +47,7 @@ export function ReviewComments({ direction, currentStep }: { direction: string; 
       return prev ? prev : quote;
     });
     setTimeout(() => textareaRef.current?.focus(), 100);
-  }, []);
+  }, [loadComments]);
 
   useEffect(() => {
     document.addEventListener("mouseup", handleSelection);
@@ -51,22 +62,11 @@ export function ReviewComments({ direction, currentStep }: { direction: string; 
     const saved = localStorage.getItem("reviewer-name");
     if (saved) setName(saved);
     loadComments();
-  }, []);
+  }, [loadComments]);
 
   useEffect(() => {
     if (open) listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [comments, open]);
-
-  async function loadComments() {
-    try {
-      const res = await fetch(`${API}/${direction}`);
-      if (res.ok) {
-        const data = await res.json();
-        setComments(data.reverse());
-        setBadge(data.length);
-      }
-    } catch { /* offline */ }
-  }
 
   async function submit() {
     if (!text.trim()) return;
@@ -93,8 +93,14 @@ export function ReviewComments({ direction, currentStep }: { direction: string; 
     setSending(false);
   }
 
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   function timeAgo(iso: string) {
-    const ms = Date.now() - new Date(iso).getTime();
+    const ms = now - new Date(iso).getTime();
     const m = Math.floor(ms / 60000);
     if (m < 1) return "just now";
     if (m < 60) return `${m}m ago`;

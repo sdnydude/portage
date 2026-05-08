@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useCamera } from "@/hooks/use-camera";
 
 interface CameraCaptureProps {
@@ -11,17 +11,17 @@ interface CameraCaptureProps {
 export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   const { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera } = useCamera();
   const [isCapturing, setIsCapturing] = useState(false);
-  const started = useRef(false);
+
+  useEffect(() => {
+    start();
+    return () => { stop(); };
+  }, [start, stop]);
 
   const handleVideoRef = useCallback(
     (el: HTMLVideoElement | null) => {
       videoRef.current = el;
-      if (el && !started.current) {
-        started.current = true;
-        start();
-      }
     },
-    [videoRef, start],
+    [videoRef],
   );
 
   const handleCapture = useCallback(async () => {
@@ -43,7 +43,7 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   }, [stop, onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div className="fixed inset-0 z-[70] bg-black flex flex-col">
       {/* Viewfinder */}
       <div className="flex-1 relative overflow-hidden">
         <video

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { api } from "@/lib/api";
+import { api, API_BASE } from "@/lib/api";
 import { CameraCapture } from "./camera-capture";
 import { ImagePicker } from "./image-picker";
 
@@ -75,7 +75,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         formData.append("image", file);
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "http://10.0.0.251:8016"}/scan`,
+          `${API_BASE}/scan`,
           {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` },
@@ -158,7 +158,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           title: editName,
           description: editDescription,
           category: editCategory,
-          condition: editCondition,
+          condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes,
           brand: editBrand || undefined,
           model: editModel || undefined,
