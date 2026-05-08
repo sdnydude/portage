@@ -1,3 +1,5 @@
+import type { MarketplaceType } from './marketplace.js';
+
 export interface User {
   id: string;
   email: string;
@@ -308,4 +310,126 @@ export interface UserPreferences {
   listingForkPref: ListingForkPref;
   listingForkCount: number;
   listingCompactMode: boolean;
+}
+
+export type ItemCondition = 'new' | 'like_new' | 'good' | 'fair' | 'poor';
+
+export type WeightUnit = 'oz' | 'lb' | 'g' | 'kg';
+export type DimensionUnit = 'in' | 'cm';
+
+export interface SellerProfile {
+  id: string;
+  userId: string;
+  ebayFulfillmentPolicyId: string | null;
+  ebayPaymentPolicyId: string | null;
+  ebayReturnPolicyId: string | null;
+  ebayMerchantLocationKey: string | null;
+  reverbOffersEnabled: boolean;
+  reverbDefaultShipping: ReverbShippingDefaults | null;
+  shipFromAddress: ShipFromAddress | null;
+  defaultWeightUnit: WeightUnit;
+  defaultDimensionUnit: DimensionUnit;
+  defaultPackageType: PackageType;
+  preferredMarketplaces: MarketplaceType[];
+  autoPublish: boolean;
+  defaultCurrency: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ReverbShippingDefaults {
+  rates: Array<{ regionCode: string; rate: { amount: string; currency: string } }>;
+  local: boolean;
+}
+
+export interface PricingData {
+  suggested: number;
+  low: number;
+  high: number;
+  currency: string;
+  confidence: 'high' | 'medium' | 'low';
+  basedOn: number;
+  conditionMatch: 'exact' | 'nearby' | 'all';
+}
+
+export interface ReverbCompListing {
+  title: string;
+  price: number;
+  currency: string;
+  condition: string;
+  imageUrl: string | null;
+  listingUrl: string;
+}
+
+export interface ReverbCompResult {
+  listings: ReverbCompListing[];
+  stats: {
+    median: number | null;
+    avg: number | null;
+    sampleSize: number;
+  };
+}
+
+export interface EbayPreparedFields {
+  title: string;
+  categoryId: string;
+  categoryName: string;
+  condition: string;
+  conditionDescription: string;
+  aspects: Record<string, string[]>;
+  upc: string | null;
+  epid: string | null;
+  weight: { value: number; unit: string };
+  dimensions: { length: number; width: number; height: number; unit: string };
+  packageType: string;
+  fulfillmentPolicyId: string;
+  paymentPolicyId: string;
+  returnPolicyId: string;
+  merchantLocationKey: string;
+}
+
+export interface ReverbPreparedFields {
+  make: string;
+  model: string;
+  title: string;
+  categoryUuid: string;
+  categoryName: string;
+  conditionUuid: string;
+  conditionName: string;
+  year: string | null;
+  finish: string | null;
+  description: string;
+  shippingRates: Array<{ regionCode: string; rate: { amount: string; currency: string } }>;
+  offersEnabled: boolean;
+}
+
+export interface PreparedListingData {
+  title: string;
+  description: string;
+  condition: ItemCondition;
+  conditionDescription: string;
+  brand: string;
+  model: string;
+  pricing: PricingData;
+  comps: {
+    ebay: CompResult | null;
+    reverb: ReverbCompResult | null;
+  };
+  ebay: EbayPreparedFields | null;
+  reverb: ReverbPreparedFields | null;
+  isMusicGear: boolean;
+  aiConfidence: number;
+  warnings: string[];
+}
+
+export interface EbayPolicy {
+  policyId: string;
+  name: string;
+  description?: string;
+}
+
+export interface EbayPoliciesResponse {
+  fulfillment: EbayPolicy[];
+  payment: EbayPolicy[];
+  returnPolicy: EbayPolicy[];
 }
