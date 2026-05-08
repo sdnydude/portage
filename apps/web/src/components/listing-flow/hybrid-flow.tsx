@@ -5,7 +5,9 @@ import { useListingFlow } from "@/hooks/use-listing-flow";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
-import { PhotoCapture } from "./photo-capture";
+import { PhotoCaptureFlow } from "./photo-capture-flow";
+import { ListingPreviewCard } from "../listing/listing-preview-card";
+import { usePrepareListing } from "@/hooks/use-prepare-listing";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -375,10 +377,12 @@ function ChatMode({
   flow,
   onPublish,
   onShowCapture,
+  prepareListing,
 }: {
   flow: ReturnType<typeof useListingFlow>;
   onPublish: () => void;
   onShowCapture: () => void;
+  prepareListing: ReturnType<typeof usePrepareListing>;
 }) {
   const { state, lastStep, setField, confirmRecognition, fetchComps, applyPricingStrategy } = flow;
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -546,7 +550,13 @@ function ChatMode({
           </InlineCard>
 
           <div style={{ display: "flex", gap: 10, marginLeft: 34 }}>
-            <Pill primary onClick={() => { confirmRecognition(state.recognition.selectedIndex); fetchComps(); }}>
+            <Pill primary onClick={() => {
+              confirmRecognition(state.recognition.selectedIndex);
+              fetchComps();
+              if (state.inventoryItemId) {
+                prepareListing.prepare(state.inventoryItemId, ['ebay']);
+              }
+            }}>
               Looks right
             </Pill>
             <Pill outline onClick={() => flow.reset()}>
@@ -710,8 +720,34 @@ function ChatMode({
         </div>
       )}
 
+      {/* ── Prepared listing preview ── */}
+      {prepareListing.isLoading && showConfirmed && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 0", gap: 12 }}>
+          <div style={{ width: 40, height: 40, border: "3px solid #E8E5DE", borderTopColor: ACCENT, borderRadius: "50%", animation: "shimmer 1s linear infinite" }} />
+          <p style={{ fontSize: 13, color: SECONDARY }}>Preparing your listing...</p>
+        </div>
+      )}
+
+      {prepareListing.data && showConfirmed && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <PorterMessage>Here&apos;s your optimized listing. Tap any field to edit.</PorterMessage>
+          <ListingPreviewCard
+            data={prepareListing.data}
+            photos={state.photos}
+            onFieldChange={(field, value) => setField(field as keyof typeof state, value as never)}
+            onPriceChange={(price) => setField("price", price)}
+            onPublish={(marketplace) => {
+              setField("marketplace", marketplace);
+              flow.publish();
+            }}
+            isPublishing={state.publishStatus === "publishing"}
+            sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
+          />
+        </div>
+      )}
+
       {/* ── Review ── */}
-      {showReview && state.price !== null && state.price > 0 && (
+      {showReview && state.price !== null && state.price > 0 && !prepareListing.data && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <PorterMessage>Ready to publish. Here&apos;s your summary.</PorterMessage>
           <InlineCard title="Review">
@@ -1045,6 +1081,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
 
 export function HybridFlow({ itemId }: HybridFlowProps) {
   const flow = useListingFlow();
+  const prepareListing = usePrepareListing();
   const { compactMode, updatePrefs } = useUserPreferences();
   const [localCompact, setLocalCompact] = useState<boolean | null>(null);
   const [showCapture, setShowCapture] = useState(false);
@@ -1114,6 +1151,7 @@ export function HybridFlow({ itemId }: HybridFlowProps) {
         ) : (
           <ChatMode
             flow={flow}
+            prepareListing={prepareListing}
             onPublish={() => {
               // Published state is managed in flow; ChatMode handles the switch
             }}
@@ -1123,8 +1161,8 @@ export function HybridFlow({ itemId }: HybridFlowProps) {
       </div>
 
       {showCapture && (
-        <PhotoCapture
-          onPhotoCaptured={(photos) => {
+        <PhotoCaptureFlow
+          onComplete={(photos) => {
             setShowCapture(false);
             if (photos.length > 0) {
               flow.startFromPhoto(photos);

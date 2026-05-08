@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
-import { PhotoCapture } from "./photo-capture";
+import { PhotoCaptureFlow } from "./photo-capture-flow";
+import { usePrepareListing } from "@/hooks/use-prepare-listing";
 
 /* ─────────────────────────────────────────────
    Types
@@ -1456,6 +1457,7 @@ function PublishingPhase() {
 
 export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const flow = useListingFlow();
+  const prepareListing = usePrepareListing();
   const { state, setField, startFromItem, confirmRecognition, fetchComps, applyPricingStrategy, publish, reset } = flow;
 
   const [phase, setPhase] = useState<Phase>("recognition");
@@ -1516,8 +1518,11 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
 
   const handleConfirmRecognition = useCallback(() => {
     confirmRecognition(state.recognition.selectedIndex);
+    if (state.inventoryItemId) {
+      prepareListing.prepare(state.inventoryItemId, ['ebay']);
+    }
     setPhase("configure");
-  }, [confirmRecognition, state.recognition.selectedIndex]);
+  }, [confirmRecognition, state.recognition.selectedIndex, state.inventoryItemId, prepareListing]);
 
   const handleApplyStrategy = useCallback(
     (s: PricingStrategy) => {
@@ -1670,8 +1675,8 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
       </div>
 
       {showCapture && (
-        <PhotoCapture
-          onPhotoCaptured={(photos) => {
+        <PhotoCaptureFlow
+          onComplete={(photos) => {
             setShowCapture(false);
             if (photos.length > 0) {
               flow.startFromPhoto(photos);

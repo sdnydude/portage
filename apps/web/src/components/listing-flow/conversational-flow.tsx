@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
-import { PhotoCapture } from "./photo-capture";
+import { PhotoCaptureFlow } from "./photo-capture-flow";
+import { ListingPreviewCard } from "../listing/listing-preview-card";
+import { usePrepareListing } from "@/hooks/use-prepare-listing";
 import type { ListingFlowState } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -575,6 +577,7 @@ function deriveMessages(
 
 export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
   const flow = useListingFlow();
+  const prepareListing = usePrepareListing();
   const { state, lastStep } = flow;
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -610,8 +613,11 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
     (i: number) => {
       flow.confirmRecognition(i);
       flow.fetchComps();
+      if (state.inventoryItemId) {
+        prepareListing.prepare(state.inventoryItemId, ['ebay']);
+      }
     },
-    [flow]
+    [flow, state.inventoryItemId, prepareListing]
   );
 
   const handleDenyRecognition = useCallback(() => {
@@ -774,6 +780,56 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
           return <UserBubble key={msg.id} content={msg.content} />;
         })}
 
+        {/* Prepared listing preview */}
+        {prepareListing.isLoading && (
+          <div className="flex items-end gap-2 mb-3">
+            <PorterAvatar />
+            <div
+              className="px-4 py-3 text-[13px] italic"
+              style={{
+                background: "#F0EDE6",
+                borderRadius: "18px 18px 18px 4px",
+                color: "#1A1A1A",
+                opacity: 0.7,
+              }}
+            >
+              Preparing your optimized listing...
+            </div>
+          </div>
+        )}
+
+        {prepareListing.data && (
+          <div className="mb-3">
+            <div className="flex items-end gap-2 mb-2">
+              <PorterAvatar />
+              <div
+                className="px-4 py-3 text-[13px] leading-relaxed max-w-[75%]"
+                style={{
+                  background: "#F0EDE6",
+                  borderRadius: "18px 18px 18px 4px",
+                  color: "#1A1A1A",
+                }}
+              >
+                Here&apos;s your optimized listing. Tap any field to edit.
+              </div>
+            </div>
+            <div className="ml-9">
+              <ListingPreviewCard
+                data={prepareListing.data}
+                photos={state.photos}
+                onFieldChange={(field, value) => flow.setField(field as keyof typeof state, value as never)}
+                onPriceChange={(price) => flow.setField("price", price)}
+                onPublish={(marketplace) => {
+                  flow.setField("marketplace", marketplace);
+                  flow.publish();
+                }}
+                isPublishing={state.publishStatus === "publishing"}
+                sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Publishing indicator */}
         {isPublishing && (
           <div className="flex items-end gap-2 mb-3">
@@ -841,8 +897,8 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
       )}
 
       {showCapture && (
-        <PhotoCapture
-          onPhotoCaptured={(photos) => {
+        <PhotoCaptureFlow
+          onComplete={(photos) => {
             setShowCapture(false);
             if (photos.length > 0) {
               flow.startFromPhoto(photos);
