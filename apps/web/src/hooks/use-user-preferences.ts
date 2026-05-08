@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "./use-auth";
-import type { UserPreferences, ListingInterface, ListingForkPref } from "@portage/shared";
+import type { UserPreferences } from "@portage/shared";
 
 const DEFAULT_PREFS: UserPreferences = {
   listingInterface: 'hybrid',
