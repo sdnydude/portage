@@ -1,0 +1,885 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useListingFlow } from "@/hooks/use-listing-flow";
+import { FeeEstimate } from "./fee-estimate";
+import { PublishSuccess } from "./publish-success";
+import type { ListingFlowState } from "@portage/shared";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type PillVariant = "primary" | "outline";
+
+interface Pill {
+  label: string;
+  action: () => void;
+  variant?: PillVariant;
+}
+
+interface FlowMessage {
+  id: string;
+  role: "porter" | "user";
+  content: string;
+  pills?: Pill[];
+  card?: React.ReactNode;
+}
+
+export interface ConversationalFlowProps {
+  itemId?: string;
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function TypingIndicator() {
+  return (
+    <div className="flex items-end gap-2 mb-3">
+      <PorterAvatar />
+      <div
+        className="flex items-center gap-1.5 px-4 py-3"
+        style={{
+          background: "#F0EDE6",
+          borderRadius: "18px 18px 18px 4px",
+          minHeight: "44px",
+        }}
+      >
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="block w-2 h-2 rounded-full"
+            style={{
+              background: "#2D5A27",
+              opacity: 0.5,
+              animation: `porterBounce 1.2s ease-in-out ${i * 0.2}s infinite`,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PorterAvatar() {
+  return (
+    <div
+      className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold"
+      style={{ background: "#2D5A27", fontFamily: "'DM Serif Display', Georgia, serif" }}
+    >
+      P
+    </div>
+  );
+}
+
+function PorterBubble({
+  message,
+  showTyping,
+  onPillClick,
+}: {
+  message: FlowMessage;
+  showTyping: boolean;
+  onPillClick?: (pill: Pill) => void;
+}) {
+  const activePills = message.pills?.filter((p) => p.variant === "primary") ?? [];
+  const outlinePills = message.pills?.filter((p) => p.variant !== "primary") ?? [];
+  const allPills = [...activePills, ...outlinePills];
+
+  return (
+    <div className="flex items-end gap-2 mb-3">
+      <PorterAvatar />
+      <div className="flex flex-col gap-2 max-w-[75%]">
+        {showTyping ? (
+          <TypingIndicator />
+        ) : (
+          <div
+            className="px-4 py-3 text-[13px] leading-relaxed"
+            style={{
+              background: "#F0EDE6",
+              borderRadius: "18px 18px 18px 4px",
+              color: "#1A1A1A",
+            }}
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{ __html: formatBold(message.content) }}
+          />
+        )}
+        {message.card && !showTyping && (
+          <div className="mt-1">{message.card}</div>
+        )}
+        {allPills.length > 0 && !showTyping && (
+          <div className="flex flex-wrap gap-2 mt-1">
+            {allPills.map((pill) => (
+              <button
+                key={pill.label}
+                onClick={() => onPillClick?.(pill)}
+                className="px-3 py-1.5 text-[11px] font-medium transition-all active:scale-[0.95]"
+                style={
+                  pill.variant === "primary"
+                    ? {
+                        background: "#2D5A27",
+                        color: "#fff",
+                        borderRadius: "20px",
+                        border: "1px solid #2D5A27",
+                        letterSpacing: "0.01em",
+                      }
+                    : {
+                        background: "#fff",
+                        color: "#2D5A27",
+                        borderRadius: "20px",
+                        border: "1px solid #D4D0C8",
+                        letterSpacing: "0.01em",
+                      }
+                }
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UserBubble({ content }: { content: string }) {
+  return (
+    <div className="flex justify-end mb-3">
+      <div
+        className="px-4 py-3 text-[13px] leading-relaxed max-w-[75%]"
+        style={{
+          background: "#2D5A27",
+          borderRadius: "18px 18px 4px 18px",
+          color: "#fff",
+        }}
+      >
+        {content}
+      </div>
+    </div>
+  );
+}
+
+function InlineInput({
+  label,
+  value,
+  multiline,
+  onSave,
+  onCancel,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+  onSave: (v: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (!multiline && e.key === "Enter") {
+      e.preventDefault();
+      onSave(draft);
+    }
+    if (e.key === "Escape") onCancel();
+  };
+
+  return (
+    <div
+      className="p-3 rounded-2xl"
+      style={{ background: "#F0EDE6", border: "1px solid #E8E5DE" }}
+    >
+      <p
+        className="text-[10px] uppercase font-mono mb-2"
+        style={{ color: "#2D5A27", letterSpacing: "0.05em" }}
+      >
+        {label}
+      </p>
+      {multiline ? (
+        <textarea
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKey}
+          rows={4}
+          className="w-full bg-transparent text-[13px] leading-relaxed resize-none focus:outline-none"
+          style={{ color: "#1A1A1A" }}
+        />
+      ) : (
+        <input
+          autoFocus
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKey}
+          className="w-full bg-transparent text-[13px] leading-relaxed focus:outline-none"
+          style={{ color: "#1A1A1A" }}
+        />
+      )}
+      <div className="flex gap-2 mt-2 justify-end">
+        <button
+          onClick={onCancel}
+          className="text-[12px] px-3 py-1 rounded-full border"
+          style={{ color: "#1A1A1A", borderColor: "#D4D0C8", opacity: 0.6 }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onSave(draft)}
+          className="text-[12px] px-3 py-1 rounded-full text-white"
+          style={{ background: "#2D5A27" }}
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatBold(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+}
+
+function formatPrice(n: number | null | undefined): string {
+  if (!n) return "$—";
+  return `$${n.toFixed(0)}`;
+}
+
+function shippingLabel(method: string, size: string): string {
+  const sizeMap: Record<string, string> = {
+    small: "Small box / envelope",
+    medium: "Standard box",
+    large: "Large box",
+    custom: "Custom dimensions",
+  };
+  const methodMap: Record<string, string> = {
+    calculated: "Calculated at checkout",
+    flat: "Flat rate",
+    free: "Free shipping",
+  };
+  return `${sizeMap[size] ?? size} · ${methodMap[method] ?? method}`;
+}
+
+function conditionLabel(c: string): string {
+  const map: Record<string, string> = {
+    new: "New",
+    like_new: "Like new",
+    good: "Good",
+    fair: "Fair",
+    poor: "Poor",
+  };
+  return map[c] ?? c;
+}
+
+// ─── Message derivation ───────────────────────────────────────────────────────
+
+function deriveMessages(
+  state: ListingFlowState,
+  lastStep: string,
+  handlers: {
+    onConfirmRecognition: (i: number) => void;
+    onDenyRecognition: () => void;
+    onApplyStrategy: (s: "fast" | "market" | "max") => void;
+    onEditTitle: () => void;
+    onEditDescription: () => void;
+    onSetShippingSize: (s: string) => void;
+    onSetShippingMethod: (m: string) => void;
+    onSetMarketplace: (m: "ebay" | "etsy" | "reverb") => void;
+    onPublish: () => void;
+    onConfirmDetails: () => void;
+    onConfirmShipping: () => void;
+  }
+): FlowMessage[] {
+  const msgs: FlowMessage[] = [];
+
+  const candidate = state.recognition.candidates[state.recognition.selectedIndex];
+  const hasConfirmed = lastStep === "confirmed" || lastStep === "pricing" || lastStep === "details" || lastStep === "shipping" || lastStep === "review" || lastStep === "published";
+
+  // 1. Idle / intro
+  msgs.push({
+    id: "intro",
+    role: "porter",
+    content: "Hey! I'm Porter, your listing assistant. Take a photo of your item and I'll do the rest.",
+  });
+
+  if (state.recognition.status === "idle" && lastStep === "idle") {
+    return msgs;
+  }
+
+  // 2. Recognizing
+  if (state.recognition.status === "recognizing") {
+    msgs.push({
+      id: "recognizing",
+      role: "porter",
+      content: "...",
+    });
+    return msgs;
+  }
+
+  // 3. Recognition failed
+  if (state.recognition.status === "failed") {
+    msgs.push({
+      id: "recog-failed",
+      role: "porter",
+      content: "Hmm, I couldn't quite make that out. Want to try another photo?",
+    });
+    return msgs;
+  }
+
+  // 4. Recognition complete
+  if (state.recognition.status === "complete" && candidate) {
+    const conf = Math.round(state.recognition.confidence * 100);
+    const priceRange =
+      candidate.estimatedValueLow && candidate.estimatedValueHigh
+        ? ` I'd estimate it's worth **$${candidate.estimatedValueLow}–$${candidate.estimatedValueHigh}**.`
+        : "";
+
+    const reasoningBullets =
+      state.recognition.reasoning.length > 0
+        ? `<ul style="margin-top:6px;padding-left:16px;opacity:0.7;font-size:12px">${state.recognition.reasoning
+            .slice(0, 3)
+            .map((r) => `<li>${r}</li>`)
+            .join("")}</ul>`
+        : "";
+
+    msgs.push({
+      id: "recognition",
+      role: "porter",
+      content: `Got it! This looks like a **${candidate.name}**${candidate.brand ? ` by **${candidate.brand}**` : ""}. Condition: **${conditionLabel(candidate.condition)}**.${priceRange} (${conf}% confidence)${reasoningBullets}`,
+      pills: !hasConfirmed
+        ? [
+            {
+              label: "Looks right ✓",
+              action: () => handlers.onConfirmRecognition(state.recognition.selectedIndex),
+              variant: "primary",
+            },
+            {
+              label: "Not quite",
+              action: handlers.onDenyRecognition,
+              variant: "outline",
+            },
+          ]
+        : undefined,
+    });
+  }
+
+  if (state.recognition.status === "complete" && !candidate && lastStep === "details") {
+    // Came in from startFromItem — skip recognition display
+  }
+
+  if (!hasConfirmed && state.recognition.status === "complete") {
+    return msgs;
+  }
+
+  // 5. User confirmed
+  msgs.push({
+    id: "user-confirmed",
+    role: "user",
+    content: "Looks right ✓",
+  });
+
+  // 6. Comps / pricing bridge
+  const hasComps = state.compsStatus === "loaded" && state.comps?.stats.soldMedian;
+  const compMin = state.comps?.stats.soldMedian
+    ? formatPrice(Math.round(state.comps.stats.soldMedian * 0.85))
+    : null;
+  const compMax = state.comps?.stats.soldMedian
+    ? formatPrice(Math.round(state.comps.stats.soldMedian * 1.2))
+    : null;
+
+  const pricingReached =
+    lastStep === "pricing" || lastStep === "details" || lastStep === "shipping" || lastStep === "review" || lastStep === "published";
+
+  if (hasComps && compMin && compMax) {
+    msgs.push({
+      id: "comps-found",
+      role: "porter",
+      content: `Nice! Similar items have sold for **${compMin}–${compMax}** recently. Where do you want to price yours?`,
+      pills: !pricingReached
+        ? [
+            {
+              label: `${compMin} · Sell fast`,
+              action: () => handlers.onApplyStrategy("fast"),
+              variant: "outline",
+            },
+            {
+              label: `${formatPrice(state.comps?.stats.soldMedian ?? null)} · Market`,
+              action: () => handlers.onApplyStrategy("market"),
+              variant: "primary",
+            },
+            {
+              label: `${compMax} · Max`,
+              action: () => handlers.onApplyStrategy("max"),
+              variant: "outline",
+            },
+          ]
+        : undefined,
+    });
+  } else if (state.compsStatus === "loading") {
+    msgs.push({
+      id: "comps-loading",
+      role: "porter",
+      content: "Let me check what similar items have sold for...",
+    });
+    return msgs;
+  } else {
+    // No comps — ask for price directly
+    msgs.push({
+      id: "comps-none",
+      role: "porter",
+      content: "I didn't find recent comps, but no worries — where do you want to price this?",
+      pills: !pricingReached
+        ? [
+            {
+              label: "Set a price",
+              action: () => handlers.onApplyStrategy("market"),
+              variant: "primary",
+            },
+          ]
+        : undefined,
+    });
+  }
+
+  if (!pricingReached) return msgs;
+
+  // 7. User picks price
+  const strategyLabel: Record<string, string> = {
+    fast: "Sell fast",
+    market: "Market price",
+    max: "Max out",
+    custom: "Custom",
+  };
+  msgs.push({
+    id: "user-price",
+    role: "user",
+    content: `${formatPrice(state.price)} · ${strategyLabel[state.pricingStrategy] ?? state.pricingStrategy}`,
+  });
+
+  // 8. Details
+  const detailsReached =
+    lastStep === "details" || lastStep === "shipping" || lastStep === "review" || lastStep === "published";
+
+  msgs.push({
+    id: "pricing-done",
+    role: "porter",
+    content: "Good choice. Want to tweak anything before we set up shipping?",
+    pills: !detailsReached
+      ? [
+          { label: "Edit title", action: handlers.onEditTitle, variant: "outline" },
+          { label: "Edit description", action: handlers.onEditDescription, variant: "outline" },
+          { label: "Looks good →", action: handlers.onConfirmDetails, variant: "primary" },
+        ]
+      : undefined,
+  });
+
+  if (!detailsReached) return msgs;
+
+  // 9. User confirmed details
+  msgs.push({
+    id: "user-details",
+    role: "user",
+    content: "Looks good →",
+  });
+
+  // 10. Shipping
+  const shippingReached =
+    lastStep === "shipping" || lastStep === "review" || lastStep === "published";
+
+  msgs.push({
+    id: "shipping-q",
+    role: "porter",
+    content: "How should we ship this? Pick a package size, then a method.",
+    pills: !shippingReached
+      ? [
+          { label: "Small", action: () => handlers.onSetShippingSize("small"), variant: state.packageSize === "small" ? "primary" : "outline" },
+          { label: "Medium", action: () => handlers.onSetShippingSize("medium"), variant: state.packageSize === "medium" ? "primary" : "outline" },
+          { label: "Large", action: () => handlers.onSetShippingSize("large"), variant: state.packageSize === "large" ? "primary" : "outline" },
+          { label: "Calculated", action: () => handlers.onSetShippingMethod("calculated"), variant: state.shippingMethod === "calculated" ? "primary" : "outline" },
+          { label: "Flat rate", action: () => handlers.onSetShippingMethod("flat"), variant: state.shippingMethod === "flat" ? "primary" : "outline" },
+          { label: "Free shipping", action: () => handlers.onSetShippingMethod("free"), variant: state.shippingMethod === "free" ? "primary" : "outline" },
+          { label: "That works →", action: handlers.onConfirmShipping, variant: "primary" },
+        ]
+      : undefined,
+  });
+
+  if (!shippingReached) return msgs;
+
+  // 11. User shipping choice
+  msgs.push({
+    id: "user-shipping",
+    role: "user",
+    content: shippingLabel(state.shippingMethod, state.packageSize),
+  });
+
+  // 12. Review
+  const reviewReached = lastStep === "review" || lastStep === "published";
+
+  if (state.price !== null) {
+    msgs.push({
+      id: "review",
+      role: "porter",
+      content: `Here's your listing — looking good. Ready to publish on **${state.marketplace === "ebay" ? "eBay" : state.marketplace === "etsy" ? "Etsy" : "Reverb"}**?`,
+      card: (
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, #f0ede6 0%, #FAF8F5 100%)",
+            border: "1px solid #E8E5DE",
+          }}
+        >
+          {state.photos[0]?.url && (
+            <div className="w-full h-36 overflow-hidden bg-black/5">
+              <img
+                src={state.photos[0].url}
+                alt={state.title}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+          <div className="p-4">
+            <p
+              className="text-[11px] uppercase font-mono mb-1"
+              style={{ color: "#2D5A27", letterSpacing: "0.05em" }}
+            >
+              {state.marketplace}
+            </p>
+            <p className="font-semibold text-[14px] mb-0.5" style={{ color: "#1A1A1A" }}>
+              {state.title || "Untitled listing"}
+            </p>
+            <p className="text-[20px] font-bold mb-3" style={{ color: "#2D5A27" }}>
+              {formatPrice(state.price)}
+            </p>
+            <FeeEstimate price={state.price} marketplace={state.marketplace} />
+          </div>
+        </div>
+      ),
+      pills: !reviewReached
+        ? [
+            { label: "eBay", action: () => handlers.onSetMarketplace("ebay"), variant: state.marketplace === "ebay" ? "primary" : "outline" },
+            { label: "Etsy", action: () => handlers.onSetMarketplace("etsy"), variant: state.marketplace === "etsy" ? "primary" : "outline" },
+            { label: "Reverb", action: () => handlers.onSetMarketplace("reverb"), variant: state.marketplace === "reverb" ? "primary" : "outline" },
+            { label: "🚀 Publish", action: handlers.onPublish, variant: "primary" },
+          ]
+        : undefined,
+    });
+  }
+
+  return msgs;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
+  const flow = useListingFlow();
+  const { state, lastStep } = flow;
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // All state declarations first
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  // Inline edit state: null = not editing, 'title' | 'description'
+  const [editing, setEditing] = useState<"title" | "description" | null>(null);
+  // Local step advancement flags (hook's lastStep only advances on hook-driven actions)
+  const [detailsConfirmed, setDetailsConfirmed] = useState(false);
+  const [shippingConfirmed, setShippingConfirmed] = useState(false);
+
+  // Kick off startFromItem if itemId is provided
+  useEffect(() => {
+    if (itemId && lastStep === "idle") {
+      flow.startFromItem(itemId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemId]);
+
+  // Auto-scroll to bottom whenever messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [lastStep, state.recognition.status, state.compsStatus, state.publishStatus, isPublishing]);
+
+  // ── handlers ──
+
+  const handleConfirmRecognition = useCallback(
+    (i: number) => {
+      flow.confirmRecognition(i);
+      flow.fetchComps();
+    },
+    [flow]
+  );
+
+  const handleDenyRecognition = useCallback(() => {
+    flow.reset();
+  }, [flow]);
+
+  const handleApplyStrategy = useCallback(
+    (s: "fast" | "market" | "max") => {
+      flow.applyPricingStrategy(s);
+    },
+    [flow]
+  );
+
+  const handleConfirmDetails = useCallback(() => {
+    setDetailsConfirmed(true);
+  }, []);
+
+  const handleSetShippingSize = useCallback(
+    (s: string) => {
+      flow.setField("packageSize", s as ListingFlowState["packageSize"]);
+    },
+    [flow]
+  );
+
+  const handleSetShippingMethod = useCallback(
+    (m: string) => {
+      flow.setField("shippingMethod", m as ListingFlowState["shippingMethod"]);
+    },
+    [flow]
+  );
+
+  const handleSetMarketplace = useCallback(
+    (m: "ebay" | "etsy" | "reverb") => {
+      flow.setField("marketplace", m);
+    },
+    [flow]
+  );
+
+  const handleConfirmShipping = useCallback(() => {
+    setShippingConfirmed(true);
+  }, []);
+
+  const handlePublish = useCallback(async () => {
+    setIsPublishing(true);
+    setPublishError(null);
+    const result = await flow.publish();
+    setIsPublishing(false);
+    if (!result.success) {
+      setPublishError(result.error ?? "Publishing failed");
+    }
+  }, [flow]);
+
+  // Derive the effective lastStep (merging hook's lastStep with local flags)
+  const effectiveLastStep = useMemo(() => {
+    if (state.publishStatus === "published") return "published";
+    if (state.publishStatus === "publishing") return "review";
+    if (shippingConfirmed) return "review";
+    if (detailsConfirmed) return "shipping";
+    return lastStep;
+  }, [lastStep, detailsConfirmed, shippingConfirmed, state.publishStatus]);
+
+  // Build messages
+  const messages = useMemo(
+    () =>
+      deriveMessages(state, effectiveLastStep, {
+        onConfirmRecognition: handleConfirmRecognition,
+        onDenyRecognition: handleDenyRecognition,
+        onApplyStrategy: handleApplyStrategy,
+        onEditTitle: () => setEditing("title"),
+        onEditDescription: () => setEditing("description"),
+        onConfirmDetails: handleConfirmDetails,
+        onSetShippingSize: handleSetShippingSize,
+        onSetShippingMethod: handleSetShippingMethod,
+        onSetMarketplace: handleSetMarketplace,
+        onPublish: handlePublish,
+        onConfirmShipping: handleConfirmShipping,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state, effectiveLastStep]
+  );
+
+  // Show typing indicator when recognizing
+  const showTypingForId = state.recognition.status === "recognizing" ? "recognizing" : null;
+
+  const handlePillClick = useCallback((pill: Pill) => {
+    pill.action();
+  }, []);
+
+  // Published state
+  if (state.publishStatus === "published" && state.listingId) {
+    return (
+      <div
+        className="flex flex-col h-full"
+        style={
+          {
+            background: "#FAF8F5",
+            "--flow-bg": "#FAF8F5",
+            "--flow-text": "#1A1A1A",
+            "--flow-accent": "#2D5A27",
+          } as React.CSSProperties
+        }
+      >
+        <ChatHeader />
+        <div className="flex-1 overflow-auto">
+          <PublishSuccess
+            listingId={state.listingId}
+            marketplace={state.marketplace}
+            title={state.title}
+            price={state.price ?? 0}
+            photoUrl={state.photos[0]?.url ?? null}
+            isFirstListing={false}
+            onListAnother={flow.reset}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex flex-col h-full"
+      style={
+        {
+          background: "#FAF8F5",
+          "--flow-bg": "#FAF8F5",
+          "--flow-text": "#1A1A1A",
+          "--flow-accent": "#2D5A27",
+        } as React.CSSProperties
+      }
+    >
+      {/* Bounce keyframe injection */}
+      <style>{`
+        @keyframes porterBounce {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+          30% { transform: translateY(-5px); opacity: 1; }
+        }
+      `}</style>
+
+      <ChatHeader />
+
+      {/* Message list */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-4 py-4"
+        style={{ scrollBehavior: "smooth" }}
+      >
+        {messages.map((msg) => {
+          if (msg.role === "porter") {
+            const isTypingMsg = msg.id === "recognizing";
+            return (
+              <PorterBubble
+                key={msg.id}
+                message={msg}
+                showTyping={isTypingMsg && showTypingForId === "recognizing"}
+                onPillClick={handlePillClick}
+              />
+            );
+          }
+          return <UserBubble key={msg.id} content={msg.content} />;
+        })}
+
+        {/* Publishing indicator */}
+        {isPublishing && (
+          <div className="flex items-end gap-2 mb-3">
+            <PorterAvatar />
+            <div
+              className="px-4 py-3 text-[13px] italic"
+              style={{
+                background: "#F0EDE6",
+                borderRadius: "18px 18px 18px 4px",
+                color: "#1A1A1A",
+                opacity: 0.7,
+              }}
+            >
+              Publishing your listing...
+            </div>
+          </div>
+        )}
+
+        {/* Publish error */}
+        {publishError && (
+          <div className="flex items-end gap-2 mb-3">
+            <PorterAvatar />
+            <div
+              className="px-4 py-3 text-[13px]"
+              style={{
+                background: "#F0EDE6",
+                borderRadius: "18px 18px 18px 4px",
+                color: "#c0392b",
+              }}
+            >
+              {`Oops — ${publishError}. Want to try again?`}
+              <div className="mt-2">
+                <button
+                  onClick={handlePublish}
+                  className="text-[11px] font-medium px-3 py-1 rounded-full text-white"
+                  style={{ background: "#2D5A27" }}
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="h-4" />
+      </div>
+
+      {/* Inline edit overlay at bottom */}
+      {editing && (
+        <div
+          className="px-4 pb-4 pt-2"
+          style={{ borderTop: "1px solid #E8E5DE", background: "#FAF8F5" }}
+        >
+          <InlineInput
+            label={editing === "title" ? "Edit title" : "Edit description"}
+            value={editing === "title" ? state.title : state.description}
+            multiline={editing === "description"}
+            onSave={(v) => {
+              flow.setField(editing, v);
+              setEditing(null);
+            }}
+            onCancel={() => setEditing(null)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Chat header ─────────────────────────────────────────────────────────────
+
+function ChatHeader() {
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
+      style={{
+        background: "linear-gradient(135deg, #f0ede6 0%, #FAF8F5 100%)",
+        borderBottom: "1px solid #E8E5DE",
+      }}
+    >
+      <div
+        className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-[15px]"
+        style={{
+          background: "#2D5A27",
+          fontFamily: "'DM Serif Display', Georgia, serif",
+          boxShadow: "0 2px 8px rgba(45,90,39,0.25)",
+        }}
+      >
+        P
+      </div>
+      <div>
+        <p
+          className="text-[15px] font-semibold leading-none"
+          style={{
+            color: "#1A1A1A",
+            fontFamily: "'DM Serif Display', Georgia, serif",
+          }}
+        >
+          Porter
+        </p>
+        <p
+          className="text-[10px] uppercase font-mono mt-0.5"
+          style={{ color: "#2D5A27", letterSpacing: "0.05em" }}
+        >
+          Listing Assistant
+        </p>
+      </div>
+      <div className="ml-auto flex items-center gap-1.5">
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full"
+          style={{ background: "#2D5A27" }}
+        />
+        <span className="text-[11px]" style={{ color: "#2D5A27", opacity: 0.7 }}>
+          Online
+        </span>
+      </div>
+    </div>
+  );
+}
