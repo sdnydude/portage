@@ -5,6 +5,7 @@ import { useListingFlow } from "@/hooks/use-listing-flow";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
+import { PhotoCapture } from "./photo-capture";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -204,9 +205,9 @@ function Pill({
       onClick={onClick}
       disabled={disabled}
       style={{
-        background: active ? `${ACCENT}14` : CARD_BG,
-        color: active ? ACCENT : TEXT,
-        border: `1px solid ${active ? ACCENT : CARD_BORDER}`,
+        background: outline ? "transparent" : active ? `${ACCENT}14` : CARD_BG,
+        color: outline || active ? ACCENT : TEXT,
+        border: `1px solid ${outline || active ? ACCENT : CARD_BORDER}`,
         borderRadius: 8,
         padding: pad,
         fontSize,
@@ -373,9 +374,11 @@ function confidenceLabel(c: number): string {
 function ChatMode({
   flow,
   onPublish,
+  onShowCapture,
 }: {
   flow: ReturnType<typeof useListingFlow>;
   onPublish: () => void;
+  onShowCapture: () => void;
 }) {
   const { state, lastStep, setField, confirmRecognition, applyPricingStrategy } = flow;
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -462,7 +465,7 @@ function ChatMode({
             onChange={handlePhotoSelect}
           />
           <div
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => onShowCapture()}
             style={{
               border: `2px dashed ${CARD_BORDER}`,
               borderRadius: 12,
@@ -1044,6 +1047,7 @@ export function HybridFlow({ itemId }: HybridFlowProps) {
   const flow = useListingFlow();
   const { compactMode, updatePrefs } = useUserPreferences();
   const [localCompact, setLocalCompact] = useState<boolean | null>(null);
+  const [showCapture, setShowCapture] = useState(false);
   const isCompact = localCompact !== null ? localCompact : compactMode;
   const initialized = useRef(false);
 
@@ -1113,9 +1117,22 @@ export function HybridFlow({ itemId }: HybridFlowProps) {
             onPublish={() => {
               // Published state is managed in flow; ChatMode handles the switch
             }}
+            onShowCapture={() => setShowCapture(true)}
           />
         )}
       </div>
+
+      {showCapture && (
+        <PhotoCapture
+          onPhotoCaptured={(photos) => {
+            setShowCapture(false);
+            if (photos.length > 0) {
+              flow.startFromPhoto(photos);
+            }
+          }}
+          onCancel={() => setShowCapture(false)}
+        />
+      )}
     </div>
   );
 }

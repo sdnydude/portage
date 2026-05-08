@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
+import { PhotoCapture } from "./photo-capture";
 import type { ListingFlowState } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -284,6 +285,7 @@ function deriveMessages(
     onPublish: () => void;
     onConfirmDetails: () => void;
     onConfirmShipping: () => void;
+    onAddPhoto: () => void;
   }
 ): FlowMessage[] {
   const msgs: FlowMessage[] = [];
@@ -299,6 +301,9 @@ function deriveMessages(
   });
 
   if (state.recognition.status === "idle" && lastStep === "idle") {
+    msgs[0].pills = [
+      { label: "Add a photo", action: handlers.onAddPhoto, variant: "primary" as PillVariant },
+    ];
     return msgs;
   }
 
@@ -318,6 +323,9 @@ function deriveMessages(
       id: "recog-failed",
       role: "porter",
       content: "Hmm, I couldn't quite make that out. Want to try another photo?",
+      pills: [
+        { label: "Try again", action: handlers.onAddPhoto, variant: "primary" as PillVariant },
+      ],
     });
     return msgs;
   }
@@ -579,6 +587,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
   // Local step advancement flags (hook's lastStep only advances on hook-driven actions)
   const [detailsConfirmed, setDetailsConfirmed] = useState(false);
   const [shippingConfirmed, setShippingConfirmed] = useState(false);
+  const [showCapture, setShowCapture] = useState(false);
 
   // Kick off startFromItem if itemId is provided
   useEffect(() => {
@@ -679,6 +688,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onSetMarketplace: handleSetMarketplace,
         onPublish: handlePublish,
         onConfirmShipping: handleConfirmShipping,
+        onAddPhoto: () => setShowCapture(true),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state, effectiveLastStep]
@@ -828,6 +838,18 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
             onCancel={() => setEditing(null)}
           />
         </div>
+      )}
+
+      {showCapture && (
+        <PhotoCapture
+          onPhotoCaptured={(photos) => {
+            setShowCapture(false);
+            if (photos.length > 0) {
+              flow.startFromPhoto(photos);
+            }
+          }}
+          onCancel={() => setShowCapture(false)}
+        />
       )}
     </div>
   );

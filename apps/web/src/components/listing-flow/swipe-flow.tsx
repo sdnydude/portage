@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
+import { PhotoCapture } from "./photo-capture";
 
 /* ─────────────────────────────────────────────
    Types
@@ -395,10 +396,12 @@ function RecognitionPhase({
   state,
   onConfirm,
   onRetry,
+  onScan,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   onConfirm: () => void;
   onRetry: () => void;
+  onScan: () => void;
 }) {
   const photo = state.photos[state.primaryPhotoIndex];
   const candidate = state.recognition.candidates[state.recognition.selectedIndex];
@@ -434,8 +437,10 @@ function RecognitionPhase({
             inset: 0,
             background: "#111",
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
+            gap: 24,
           }}
         >
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="1.5">
@@ -443,6 +448,24 @@ function RecognitionPhase({
             <circle cx="8.5" cy="8.5" r="1.5" />
             <path d="M21 15l-5-5L5 21" />
           </svg>
+          <button
+            onClick={onScan}
+            style={{
+              background: "#F15A22",
+              color: "#fff",
+              border: "none",
+              borderRadius: 12,
+              padding: "14px 28px",
+              fontSize: 15,
+              fontWeight: 700,
+              fontFamily: "'Syne', sans-serif",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              cursor: "pointer",
+            }}
+          >
+            Scan Item
+          </button>
         </div>
       )}
 
@@ -1438,6 +1461,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const [phase, setPhase] = useState<Phase>("recognition");
   const [scanPercent, setScanPercent] = useState(0);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [showCapture, setShowCapture] = useState(false);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasFetchedComps = useRef(false);
 
@@ -1567,6 +1591,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
               reset();
               setPhase("recognition");
             }}
+            onScan={() => setShowCapture(true)}
           />
         )}
 
@@ -1643,6 +1668,18 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
           </div>
         )}
       </div>
+
+      {showCapture && (
+        <PhotoCapture
+          onPhotoCaptured={(photos) => {
+            setShowCapture(false);
+            if (photos.length > 0) {
+              flow.startFromPhoto(photos);
+            }
+          }}
+          onCancel={() => setShowCapture(false)}
+        />
+      )}
     </div>
   );
 }
