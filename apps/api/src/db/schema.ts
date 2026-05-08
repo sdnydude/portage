@@ -221,3 +221,23 @@ export const listingDrafts = pgTable('listing_drafts', {
 }, (t) => [
   unique('uq_drafts_user_item_mkt').on(t.userId, t.itemId, t.marketplace),
 ]);
+
+export const sellerProfiles = pgTable('seller_profiles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
+  ebayFulfillmentPolicyId: varchar('ebay_fulfillment_policy_id', { length: 100 }),
+  ebayPaymentPolicyId: varchar('ebay_payment_policy_id', { length: 100 }),
+  ebayReturnPolicyId: varchar('ebay_return_policy_id', { length: 100 }),
+  ebayMerchantLocationKey: varchar('ebay_merchant_location_key', { length: 100 }),
+  reverbOffersEnabled: boolean('reverb_offers_enabled').notNull().default(true),
+  reverbDefaultShipping: jsonb('reverb_default_shipping'),
+  shipFromAddress: jsonb('ship_from_address'),
+  defaultWeightUnit: varchar('default_weight_unit', { length: 5 }).notNull().default('oz'),
+  defaultDimensionUnit: varchar('default_dimension_unit', { length: 5 }).notNull().default('in'),
+  defaultPackageType: packageTypeEnum('default_package_type').notNull().default('box'),
+  preferredMarketplaces: jsonb('preferred_marketplaces').notNull().default(['ebay']),
+  autoPublish: boolean('auto_publish').notNull().default(false),
+  defaultCurrency: varchar('default_currency', { length: 3 }).notNull().default('USD'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
