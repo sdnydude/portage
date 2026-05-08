@@ -1,6 +1,6 @@
 import { pino } from 'pino';
 import { env } from '../lib/env.js';
-import { getEbayAccessToken, getEbayAppToken, invalidateEbayAppToken } from './token-manager.js';
+import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
 import type {
   MarketplaceAdapter,
   MarketplaceListingInput,
@@ -59,27 +59,52 @@ export class EbayAdapter implements MarketplaceAdapter {
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
     const sku = `portage-${Date.now()}`;
     const ebayCondition = CONDITION_MAP[input.condition] ?? 'GOOD';
+    const specific = input.marketplaceSpecific ?? {};
+
+    const product: Record<string, unknown> = {
+      title: input.title,
+      description: input.description,
+      imageUrls: input.photos.map((p) => p.url),
+    };
+
+    if (input.brand) product.brand = input.brand;
+    if (input.model) product.mpn = input.model;
+    if (specific.upc) product.upc = [specific.upc as string];
+    if (specific.epid) product.epid = specific.epid;
+    if (specific.aspects) product.aspects = specific.aspects;
+
+    const inventoryItem: Record<string, unknown> = {
+      availability: { shipToLocationAvailability: { quantity: 1 } },
+      condition: ebayCondition,
+      product,
+    };
+
+    if (specific.conditionDescription) {
+      inventoryItem.conditionDescription = specific.conditionDescription;
+    }
+
+    if (specific.weight || specific.dimensions) {
+      const pkg: Record<string, unknown> = {};
+      if (specific.weight) {
+        pkg.weight = specific.weight;
+      }
+      if (specific.dimensions) {
+        pkg.dimensions = specific.dimensions;
+      }
+      if (specific.packageType) {
+        pkg.packageType = specific.packageType;
+      }
+      inventoryItem.packageWeightAndSize = pkg;
+    }
 
     await this.request(`/sell/inventory/v1/inventory_item/${sku}`, {
       method: 'PUT',
-      body: JSON.stringify({
-        availability: {
-          shipToLocationAvailability: { quantity: 1 },
-        },
-        condition: ebayCondition,
-        product: {
-          title: input.title,
-          description: input.description,
-          imageUrls: input.photos.map((p) => p.url),
-          brand: input.brand,
-          mpn: input.model,
-        },
-      }),
+      body: JSON.stringify(inventoryItem),
     });
 
     logger.info({ userId: this.userId, sku }, 'eBay inventory item created');
 
-    const categoryId = input.marketplaceSpecific?.categoryId as string | undefined;
+    const categoryId = specific.categoryId as string | undefined;
 
     const offerData = await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
       method: 'POST',
@@ -92,11 +117,11 @@ export class EbayAdapter implements MarketplaceAdapter {
           price: { value: String(input.price), currency: input.currency },
         },
         categoryId: categoryId ?? '99',
-        merchantLocationKey: 'default',
+        merchantLocationKey: (specific.merchantLocationKey as string) ?? 'default',
         listingPolicies: {
-          fulfillmentPolicyId: input.marketplaceSpecific?.fulfillmentPolicyId,
-          paymentPolicyId: input.marketplaceSpecific?.paymentPolicyId,
-          returnPolicyId: input.marketplaceSpecific?.returnPolicyId,
+          fulfillmentPolicyId: specific.fulfillmentPolicyId,
+          paymentPolicyId: specific.paymentPolicyId,
+          returnPolicyId: specific.returnPolicyId,
         },
       }),
     });
@@ -255,12 +280,8 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   static async searchComps(query: string, category?: string): Promise<CompResult> {
-    const baseUrl = env().EBAY_SANDBOX
-      ? 'https://api.sandbox.ebay.com'
-      : 'https://api.ebay.com';
-
     const fetchListings = async (filters: string[], retry = true): Promise<CompListing[]> => {
-      const token = await getEbayAppToken();
+      const token = await getEbayProdAppToken();
       const params = new URLSearchParams({
         q: query,
         limit: '10',
@@ -272,7 +293,7 @@ export class EbayAdapter implements MarketplaceAdapter {
         params.append('category_ids', category);
       }
 
-      const response = await fetch(`${baseUrl}/buy/browse/v1/item_summary/search?${params}`, {
+      const response = await fetch(`https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
@@ -283,7 +304,7 @@ export class EbayAdapter implements MarketplaceAdapter {
         const body = await response.text();
         logger.error({ status: response.status, body, query }, 'eBay Browse API error');
         if ((response.status === 401 || response.status === 403) && retry) {
-          invalidateEbayAppToken();
+          invalidateEbayProdAppToken();
           return fetchListings(filters, false);
         }
         throw new Error(`eBay search failed (HTTP ${response.status})`);
@@ -352,5 +373,75 @@ export class EbayAdapter implements MarketplaceAdapter {
       },
       ...(partial && { partial: true }),
     };
+  }
+
+  static async getCategorySuggestion(query: string): Promise<{ categoryId: string; categoryName: string } | null> {
+    const token = await getEbayProdAppToken();
+
+    const response = await fetch(
+      `https://api.ebay.com/commerce/taxonomy/v1/category_tree/0/get_category_suggestions?q=${encodeURIComponent(query)}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      logger.error({ status: response.status, query }, 'eBay category suggestion failed');
+      return null;
+    }
+
+    const data = await response.json() as {
+      categorySuggestions?: Array<{
+        category: { categoryId: string; categoryName: string };
+      }>;
+    };
+
+    const first = data.categorySuggestions?.[0];
+    if (!first) return null;
+
+    return {
+      categoryId: first.category.categoryId,
+      categoryName: first.category.categoryName,
+    };
+  }
+
+  static async getRequiredAspects(categoryId: string): Promise<Record<string, { required: boolean; values: string[] | null }>> {
+    const token = await getEbayProdAppToken();
+
+    const response = await fetch(
+      `https://api.ebay.com/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category?category_id=${categoryId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      logger.error({ status: response.status, categoryId }, 'eBay aspects fetch failed');
+      return {};
+    }
+
+    const data = await response.json() as {
+      aspects?: Array<{
+        localizedAspectName: string;
+        aspectConstraint?: { aspectRequired?: boolean };
+        aspectValues?: Array<{ localizedValue: string }>;
+      }>;
+    };
+
+    const result: Record<string, { required: boolean; values: string[] | null }> = {};
+    for (const aspect of data.aspects ?? []) {
+      result[aspect.localizedAspectName] = {
+        required: aspect.aspectConstraint?.aspectRequired ?? false,
+        values: aspect.aspectValues?.map(v => v.localizedValue) ?? null,
+      };
+    }
+
+    return result;
   }
 }

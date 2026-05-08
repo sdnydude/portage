@@ -82,9 +82,15 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
 
 let cachedAppToken: { token: string; expiresAt: number } | null = null;
 let pendingAppTokenRequest: Promise<string> | null = null;
+let cachedProdAppToken: { token: string; expiresAt: number } | null = null;
+let pendingProdAppTokenRequest: Promise<string> | null = null;
 
 export function invalidateEbayAppToken(): void {
   cachedAppToken = null;
+}
+
+export function invalidateEbayProdAppToken(): void {
+  cachedProdAppToken = null;
 }
 
 export async function getEbayAppToken(): Promise<string> {
@@ -94,22 +100,43 @@ export async function getEbayAppToken(): Promise<string> {
 
   if (pendingAppTokenRequest) return pendingAppTokenRequest;
 
-  pendingAppTokenRequest = fetchEbayAppToken().finally(() => {
+  pendingAppTokenRequest = fetchEbayAppToken(false).finally(() => {
     pendingAppTokenRequest = null;
   });
   return pendingAppTokenRequest;
 }
 
-async function fetchEbayAppToken(): Promise<string> {
+export async function getEbayProdAppToken(): Promise<string> {
+  if (cachedProdAppToken && Date.now() < cachedProdAppToken.expiresAt - REFRESH_BUFFER_MS) {
+    return cachedProdAppToken.token;
+  }
+
+  if (pendingProdAppTokenRequest) return pendingProdAppTokenRequest;
+
+  pendingProdAppTokenRequest = fetchEbayAppToken(true).finally(() => {
+    pendingProdAppTokenRequest = null;
+  });
+  return pendingProdAppTokenRequest;
+}
+
+async function fetchEbayAppToken(forceProd: boolean): Promise<string> {
   const config = env();
-  if (!config.EBAY_CLIENT_ID || !config.EBAY_CLIENT_SECRET) {
+
+  const clientId = forceProd
+    ? (config.EBAY_PROD_CLIENT_ID || config.EBAY_CLIENT_ID)
+    : config.EBAY_CLIENT_ID;
+  const clientSecret = forceProd
+    ? (config.EBAY_PROD_CLIENT_SECRET || config.EBAY_CLIENT_SECRET)
+    : config.EBAY_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
     throw new Error('eBay credentials not configured');
   }
 
-  const credentials = Buffer.from(`${config.EBAY_CLIENT_ID}:${config.EBAY_CLIENT_SECRET}`).toString('base64');
-  const baseUrl = config.EBAY_SANDBOX
-    ? 'https://api.sandbox.ebay.com'
-    : 'https://api.ebay.com';
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const baseUrl = forceProd
+    ? 'https://api.ebay.com'
+    : (config.EBAY_SANDBOX ? 'https://api.sandbox.ebay.com' : 'https://api.ebay.com');
 
   const response = await fetch(`${baseUrl}/identity/v1/oauth2/token`, {
     method: 'POST',
@@ -125,7 +152,7 @@ async function fetchEbayAppToken(): Promise<string> {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    logger.error({ status: response.status, body: errorBody }, 'eBay app token request failed');
+    logger.error({ status: response.status, body: errorBody, forceProd }, 'eBay app token request failed');
     throw new Error('Failed to get eBay app token');
   }
 
@@ -134,11 +161,17 @@ async function fetchEbayAppToken(): Promise<string> {
     expires_in: number;
   };
 
-  cachedAppToken = {
+  const cached = {
     token: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000,
   };
 
-  logger.info('eBay app token acquired');
+  if (forceProd) {
+    cachedProdAppToken = cached;
+  } else {
+    cachedAppToken = cached;
+  }
+
+  logger.info({ prod: forceProd }, 'eBay app token acquired');
   return data.access_token;
 }
