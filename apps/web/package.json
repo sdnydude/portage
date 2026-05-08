@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "WATCHPACK_POLLING=true next dev --port 3002 --hostname 0.0.0.0 --webpack",
+    "dev": "WATCHPACK_POLLING=true next dev --port 3002 --hostname 0.0.0.0 --webpack --experimental-https --experimental-https-key ../../certs/key.pem --experimental-https-cert ../../certs/cert.pem",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",
-    "next": "16.2.4",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -21,7 +21,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "^16.2.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
