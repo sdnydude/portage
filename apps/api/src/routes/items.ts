@@ -134,6 +134,20 @@ itemsRouter.get('/:id/comps', async (req, res, next) => {
   }
 });
 
+itemsRouter.get('/comps/search', async (req, res, next) => {
+  try {
+    const q = req.query.q as string | undefined;
+    if (!q || q.trim().length < 3) {
+      throw new AppError(400, 'INVALID_QUERY', 'Query must be at least 3 characters');
+    }
+    const category = req.query.category as string | undefined;
+    const comps = await EbayAdapter.searchComps(q.slice(0, 200), category || undefined);
+    res.json(comps);
+  } catch (err) {
+    next(err);
+  }
+});
+
 itemsRouter.post('/', async (req, res, next) => {
   try {
     const userId = req.user!.sub;

@@ -380,7 +380,7 @@ function ChatMode({
   onPublish: () => void;
   onShowCapture: () => void;
 }) {
-  const { state, lastStep, setField, confirmRecognition, applyPricingStrategy } = flow;
+  const { state, lastStep, setField, confirmRecognition, fetchComps, applyPricingStrategy } = flow;
   const bottomRef = useRef<HTMLDivElement>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -546,7 +546,7 @@ function ChatMode({
           </InlineCard>
 
           <div style={{ display: "flex", gap: 10, marginLeft: 34 }}>
-            <Pill primary onClick={() => confirmRecognition(state.recognition.selectedIndex)}>
+            <Pill primary onClick={() => { confirmRecognition(state.recognition.selectedIndex); fetchComps(); }}>
               Looks right
             </Pill>
             <Pill outline onClick={() => flow.reset()}>

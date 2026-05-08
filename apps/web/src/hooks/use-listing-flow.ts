@@ -201,16 +201,31 @@ export function useListingFlow() {
   }, [triggerAutoSave]);
 
   const fetchComps = useCallback(async () => {
-    if (!token || !stateRef.current.inventoryItemId) {
+    if (!token) {
       setState(prev => ({ ...prev, compsStatus: 'failed' }));
       return;
     }
     setState(prev => ({ ...prev, compsStatus: 'loading' }));
     try {
-      const comps = await api<CompResult>(
-        `/items/${stateRef.current.inventoryItemId}/comps`,
-        { token }
-      );
+      let comps: CompResult;
+      if (stateRef.current.inventoryItemId) {
+        comps = await api<CompResult>(
+          `/items/${stateRef.current.inventoryItemId}/comps`,
+          { token }
+        );
+      } else {
+        const q = stateRef.current.title;
+        if (!q) {
+          setState(prev => ({ ...prev, compsStatus: 'failed' }));
+          return;
+        }
+        const params = new URLSearchParams({ q });
+        if (stateRef.current.category) params.set('category', stateRef.current.category);
+        comps = await api<CompResult>(
+          `/items/comps/search?${params}`,
+          { token }
+        );
+      }
       setState(prev => ({ ...prev, comps, compsStatus: 'loaded' }));
     } catch {
       setState(prev => ({ ...prev, compsStatus: 'failed' }));
