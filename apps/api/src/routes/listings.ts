@@ -47,7 +47,7 @@ listingsRouter.get('/', async (req, res, next) => {
 
     const conditions = [eq(listings.userId, userId)];
     if (status) conditions.push(eq(listings.status, status as 'draft' | 'active' | 'sold' | 'archived'));
-    if (marketplace) conditions.push(eq(listings.marketplace, marketplace as 'ebay' | 'etsy'));
+    if (marketplace) conditions.push(eq(listings.marketplace, marketplace as 'ebay' | 'etsy' | 'reverb'));
 
     const results = await db.select()
       .from(listings)

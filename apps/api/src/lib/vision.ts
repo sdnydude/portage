@@ -1,4 +1,5 @@
 import { analyzeImage } from './ai-client.js';
+import type { RecognitionCandidate } from '@portage/shared';
 
 export interface VisionResult {
   name: string;
@@ -80,7 +81,7 @@ Analyze the image and return a JSON object with:
 Order candidates by confidence (highest first). Respond with ONLY valid JSON.`;
 
 export interface DetailedVisionResult {
-  candidates: Array<VisionResult & { confidence: number }>;
+  candidates: RecognitionCandidate[];
   reasoning: string[];
 }
 
@@ -97,7 +98,19 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
   if (!json.candidates || !Array.isArray(json.candidates) || json.candidates.length === 0) {
     const flat = json as VisionResult;
     return {
-      candidates: [{ ...flat, confidence: 0.8 }],
+      candidates: [{
+        name: flat.name,
+        description: flat.description,
+        category: flat.category,
+        condition: flat.condition,
+        conditionNotes: flat.conditionNotes,
+        brand: flat.brand,
+        model: flat.model,
+        features: flat.suggestedTags,
+        estimatedValueLow: flat.estimatedValueLow,
+        estimatedValueHigh: flat.estimatedValueHigh,
+        confidence: 0.8,
+      }],
       reasoning: json.reasoning ?? ['Identified by visual analysis'],
     };
   }

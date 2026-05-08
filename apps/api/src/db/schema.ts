@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, jsonb, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, jsonb, pgEnum, unique } from 'drizzle-orm/pg-core';
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
 export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro']);
@@ -218,4 +218,6 @@ export const listingDrafts = pgTable('listing_drafts', {
   flowState: jsonb('flow_state').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [
+  unique('uq_drafts_user_item_mkt').on(t.userId, t.itemId, t.marketplace),
+]);
