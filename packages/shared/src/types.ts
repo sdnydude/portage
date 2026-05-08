@@ -276,7 +276,7 @@ export interface ListingFlowState {
   comps: CompResult | null;
   compsStatus: 'idle' | 'loading' | 'loaded' | 'failed';
 
-  marketplace: 'ebay' | 'reverb' | 'etsy';
+  marketplace: 'ebay' | 'etsy' | 'reverb';
 
   shippingMethod: ShippingMethod;
   shippingCost: number | null;
@@ -293,7 +293,7 @@ export interface ListingDraft {
   id: string;
   userId: string;
   itemId: string | null;
-  marketplace: 'ebay' | 'reverb' | 'etsy';
+  marketplace: 'ebay' | 'etsy' | 'reverb';
   title: string | null;
   price: number | null;
   status: string;
