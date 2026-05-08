@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { api, ApiError, API_BASE } from "@/lib/api";
 import { useAuth } from "./use-auth";
 import { useDrafts } from "./use-drafts";
@@ -53,7 +53,7 @@ export function useListingFlow() {
   const [lastStep, setLastStep] = useState<string>('idle');
   const [saveWarning, setSaveWarning] = useState(false);
   const stateRef = useRef(state);
-  stateRef.current = state;
+  useEffect(() => { stateRef.current = state; }, [state]);
 
   const triggerAutoSave = useCallback((newState: ListingFlowState, step?: string) => {
     const s = step ?? lastStep;

@@ -10,7 +10,6 @@ export function useDrafts() {
   const [drafts, setDrafts] = useState<ListingDraft[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryCountRef = useRef(0);
 
   const fetchDrafts = useCallback(async () => {
     if (!token) return;
@@ -41,34 +40,28 @@ export function useDrafts() {
     }
   ): Promise<ListingDraft | null> => {
     if (!token) return null;
-    try {
-      const draft = await api<ListingDraft>('/drafts', {
-        method: 'POST',
-        body: {
-          id: meta.draftId,
-          itemId: meta.itemId ?? null,
-          marketplace: meta.marketplace,
-          title: state.title || null,
-          price: state.price,
-          lastStepCompleted: meta.lastStepCompleted,
-          flowState: state,
-        },
-        token,
-      });
-      retryCountRef.current = 0;
-      return draft;
-    } catch {
-      retryCountRef.current++;
-      if (retryCountRef.current < 3) {
-        const delay = Math.pow(2, retryCountRef.current) * 1000;
-        return new Promise((resolve) => {
-          setTimeout(async () => {
-            resolve(await saveDraft(state, meta));
-          }, delay);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await api<ListingDraft>('/drafts', {
+          method: 'POST',
+          body: {
+            id: meta.draftId,
+            itemId: meta.itemId ?? null,
+            marketplace: meta.marketplace,
+            title: state.title || null,
+            price: state.price,
+            lastStepCompleted: meta.lastStepCompleted,
+            flowState: state,
+          },
+          token,
         });
+      } catch {
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, Math.pow(2, attempt + 1) * 1000));
+        }
       }
-      return null;
     }
+    return null;
   }, [token]);
 
   const debouncedSave = useCallback((
