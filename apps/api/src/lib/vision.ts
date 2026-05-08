@@ -1,4 +1,4 @@
-import { analyzeImage } from './ai-client.js';
+import { analyzeImage, chatText } from './ai-client.js';
 import type { RecognitionCandidate } from '@portage/shared';
 
 export interface VisionResult {
@@ -119,4 +119,104 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     candidates: json.candidates,
     reasoning: json.reasoning ?? [],
   };
+}
+
+const LISTING_FIELDS_SYSTEM_PROMPT = `You are a marketplace listing expert. Generate production-quality fields for selling a used item on eBay and optionally Reverb.
+
+RULES:
+- eBay title must be ≤80 characters. Pack keywords: Brand + Model + Key Attributes + Condition hint
+- Fill ALL required item specifics from the provided aspects list. Use "N/A" only as last resort.
+- Condition description must reference specific wear visible in photos (scratches, scuffs, patina, etc.)
+- If no wear is visible, say "Item appears to be in [condition] condition with no visible wear."
+- Price suggestion should target slightly below sold median for faster sale
+- Weight and dimensions are visual estimates — always flag as estimated
+- Determine if item is music gear (instruments, amps, pedals, audio equipment, accessories)
+- If music gear, fill Reverb fields. If not, set reverb to null and isMusicGear to false.
+
+OUTPUT: JSON matching the schema provided. No markdown, no explanation — ONLY valid JSON.`;
+
+export interface ListingFieldsInput {
+  scanData: {
+    brand: string;
+    model: string;
+    category: string;
+    condition: string;
+    conditionNotes: string;
+    features: string[];
+    description: string;
+  };
+  photoUrls: string[];
+  ebayCategorySuggestion: { categoryId: string; categoryName: string } | null;
+  requiredAspects: Record<string, { required: boolean; values: string[] | null }>;
+  soldComps: Array<{ title: string; price: number; condition: string; soldDate: string | null }>;
+  activeComps: Array<{ title: string; price: number; condition: string }>;
+  reverbComps: Array<{ title: string; price: number; condition: string }>;
+  sellerDefaults: {
+    weightUnit: string;
+    dimensionUnit: string;
+    packageType: string;
+    currency: string;
+  };
+}
+
+export interface ListingFieldsOutput {
+  title: string;
+  description: string;
+  condition: string;
+  conditionDescription: string;
+  brand: string;
+  model: string;
+  isMusicGear: boolean;
+  aiConfidence: number;
+  ebay: {
+    title: string;
+    categoryId: string;
+    categoryName: string;
+    condition: string;
+    conditionDescription: string;
+    aspects: Record<string, string[]>;
+    upc: string | null;
+    epid: string | null;
+    weight: { value: number; unit: string };
+    dimensions: { length: number; width: number; height: number; unit: string };
+    packageType: string;
+  } | null;
+  reverb: {
+    make: string;
+    model: string;
+    title: string;
+    categoryUuid: string;
+    categoryName: string;
+    conditionUuid: string;
+    conditionName: string;
+    year: string | null;
+    finish: string | null;
+    description: string;
+  } | null;
+}
+
+export async function generateListingFields(input: ListingFieldsInput): Promise<ListingFieldsOutput> {
+  const userPrompt = `ITEM SCAN DATA:
+${JSON.stringify(input.scanData, null, 2)}
+
+PHOTOS: ${JSON.stringify(input.photoUrls)}
+
+EBAY CATEGORY SUGGESTION: ${JSON.stringify(input.ebayCategorySuggestion)}
+
+REQUIRED ITEM SPECIFICS FOR THIS CATEGORY:
+${JSON.stringify(input.requiredAspects, null, 2)}
+
+SOLD COMPS (eBay): ${JSON.stringify(input.soldComps.slice(0, 10))}
+
+ACTIVE COMPS (eBay): ${JSON.stringify(input.activeComps.slice(0, 10))}
+
+REVERB COMPS: ${JSON.stringify(input.reverbComps.slice(0, 10))}
+
+SELLER DEFAULTS: ${JSON.stringify(input.sellerDefaults)}
+
+Generate all listing fields as JSON.`;
+
+  const { text } = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt);
+
+  return JSON.parse(extractJSON(text)) as ListingFieldsOutput;
 }

@@ -205,6 +205,20 @@ async function visionOpenAI(
   };
 }
 
+// ─── Text-only: systemPrompt + userPrompt → text ─────────
+
+export async function chatText(
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<{ text: string; provider: string; model: string }> {
+  return chat(
+    [{ role: 'user', content: userPrompt }],
+    systemPrompt,
+    [],
+    async () => '',
+  );
+}
+
 // ─── Chat: text + tools → text (with tool loop) ───────────
 
 export interface ToolDef {
