@@ -3,7 +3,7 @@ import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, jsonb,
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
 export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro']);
 export const conditionEnum = pgEnum('item_condition', ['new', 'like_new', 'good', 'fair', 'poor']);
-export const marketplaceEnum = pgEnum('marketplace_type', ['ebay', 'etsy']);
+export const marketplaceEnum = pgEnum('marketplace_type', ['ebay', 'etsy', 'reverb']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'active', 'sold', 'archived']);
 export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered']);
 export const notificationTypeEnum = pgEnum('notification_type', ['sale', 'buyer_message', 'listing_expiry', 'price_alert', 'shipping_reminder']);
@@ -34,6 +34,10 @@ export const users = pgTable('users', {
   shipFromAddress: jsonb('ship_from_address'),
   shippingAutoMark: boolean('shipping_auto_mark').notNull().default(false),
   hintsDismissed: jsonb('hints_dismissed').notNull().default([]),
+  listingInterface: text('listing_interface').notNull().default('hybrid'),
+  listingForkPref: text('listing_fork_pref').notNull().default('ask'),
+  listingForkCount: integer('listing_fork_count').notNull().default(0),
+  listingCompactMode: boolean('listing_compact_mode').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -200,4 +204,18 @@ export const disclaimerAcceptances = pgTable('disclaimer_acceptances', {
   disclaimerVersion: integer('disclaimer_version').notNull(),
   acceptedAt: timestamp('accepted_at').notNull().defaultNow(),
   ipAddress: varchar('ip_address', { length: 45 }),
+});
+
+export const listingDrafts = pgTable('listing_drafts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  itemId: uuid('item_id').references(() => items.id, { onDelete: 'cascade' }),
+  marketplace: marketplaceEnum('marketplace').notNull(),
+  title: varchar('title', { length: 500 }),
+  price: real('price'),
+  status: text('status').notNull().default('draft'),
+  lastStepCompleted: text('last_step_completed'),
+  flowState: jsonb('flow_state').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

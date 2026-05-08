@@ -54,7 +54,7 @@ export interface Listing {
   id: string;
   itemId: string;
   userId: string;
-  marketplace: 'ebay' | 'etsy';
+  marketplace: 'ebay' | 'etsy' | 'reverb';
   marketplaceListingId?: string;
   marketplaceSpecificFields?: Record<string, unknown>;
   status: 'draft' | 'active' | 'sold' | 'archived';
@@ -70,7 +70,7 @@ export interface Order {
   listingId: string;
   itemId: string;
   userId: string;
-  marketplace: 'ebay' | 'etsy';
+  marketplace: 'ebay' | 'etsy' | 'reverb';
   marketplaceOrderId: string;
   buyerUsername: string;
   salePrice: number;
@@ -118,7 +118,7 @@ export interface Notification {
 export interface MarketplaceAccount {
   id: string;
   userId: string;
-  marketplace: 'ebay' | 'etsy';
+  marketplace: 'ebay' | 'etsy' | 'reverb';
   accessTokenEncrypted: string;
   refreshTokenEncrypted: string;
   tokenExpiresAt: Date;
@@ -221,4 +221,91 @@ export interface DisclaimerAcceptance {
   disclaimerVersion: number;
   acceptedAt: Date;
   ipAddress?: string;
+}
+
+export interface RecognitionCandidate {
+  name: string;
+  description: string;
+  category: string;
+  condition: 'new' | 'like_new' | 'good' | 'fair' | 'poor';
+  conditionNotes: string;
+  brand: string | null;
+  model: string | null;
+  features: string[];
+  estimatedValueLow: number;
+  estimatedValueHigh: number;
+  confidence: number;
+}
+
+export interface RecognitionResult {
+  candidates: RecognitionCandidate[];
+  reasoning: string[];
+}
+
+export type ListingInterface = 'conversational' | 'swipe' | 'hybrid';
+export type ListingForkPref = 'ask' | 'list' | 'inventory';
+export type PricingStrategy = 'fast' | 'market' | 'max' | 'custom';
+export type ShippingMethod = 'calculated' | 'flat' | 'free';
+export type PackageSize = 'small' | 'medium' | 'large' | 'custom';
+
+export interface ListingFlowState {
+  photos: Array<{ url: string; key: string; width?: number; height?: number; isPrimary?: boolean }>;
+  primaryPhotoIndex: number;
+
+  recognition: {
+    status: 'idle' | 'recognizing' | 'complete' | 'failed';
+    candidates: RecognitionCandidate[];
+    selectedIndex: number;
+    reasoning: string[];
+    confidence: number;
+  };
+
+  title: string;
+  description: string;
+  category: string;
+  categoryPath: string[];
+  condition: string;
+  brand: string;
+  model: string;
+  features: string[];
+
+  price: number | null;
+  pricingStrategy: PricingStrategy;
+  acceptOffers: boolean;
+  minimumOfferPrice: number | null;
+  comps: CompResult | null;
+  compsStatus: 'idle' | 'loading' | 'loaded' | 'failed';
+
+  marketplace: 'ebay' | 'reverb' | 'etsy';
+
+  shippingMethod: ShippingMethod;
+  shippingCost: number | null;
+  packageSize: PackageSize;
+  weight: number | null;
+
+  draftId: string | null;
+  publishStatus: 'idle' | 'publishing' | 'published' | 'failed';
+  listingId: string | null;
+  inventoryItemId: string | null;
+}
+
+export interface ListingDraft {
+  id: string;
+  userId: string;
+  itemId: string | null;
+  marketplace: 'ebay' | 'reverb' | 'etsy';
+  title: string | null;
+  price: number | null;
+  status: string;
+  lastStepCompleted: string | null;
+  flowState: ListingFlowState;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface UserPreferences {
+  listingInterface: ListingInterface;
+  listingForkPref: ListingForkPref;
+  listingForkCount: number;
+  listingCompactMode: boolean;
 }

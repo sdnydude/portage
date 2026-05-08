@@ -12,10 +12,11 @@ import type { MarketplaceAdapter } from '@portage/shared';
 
 const logger = pino({ name: 'listings' });
 
-function getAdapter(userId: string, marketplace: 'ebay' | 'etsy'): MarketplaceAdapter {
+function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): MarketplaceAdapter {
   switch (marketplace) {
     case 'ebay': return new EbayAdapter(userId);
     case 'etsy': return new EtsyAdapter(userId);
+    case 'reverb': throw new AppError(501, 'NOT_IMPLEMENTED', 'Reverb adapter not yet available');
   }
 }
 

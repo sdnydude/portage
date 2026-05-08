@@ -536,6 +536,7 @@ adminRouter.get('/marketplace/health', async (_req, res, next) => {
     const summary = {
       ebay: { total: 0, healthy: 0, expiring: 0, expired: 0 },
       etsy: { total: 0, healthy: 0, expiring: 0, expired: 0 },
+      reverb: { total: 0, healthy: 0, expiring: 0, expired: 0 },
     };
 
     for (const a of enriched) {
