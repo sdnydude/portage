@@ -126,9 +126,26 @@ interface ListingFlowState {
 | `applyPricingStrategy(strategy)` | Sets price relative to comps (fast=below median, market=median, max=above) |
 | `addPhotos(photos)` | Appends photos to the listing |
 | `saveDraft()` | Persists full state snapshot to API (UPSERT) |
-| `publish()` | Validates required fields, submits to marketplace adapter |
-| `crossList(marketplace)` | Creates listing on another marketplace from same data |
+| `publish()` | Validates required fields (see table below), submits to marketplace adapter |
+| `crossList(marketplace)` | Opens listing flow pre-filled from published listing with target marketplace selected. User adjusts marketplace-specific fields (e.g., Reverb make/model) before publishing. NOT a silent fire-and-forget |
+| `resumeDraft(draftId)` | Loads draft from API, hydrates hook state, positions UI at `lastStepCompleted` |
+| `cancel()` | Calls `saveDraft()` then navigates back. Silent save — no confirm dialog since drafts auto-save |
 | `reset()` | Clears state for next listing |
+
+### Required Fields for Publish
+
+| Field | Required? | Fallback if empty |
+|-------|-----------|-------------------|
+| title | Yes | Block publish, highlight field |
+| price | Yes | Block publish, highlight field |
+| photos (at least 1) | Yes | Block publish, prompt camera |
+| marketplace | Yes | Default eBay, always set |
+| category | Yes (eBay + Reverb) | Block publish with "Select a category" prompt |
+| condition | Yes (eBay + Reverb) | Default "Good" if not set |
+| description | No | Empty is allowed |
+| shipping method | Yes (eBay) | Default "Calculated" |
+| make | Yes (Reverb only) | Block publish, highlight field |
+| model | Yes (Reverb only) | Block publish, highlight field |
 
 ### Draft Auto-Save Pattern
 
@@ -346,6 +363,8 @@ All endpoints require authentication (existing `requireAuth` middleware).
 | `/listings/:id` | GET | Listing detail with marketplace sync (existing, needs sync addition) |
 | `/listings/:id` | PATCH | Update listing (existing) |
 | `/listings/:id` | DELETE | End listing (existing) |
+| `/users/me/preferences` | GET | Read user preferences — listing_interface, fork_pref, compact_mode (new) |
+| `/users/me/preferences` | PATCH | Update user preferences (new) |
 
 No new marketplace adapter code needed — existing eBay/Reverb/Etsy adapters handle all publishing.
 
@@ -444,7 +463,8 @@ No onboarding picker. Users discover alternatives organically:
 | **Create** | `apps/api/src/routes/drafts.ts` |
 | **Modify** | `apps/api/src/db/schema.ts` (add listing_drafts, user pref columns) |
 | **Modify** | `apps/api/src/routes/scan.ts` (add ?detail=full) |
-| **Modify** | `apps/api/src/index.ts` (mount drafts router) |
+| **Create** | `apps/api/src/routes/preferences.ts` |
+| **Modify** | `apps/api/src/index.ts` (mount drafts + preferences routers) |
 | **Modify** | `apps/web/src/app/(tabs)/home/page.tsx` (empty state CTA, Photo FAB) |
 | **Modify** | `apps/web/src/app/inventory/[id]/page.tsx` ("List for Sale" button) |
 | **Modify** | `packages/shared/src/types.ts` (ListingFlowState, RecognitionResult types) |
