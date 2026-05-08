@@ -1,4 +1,5 @@
 import { analyzeImage } from './ai-client.js';
+import type { RecognitionCandidate } from '@portage/shared';
 
 export interface VisionResult {
   name: string;
@@ -63,4 +64,59 @@ export async function identifyItem(imageBase64: string, mediaType: string): Prom
   );
 
   return JSON.parse(extractJSON(text)) as VisionResult;
+}
+
+const DETAILED_SYSTEM_PROMPT = `You are Porter, an AI assistant for Portage — an inventory and marketplace seller app.
+Your job is to identify items from photos and provide multiple possible matches with reasoning.
+
+Analyze the image and return a JSON object with:
+- candidates: array of 1-3 possible matches, each with:
+  - name, description, category, condition, conditionNotes
+  - brand (string|null), model (string|null), features (string[])
+  - estimatedValueLow (int), estimatedValueHigh (int)
+  - confidence (float 0-1, your confidence this is the correct identification)
+- reasoning: array of 3-5 strings explaining what visual features led to the identification
+  (e.g. "Pointed pocket flaps indicate Type III", "Tab logo suggests pre-1971")
+
+Order candidates by confidence (highest first). Respond with ONLY valid JSON.`;
+
+export interface DetailedVisionResult {
+  candidates: RecognitionCandidate[];
+  reasoning: string[];
+}
+
+export async function identifyItemDetailed(imageBase64: string, mediaType: string): Promise<DetailedVisionResult> {
+  const { text } = await analyzeImage(
+    imageBase64,
+    mediaType,
+    DETAILED_SYSTEM_PROMPT,
+    'Identify this item with multiple candidates and reasoning.',
+  );
+
+  const json = JSON.parse(extractJSON(text));
+
+  if (!json.candidates || !Array.isArray(json.candidates) || json.candidates.length === 0) {
+    const flat = json as VisionResult;
+    return {
+      candidates: [{
+        name: flat.name,
+        description: flat.description,
+        category: flat.category,
+        condition: flat.condition,
+        conditionNotes: flat.conditionNotes,
+        brand: flat.brand,
+        model: flat.model,
+        features: flat.suggestedTags,
+        estimatedValueLow: flat.estimatedValueLow,
+        estimatedValueHigh: flat.estimatedValueHigh,
+        confidence: 0.8,
+      }],
+      reasoning: json.reasoning ?? ['Identified by visual analysis'],
+    };
+  }
+
+  return {
+    candidates: json.candidates,
+    reasoning: json.reasoning ?? [],
+  };
 }

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { pino } from 'pino';
 import { requireAuth } from '../middleware/auth.js';
-import { identifyItem } from '../lib/vision.js';
+import { identifyItem, identifyItemDetailed } from '../lib/vision.js';
 import { processImage } from '../lib/image.js';
 import { uploadImage } from '../lib/storage.js';
 import { AppError } from '../middleware/error.js';
@@ -57,7 +57,18 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
     const processed = await processImage(req.file.buffer);
 
     const imageBase64 = processed.buffer.toString('base64');
-    const identification = await identifyItem(imageBase64, 'image/webp');
+
+    const detail = req.query.detail as string | undefined;
+
+    let identification;
+    let detailedResult;
+
+    if (detail === 'full') {
+      detailedResult = await identifyItemDetailed(imageBase64, 'image/webp');
+      identification = detailedResult.candidates[0];
+    } else {
+      identification = await identifyItem(imageBase64, 'image/webp');
+    }
 
     let mainImage: { key: string; url: string } | null = null;
     let thumbnailResult: { key: string; url: string } | null = null;
@@ -82,6 +93,7 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
 
     res.status(201).json({
       identification,
+      ...(detailedResult && { detailed: detailedResult }),
       image: mainImage ? {
         key: mainImage.key,
         url: mainImage.url,

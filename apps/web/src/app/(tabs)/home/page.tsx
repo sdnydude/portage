@@ -235,10 +235,10 @@ export default function HomePage() {
               className="font-[family-name:var(--font-instrument)] font-semibold text-text-primary mb-2"
               style={{ fontSize: "var(--text-headline)" }}
             >
-              Start your inventory
+              Add Your First Item
             </h2>
             <p className="text-text-secondary mb-4" style={{ fontSize: "var(--text-body)" }}>
-              Tap the Scan button below to photograph your first item. Porter will identify it instantly.
+              Snap a photo to get started. Porter will identify it and help you list it for sale.
             </p>
           </div>
         )}
@@ -405,6 +405,19 @@ export default function HomePage() {
           </div>
         )}
       </div>
+
+      {/* Photo FAB */}
+      <Link
+        href="/list"
+        className="fixed bottom-24 right-6 z-50 w-14 h-14 rounded-full bg-forest-green text-white shadow-lg flex items-center justify-center hover:bg-forest-green/90 active:scale-95 transition-all"
+        style={{ boxShadow: '0 4px 20px rgba(45,90,39,0.3)' }}
+        aria-label="List an item"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+          <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+          <circle cx="12" cy="13" r="4" />
+        </svg>
+      </Link>
     </div>
   );
 }

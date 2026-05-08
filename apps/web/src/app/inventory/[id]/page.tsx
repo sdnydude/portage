@@ -358,6 +358,12 @@ export default function ItemDetailPage() {
           >
             List on Marketplace
           </button>
+          <button
+            onClick={() => router.push(`/list?itemId=${item.id}`)}
+            className="w-full py-3 rounded-xl border-2 border-forest-green text-forest-green text-sm font-semibold hover:bg-forest-green-50 transition-colors"
+          >
+            List for Sale
+          </button>
 
           {/* Comparable Listings */}
           <div className="space-y-3">
