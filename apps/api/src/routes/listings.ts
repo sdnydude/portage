@@ -22,7 +22,7 @@ function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): Ma
 
 const createListingSchema = z.object({
   itemId: z.string().uuid(),
-  marketplace: z.enum(['ebay', 'etsy']),
+  marketplace: z.enum(['ebay', 'etsy', 'reverb']),
   price: z.number().positive(),
   currency: z.string().length(3).default('USD'),
   publishImmediately: z.boolean().default(false),
