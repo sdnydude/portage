@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { pino } from 'pino';
 import { requireAuth } from '../middleware/auth.js';
-import { processImage, generateThumbnail, enhanceImage } from '../lib/image.js';
+import { processImage, generateThumbnail, enhanceImage, rotateImage, cropImage } from '../lib/image.js';
 import { uploadImage, deleteImage, getImage } from '../lib/storage.js';
 import { z } from 'zod';
 import { AppError } from '../middleware/error.js';
@@ -183,6 +183,109 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
         key: uploaded.key,
         url: uploaded.url,
         size: resultBuffer.length,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const rotateSchema = z.object({
+  imageUrl: z.string().url(),
+  degrees: z.union([z.literal(90), z.literal(180), z.literal(270)]),
+});
+
+imagesRouter.post('/rotate', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { imageUrl, degrees } = rotateSchema.parse(req.body);
+
+    if (!isAllowedImageOrigin(imageUrl)) {
+      throw new AppError(400, 'INVALID_ORIGIN', 'Image URL must be from Portage storage');
+    }
+
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new AppError(400, 'FETCH_FAILED', 'Could not fetch the image');
+    }
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+    const inputBuffer = Buffer.from(arrayBuffer);
+
+    const rotated = await rotateImage(inputBuffer, degrees);
+    const uploaded = await uploadImage(userId, rotated.buffer, 'image/webp', '_rotated.webp');
+
+    logger.info({ userId, key: uploaded.key, degrees }, 'Image rotated');
+
+    res.json({
+      image: {
+        key: uploaded.key,
+        url: uploaded.url,
+        width: rotated.width,
+        height: rotated.height,
+        size: rotated.size,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const cropSchema = z.object({
+  imageUrl: z.string().url(),
+  crop: z.object({
+    x: z.number().min(0),
+    y: z.number().min(0),
+    width: z.number().positive(),
+    height: z.number().positive(),
+  }),
+});
+
+imagesRouter.post('/crop', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { imageUrl, crop } = cropSchema.parse(req.body);
+
+    if (!isAllowedImageOrigin(imageUrl)) {
+      throw new AppError(400, 'INVALID_ORIGIN', 'Image URL must be from Portage storage');
+    }
+
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new AppError(400, 'FETCH_FAILED', 'Could not fetch the image');
+    }
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+    const inputBuffer = Buffer.from(arrayBuffer);
+
+    const cropped = await cropImage(inputBuffer, crop);
+    const uploaded = await uploadImage(userId, cropped.buffer, 'image/webp', '_cropped.webp');
+
+    logger.info({ userId, key: uploaded.key }, 'Image cropped');
+
+    res.json({
+      image: {
+        key: uploaded.key,
+        url: uploaded.url,
+        width: cropped.width,
+        height: cropped.height,
+        size: cropped.size,
       },
     });
   } catch (err) {

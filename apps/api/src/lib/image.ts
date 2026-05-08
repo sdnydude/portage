@@ -80,3 +80,37 @@ export async function generateThumbnail(input: Buffer, size: number = 400): Prom
     .webp({ quality: 75 })
     .toBuffer();
 }
+
+export async function rotateImage(input: Buffer, degrees: 90 | 180 | 270): Promise<ProcessedImage> {
+  const image = sharp(input).rotate(degrees).webp({ quality: QUALITY });
+  const buffer = await image.toBuffer();
+  const meta = await sharp(buffer).metadata();
+
+  return {
+    buffer,
+    width: meta.width!,
+    height: meta.height!,
+    format: 'webp',
+    size: buffer.length,
+  };
+}
+
+export async function cropImage(
+  input: Buffer,
+  crop: { x: number; y: number; width: number; height: number },
+): Promise<ProcessedImage> {
+  const image = sharp(input)
+    .extract({ left: Math.round(crop.x), top: Math.round(crop.y), width: Math.round(crop.width), height: Math.round(crop.height) })
+    .webp({ quality: QUALITY });
+
+  const buffer = await image.toBuffer();
+  const meta = await sharp(buffer).metadata();
+
+  return {
+    buffer,
+    width: meta.width!,
+    height: meta.height!,
+    format: 'webp',
+    size: buffer.length,
+  };
+}
