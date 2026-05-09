@@ -13,6 +13,29 @@ import type {
 
 const logger = pino({ name: 'ebay-adapter' });
 
+const BROWSE_CONDITION_NORMALIZE: Record<string, string> = {
+  'New': 'NEW',
+  'New other (see details)': 'NEW',
+  'New with defects': 'LIKE_NEW',
+  'New with tags': 'NEW',
+  'New without tags': 'LIKE_NEW',
+  'Certified - Refurbished': 'LIKE_NEW',
+  'Seller refurbished': 'LIKE_NEW',
+  'Excellent - Refurbished': 'LIKE_NEW',
+  'Very Good - Refurbished': 'VERY_GOOD',
+  'Good - Refurbished': 'GOOD',
+  'Like New': 'LIKE_NEW',
+  'Very Good': 'VERY_GOOD',
+  'Good': 'GOOD',
+  'Acceptable': 'ACCEPTABLE',
+  'For parts or not working': 'ACCEPTABLE',
+};
+
+function normalizeEbayCondition(raw: string | undefined): string {
+  if (!raw) return 'UNKNOWN';
+  return BROWSE_CONDITION_NORMALIZE[raw] ?? raw.toUpperCase().replace(/\s+/g, '_');
+}
+
 const CONDITION_MAP: Record<string, string> = {
   new: 'NEW',
   like_new: 'LIKE_NEW',
@@ -284,7 +307,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       const token = await getEbayProdAppToken();
       const params = new URLSearchParams({
         q: query,
-        limit: '10',
+        limit: '25',
       });
       for (const f of filters) {
         params.append('filter', f);
@@ -325,7 +348,7 @@ export class EbayAdapter implements MarketplaceAdapter {
         title: item.title,
         price: parseFloat(item.price.value),
         currency: item.price.currency,
-        condition: item.condition ?? 'Unknown',
+        condition: normalizeEbayCondition(item.condition),
         imageUrl: item.image?.imageUrl ?? null,
         listingUrl: item.itemWebUrl,
         soldDate: item.itemEndDate ?? null,

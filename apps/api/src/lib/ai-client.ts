@@ -100,6 +100,13 @@ function chatChain(): ProviderConfig[] {
   return buildChain(env().CHAT_PROVIDERS);
 }
 
+// ─── Shared options ────────────────────────────────────────
+
+export interface AIOptions {
+  temperature?: number;
+  maxTokens?: number;
+}
+
 // ─── Vision: image → structured text ───────────────────────
 
 export async function analyzeImage(
@@ -107,6 +114,7 @@ export async function analyzeImage(
   mediaType: string,
   systemPrompt: string,
   userPrompt: string,
+  options?: AIOptions,
 ): Promise<{ text: string; provider: string; model: string; inputTokens: number; outputTokens: number }> {
   const chain = visionChain();
   const startTime = Date.now();
@@ -115,8 +123,8 @@ export async function analyzeImage(
     const config = chain[i];
     try {
       const result = config.type === 'openai'
-        ? await visionOpenAI(config, imageBase64, mediaType, systemPrompt, userPrompt)
-        : await visionAnthropic(config, imageBase64, mediaType, systemPrompt, userPrompt);
+        ? await visionOpenAI(config, imageBase64, mediaType, systemPrompt, userPrompt, options)
+        : await visionAnthropic(config, imageBase64, mediaType, systemPrompt, userPrompt, options);
 
       logger.info({
         provider: config.name,
@@ -143,12 +151,14 @@ async function visionAnthropic(
   mediaType: string,
   systemPrompt: string,
   userPrompt: string,
+  options?: AIOptions,
 ) {
   const client = new Anthropic({ apiKey: config.apiKey });
 
   const response = await client.messages.create({
     model: config.visionModel,
-    max_tokens: 1024,
+    max_tokens: options?.maxTokens ?? 1024,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
     system: systemPrompt,
     messages: [{
       role: 'user',
@@ -166,9 +176,12 @@ async function visionAnthropic(
     }],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const firstBlock = response.content[0];
+  if (!firstBlock || firstBlock.type !== 'text') {
+    throw new Error(`Unexpected Anthropic response: content[0] type was '${firstBlock?.type ?? 'undefined'}', stop_reason was '${response.stop_reason}'`);
+  }
   return {
-    text,
+    text: firstBlock.text,
     model: response.model,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
@@ -181,12 +194,14 @@ async function visionOpenAI(
   mediaType: string,
   systemPrompt: string,
   userPrompt: string,
+  options?: AIOptions,
 ) {
   const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
 
   const response = await client.chat.completions.create({
     model: config.visionModel,
-    max_tokens: 1024,
+    max_tokens: options?.maxTokens ?? 1024,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
@@ -208,17 +223,145 @@ async function visionOpenAI(
   };
 }
 
+// ─── Multi-image vision ────────────────────────────────────
+
+export interface ImageInput {
+  base64: string;
+  mediaType: string;
+}
+
+export async function analyzeImages(
+  images: ImageInput[],
+  systemPrompt: string,
+  userPrompt: string,
+  options?: AIOptions,
+): Promise<{ text: string; provider: string; model: string; inputTokens: number; outputTokens: number }> {
+  const chain = visionChain();
+  const startTime = Date.now();
+
+  for (let i = 0; i < chain.length; i++) {
+    const config = chain[i];
+    try {
+      const result = config.type === 'openai'
+        ? await visionMultiOpenAI(config, images, systemPrompt, userPrompt, options)
+        : await visionMultiAnthropic(config, images, systemPrompt, userPrompt, options);
+
+      logger.info({
+        provider: config.name,
+        model: result.model,
+        imageCount: images.length,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        elapsed: Date.now() - startTime,
+        fallbacks: i,
+      }, 'Multi-image vision analysis complete');
+
+      return { ...result, provider: config.name };
+    } catch (err) {
+      logger.warn({ provider: config.name, error: (err as Error).message }, 'Vision provider failed');
+      if (i === chain.length - 1) throw err;
+    }
+  }
+
+  throw new Error('All vision providers failed');
+}
+
+async function visionMultiAnthropic(
+  config: ProviderConfig,
+  images: ImageInput[],
+  systemPrompt: string,
+  userPrompt: string,
+  options?: AIOptions,
+) {
+  const client = new Anthropic({ apiKey: config.apiKey });
+
+  const imageBlocks: Anthropic.ImageBlockParam[] = images.map(img => ({
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+      data: img.base64,
+    },
+  }));
+
+  const response = await client.messages.create({
+    model: config.visionModel,
+    max_tokens: options?.maxTokens ?? 4096,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
+    system: systemPrompt,
+    messages: [{
+      role: 'user',
+      content: [
+        ...imageBlocks,
+        { type: 'text', text: userPrompt },
+      ],
+    }],
+  });
+
+  const firstBlock = response.content[0];
+  if (!firstBlock || firstBlock.type !== 'text') {
+    throw new Error(`Unexpected Anthropic response: content[0] type was '${firstBlock?.type ?? 'undefined'}', stop_reason was '${response.stop_reason}'`);
+  }
+  return {
+    text: firstBlock.text,
+    model: response.model,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+  };
+}
+
+async function visionMultiOpenAI(
+  config: ProviderConfig,
+  images: ImageInput[],
+  systemPrompt: string,
+  userPrompt: string,
+  options?: AIOptions,
+) {
+  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
+
+  const imageBlocks = images.map(img => ({
+    type: 'image_url' as const,
+    image_url: { url: `data:${img.mediaType};base64,${img.base64}` },
+  }));
+
+  const response = await client.chat.completions.create({
+    model: config.visionModel,
+    max_tokens: options?.maxTokens ?? 4096,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
+    response_format: { type: 'json_object' as const },
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: [
+          ...imageBlocks,
+          { type: 'text' as const, text: userPrompt },
+        ],
+      },
+    ],
+  });
+
+  return {
+    text: response.choices[0]?.message?.content || '',
+    model: response.model || config.visionModel,
+    inputTokens: response.usage?.prompt_tokens || 0,
+    outputTokens: response.usage?.completion_tokens || 0,
+  };
+}
+
 // ─── Text-only: systemPrompt + userPrompt → text ─────────
 
 export async function chatText(
   systemPrompt: string,
   userPrompt: string,
+  options?: AIOptions,
 ): Promise<{ text: string; provider: string; model: string }> {
   return chat(
     [{ role: 'user', content: userPrompt }],
     systemPrompt,
     [],
     async () => '',
+    options,
   );
 }
 
@@ -235,6 +378,7 @@ export async function chat(
   systemPrompt: string,
   tools: ToolDef[],
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
+  options?: AIOptions,
 ): Promise<{ text: string; provider: string; model: string }> {
   const chain = chatChain();
   const startTime = Date.now();
@@ -243,8 +387,8 @@ export async function chat(
     const config = chain[i];
     try {
       const result = config.type === 'openai'
-        ? await chatOpenAI(config, history, systemPrompt, tools, executeTool)
-        : await chatAnthropic(config, history, systemPrompt, tools, executeTool);
+        ? await chatOpenAI(config, history, systemPrompt, tools, executeTool, options)
+        : await chatAnthropic(config, history, systemPrompt, tools, executeTool, options);
 
       logger.info({
         provider: config.name,
@@ -269,6 +413,7 @@ async function chatAnthropic(
   systemPrompt: string,
   tools: ToolDef[],
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
+  options?: AIOptions,
 ): Promise<{ text: string; model: string }> {
   const client = new Anthropic({ apiKey: config.apiKey });
 
@@ -283,9 +428,12 @@ async function chatAnthropic(
     content: m.content,
   }));
 
+  const maxTokens = options?.maxTokens ?? 1024;
+
   let response = await client.messages.create({
     model: config.chatModel,
-    max_tokens: 1024,
+    max_tokens: maxTokens,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
     system: systemPrompt,
     tools: anthropicTools,
     messages,
@@ -313,7 +461,8 @@ async function chatAnthropic(
 
     response = await client.messages.create({
       model: config.chatModel,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
+      ...(options?.temperature !== undefined && { temperature: options.temperature }),
       system: systemPrompt,
       tools: anthropicTools,
       messages,
@@ -336,6 +485,7 @@ async function chatOpenAI(
   systemPrompt: string,
   tools: ToolDef[],
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
+  options?: AIOptions,
 ): Promise<{ text: string; model: string }> {
   const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
 
@@ -352,9 +502,12 @@ async function chatOpenAI(
     })),
   ];
 
+  const maxTokens = options?.maxTokens ?? 1024;
+
   let response = await client.chat.completions.create({
     model: config.chatModel,
-    max_tokens: 1024,
+    max_tokens: maxTokens,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
     tools: openaiTools,
     messages,
   });
@@ -378,7 +531,8 @@ async function chatOpenAI(
 
     response = await client.chat.completions.create({
       model: config.chatModel,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
+      ...(options?.temperature !== undefined && { temperature: options.temperature }),
       tools: openaiTools,
       messages,
     });
