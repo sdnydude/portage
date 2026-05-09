@@ -1,19 +1,11 @@
 #!/usr/bin/env bash
 # Memory sync on session stop / disconnect
-# Phase 1 (immediate): CodeGraph sync + .remember/ consolidation — free, <1s
-# Phase 2 (background): Full /sync-memory via claude CLI — spawns a new session
+# Bash-only, <1s. Full sync handled by 6am cron.
 
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_DIR"
-
-LOCKFILE="/tmp/portage-memory-sync.lock"
-CLAUDE_BIN="/home/swebber64/.local/bin/claude"
-LOG_DIR="$PROJECT_DIR/.remember/logs"
-mkdir -p "$LOG_DIR"
-
-# --- Phase 1: Immediate (bash-only, no cost) ---
 
 # CodeGraph sync
 if [ -d .codegraph ]; then
@@ -33,31 +25,5 @@ if [ -f "$NOW_FILE" ] && [ -s "$NOW_FILE" ]; then
   fi
   echo "" > "$NOW_FILE"
 fi
-
-# --- Phase 2: Background full sync (claude CLI) ---
-
-# Skip if another sync is already running
-if [ -f "$LOCKFILE" ]; then
-  LOCK_PID=$(cat "$LOCKFILE" 2>/dev/null)
-  if kill -0 "$LOCK_PID" 2>/dev/null; then
-    exit 0
-  fi
-  rm -f "$LOCKFILE"
-fi
-
-# Skip if claude CLI not available
-if [ ! -x "$CLAUDE_BIN" ]; then
-  exit 0
-fi
-
-# Spawn background claude session for full sync
-(
-  echo $$ > "$LOCKFILE"
-  SYNC_MODE=light "$CLAUDE_BIN" -p "Run /sync-memory — light mode, consolidation and metrics only." \
-    --allowedTools "Bash,Read,Write,Edit" \
-    --max-turns 10 \
-    > "$LOG_DIR/sync-$(date +%Y%m%d-%H%M%S).log" 2>&1
-  rm -f "$LOCKFILE"
-) &
 
 exit 0
