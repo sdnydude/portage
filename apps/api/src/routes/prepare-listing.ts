@@ -118,7 +118,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
 
     const photos = (item.photos as Array<{ url: string }>) ?? [];
     const photoUrls = photos.map(p => p.url);
-    const searchQuery = [item.brand, item.model].filter(Boolean).join(' ') || item.title;
+    const searchQuery = item.title || [item.brand, item.model].filter(Boolean).join(' ');
 
     let categorySuggestion: { categoryId: string; categoryName: string } | null = null;
     try {
