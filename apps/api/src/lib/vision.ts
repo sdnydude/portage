@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { analyzeImage, chatText } from './ai-client.js';
+import { pino } from 'pino';
+import { analyzeImage, analyzeImages, chatText } from './ai-client.js';
+import type { ImageInput } from './ai-client.js';
+
+const visionLogger = pino({ name: 'vision' });
 import { AppError } from '../middleware/error.js';
 import type { RecognitionCandidate } from '@portage/shared';
 
@@ -280,11 +284,28 @@ export interface ListingFieldsOutput {
   } | null;
 }
 
+async function fetchPhotosAsBase64(urls: string[], limit: number): Promise<ImageInput[]> {
+  const selected = urls.slice(0, limit);
+  const results: ImageInput[] = [];
+
+  for (const url of selected) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const contentType = res.headers.get('content-type') || 'image/webp';
+      const buffer = Buffer.from(await res.arrayBuffer());
+      results.push({ base64: buffer.toString('base64'), mediaType: contentType });
+    } catch {
+      visionLogger.warn({ url }, 'Failed to fetch photo for vision — skipping');
+    }
+  }
+
+  return results;
+}
+
 export async function generateListingFields(input: ListingFieldsInput): Promise<ListingFieldsOutput> {
   const userPrompt = `ITEM SCAN DATA:
 ${JSON.stringify(input.scanData, null, 2)}
-
-PHOTOS: ${JSON.stringify(input.photoUrls)}
 
 EBAY CATEGORY SUGGESTION: ${JSON.stringify(input.ebayCategorySuggestion)}
 
@@ -301,12 +322,21 @@ SELLER DEFAULTS: ${JSON.stringify(input.sellerDefaults)}
 
 Generate all listing fields as JSON.`;
 
-  const { text } = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
+  const images = await fetchPhotosAsBase64(input.photoUrls, 5);
+
+  let text: string;
+  if (images.length > 0) {
+    const result = await analyzeImages(images, LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
+    text = result.text;
+  } else {
+    const result = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
+    text = result.text;
+  }
 
   const parsed = JSON.parse(extractJSON(text));
-  const result = ListingFieldsOutputSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new AppError(502, 'AI_RESPONSE_INVALID', `AI listing fields returned invalid response: ${result.error.message}`);
+  const validated = ListingFieldsOutputSchema.safeParse(parsed);
+  if (!validated.success) {
+    throw new AppError(502, 'AI_RESPONSE_INVALID', `AI listing fields returned invalid response: ${validated.error.message}`);
   }
-  return result.data as ListingFieldsOutput;
+  return validated.data as ListingFieldsOutput;
 }

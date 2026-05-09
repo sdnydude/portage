@@ -220,6 +220,129 @@ async function visionOpenAI(
   };
 }
 
+// ─── Multi-image vision ────────────────────────────────────
+
+export interface ImageInput {
+  base64: string;
+  mediaType: string;
+}
+
+export async function analyzeImages(
+  images: ImageInput[],
+  systemPrompt: string,
+  userPrompt: string,
+  options?: AIOptions,
+): Promise<{ text: string; provider: string; model: string; inputTokens: number; outputTokens: number }> {
+  const chain = visionChain();
+  const startTime = Date.now();
+
+  for (let i = 0; i < chain.length; i++) {
+    const config = chain[i];
+    try {
+      const result = config.type === 'openai'
+        ? await visionMultiOpenAI(config, images, systemPrompt, userPrompt, options)
+        : await visionMultiAnthropic(config, images, systemPrompt, userPrompt, options);
+
+      logger.info({
+        provider: config.name,
+        model: result.model,
+        imageCount: images.length,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        elapsed: Date.now() - startTime,
+        fallbacks: i,
+      }, 'Multi-image vision analysis complete');
+
+      return { ...result, provider: config.name };
+    } catch (err) {
+      logger.warn({ provider: config.name, error: (err as Error).message }, 'Vision provider failed');
+      if (i === chain.length - 1) throw err;
+    }
+  }
+
+  throw new Error('All vision providers failed');
+}
+
+async function visionMultiAnthropic(
+  config: ProviderConfig,
+  images: ImageInput[],
+  systemPrompt: string,
+  userPrompt: string,
+  options?: AIOptions,
+) {
+  const client = new Anthropic({ apiKey: config.apiKey });
+
+  const imageBlocks: Anthropic.ImageBlockParam[] = images.map(img => ({
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+      data: img.base64,
+    },
+  }));
+
+  const response = await client.messages.create({
+    model: config.visionModel,
+    max_tokens: options?.maxTokens ?? 4096,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
+    system: systemPrompt,
+    messages: [{
+      role: 'user',
+      content: [
+        ...imageBlocks,
+        { type: 'text', text: userPrompt },
+      ],
+    }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  return {
+    text,
+    model: response.model,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+  };
+}
+
+async function visionMultiOpenAI(
+  config: ProviderConfig,
+  images: ImageInput[],
+  systemPrompt: string,
+  userPrompt: string,
+  options?: AIOptions,
+) {
+  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
+
+  const imageBlocks = images.map(img => ({
+    type: 'image_url' as const,
+    image_url: { url: `data:${img.mediaType};base64,${img.base64}` },
+  }));
+
+  const response = await client.chat.completions.create({
+    model: config.visionModel,
+    max_tokens: options?.maxTokens ?? 4096,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
+    response_format: { type: 'json_object' as const },
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: [
+          ...imageBlocks,
+          { type: 'text' as const, text: userPrompt },
+        ],
+      },
+    ],
+  });
+
+  return {
+    text: response.choices[0]?.message?.content || '',
+    model: response.model || config.visionModel,
+    inputTokens: response.usage?.prompt_tokens || 0,
+    outputTokens: response.usage?.completion_tokens || 0,
+  };
+}
+
 // ─── Text-only: systemPrompt + userPrompt → text ─────────
 
 export async function chatText(
