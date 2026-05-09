@@ -176,9 +176,12 @@ async function visionAnthropic(
     }],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const firstBlock = response.content[0];
+  if (!firstBlock || firstBlock.type !== 'text') {
+    throw new Error(`Unexpected Anthropic response: content[0] type was '${firstBlock?.type ?? 'undefined'}', stop_reason was '${response.stop_reason}'`);
+  }
   return {
-    text,
+    text: firstBlock.text,
     model: response.model,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
@@ -295,9 +298,12 @@ async function visionMultiAnthropic(
     }],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const firstBlock = response.content[0];
+  if (!firstBlock || firstBlock.type !== 'text') {
+    throw new Error(`Unexpected Anthropic response: content[0] type was '${firstBlock?.type ?? 'undefined'}', stop_reason was '${response.stop_reason}'`);
+  }
   return {
-    text,
+    text: firstBlock.text,
     model: response.model,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,

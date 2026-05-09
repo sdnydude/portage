@@ -123,8 +123,8 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     let categorySuggestion: { categoryId: string; categoryName: string } | null = null;
     try {
       categorySuggestion = await EbayAdapter.getCategorySuggestion(searchQuery);
-    } catch {
-      logger.warn({ searchQuery }, 'Category suggestion failed — searching without category');
+    } catch (err) {
+      logger.warn({ searchQuery, error: (err as Error).message }, 'Category suggestion failed — searching without category');
     }
 
     const [ebayCompsResult, aspectsResult, reverbCompsResult] = await Promise.allSettled([
@@ -136,6 +136,16 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
         ? ReverbAdapter.searchComps(searchQuery)
         : Promise.resolve({ listings: [], stats: { median: null, avg: null, sampleSize: 0 } }),
     ]);
+
+    if (ebayCompsResult.status === 'rejected') {
+      logger.warn({ error: (ebayCompsResult.reason as Error).message, searchQuery }, 'eBay comps fetch failed');
+    }
+    if (reverbCompsResult.status === 'rejected') {
+      logger.warn({ error: (reverbCompsResult.reason as Error).message, searchQuery }, 'Reverb comps fetch failed');
+    }
+    if (aspectsResult.status === 'rejected') {
+      logger.warn({ error: (aspectsResult.reason as Error).message, categoryId: categorySuggestion?.categoryId }, 'Required aspects fetch failed');
+    }
 
     const ebayComps: CompResult = ebayCompsResult.status === 'fulfilled'
       ? ebayCompsResult.value

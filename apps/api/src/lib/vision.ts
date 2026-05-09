@@ -2,10 +2,10 @@ import { z } from 'zod';
 import { pino } from 'pino';
 import { analyzeImage, analyzeImages, chatText } from './ai-client.js';
 import type { ImageInput } from './ai-client.js';
-
-const visionLogger = pino({ name: 'vision' });
 import { AppError } from '../middleware/error.js';
 import type { RecognitionCandidate } from '@portage/shared';
+
+const visionLogger = pino({ name: 'vision' });
 
 const CONDITION_NORMALIZE: Record<string, string> = {
   new: 'new', mint: 'new', sealed: 'new',
@@ -20,7 +20,11 @@ const CONDITION_NORMALIZE: Record<string, string> = {
 
 function normalizeCondition(raw: string): 'new' | 'like_new' | 'good' | 'fair' | 'poor' {
   const key = raw.toLowerCase().replace(/[\s-]+/g, '_');
-  return (CONDITION_NORMALIZE[key] ?? 'good') as 'new' | 'like_new' | 'good' | 'fair' | 'poor';
+  const normalized = CONDITION_NORMALIZE[key];
+  if (!normalized) {
+    visionLogger.warn({ rawCondition: raw, key }, 'Unrecognized condition from AI — defaulting to good');
+  }
+  return (normalized ?? 'good') as 'new' | 'like_new' | 'good' | 'fair' | 'poor';
 }
 
 const VisionResultSchema = z.object({
@@ -203,7 +207,9 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
         features: single.data.suggestedTags,
         confidence: 0.8,
       }],
-      reasoning: (parsed as Record<string, unknown>).reasoning as string[] ?? ['Identified by visual analysis'],
+      reasoning: Array.isArray((parsed as Record<string, unknown>).reasoning)
+        ? (parsed as Record<string, unknown>).reasoning as string[]
+        : ['Identified by visual analysis'],
     };
   }
 
@@ -288,15 +294,25 @@ async function fetchPhotosAsBase64(urls: string[], limit: number): Promise<Image
   const selected = urls.slice(0, limit);
   const results: ImageInput[] = [];
 
+  const SUPPORTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
   for (const url of selected) {
     try {
       const res = await fetch(url);
-      if (!res.ok) continue;
-      const contentType = res.headers.get('content-type') || 'image/webp';
+      if (!res.ok) {
+        visionLogger.warn({ url, status: res.status }, 'Photo fetch returned non-OK status — skipping');
+        continue;
+      }
+      const rawType = res.headers.get('content-type') || 'image/webp';
+      const mediaType = rawType.split(';')[0].trim();
+      if (!SUPPORTED_TYPES.has(mediaType)) {
+        visionLogger.warn({ url, mediaType }, 'Unsupported content-type for vision — skipping');
+        continue;
+      }
       const buffer = Buffer.from(await res.arrayBuffer());
-      results.push({ base64: buffer.toString('base64'), mediaType: contentType });
-    } catch {
-      visionLogger.warn({ url }, 'Failed to fetch photo for vision — skipping');
+      results.push({ base64: buffer.toString('base64'), mediaType });
+    } catch (err) {
+      visionLogger.warn({ url, error: (err as Error).message }, 'Failed to fetch photo for vision — skipping');
     }
   }
 
