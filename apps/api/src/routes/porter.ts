@@ -163,7 +163,7 @@ async function executeToolCall(userId: string, name: string, input: Record<strin
 
 const messageSchema = z.object({
   message: z.string().min(1).max(4000),
-  conversationId: z.string().uuid().optional(),
+  conversationId: z.string().uuid().nullish(),
 });
 
 export const porterRouter = Router();
