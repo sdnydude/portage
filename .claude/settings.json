@@ -18,6 +18,11 @@
             "type": "command",
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/memory-sync.sh",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/session-capture.sh",
+            "timeout": 15
           }
         ]
       }
