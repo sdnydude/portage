@@ -2,8 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { pino } from 'pino';
 import { env } from './env.js';
+import { AppError } from '../middleware/error.js';
 
 const logger = pino({ name: 'ai-client' });
+
+const MAX_TOOL_ITERATIONS = 10;
 
 // ─── Provider chain ────────────────────────────────────────
 
@@ -288,7 +291,13 @@ async function chatAnthropic(
     messages,
   });
 
+  let iterations = 0;
   while (response.stop_reason === 'tool_use') {
+    if (++iterations > MAX_TOOL_ITERATIONS) {
+      logger.error({ iterations, model: config.chatModel }, 'Tool-use loop hit iteration cap — aborting');
+      throw new AppError(500, 'AI_LOOP_CAP', 'The AI assistant got stuck in a loop. Please try rephrasing your question.');
+    }
+
     const toolUseBlocks = response.content.filter(
       (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
     );
@@ -350,7 +359,13 @@ async function chatOpenAI(
     messages,
   });
 
+  let iterations = 0;
   while (response.choices[0]?.finish_reason === 'tool_calls') {
+    if (++iterations > MAX_TOOL_ITERATIONS) {
+      logger.error({ iterations, model: config.chatModel }, 'Tool-use loop hit iteration cap — aborting');
+      throw new AppError(500, 'AI_LOOP_CAP', 'The AI assistant got stuck in a loop. Please try rephrasing your question.');
+    }
+
     const assistantMsg = response.choices[0].message;
     messages.push(assistantMsg);
 

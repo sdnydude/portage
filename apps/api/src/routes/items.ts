@@ -57,7 +57,7 @@ itemsRouter.get('/', async (req, res, next) => {
 
     const conditions = [eq(items.userId, userId)];
     if (query.search) {
-      const escaped = query.search.replace(/%/g, '\\%').replace(/_/g, '\\_');
+      const escaped = query.search.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       conditions.push(ilike(items.title, `%${escaped}%`));
     }
     if (query.category) {

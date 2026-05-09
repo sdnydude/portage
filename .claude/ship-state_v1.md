@@ -1,17 +1,15 @@
-status: in_progress
-phase: 6
-deferred: |
-  - Bare catch in createListing publish (ebay-adapter.ts:115) — swallows error, log has no details
-  - Bare catch in getListingStatus (ebay-adapter.ts:170) — masks bugs as 'unknown'
-  - Silent delete failure in handleDelete (page.tsx:88) — no user feedback on error
-feature: eBay Browse API comparable pricing — on-demand comps button on item detail/scan result
-approach: eBay Browse API search_by_keyword, new GET /api/items/:id/comps endpoint, frontend comps button
-complexity: simple
-spec: |
-  1. New API endpoint GET /api/items/:id/comps — uses item name/description to search eBay Browse API
-  2. Returns array of comps: title, price, condition, sold date, thumbnail URL, eBay listing URL
-  3. Two modes: sold items (pricing history) and active listings (current market) — separate arrays
-  4. eBay OAuth: reuse existing marketplace account tokens; require connected eBay account
-  5. Frontend: "Check Comps" button on item detail/scan result → card list with avg/median price summary
-  6. Rate limiting: client-side debounce, server logs API calls, no persistent storage
-  7. Edge cases: no eBay account → prompt to connect; no results → message; API error → graceful fallback
+status: complete
+feature: Memory intelligence spec implementation — pattern detection, pruning, contradiction scanning, registry metrics, briefing integration
+approach: 14-task plan across registry (model/schemas/endpoints/deploy), sync-memory command (light/full mode, 6 phase extensions), briefing hook (Section 7 + freshness)
+complexity: complex
+completed_at: 2026-05-09T19:00Z
+commits:
+  - abb4c9f feat: add memory intelligence to /sync-memory and briefing hook
+  - 81d12ae fix: address 6 review findings in memory intelligence implementation
+  - 4a3fccc docs: sync CLAUDE.md and TODO.md with current project state
+  - 4011b2c fix: remove redundant ix_memory_metrics_project index (aifactory)
+review:
+  agents: silent-failure-hunter, type-design-analyzer, code-reviewer
+  findings: 6 (2 critical, 4 important)
+  resolved: 6/6
+deferred: []

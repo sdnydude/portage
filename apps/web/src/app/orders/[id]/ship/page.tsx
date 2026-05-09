@@ -97,7 +97,9 @@ export default function ShipPage({ params }: { params: Promise<{ id: string }> }
   const [labelResult, setLabelResult] = useState<{
     trackingNumber: string;
     carrier: string;
-    shippingLabelUrl: string;
+    shippingLabelUrl: string | null;
+    isStub?: boolean;
+    message?: string;
   } | null>(null);
   const [labelSuccess, setLabelSuccess] = useState(false);
   const [isMarkedShipped, setIsMarkedShipped] = useState(false);
@@ -176,6 +178,8 @@ export default function ShipPage({ params }: { params: Promise<{ id: string }> }
           trackingNumber: result.trackingNumber,
           carrier: result.carrier,
           shippingLabelUrl: result.shippingLabelUrl,
+          isStub: result.isStub,
+          message: result.message,
         });
         setLabelSuccess(true);
       }
@@ -310,18 +314,22 @@ export default function ShipPage({ params }: { params: Promise<{ id: string }> }
 
           {/* Action buttons */}
           <div className="w-full space-y-3">
-            <a
-              href={labelResult.shippingLabelUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-sm transition-colors hover:bg-muted"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                <path d="M14 2v6h6" />
-              </svg>
-              View Label
-            </a>
+            {labelResult.shippingLabelUrl ? (
+              <a
+                href={labelResult.shippingLabelUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-sm transition-colors hover:bg-muted"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                  <path d="M14 2v6h6" />
+                </svg>
+                View Label
+              </a>
+            ) : labelResult.message ? (
+              <p className="text-center text-sm text-text-secondary py-3">{labelResult.message}</p>
+            ) : null}
 
             {!isMarkedShipped ? (
               <button

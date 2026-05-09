@@ -42,9 +42,10 @@ export interface LabelResponse {
   orderId: string;
   trackingNumber: string;
   carrier: string;
-  shippingLabelUrl: string;
+  shippingLabelUrl: string | null;
   status: string;
   isStub: boolean;
+  message?: string;
 }
 
 interface PackageDimensions {

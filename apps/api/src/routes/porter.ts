@@ -67,7 +67,10 @@ async function executeToolCall(userId: string, name: string, input: Record<strin
   switch (name) {
     case 'search_inventory': {
       const conditions = [eq(items.userId, userId)];
-      if (input.query) conditions.push(ilike(items.title, `%${input.query}%`));
+      if (input.query) {
+        const escaped = String(input.query).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+        conditions.push(ilike(items.title, `%${escaped}%`));
+      }
       if (input.category) conditions.push(eq(items.category, input.category as string));
       if (input.condition) conditions.push(eq(items.condition, input.condition as 'new' | 'like_new' | 'good' | 'fair' | 'poor'));
 

@@ -417,31 +417,20 @@ shippingRouter.post('/labels', async (req, res, next) => {
       throw new AppError(400, 'INVALID_STATUS', `Cannot purchase label for order in "${order.status}" status. Order must be in "payment_received" status.`);
     }
 
-    // Stub: generate fake tracking number and label URL
+    // Stub: return preview data without mutating order state
     const trackingNumber = `STUB${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const carrier = body.rateId.includes('ups') ? 'UPS' : 'USPS';
-    const shippingLabelUrl = `https://labels.portage.app/stub/${order.id}/${trackingNumber}.pdf`;
 
-    // Update the order with label data
-    const [updated] = await db.update(orders)
-      .set({
-        trackingNumber,
-        carrier,
-        shippingLabelUrl,
-        status: 'label_purchased',
-      })
-      .where(eq(orders.id, body.orderId))
-      .returning();
+    logger.info({ userId, orderId: order.id, carrier }, 'Label purchase requested (stub — no DB mutation)');
 
-    logger.info({ userId, orderId: updated.id, trackingNumber, carrier }, 'Label purchased (stub)');
-
-    res.status(201).json({
-      orderId: updated.id,
+    res.status(200).json({
+      orderId: order.id,
       trackingNumber,
       carrier,
-      shippingLabelUrl,
-      status: updated.status,
+      shippingLabelUrl: null,
+      status: order.status,
       isStub: true,
+      message: 'Shipping provider not configured. Connect a provider in Settings > Shipping to purchase real labels.',
     });
   } catch (err) {
     next(err);

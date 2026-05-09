@@ -117,7 +117,10 @@ adminRouter.get('/users', async (req, res, next) => {
     const status = req.query.status as string | undefined;
 
     const conditions = [];
-    if (q) conditions.push(or(ilike(users.email, `%${q}%`), ilike(users.displayName, `%${q}%`)));
+    if (q) {
+      const escaped = q.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+      conditions.push(or(ilike(users.email, `%${escaped}%`), ilike(users.displayName, `%${escaped}%`)));
+    }
     if (role === 'admin' || role === 'user') conditions.push(eq(users.role, role));
     if (tier === 'free' || tier === 'pro') conditions.push(eq(users.subscriptionTier, tier));
     if (status === 'active') conditions.push(isNull(users.disabledAt));
@@ -323,7 +326,10 @@ adminRouter.get('/items', async (req, res, next) => {
     const userId = req.query.userId as string | undefined;
 
     const conditions = [];
-    if (q) conditions.push(or(ilike(items.title, `%${q}%`), ilike(items.brand, `%${q}%`), ilike(items.model, `%${q}%`)));
+    if (q) {
+      const escaped = q.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+      conditions.push(or(ilike(items.title, `%${escaped}%`), ilike(items.brand, `%${escaped}%`), ilike(items.model, `%${escaped}%`)));
+    }
     if (category) conditions.push(eq(items.category, category));
     if (userId) conditions.push(eq(items.userId, userId));
 
