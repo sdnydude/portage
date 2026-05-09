@@ -30,9 +30,9 @@ npm workspaces monorepo with three packages:
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 10 tables:
+Drizzle ORM, schema-push workflow (no migration files). 17 tables:
 
-users, items, images, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings
+users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, shipping_presets, shipping_providers, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles
 
 ### Auth
 
@@ -40,11 +40,16 @@ JWT access + refresh tokens. bcrypt password hashing. Role column on users (`use
 
 ### Marketplace Adapters
 
-Shared TypeScript interface in `packages/shared/src/marketplace.ts`. Two adapters:
+Shared TypeScript interface in `packages/shared/src/marketplace.ts`. Three adapters:
 - **eBay:** OAuth2 auth code grant, Inventory API (SKU/offer/publish), Fulfillment API, Taxonomy API
 - **Etsy:** PKCE OAuth2, Listings API with photo upload, Receipts API, Taxonomy API
+- **Reverb:** Adapter stub — planned 3rd marketplace for musical instruments
 
 Marketplace tokens encrypted at rest with AES-256-GCM.
+
+### Listing Flow
+
+Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useListingFlow` hook with auto-draft persistence. Components in `apps/web/src/components/listing-flow/`.
 
 ### AI
 
@@ -52,6 +57,7 @@ Marketplace tokens encrypted at rest with AES-256-GCM.
 - **Porter assistant:** Claude Sonnet tool_use loop with 3 tools (search_inventory, get_inventory_stats, suggest_listing)
 - **Background removal:** Client-side WASM (@imgly/background-removal)
 - **Auto-enhance:** Server-side Sharp pipeline
+- **Prepare listing:** AI field generation (title, description, pricing from comps) via `apps/api/src/routes/prepare-listing.ts`
 
 ---
 
@@ -70,6 +76,12 @@ Marketplace tokens encrypted at rest with AES-256-GCM.
 | Components | apps/web/src/components/ |
 | Hooks | apps/web/src/hooks/ |
 | API client | apps/web/src/lib/api.ts |
+| Listing flow components | apps/web/src/components/listing-flow/ |
+| Listing flow hook | apps/web/src/hooks/use-listing-flow.ts |
+| Prepare-listing route | apps/api/src/routes/prepare-listing.ts |
+| Seller profile route | apps/api/src/routes/seller-profile.ts |
+| Drafts route | apps/api/src/routes/drafts.ts |
+| Shipping routes | apps/api/src/routes/shipping.ts |
 | Shared types | packages/shared/src/types.ts |
 | Docker config | docker-compose.yml + docker-compose.override.yml |
 | Environment template | .env.example |
@@ -120,6 +132,8 @@ npx tsx apps/api/src/scripts/promote-admin.ts <email>
 - All URLs use **10.0.0.251** not localhost (server IP)
 - Next.js dev: polling mode (`WATCHPACK_POLLING=true`) for reliable HMR over network
 - next.config.ts: `allowedDevOrigins: ["10.0.0.251"]`
+- HTTPS dev mode requires certs at `certs/key.pem` + `certs/cert.pem` (Next.js uses `--experimental-https`)
+- Secrets managed via Doppler — `.env` auto-synced by SessionStart hook
 - Shared package must be rebuilt after changes: `npm run build -w packages/shared`
 
 ---
@@ -138,12 +152,12 @@ npx tsx apps/api/src/scripts/promote-admin.ts <email>
 
 ## Progress
 
-29/52 tasks complete, 4 partial. See `docs/TODO.md` for full roadmap.
+30/52 tasks complete, 3 partial, 19 remaining. See `docs/TODO.md` for full roadmap.
 
-**Done:** Foundation (7/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy), Porter AI, auth, admin panel (17 endpoints, 9 pages), repo infrastructure (2/3).
+**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow.
 
-**Partial:** Camera capture (components built, no UI entry point), listings UI (create works, detail page 404), dashboard (data works, no trends/insights, nav issues), PWA (manifest only, no icons/SW).
+**Partial:** Listings UI (create works, detail page 404), dashboard (data works, no trends/insights, nav issues), PWA (manifest only, no icons/SW).
 
-**Remaining:** Scan FAB, dashboard fixes + trends, listing detail page, shipping (EasyPost), payments (Stripe), notifications, onboarding, settings pages, bulk operations, buyer messaging, production config, testing.
+**Remaining:** Dashboard fixes + trends, listing detail page, shipping (EasyPost), payments (Stripe), notifications, onboarding, settings pages, bulk operations, buyer messaging, production config, testing, branch protection.
 
 **Demo account:** demo@portage.app / demo1234demo1234
