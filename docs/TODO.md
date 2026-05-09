@@ -1,6 +1,6 @@
 # Portage — Roadmap
 
-**Progress: 37/52 complete · 3 partial · 12 remaining**
+**Progress: 37/52 complete · 5 partial · 10 remaining**
 
 ---
 
@@ -88,7 +88,7 @@
 
 ### Shipping & Payments
 
-- [ ] **Task 21:** EasyPost shipping — rate quotes, label generation, tracking integration
+- [~] **Task 21:** Shipping system — presets CRUD, provider config, rate quotes, label purchase, ship flow, shipping settings page (638-line API, 822-line ship page). **GAP: Rates and labels return hardcoded stub data. No actual EasyPost/Shippo/Pirate Ship API calls — provider config validated but external APIs never invoked.**
 - [ ] **Task 23:** Stripe subscription — Free/Pro tier billing, usage limits enforcement
 
 ### Notifications
@@ -107,7 +107,7 @@
 
 ### Settings
 
-- [ ] **Task 32:** Settings pages — marketplace management, profile, subscription details, notification preferences, help. *(More tab links to these but all currently 404.)*
+- [~] **Task 32:** Settings pages — seller profile page and shipping settings page exist and work. **GAP: Missing marketplace management, general profile, subscription/billing, notification preferences, and help pages. Most More tab links still 404.**
 
 ### Production & Testing
 
@@ -134,7 +134,7 @@
 | Images | Cloudflare R2, Sharp |
 | AI | Claude Sonnet (vision + tool_use) |
 | BG Removal | @imgly/background-removal (WASM) |
-| Marketplaces | eBay (REST), Etsy (REST + PKCE) |
+| Marketplaces | eBay (REST), Etsy (REST + PKCE), Reverb (REST, OAuth pending) |
 | Token encryption | AES-256-GCM |
 
 ## Ports

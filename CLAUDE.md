@@ -82,6 +82,11 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Seller profile route | apps/api/src/routes/seller-profile.ts |
 | Drafts route | apps/api/src/routes/drafts.ts |
 | Shipping routes | apps/api/src/routes/shipping.ts |
+| Shipping hooks | apps/web/src/hooks/use-shipping.ts, use-shipping-provider.ts |
+| Ship order page | apps/web/src/app/orders/[id]/ship/page.tsx |
+| Seller profile settings | apps/web/src/app/settings/seller-profile/page.tsx |
+| Shipping settings | apps/web/src/app/settings/shipping/page.tsx |
+| Reverb adapter | apps/api/src/marketplace/reverb-adapter.ts |
 | Shared types | packages/shared/src/types.ts |
 | Docker config | docker-compose.yml + docker-compose.override.yml |
 | Environment template | .env.example |
@@ -166,12 +171,12 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-37/52 tasks complete, 3 partial, 12 remaining. See `docs/TODO.md` for full roadmap.
+37/52 tasks complete, 5 partial, 10 remaining. See `docs/TODO.md` for full roadmap.
 
 **Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page.
 
-**Partial:** Listings UI (create works, edit/update/delete pending), dashboard (data works, no trends/insights, nav issues), PWA (manifest only, no icons/SW).
+**Partial:** Listings UI (create works, edit/update/delete pending), dashboard (data works, no trends/insights, nav issues), PWA (manifest only, no icons/SW), shipping (full UI + 16-endpoint API built, rates/labels stubbed — no real carrier API calls), settings (seller-profile + shipping pages work, rest 404).
 
-**Remaining:** Dashboard fixes + trends, shipping (EasyPost), payments (Stripe), notifications, onboarding, settings pages, bulk operations, buyer messaging, production config, testing, branch protection.
+**Remaining:** Dashboard fixes + trends, payments (Stripe), notifications, onboarding, bulk operations, buyer messaging, production config, testing, branch protection, carrier API integration (EasyPost/Shippo).
 
 **Demo account:** demo@portage.app / demo1234demo1234
