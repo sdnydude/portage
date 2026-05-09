@@ -1,5 +1,91 @@
+import { z } from 'zod';
 import { analyzeImage, chatText } from './ai-client.js';
+import { AppError } from '../middleware/error.js';
 import type { RecognitionCandidate } from '@portage/shared';
+
+const CONDITION_NORMALIZE: Record<string, string> = {
+  new: 'new', mint: 'new', sealed: 'new',
+  excellent: 'like_new', like_new: 'like_new',
+  refurbished: 'like_new', open_box: 'like_new',
+  very_good: 'good', good: 'good',
+  used: 'good', pre_owned: 'good',
+  fair: 'fair', worn: 'fair',
+  poor: 'poor', damaged: 'poor',
+  broken: 'poor', parts_only: 'poor', for_parts: 'poor',
+};
+
+function normalizeCondition(raw: string): 'new' | 'like_new' | 'good' | 'fair' | 'poor' {
+  const key = raw.toLowerCase().replace(/[\s-]+/g, '_');
+  return (CONDITION_NORMALIZE[key] ?? 'good') as 'new' | 'like_new' | 'good' | 'fair' | 'poor';
+}
+
+const VisionResultSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  category: z.string(),
+  condition: z.string().transform(normalizeCondition),
+  conditionNotes: z.string().optional().default(''),
+  estimatedValueLow: z.number(),
+  estimatedValueHigh: z.number(),
+  brand: z.string().nullable(),
+  model: z.string().nullable(),
+  suggestedTags: z.array(z.string()).optional().default([]),
+});
+
+const CandidateSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  category: z.string(),
+  condition: z.string().transform(normalizeCondition),
+  conditionNotes: z.string().optional().default(''),
+  brand: z.string().nullable(),
+  model: z.string().nullable(),
+  features: z.array(z.string()).optional().default([]),
+  estimatedValueLow: z.number(),
+  estimatedValueHigh: z.number(),
+  confidence: z.number().min(0).max(1),
+});
+
+const DetailedVisionResultSchema = z.object({
+  candidates: z.array(CandidateSchema).min(1),
+  reasoning: z.array(z.string()).optional().default([]),
+});
+
+const ListingFieldsOutputSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+  condition: z.string().optional().default('good'),
+  conditionDescription: z.string().optional().default(''),
+  brand: z.string().optional().default(''),
+  model: z.string().optional().default(''),
+  isMusicGear: z.boolean().optional().default(false),
+  aiConfidence: z.number().optional().default(0.5),
+  ebay: z.object({
+    title: z.string(),
+    categoryId: z.string().optional().default(''),
+    categoryName: z.string().optional().default(''),
+    condition: z.string().optional().default(''),
+    conditionDescription: z.string().optional().default(''),
+    aspects: z.record(z.string(), z.unknown()).optional().default({}),
+    upc: z.string().nullable().optional().default(null),
+    epid: z.string().nullable().optional().default(null),
+    weight: z.object({ value: z.number(), unit: z.string() }).optional().default({ value: 0, unit: 'oz' }),
+    dimensions: z.object({ length: z.number(), width: z.number(), height: z.number(), unit: z.string() }).optional().default({ length: 0, width: 0, height: 0, unit: 'in' }),
+    packageType: z.string().optional().default('LETTER'),
+  }).passthrough().nullable().optional().default(null),
+  reverb: z.object({
+    make: z.string().optional().default(''),
+    model: z.string().optional().default(''),
+    title: z.string().optional().default(''),
+    categoryUuid: z.string().optional().default(''),
+    categoryName: z.string().optional().default(''),
+    conditionUuid: z.string().optional().default(''),
+    conditionName: z.string().optional().default(''),
+    year: z.string().nullable().optional().default(null),
+    finish: z.string().nullable().optional().default(null),
+    description: z.string().optional().default(''),
+  }).passthrough().nullable().optional().default(null),
+}).passthrough();
 
 export interface VisionResult {
   name: string;
@@ -64,7 +150,12 @@ export async function identifyItem(imageBase64: string, mediaType: string): Prom
     { temperature: 0, maxTokens: 2048 },
   );
 
-  return JSON.parse(extractJSON(text)) as VisionResult;
+  const parsed = JSON.parse(extractJSON(text));
+  const result = VisionResultSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new AppError(502, 'AI_RESPONSE_INVALID', `AI scan returned invalid response: ${result.error.message}`);
+  }
+  return result.data;
 }
 
 const DETAILED_SYSTEM_PROMPT = `You are Porter, an AI assistant for Portage — an inventory and marketplace seller app.
@@ -95,32 +186,24 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     { temperature: 0, maxTokens: 2048 },
   );
 
-  const json = JSON.parse(extractJSON(text));
+  const parsed = JSON.parse(extractJSON(text));
 
-  if (!json.candidates || !Array.isArray(json.candidates) || json.candidates.length === 0) {
-    const flat = json as VisionResult;
+  const detailed = DetailedVisionResultSchema.safeParse(parsed);
+  if (detailed.success) return detailed.data;
+
+  const single = VisionResultSchema.safeParse(parsed);
+  if (single.success) {
     return {
       candidates: [{
-        name: flat.name,
-        description: flat.description,
-        category: flat.category,
-        condition: flat.condition,
-        conditionNotes: flat.conditionNotes,
-        brand: flat.brand,
-        model: flat.model,
-        features: flat.suggestedTags,
-        estimatedValueLow: flat.estimatedValueLow,
-        estimatedValueHigh: flat.estimatedValueHigh,
+        ...single.data,
+        features: single.data.suggestedTags,
         confidence: 0.8,
       }],
-      reasoning: json.reasoning ?? ['Identified by visual analysis'],
+      reasoning: (parsed as Record<string, unknown>).reasoning as string[] ?? ['Identified by visual analysis'],
     };
   }
 
-  return {
-    candidates: json.candidates,
-    reasoning: json.reasoning ?? [],
-  };
+  throw new AppError(502, 'AI_RESPONSE_INVALID', `AI detailed scan returned invalid response: ${detailed.error.message}`);
 }
 
 const LISTING_FIELDS_SYSTEM_PROMPT = `You are a marketplace listing expert. Generate production-quality fields for selling a used item on eBay and optionally Reverb.
@@ -220,5 +303,10 @@ Generate all listing fields as JSON.`;
 
   const { text } = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
 
-  return JSON.parse(extractJSON(text)) as ListingFieldsOutput;
+  const parsed = JSON.parse(extractJSON(text));
+  const result = ListingFieldsOutputSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new AppError(502, 'AI_RESPONSE_INVALID', `AI listing fields returned invalid response: ${result.error.message}`);
+  }
+  return result.data as ListingFieldsOutput;
 }
