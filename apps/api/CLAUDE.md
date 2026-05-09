@@ -7,7 +7,7 @@ Express 5 backend. See root CLAUDE.md for architecture overview.
 1. CORS — prod restricts to `portage.digitalharmonyai.com`; dev allows `10.0.0.251` variants
 2. `express.json({ limit: '10mb' })`
 3. `pinoHttp()` — debug in dev, info in prod
-4. Route handlers (16 routers)
+4. Route handlers (19 routers)
 5. `notFoundHandler`
 6. `errorHandler` (must be last)
 
@@ -86,9 +86,9 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 | Porter | `/porter` | requireAuth |
 | Drafts | `/drafts` | requireAuth |
 | Shipping | `/shipping` | requireAuth |
-| Prepare listing | `/prepare-listing` | requireAuth |
+| Prepare listing | `/items` (sub-mount) | requireAuth |
 | Seller profile | `/seller-profile` | requireAuth |
-| Preferences | `/preferences` | requireAuth |
+| Preferences | `/users/me/preferences` | requireAuth |
 | Usage | `/usage` | requireAuth |
 | Survey | `/survey` | None |
 | Admin | `/admin/*` | requireAdmin |

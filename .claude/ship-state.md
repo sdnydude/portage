@@ -1,17 +1,27 @@
 status: in_progress
-phase: 6
-deferred: |
-  - Bare catch in createListing publish (ebay-adapter.ts:115) — swallows error, log has no details
-  - Bare catch in getListingStatus (ebay-adapter.ts:170) — masks bugs as 'unknown'
-  - Silent delete failure in handleDelete (page.tsx:88) — no user feedback on error
-feature: eBay Browse API comparable pricing — on-demand comps button on item detail/scan result
-approach: eBay Browse API search_by_keyword, new GET /api/items/:id/comps endpoint, frontend comps button
-complexity: simple
+phase: 4
+feature: Memory intelligence spec implementation — pattern detection, pruning, contradiction scanning, registry metrics, briefing integration
+approach: 14-task plan across registry (model/schemas/endpoints/deploy), sync-memory command (light/full mode, 6 phase extensions), briefing hook (Section 7 + freshness)
+complexity: complex
+tdd: no
 spec: |
-  1. New API endpoint GET /api/items/:id/comps — uses item name/description to search eBay Browse API
-  2. Returns array of comps: title, price, condition, sold date, thumbnail URL, eBay listing URL
-  3. Two modes: sold items (pricing history) and active listings (current market) — separate arrays
-  4. eBay OAuth: reuse existing marketplace account tokens; require connected eBay account
-  5. Frontend: "Check Comps" button on item detail/scan result → card list with avg/median price summary
-  6. Rate limiting: client-side debounce, server logs API calls, no persistent storage
-  7. Edge cases: no eBay account → prompt to connect; no results → message; API error → graceful fallback
+  Design spec: docs/superpowers/specs/2026-05-09-memory-intelligence-design.md (committed a1cfb0a)
+  Plan: docs/superpowers/plans/2026-05-09-memory-intelligence.md (committed a9fa4ea)
+  14 tasks: registry (4), sync-memory (7), briefing (1), integration (2)
+plan: |
+  Task 1: Registry — memory_metrics model + migration
+  Task 2: Registry — memory_metrics schemas
+  Task 3: Registry — memory_metrics endpoints + router registration
+  Task 4: Registry — deploy migration (docker cp, alembic, restart, test)
+  Task 5: /sync-memory — light/full mode gate + Stop hook update
+  Task 6: /sync-memory — Phase 2 extensions (journal backfill + .done.md cleanup)
+  Task 7: /sync-memory — Phase 3a extension (feedback/reference staleness + contradictions)
+  Task 8: /sync-memory — Phase 3d (pattern detection)
+  Task 9: /sync-memory — Phase 3e (memory pruning)
+  Task 10: /sync-memory — Phase 3f (registry metrics POST)
+  Task 11: /sync-memory — Phase 6 report extension + .last-full-sync
+  Task 12: SessionStart briefing hook — Section 7 + freshness
+  Task 13: Commit + push both repos
+  Task 14: End-to-end test
+progress: []
+deferred: []

@@ -30,7 +30,7 @@ npm workspaces monorepo with three packages:
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 17 tables:
+Drizzle ORM, schema-push workflow (no migration files). 16 tables:
 
 users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, shipping_presets, shipping_providers, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles
 
@@ -43,7 +43,7 @@ JWT access + refresh tokens. bcrypt password hashing. Role column on users (`use
 Shared TypeScript interface in `packages/shared/src/marketplace.ts`. Three adapters:
 - **eBay:** OAuth2 auth code grant, Inventory API (SKU/offer/publish), Fulfillment API, Taxonomy API
 - **Etsy:** PKCE OAuth2, Listings API with photo upload, Receipts API, Taxonomy API
-- **Reverb:** Adapter stub — planned 3rd marketplace for musical instruments
+- **Reverb:** Adapter implemented (264 lines), comps search working, OAuth pending
 
 Marketplace tokens encrypted at rest with AES-256-GCM.
 
@@ -166,12 +166,12 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-30/52 tasks complete, 3 partial, 19 remaining. See `docs/TODO.md` for full roadmap.
+37/52 tasks complete, 3 partial, 12 remaining. See `docs/TODO.md` for full roadmap.
 
-**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow.
+**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page.
 
-**Partial:** Listings UI (create works, detail page 404), dashboard (data works, no trends/insights, nav issues), PWA (manifest only, no icons/SW).
+**Partial:** Listings UI (create works, edit/update/delete pending), dashboard (data works, no trends/insights, nav issues), PWA (manifest only, no icons/SW).
 
-**Remaining:** Dashboard fixes + trends, listing detail page, shipping (EasyPost), payments (Stripe), notifications, onboarding, settings pages, bulk operations, buyer messaging, production config, testing, branch protection.
+**Remaining:** Dashboard fixes + trends, shipping (EasyPost), payments (Stripe), notifications, onboarding, settings pages, bulk operations, buyer messaging, production config, testing, branch protection.
 
 **Demo account:** demo@portage.app / demo1234demo1234

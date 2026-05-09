@@ -1,6 +1,6 @@
 # Portage — Roadmap
 
-**Progress: 30/52 complete · 3 partial · 19 remaining**
+**Progress: 37/52 complete · 3 partial · 12 remaining**
 
 ---
 
@@ -33,7 +33,7 @@
 - [x] **Task 16:** eBay adapter — Inventory API (SKU → offer → publish), Fulfillment API (orders), Taxonomy API (categories)
 - [x] **Task 17:** Etsy PKCE OAuth2 — code_verifier/challenge, connect/callback/status/disconnect routes
 - [x] **Task 18:** Etsy adapter — Listings API (create with photo upload), receipts (orders), taxonomy (categories)
-- [~] **Task 19:** Listings UI — status filter pills, listing cards, create listing sheet (from item detail). **GAP: `/listings/[id]` detail page does not exist (404). No edit, update, or delete listing from UI.**
+- [~] **Task 19:** Listings UI — status filter pills, listing cards, create listing sheet (from item detail). **GAP: No edit, update, or delete listing from UI (detail page exists).**
 - [x] **Task 20:** Orders UI — order list with status filters, sync from marketplaces, tracking/carrier updates
 
 ## Phase 5: AI Assistant (Tasks 24-25) — 2/2
@@ -84,7 +84,7 @@
 
 ### Listings Completion (fix Task 19)
 
-- [ ] **Task 53:** Listing detail page — `/listings/[id]` with listing info, edit price, update status, delete listing, link to marketplace
+- [x] **Task 53:** Listing detail page — `/listings/[id]` with listing info, edit price, update status, delete listing, link to marketplace
 
 ### Shipping & Payments
 
