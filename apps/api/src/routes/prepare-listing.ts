@@ -118,32 +118,34 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
 
     const photos = (item.photos as Array<{ url: string }>) ?? [];
     const photoUrls = photos.map(p => p.url);
-    const searchQuery = `${item.brand} ${item.model} ${item.title}`.trim();
+    const searchQuery = [item.brand, item.model].filter(Boolean).join(' ') || item.title;
 
-    const [categoryResult, ebayCompsResult, reverbCompsResult] = await Promise.allSettled([
-      EbayAdapter.getCategorySuggestion(searchQuery),
-      EbayAdapter.searchComps(searchQuery),
+    let categorySuggestion: { categoryId: string; categoryName: string } | null = null;
+    try {
+      categorySuggestion = await EbayAdapter.getCategorySuggestion(searchQuery);
+    } catch {
+      logger.warn({ searchQuery }, 'Category suggestion failed — searching without category');
+    }
+
+    const [ebayCompsResult, aspectsResult, reverbCompsResult] = await Promise.allSettled([
+      EbayAdapter.searchComps(searchQuery, categorySuggestion?.categoryId),
+      categorySuggestion
+        ? EbayAdapter.getRequiredAspects(categorySuggestion.categoryId)
+        : Promise.resolve({}),
       targetMarketplaces.includes('reverb')
         ? ReverbAdapter.searchComps(searchQuery)
         : Promise.resolve({ listings: [], stats: { median: null, avg: null, sampleSize: 0 } }),
     ]);
 
-    const categorySuggestion = categoryResult.status === 'fulfilled' ? categoryResult.value : null;
     const ebayComps: CompResult = ebayCompsResult.status === 'fulfilled'
       ? ebayCompsResult.value
       : { sold: [], active: [], stats: { soldMedian: null, soldAvg: null, activeMedian: null, activeAvg: null, sampleSize: 0 } };
     const reverbComps: ReverbCompResult = reverbCompsResult.status === 'fulfilled'
       ? reverbCompsResult.value
       : { listings: [], stats: { median: null, avg: null, sampleSize: 0 } };
-
-    let requiredAspects: Record<string, { required: boolean; values: string[] | null }> = {};
-    if (categorySuggestion) {
-      try {
-        requiredAspects = await EbayAdapter.getRequiredAspects(categorySuggestion.categoryId);
-      } catch {
-        logger.warn({ categoryId: categorySuggestion.categoryId }, 'Failed to fetch required aspects');
-      }
-    }
+    const requiredAspects = aspectsResult.status === 'fulfilled'
+      ? aspectsResult.value as Record<string, { required: boolean; values: string[] | null }>
+      : {};
 
     const currency = profile?.defaultCurrency ?? 'USD';
 
