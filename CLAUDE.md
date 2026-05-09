@@ -171,12 +171,12 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-37/52 tasks complete, 5 partial, 10 remaining. See `docs/TODO.md` for full roadmap.
+40/52 tasks complete, 3 partial, 9 remaining. See `docs/TODO.md` for full roadmap.
 
-**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page.
+**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (7 pages: profile, marketplace, seller profile, shipping, notifications, help, admin).
 
-**Partial:** Listings UI (create works, edit/update/delete pending), dashboard (data works, no trends/insights, nav issues), PWA (manifest only, no icons/SW), shipping (full UI + 16-endpoint API built, rates/labels stubbed — no real carrier API calls), settings (seller-profile + shipping pages work, rest 404).
+**Partial:** Listings UI (create works, edit/update/delete pending), PWA (manifest only, no icons/SW), shipping (full UI + 16-endpoint API built, rates/labels stubbed — no real carrier API calls).
 
-**Remaining:** Dashboard fixes + trends, payments (Stripe), notifications, onboarding, bulk operations, buyer messaging, production config, testing, branch protection, carrier API integration (EasyPost/Shippo).
+**Remaining:** Dashboard trends/insights, payments (Stripe), onboarding, bulk operations, buyer messaging, production config, testing, branch protection, carrier API integration (EasyPost/Shippo).
 
 **Demo account:** demo@portage.app / demo1234demo1234

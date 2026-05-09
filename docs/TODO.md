@@ -1,6 +1,6 @@
 # Portage — Roadmap
 
-**Progress: 37/52 tasks complete · 5 partial · 10 remaining · 22 TODO items (~95h est)**
+**Progress: 40/52 tasks complete · 3 partial · 9 remaining · 16 TODO items (~75h est)**
 **Last updated:** 2026-05-09
 
 ---
@@ -39,16 +39,16 @@
 
 ## Phase 5: AI Assistant (Tasks 24-25) — 2/2
 
-- [x] **Task 24:** Porter AI backend — Claude Sonnet tool_use loop, 3 tools (search_inventory, get_inventory_stats, suggest_listing), conversation history in JSONB, free tier 20 msg/day
+- [x] **Task 24:** Porter AI backend — Claude Sonnet tool_use loop, 3 tools (search_inventory, get_inventory_stats, suggest_listing), conversation history in JSONB, free tier 20 msg/day. Fixed Zod validation bug rejecting null conversationId (9f8db4e).
 - [x] **Task 25:** Porter chat UI — message bubbles, typing indicator, suggestion chips, new chat, keyboard enter-to-send
 
 ## Phase 6: Auth (Task 33) — 1/1
 
 - [x] **Task 33:** Auth flow — login/register pages, AuthProvider, More tab (user info, setting links, sign out). *(Settings link destinations are Task 32.)*
 
-## Phase 7: Dashboard (Task 27) — 0/1
+## Phase 7: Dashboard (Task 27) — 1/1
 
-- [~] **Task 27:** Smart momentum dashboard — Home tab with greeting, portfolio value card, stat cards (active listings, monthly revenue), momentum tips, quick actions, recent items/orders. **GAP: no trends (charts/sparklines), no AI insights as originally scoped. Inventory removed from tab bar creates navigation dead end (no back affordance from /inventory). Dashboard spinner bug (isLoading initializes true before auth hydrates).**
+- [x] **Task 27:** Smart momentum dashboard — Home tab with greeting, portfolio value card, stat cards (active listings, monthly revenue), momentum tips, quick actions, recent items/orders. Spinner bug fixed (949a8dd). TabBar restructured to 5 tabs: Home/Inventory/Scan/Orders/More (84ba9ee). **GAP: no trends (charts/sparklines), no AI insights as originally scoped.**
 
 ## Phase 8: Admin Panel (Tasks 36-46) — 11/11
 
@@ -89,7 +89,7 @@
 
 ### Settings
 
-- [~] **Task 32:** Settings pages — seller profile page and shipping settings page exist and work. **GAP: Missing marketplace management, general profile, subscription/billing, notification preferences, and help pages. Most More tab links still 404.**
+- [x] **Task 32:** Settings pages — 7 settings pages live: profile (with GET/PATCH /users/me API), marketplace accounts (connect/disconnect), seller profile, shipping, notifications (toggle switches), help (FAQ accordion), admin panel (admin-only). More page expanded with full navigation (ad03728). Only remaining gap: subscription/billing page (depends on Stripe — Task 23).
 
 ### Production & Testing
 
@@ -102,11 +102,11 @@
 
 ### Critical (blocks real usage)
 
-| # | Task | Why | Est |
-|---|------|-----|-----|
-| 1 | **Dashboard spinner bug** (Task 51) | `isLoading` stuck true before auth hydrates — home page unusable on cold load | 2h |
-| 2 | **Dashboard navigation dead end** | Inventory removed from tab bar, no back-nav from `/inventory` | 1h |
-| 3 | **Settings pages 404** (Task 32 gap) | Most More tab links (marketplace, profile, notifications, billing, help) return 404 | 4h |
+All critical items resolved (2026-05-09):
+- ~~Dashboard spinner bug~~ — Fixed (949a8dd)
+- ~~Dashboard navigation dead end~~ — TabBar restructured to 5 tabs (84ba9ee)
+- ~~Settings pages 404~~ — 5 new pages + expanded More hub (ad03728→b5f0f33)
+- ~~Porter chat broken~~ — Fixed Zod null validation (9f8db4e)
 
 ### High Priority (core product gaps)
 
@@ -226,21 +226,37 @@
 | 54 | Docker production: cert volume mount + HTTPS healthcheck | `docker-compose.yml` |
 | 55 | Production deployment — full stack running with HTTPS via Cloudflare tunnel | (runtime) |
 
+### E. Critical 3+ Ship (11 commits — 949a8dd→9f8db4e)
+
+| # | Task | Commit |
+|---|------|--------|
+| 56 | Fix dashboard infinite spinner on cold load | `949a8dd` |
+| 57 | Restructure TabBar: Home/Inventory/Scan/Orders/More | `84ba9ee` |
+| 58 | Expand More page with 7 settings links + admin-only gate | `ad03728` |
+| 59 | API: GET/PATCH `/users/me` + GET `/users/me/marketplace-accounts` | `aac0eac` |
+| 60 | Profile settings page (display name, email, address) | `f86fe1b` |
+| 61 | Marketplace accounts settings page (connect/disconnect) | `cad02be` |
+| 62 | Help & Support page (FAQ accordion, contact) | `1fbbe74` |
+| 63 | Notification preferences page (5 toggle switches) | `404be55` |
+| 64 | Review fixes: error states, aria labels, address dirty tracking | `b5f0f33` |
+| 65 | Fix toggle race condition in notification preferences | `922eabd` |
+| 66 | Fix Porter chat: Zod `.optional()` → `.nullish()` for null conversationId | `9f8db4e` |
+
 ---
 
 ## Summary
 
 | Category | Count |
 |----------|-------|
-| Completed (all time) | 37 roadmap tasks + 55 subtasks (May 7-9) |
-| Partial | 5 |
-| TODO — Critical | 3 |
+| Completed (all time) | 40 roadmap tasks + 66 subtasks (May 7-9) |
+| Partial | 3 (listings CRUD, shipping stubs, CF tunnel config) |
+| TODO — Critical | 0 (all resolved) |
 | TODO — High Priority | 4 |
 | TODO — Medium Priority | 6 |
 | TODO — Infrastructure | 4 |
 | TODO — Known Bugs | 5 |
-| **Total remaining items** | **22** |
-| **Estimated remaining effort** | **~95 hours** |
+| **Total remaining items** | **19** |
+| **Estimated remaining effort** | **~82 hours** |
 
 ---
 
@@ -275,4 +291,4 @@
 
 ## Demo Account
 
-`demo@portage.app` / `demo1234demo1234` — 5 items seeded
+`demo@portage.app` / `demo1234demo1234` — 16 items, Pro tier (promoted 2026-05-09, all limits removed)
