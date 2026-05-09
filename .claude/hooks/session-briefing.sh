@@ -110,19 +110,20 @@ except Exception:
   MEMORY_DIR="$HOME/.claude/projects/-home-swebber64-DHG-portage/memory"
 
   # Hot areas
-  HOT_FILES=$(find "$MEMORY_DIR" -name "project_pattern_hotarea_*.md" 2>/dev/null)
-  if [ -n "$HOT_FILES" ]; then
-    echo "--- Hot Areas ---"
-    for f in $HOT_FILES; do
-      NAME=$(grep "^name:" "$f" 2>/dev/null | head -1 | sed 's/^name: //')
-      TAG=$(grep "^\*\*Tag:" "$f" 2>/dev/null | head -1)
-      if [ -n "$NAME" ]; then
-        echo "$NAME"
-        [ -n "$TAG" ] && echo "  $TAG"
-      fi
-    done
-    echo ""
-  fi
+  HEADER_PRINTED=false
+  while IFS= read -r -d '' f; do
+    if [ "$HEADER_PRINTED" = false ]; then
+      echo "--- Hot Areas ---"
+      HEADER_PRINTED=true
+    fi
+    NAME=$(grep "^name:" "$f" 2>/dev/null | head -1 | sed 's/^name: //')
+    TAG=$(grep "^\*\*Tag:" "$f" 2>/dev/null | head -1)
+    if [ -n "$NAME" ]; then
+      echo "$NAME"
+      [ -n "$TAG" ] && echo "  $TAG"
+    fi
+  done < <(find "$MEMORY_DIR" -name "project_pattern_hotarea_*.md" -print0 2>/dev/null)
+  [ "$HEADER_PRINTED" = true ] && echo ""
 
   # Unfinished work
   UNFINISHED="$MEMORY_DIR/project_pattern_unfinished.md"

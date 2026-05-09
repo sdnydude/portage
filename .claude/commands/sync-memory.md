@@ -9,9 +9,9 @@ This command runs in two modes:
 - **Full mode** (default): Runs all phases. Used by daily 6am cron and manual `/sync-memory` invocation.
 - **Light mode**: Runs only Phase 2 (consolidation) and Phase 3f (metrics POST with minimal data). Used by session-end Stop hook to avoid expensive AI analysis on every exit.
 
-Check for the `SYNC_MODE` environment variable. If `SYNC_MODE=light`, skip Phases 1, 3a-3e, 4, and 5. Only run Phase 2 and Phase 3f (with a minimal metrics payload where hot_areas, workflow_distribution, decision_stats, contradictions, and unfinished_branches are all null).
+The mode is determined by the prompt that invoked this command. If the prompt contains the word "light", run in light mode — skip Phases 1, 3a-3e, 4, and 5. Only run Phase 2 (steps 1-4 only) and Phase 3f (with a minimal metrics payload where hot_areas, workflow_distribution, decision_stats, contradictions, and unfinished_branches are all null).
 
-If `SYNC_MODE` is unset or any other value, run full mode.
+If the prompt does not contain "light", run full mode (all phases).
 
 ## Phase 1: CodeGraph Index (full mode only)
 
@@ -27,13 +27,13 @@ codegraph sync
 2. Clear `now.md` to just a timestamp header for the current session
 3. Check if any `today-*.md` files are older than 7 days — if so, summarize their key points into `recent.md` and rename them to `.done.md`
 4. If `recent.md` has entries older than 14 days, compress them into `archive.md` and remove from `recent.md`
-5. **Journal backfill from git:** For each of the last 14 calendar days, check if a `today-YYYY-MM-DD.md` file exists and has more than 3 lines. If a day has git commits (check with `git log --format="%s" --since="YYYY-MM-DD" --until="YYYY-MM-DD + 1 day" --no-merges`) but no journal entry or an entry under 3 lines, create/append a backfill entry:
+5. **(Full mode only) Journal backfill from git:** For each of the last 14 calendar days, check if a `today-YYYY-MM-DD.md` file exists and has more than 3 lines. If a day has git commits (check with `git log --format="%s" --since="YYYY-MM-DD" --until="YYYY-MM-DD 23:59:59" --no-merges`) but no journal entry or an entry under 3 lines, create/append a backfill entry:
    ```
    ## [HH:MM] | [branch] (backfilled from git)
    [commit subject 1]; [commit subject 2]; ...
    ```
    Only backfill — never overwrite existing journal content.
-6. **Clean up old .done.md files:** Delete any `.done.md` files in `.remember/` older than 30 days. These have already been summarized into `recent.md` and `archive.md`. Use `find .remember/ -name "*.done.md" -mtime +30 -delete`.
+6. **(Full mode only) Clean up old .done.md files:** Delete any `.done.md` files in `.remember/` older than 30 days. These have already been summarized into `recent.md` and `archive.md`. Use `find .remember/ -name "*.done.md" -mtime +30 -delete`.
 
 ## Phase 3: Auto-Memory — Audit & Update (full mode only)
 
@@ -84,18 +84,7 @@ Review the current conversation and recent git history (`git log --oneline -20`)
 - New external references not in a `reference_*.md` file
 - Save any new memories found
 
-### 3c: Rebuild MEMORY.md index
-
-Re-read all memory files in the directory and regenerate `MEMORY.md` to ensure the index matches reality. Each entry: `- [Title](file.md) — one-line hook`. Keep under 200 lines.
-
-Also rebuild `decisions_index.md`:
-- Read all `decision_*.md` files in the directory
-- Group by `domain` from frontmatter
-- Skip any file that has been superseded (another decision's `supersedes` field points to it)
-- Write entries organized by domain section
-- Update the entry count in the MEMORY.md Decision Log pointer
-
-### 3d: Pattern Detection (full mode only)
+### 3c: Pattern Detection (full mode only)
 
 Read all `.remember/today-*.md` and `.done.md` files from the last 14 days. Analyze across session days to identify:
 
@@ -147,9 +136,9 @@ Read all `.remember/today-*.md` and `.done.md` files from the last 14 days. Anal
    ```
    If no unfinished branches found, delete `project_pattern_unfinished.md` if it exists.
 
-All `project_pattern_*` files are rolling snapshots — overwritten each full sync. Add them to MEMORY.md index during the next 3c rebuild.
+All `project_pattern_*` files are rolling snapshots — overwritten each full sync.
 
-### 3e: Memory Pruning (full mode only)
+### 3d: Memory Pruning (full mode only)
 
 Act on the staleness results from Phase 3a. For each memory marked stale:
 
@@ -161,7 +150,7 @@ Act on the staleness results from Phase 3a. For each memory marked stale:
    [original file content]
    ```
 2. Delete the original file from disk
-3. The entry will be removed from MEMORY.md during the next 3c rebuild (or remove it now if 3c already ran)
+3. The entry will be removed from MEMORY.md in Phase 3e (rebuild index) which runs next
 
 **Safety rails:**
 - Never prune a memory less than 7 days old (check file creation/modification date)
@@ -170,6 +159,17 @@ Act on the staleness results from Phase 3a. For each memory marked stale:
 - Behavioral feedback memories are exempt from codebase-based pruning (per Phase 3a classification)
 
 Track: count of memories archived this run, their filenames, and reasons. This data feeds into Phase 3f and Phase 6.
+
+### 3e: Rebuild MEMORY.md index (full mode only)
+
+Re-read all memory files in the directory and regenerate `MEMORY.md` to ensure the index matches reality (including pattern files from 3c and pruned files from 3d). Each entry: `- [Title](file.md) — one-line hook`. Keep under 200 lines.
+
+Also rebuild `decisions_index.md`:
+- Read all `decision_*.md` files in the directory
+- Group by `domain` from frontmatter
+- Skip any file that has been superseded (another decision's `supersedes` field points to it)
+- Write entries organized by domain section
+- Update the entry count in the MEMORY.md Decision Log pointer
 
 ### 3f: Registry Metrics POST (both modes)
 
