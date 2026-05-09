@@ -38,7 +38,7 @@ export default function HelpPage() {
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
         <div className="flex items-center gap-3 max-w-lg mx-auto">
-          <button onClick={() => router.back()} className="p-1 -ml-1">
+          <button onClick={() => router.back()} className="p-1 -ml-1" aria-label="Go back">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
             </svg>
@@ -72,6 +72,7 @@ export default function HelpPage() {
               <button
                 onClick={() => setOpenIndex(openIndex === i ? null : i)}
                 className="w-full flex items-center justify-between p-4 text-left"
+                aria-expanded={openIndex === i}
               >
                 <span className="text-sm font-medium text-text-primary pr-4">{item.q}</span>
                 <svg

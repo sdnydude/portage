@@ -24,12 +24,13 @@ export default function MarketplacePage() {
   const { token } = useAuth();
   const [accounts, setAccounts] = useState<MarketplaceAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
     api<{ accounts: MarketplaceAccount[] }>("/users/me/marketplace-accounts", { token })
       .then((data) => setAccounts(data.accounts))
-      .catch(() => {})
+      .catch(() => setError("Failed to load marketplace accounts"))
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -62,7 +63,7 @@ export default function MarketplacePage() {
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
         <div className="flex items-center gap-3 max-w-lg mx-auto">
-          <button onClick={() => router.back()} className="p-1 -ml-1">
+          <button onClick={() => router.back()} className="p-1 -ml-1" aria-label="Go back">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
             </svg>
@@ -75,6 +76,10 @@ export default function MarketplacePage() {
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 rounded-full border-2 border-forest-green border-t-transparent animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-accent-error bg-red-50 dark:bg-red-950/30 p-4 text-sm text-accent-error">
+            {error}
           </div>
         ) : (
           (["ebay", "etsy", "reverb"] as const).map((marketplace) => {

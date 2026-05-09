@@ -57,7 +57,10 @@ export default function ProfilePage() {
     try {
       const body: Record<string, unknown> = {};
       if (displayName !== (profile?.displayName || "")) body.displayName = displayName;
-      if (address.street1 || address.city) body.address = address;
+      const origAddr = profile?.address as Address | null;
+      if (JSON.stringify(address) !== JSON.stringify(origAddr || { street1: "", street2: "", city: "", state: "", zip: "", country: "US" })) {
+        body.address = (address.street1 || address.city) ? address : null;
+      }
 
       if (Object.keys(body).length === 0) {
         setMessage({ text: "No changes to save", type: "success" });
@@ -84,7 +87,7 @@ export default function ProfilePage() {
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
         <div className="flex items-center gap-3 max-w-lg mx-auto">
-          <button onClick={() => router.back()} className="p-1 -ml-1">
+          <button onClick={() => router.back()} className="p-1 -ml-1" aria-label="Go back">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
             </svg>
