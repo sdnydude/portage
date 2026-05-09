@@ -7,6 +7,11 @@
             "type": "command",
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/doppler-sync.sh",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/session-briefing.sh",
+            "timeout": 10
           }
         ]
       }
