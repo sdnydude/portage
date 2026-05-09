@@ -150,6 +150,20 @@ npx tsx apps/api/src/scripts/promote-admin.ts <email>
 
 ---
 
+## Decision Log
+
+Record architectural and implementation choices as `decision_*.md` files in auto-memory when all three criteria are met:
+
+1. An alternative was explicitly considered and rejected
+2. A future session could plausibly make the opposite choice
+3. The reasoning is non-obvious from the code alone
+
+Format: `decision_{domain}_{slug}.md` with frontmatter (name, description, type: decision, domain, supersedes) and body (choice, **Over:** rejected alternatives, **Because:** reasoning, **Context:** when/where). Save silently — no need to announce. Update `decisions_index.md` and MEMORY.md count.
+
+Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
+
+---
+
 ## Progress
 
 30/52 tasks complete, 3 partial, 19 remaining. See `docs/TODO.md` for full roadmap.

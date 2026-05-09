@@ -29,6 +29,13 @@ For each `project_*.md` memory file:
 - If a memory references something that no longer exists or has changed significantly, update or remove it
 - Report what changed
 
+For each `decision_*.md` memory file:
+- Read the decision content
+- Verify the chosen approach is still reflected in the codebase (check if key files/patterns still exist)
+- If the code has diverged from the decision (e.g., the rejected alternative was later adopted), flag for review
+- Check `supersedes` field — if this file is superseded by another decision, remove it from `decisions_index.md` but keep the file on disk
+- Report what changed
+
 ### 3b: Check for missing memories
 
 Review the current conversation and recent git history (`git log --oneline -20`) for:
@@ -40,6 +47,13 @@ Review the current conversation and recent git history (`git log --oneline -20`)
 ### 3c: Rebuild MEMORY.md index
 
 Re-read all memory files in the directory and regenerate `MEMORY.md` to ensure the index matches reality. Each entry: `- [Title](file.md) — one-line hook`. Keep under 200 lines.
+
+Also rebuild `decisions_index.md`:
+- Read all `decision_*.md` files in the directory
+- Group by `domain` from frontmatter
+- Skip any file that has been superseded (another decision's `supersedes` field points to it)
+- Write entries organized by domain section
+- Update the entry count in the MEMORY.md Decision Log pointer
 
 ## Phase 4: Serena Memories — Verify & Update
 
