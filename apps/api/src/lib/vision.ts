@@ -228,7 +228,21 @@ RULES:
 - Determine if item is music gear (instruments, amps, pedals, audio equipment, accessories)
 - If music gear, fill Reverb fields. If not, set reverb to null and isMusicGear to false.
 
-OUTPUT: JSON matching the schema provided. No markdown, no explanation — ONLY valid JSON.`;
+OUTPUT JSON STRUCTURE (all top-level fields required):
+{
+  "title": "General item title",
+  "description": "General marketplace description",
+  "condition": "new|like_new|good|fair|poor",
+  "conditionDescription": "Visible wear details from photos",
+  "brand": "Brand name",
+  "model": "Model name/number",
+  "isMusicGear": true/false,
+  "aiConfidence": 0.0-1.0,
+  "ebay": { "title": "≤80 char eBay title", "categoryId": "", "categoryName": "", "condition": "", "conditionDescription": "", "aspects": {}, "upc": null, "epid": null, "weight": {"value":0,"unit":"oz"}, "dimensions": {"length":0,"width":0,"height":0,"unit":"in"}, "packageType": "LETTER" },
+  "reverb": null or { "make": "", "model": "", "title": "", "categoryUuid": "", "categoryName": "", "conditionUuid": "", "conditionName": "", "year": null, "finish": null, "description": "" }
+}
+
+No markdown, no explanation — ONLY valid JSON.`;
 
 export interface ListingFieldsInput {
   scanData: {
