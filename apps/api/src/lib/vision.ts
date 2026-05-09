@@ -61,6 +61,7 @@ export async function identifyItem(imageBase64: string, mediaType: string): Prom
     mediaType,
     SYSTEM_PROMPT,
     'Identify this item for marketplace listing. Respond with ONLY a JSON object, no other text.',
+    { temperature: 0, maxTokens: 2048 },
   );
 
   return JSON.parse(extractJSON(text)) as VisionResult;
@@ -91,6 +92,7 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     mediaType,
     DETAILED_SYSTEM_PROMPT,
     'Identify this item with multiple candidates and reasoning.',
+    { temperature: 0, maxTokens: 2048 },
   );
 
   const json = JSON.parse(extractJSON(text));
@@ -216,7 +218,7 @@ SELLER DEFAULTS: ${JSON.stringify(input.sellerDefaults)}
 
 Generate all listing fields as JSON.`;
 
-  const { text } = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt);
+  const { text } = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
 
   return JSON.parse(extractJSON(text)) as ListingFieldsOutput;
 }

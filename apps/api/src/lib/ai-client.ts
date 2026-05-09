@@ -100,6 +100,13 @@ function chatChain(): ProviderConfig[] {
   return buildChain(env().CHAT_PROVIDERS);
 }
 
+// ─── Shared options ────────────────────────────────────────
+
+export interface AIOptions {
+  temperature?: number;
+  maxTokens?: number;
+}
+
 // ─── Vision: image → structured text ───────────────────────
 
 export async function analyzeImage(
@@ -107,6 +114,7 @@ export async function analyzeImage(
   mediaType: string,
   systemPrompt: string,
   userPrompt: string,
+  options?: AIOptions,
 ): Promise<{ text: string; provider: string; model: string; inputTokens: number; outputTokens: number }> {
   const chain = visionChain();
   const startTime = Date.now();
@@ -115,8 +123,8 @@ export async function analyzeImage(
     const config = chain[i];
     try {
       const result = config.type === 'openai'
-        ? await visionOpenAI(config, imageBase64, mediaType, systemPrompt, userPrompt)
-        : await visionAnthropic(config, imageBase64, mediaType, systemPrompt, userPrompt);
+        ? await visionOpenAI(config, imageBase64, mediaType, systemPrompt, userPrompt, options)
+        : await visionAnthropic(config, imageBase64, mediaType, systemPrompt, userPrompt, options);
 
       logger.info({
         provider: config.name,
@@ -143,12 +151,14 @@ async function visionAnthropic(
   mediaType: string,
   systemPrompt: string,
   userPrompt: string,
+  options?: AIOptions,
 ) {
   const client = new Anthropic({ apiKey: config.apiKey });
 
   const response = await client.messages.create({
     model: config.visionModel,
-    max_tokens: 1024,
+    max_tokens: options?.maxTokens ?? 1024,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
     system: systemPrompt,
     messages: [{
       role: 'user',
@@ -181,12 +191,14 @@ async function visionOpenAI(
   mediaType: string,
   systemPrompt: string,
   userPrompt: string,
+  options?: AIOptions,
 ) {
   const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
 
   const response = await client.chat.completions.create({
     model: config.visionModel,
-    max_tokens: 1024,
+    max_tokens: options?.maxTokens ?? 1024,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
@@ -213,12 +225,14 @@ async function visionOpenAI(
 export async function chatText(
   systemPrompt: string,
   userPrompt: string,
+  options?: AIOptions,
 ): Promise<{ text: string; provider: string; model: string }> {
   return chat(
     [{ role: 'user', content: userPrompt }],
     systemPrompt,
     [],
     async () => '',
+    options,
   );
 }
 
@@ -235,6 +249,7 @@ export async function chat(
   systemPrompt: string,
   tools: ToolDef[],
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
+  options?: AIOptions,
 ): Promise<{ text: string; provider: string; model: string }> {
   const chain = chatChain();
   const startTime = Date.now();
@@ -243,8 +258,8 @@ export async function chat(
     const config = chain[i];
     try {
       const result = config.type === 'openai'
-        ? await chatOpenAI(config, history, systemPrompt, tools, executeTool)
-        : await chatAnthropic(config, history, systemPrompt, tools, executeTool);
+        ? await chatOpenAI(config, history, systemPrompt, tools, executeTool, options)
+        : await chatAnthropic(config, history, systemPrompt, tools, executeTool, options);
 
       logger.info({
         provider: config.name,
@@ -269,6 +284,7 @@ async function chatAnthropic(
   systemPrompt: string,
   tools: ToolDef[],
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
+  options?: AIOptions,
 ): Promise<{ text: string; model: string }> {
   const client = new Anthropic({ apiKey: config.apiKey });
 
@@ -283,9 +299,12 @@ async function chatAnthropic(
     content: m.content,
   }));
 
+  const maxTokens = options?.maxTokens ?? 1024;
+
   let response = await client.messages.create({
     model: config.chatModel,
-    max_tokens: 1024,
+    max_tokens: maxTokens,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
     system: systemPrompt,
     tools: anthropicTools,
     messages,
@@ -313,7 +332,8 @@ async function chatAnthropic(
 
     response = await client.messages.create({
       model: config.chatModel,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
+      ...(options?.temperature !== undefined && { temperature: options.temperature }),
       system: systemPrompt,
       tools: anthropicTools,
       messages,
@@ -336,6 +356,7 @@ async function chatOpenAI(
   systemPrompt: string,
   tools: ToolDef[],
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
+  options?: AIOptions,
 ): Promise<{ text: string; model: string }> {
   const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
 
@@ -352,9 +373,12 @@ async function chatOpenAI(
     })),
   ];
 
+  const maxTokens = options?.maxTokens ?? 1024;
+
   let response = await client.chat.completions.create({
     model: config.chatModel,
-    max_tokens: 1024,
+    max_tokens: maxTokens,
+    ...(options?.temperature !== undefined && { temperature: options.temperature }),
     tools: openaiTools,
     messages,
   });
@@ -378,7 +402,8 @@ async function chatOpenAI(
 
     response = await client.chat.completions.create({
       model: config.chatModel,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
+      ...(options?.temperature !== undefined && { temperature: options.temperature }),
       tools: openaiTools,
       messages,
     });
