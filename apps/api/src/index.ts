@@ -26,6 +26,7 @@ import { draftsRouter } from './routes/drafts.js';
 import { preferencesRouter } from './routes/preferences.js';
 import { sellerProfileRouter } from './routes/seller-profile.js';
 import { prepareListingRouter } from './routes/prepare-listing.js';
+import { usersRouter } from './routes/users.js';
 
 const config = loadEnv();
 
@@ -57,6 +58,7 @@ app.use('/admin', adminRouter);
 app.use('/shipping', shippingRouter);
 app.use('/survey', surveyRouter);
 app.use('/drafts', draftsRouter);
+app.use('/users/me', usersRouter);
 app.use('/users/me/preferences', preferencesRouter);
 app.use('/seller-profile', sellerProfileRouter);
 app.use('/items', prepareListingRouter);
