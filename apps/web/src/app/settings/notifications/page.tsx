@@ -40,7 +40,8 @@ export default function NotificationsPage() {
 
   const handleToggle = async (key: string) => {
     if (!token) return;
-    const updated = { ...prefs, [key]: !prefs[key] };
+    const previousValue = prefs[key];
+    const updated = { ...prefs, [key]: !previousValue };
     setPrefs(updated);
     setSaving(true);
     setMessage(null);
@@ -53,7 +54,7 @@ export default function NotificationsPage() {
       setMessage("Saved");
       setTimeout(() => setMessage(null), 2000);
     } catch {
-      setPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
+      setPrefs((prev) => ({ ...prev, [key]: previousValue }));
       setMessage("Failed to save");
     } finally {
       setSaving(false);
