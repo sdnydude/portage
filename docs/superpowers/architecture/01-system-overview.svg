@@ -1,0 +1,212 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" font-family="'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2D5A27"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="900" fill="#FAFAF9" rx="8"/>
+
+  <!-- Title -->
+  <text x="600" y="45" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1a1a">Portage Memory Intelligence Suite — System Overview</text>
+  <text x="600" y="68" text-anchor="middle" font-size="13" fill="#666">Persistent cross-session learning infrastructure for Claude Code</text>
+
+  <!-- === SESSION LAYER === -->
+  <rect x="30" y="90" width="1140" height="200" rx="12" fill="#F0F7EE" stroke="#2D5A27" stroke-width="1.5" stroke-dasharray="6 3" filter="url(#shadow)"/>
+  <text x="50" y="115" font-size="14" font-weight="700" fill="#2D5A27">SESSION LAYER</text>
+
+  <!-- SessionStart Hook -->
+  <rect x="60" y="135" width="220" height="130" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="60" y="135" width="220" height="30" rx="8" fill="#2D5A27"/>
+  <rect x="60" y="155" width="220" height="10" fill="#2D5A27"/>
+  <text x="170" y="155" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">SessionStart Hook</text>
+  <text x="80" y="185" font-size="11" fill="#333">session-briefing.sh</text>
+  <text x="80" y="202" font-size="10" fill="#666">7 sections of context:</text>
+  <text x="80" y="216" font-size="9" fill="#888">Freshness | Sessions | Activity</text>
+  <text x="80" y="229" font-size="9" fill="#888">Journal | Decisions | Git | Patterns</text>
+  <text x="80" y="245" font-size="10" fill="#2D5A27" font-weight="600">&lt;100ms execution</text>
+
+  <!-- Active Session -->
+  <rect x="340" y="135" width="280" height="130" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="340" y="135" width="280" height="30" rx="8" fill="#2D5A27"/>
+  <rect x="340" y="155" width="280" height="10" fill="#2D5A27"/>
+  <text x="480" y="155" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Active Session</text>
+  <text x="360" y="185" font-size="11" fill="#333">Claude Code + User</text>
+  <text x="360" y="202" font-size="10" fill="#666">Writes to .remember/now.md</text>
+  <text x="360" y="219" font-size="10" fill="#666">Captures decisions (3-criteria rule)</text>
+  <text x="360" y="236" font-size="10" fill="#666">enforce-ship.sh guards edits</text>
+  <text x="360" y="253" font-size="10" fill="#666">CLAUDE.md + MEMORY.md loaded</text>
+
+  <!-- Stop Hook -->
+  <rect x="680" y="135" width="220" height="130" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="680" y="135" width="220" height="30" rx="8" fill="#2D5A27"/>
+  <rect x="680" y="155" width="220" height="10" fill="#2D5A27"/>
+  <text x="790" y="155" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Stop Hooks</text>
+  <text x="700" y="185" font-size="11" fill="#333">memory-sync.sh</text>
+  <text x="700" y="202" font-size="10" fill="#666">CodeGraph sync + now.md flush</text>
+  <text x="700" y="222" font-size="11" fill="#333">session-capture.sh</text>
+  <text x="700" y="239" font-size="10" fill="#666">POST summary/tldr to registry</text>
+  <text x="700" y="255" font-size="10" fill="#2D5A27" font-weight="600">&lt;1s total</text>
+
+  <!-- PreToolUse -->
+  <rect x="960" y="135" width="190" height="130" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="960" y="135" width="190" height="30" rx="8" fill="#C4722A"/>
+  <rect x="960" y="155" width="190" height="10" fill="#C4722A"/>
+  <text x="1055" y="155" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">PreToolUse Guards</text>
+  <text x="980" y="185" font-size="11" fill="#333">enforce-ship.sh</text>
+  <text x="980" y="202" font-size="10" fill="#666">Blocks Edit|Write unless</text>
+  <text x="980" y="216" font-size="10" fill="#666">/ship Phase 4+</text>
+  <text x="980" y="236" font-size="11" fill="#333">check-ports.sh</text>
+  <text x="980" y="253" font-size="10" fill="#666">Port conflict guard</text>
+
+  <!-- Arrows: session flow -->
+  <line x1="280" y1="200" x2="335" y2="200" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <line x1="620" y1="200" x2="675" y2="200" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+  <!-- === STORAGE LAYER === -->
+  <rect x="30" y="310" width="1140" height="230" rx="12" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" stroke-dasharray="6 3" filter="url(#shadow)"/>
+  <text x="50" y="335" font-size="14" font-weight="700" fill="#5B4B8A">STORAGE LAYER</text>
+
+  <!-- .remember/ -->
+  <rect x="60" y="355" width="250" height="165" rx="8" fill="#fff" stroke="#5B4B8A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="60" y="355" width="250" height="30" rx="8" fill="#5B4B8A"/>
+  <rect x="60" y="375" width="250" height="10" fill="#5B4B8A"/>
+  <text x="185" y="375" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">.remember/ (Journal)</text>
+  <text x="80" y="400" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">now.md</text>
+  <text x="200" y="400" font-size="9" fill="#888">current session buffer</text>
+  <text x="80" y="416" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">today-YYYY-MM-DD.md</text>
+  <text x="80" y="430" font-size="9" fill="#888">daily journal (auto-created)</text>
+  <text x="80" y="446" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">recent.md</text>
+  <text x="200" y="446" font-size="9" fill="#888">7-day rolling summary</text>
+  <text x="80" y="462" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">archive.md</text>
+  <text x="200" y="462" font-size="9" fill="#888">compressed history</text>
+  <text x="80" y="478" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">*.done.md</text>
+  <text x="200" y="478" font-size="9" fill="#888">aged journals (30d TTL)</text>
+  <text x="80" y="500" font-size="9" fill="#5B4B8A" font-weight="600">Lifecycle: now → today → recent → archive</text>
+
+  <!-- Auto-memory -->
+  <rect x="350" y="355" width="280" height="165" rx="8" fill="#fff" stroke="#5B4B8A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="350" y="355" width="280" height="30" rx="8" fill="#5B4B8A"/>
+  <rect x="350" y="375" width="280" height="10" fill="#5B4B8A"/>
+  <text x="490" y="375" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">~/.claude/.../memory/ (Auto-Memory)</text>
+  <text x="370" y="400" font-size="10" fill="#333">23 files, 5 types:</text>
+  <text x="370" y="418" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">decision_*.md</text>
+  <text x="500" y="418" font-size="9" fill="#888">5 architectural choices</text>
+  <text x="370" y="434" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">feedback_*.md</text>
+  <text x="500" y="434" font-size="9" fill="#888">6 behavioral rules</text>
+  <text x="370" y="450" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">project_*.md</text>
+  <text x="500" y="450" font-size="9" fill="#888">6 project state files</text>
+  <text x="370" y="466" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">reference_*.md</text>
+  <text x="500" y="466" font-size="9" fill="#888">4 external pointers</text>
+  <text x="370" y="482" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">project_pattern_*.md</text>
+  <text x="370" y="496" font-size="9" fill="#888">Rolling snapshots (hot areas, workflow, unfinished)</text>
+  <text x="370" y="510" font-size="10" fill="#333">MEMORY.md index (loaded every session)</text>
+
+  <!-- CLAUDE.md + Serena -->
+  <rect x="670" y="355" width="230" height="165" rx="8" fill="#fff" stroke="#5B4B8A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="670" y="355" width="230" height="30" rx="8" fill="#5B4B8A"/>
+  <rect x="670" y="375" width="230" height="10" fill="#5B4B8A"/>
+  <text x="785" y="375" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Declarative Config</text>
+  <text x="690" y="400" font-size="11" fill="#333" font-weight="600">CLAUDE.md</text>
+  <text x="690" y="416" font-size="10" fill="#666">Architecture, rules, progress</text>
+  <text x="690" y="432" font-size="10" fill="#666">Updated by /sync-memory</text>
+  <text x="690" y="455" font-size="11" fill="#333" font-weight="600">Serena Memories</text>
+  <text x="690" y="471" font-size="10" fill="#666">6 semantic code memories</text>
+  <text x="690" y="487" font-size="10" fill="#666">TS language server bridge</text>
+  <text x="690" y="510" font-size="11" fill="#333" font-weight="600">CodeGraph</text>
+  <text x="690" y="505" font-size="10" fill="#666">Symbol index (.codegraph/)</text>
+
+  <!-- ship-state -->
+  <rect x="940" y="355" width="210" height="165" rx="8" fill="#fff" stroke="#5B4B8A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="940" y="355" width="210" height="30" rx="8" fill="#5B4B8A"/>
+  <rect x="940" y="375" width="210" height="10" fill="#5B4B8A"/>
+  <text x="1045" y="375" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Workflow State</text>
+  <text x="960" y="400" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">ship-state.md</text>
+  <text x="960" y="416" font-size="10" fill="#666">Current /ship phase + plan</text>
+  <text x="960" y="436" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">decisions_index.md</text>
+  <text x="960" y="452" font-size="10" fill="#666">Decision log by domain</text>
+  <text x="960" y="472" font-size="10" fill="#333" font-family="'JetBrains Mono', monospace">TODO.md</text>
+  <text x="960" y="488" font-size="10" fill="#666">37/52 task roadmap</text>
+  <text x="960" y="510" font-size="10" fill="#666">Versioned on /ship restart</text>
+
+  <!-- === EXTERNAL SERVICES === -->
+  <rect x="30" y="560" width="1140" height="150" rx="12" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" stroke-dasharray="6 3" filter="url(#shadow)"/>
+  <text x="50" y="585" font-size="14" font-weight="700" fill="#C4722A">EXTERNAL SERVICES</text>
+
+  <!-- Registry API -->
+  <rect x="60" y="605" width="320" height="85" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="60" y="605" width="320" height="30" rx="8" fill="#C4722A"/>
+  <rect x="60" y="625" width="320" height="10" fill="#C4722A"/>
+  <text x="220" y="625" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">AI Factory Registry :8011</text>
+  <text x="80" y="655" font-size="10" fill="#333">POST/GET /api/agent-sessions</text>
+  <text x="280" y="655" font-size="9" fill="#888">session capture</text>
+  <text x="80" y="671" font-size="10" fill="#333">POST/GET /api/memory-metrics</text>
+  <text x="280" y="671" font-size="9" fill="#888">sync telemetry</text>
+  <text x="80" y="687" font-size="10" fill="#666">PostgreSQL + Alembic + FastAPI</text>
+
+  <!-- Session Logger -->
+  <rect x="440" y="605" width="280" height="85" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="440" y="605" width="280" height="30" rx="8" fill="#C4722A"/>
+  <rect x="440" y="625" width="280" height="10" fill="#C4722A"/>
+  <text x="580" y="625" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Session Logger :8009</text>
+  <text x="460" y="655" font-size="10" fill="#333">POST /sessions/ingest-log</text>
+  <text x="460" y="671" font-size="10" fill="#666">Embeds + stores session summaries</text>
+  <text x="460" y="687" font-size="10" fill="#666">Used by /ship Phase 7</text>
+
+  <!-- Cron -->
+  <rect x="780" y="605" width="370" height="85" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="780" y="605" width="370" height="30" rx="8" fill="#C4722A"/>
+  <rect x="780" y="625" width="370" height="10" fill="#C4722A"/>
+  <text x="965" y="625" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Cron (6am ET daily)</text>
+  <text x="800" y="655" font-size="10" fill="#333">claude -p "Run /sync-memory — full audit"</text>
+  <text x="800" y="671" font-size="10" fill="#666">Staleness checks, pattern detection, pruning</text>
+  <text x="800" y="687" font-size="10" fill="#666">Contradiction scan, CLAUDE.md updates, metrics POST</text>
+
+  <!-- === ORCHESTRATION === -->
+  <rect x="30" y="730" width="1140" height="150" rx="12" fill="#F0F4FF" stroke="#3B5998" stroke-width="1.5" stroke-dasharray="6 3" filter="url(#shadow)"/>
+  <text x="50" y="755" font-size="14" font-weight="700" fill="#3B5998">ORCHESTRATION</text>
+
+  <!-- /sync-memory -->
+  <rect x="60" y="775" width="350" height="85" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="60" y="775" width="350" height="30" rx="8" fill="#3B5998"/>
+  <rect x="60" y="795" width="350" height="10" fill="#3B5998"/>
+  <text x="235" y="795" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">/sync-memory (Full Mode — 6 Phases)</text>
+  <text x="80" y="825" font-size="10" fill="#333">P1: CodeGraph | P2: Journal consolidation + backfill</text>
+  <text x="80" y="841" font-size="10" fill="#333">P3: Staleness + patterns + pruning + metrics POST</text>
+  <text x="80" y="857" font-size="10" fill="#333">P4: Serena | P5: CLAUDE.md | P6: Report</text>
+
+  <!-- /ship -->
+  <rect x="460" y="775" width="310" height="85" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="460" y="775" width="310" height="30" rx="8" fill="#3B5998"/>
+  <rect x="460" y="795" width="310" height="10" fill="#3B5998"/>
+  <text x="615" y="795" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">/ship (7-Phase Feature Workflow)</text>
+  <text x="480" y="825" font-size="10" fill="#333">Brainstorm → Explore → Plan → Build</text>
+  <text x="480" y="841" font-size="10" fill="#333">→ Verify → Review (6 agents) → Ship</text>
+  <text x="480" y="857" font-size="10" fill="#333">Enforced by enforce-ship.sh hook</text>
+
+  <!-- Superpowers -->
+  <rect x="820" y="775" width="330" height="85" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="820" y="775" width="330" height="30" rx="8" fill="#3B5998"/>
+  <rect x="820" y="795" width="330" height="10" fill="#3B5998"/>
+  <text x="985" y="795" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Superpowers Skills</text>
+  <text x="840" y="825" font-size="10" fill="#333">brainstorming, debugging, ship, sync-memory</text>
+  <text x="840" y="841" font-size="10" fill="#333">update-config, secrets, frontend-design</text>
+  <text x="840" y="857" font-size="10" fill="#333">Auto-invoked when relevant (1% rule)</text>
+
+  <!-- Data flow arrows (vertical) -->
+  <line x1="170" y1="265" x2="170" y2="350" stroke="#555" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="480" y1="265" x2="480" y2="350" stroke="#555" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="790" y1="265" x2="790" y2="350" stroke="#555" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+
+  <line x1="220" y1="520" x2="220" y2="600" stroke="#555" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="580" y1="520" x2="580" y2="600" stroke="#555" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+
+  <line x1="235" y1="770" x2="235" y2="710" stroke="#3B5998" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+</svg>
