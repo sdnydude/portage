@@ -53,9 +53,9 @@ fi
 # Spawn background claude session for full sync
 (
   echo $$ > "$LOCKFILE"
-  "$CLAUDE_BIN" -p "Run /sync-memory — full audit of all 5 memory systems. Be concise, fix what's stale, skip what's current." \
+  SYNC_MODE=light "$CLAUDE_BIN" -p "Run /sync-memory — light mode, consolidation and metrics only." \
     --allowedTools "Bash,Read,Write,Edit" \
-    --max-turns 30 \
+    --max-turns 10 \
     > "$LOG_DIR/sync-$(date +%Y%m%d-%H%M%S).log" 2>&1
   rm -f "$LOCKFILE"
 ) &

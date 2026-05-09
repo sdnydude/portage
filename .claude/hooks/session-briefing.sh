@@ -7,6 +7,17 @@ cd "$PROJECT_DIR"
 
 echo "=== SESSION BRIEFING ==="
 
+# Freshness indicator
+(
+  LAST_SYNC="$PROJECT_DIR/.remember/.last-full-sync"
+  if [ -f "$LAST_SYNC" ]; then
+    echo "Last full sync: $(cat "$LAST_SYNC")"
+  else
+    echo "Last full sync: never (run /sync-memory)"
+  fi
+) || true
+echo ""
+
 # --- Section 1: Recent Sessions from registry API ---
 (
   REGISTRY_URL="http://10.0.0.251:8011/api/agent-sessions?project=portage&limit=3"
@@ -89,6 +100,45 @@ except Exception:
     if [ -n "$PROGRESS" ]; then
       echo "--- Progress ---"
       echo "$PROGRESS"
+      echo ""
+    fi
+  fi
+) || true
+
+# --- Section 7: Memory Intelligence ---
+(
+  MEMORY_DIR="$HOME/.claude/projects/-home-swebber64-DHG-portage/memory"
+
+  # Hot areas
+  HOT_FILES=$(find "$MEMORY_DIR" -name "project_pattern_hotarea_*.md" 2>/dev/null)
+  if [ -n "$HOT_FILES" ]; then
+    echo "--- Hot Areas ---"
+    for f in $HOT_FILES; do
+      NAME=$(grep "^name:" "$f" 2>/dev/null | head -1 | sed 's/^name: //')
+      TAG=$(grep "^\*\*Tag:" "$f" 2>/dev/null | head -1)
+      if [ -n "$NAME" ]; then
+        echo "$NAME"
+        [ -n "$TAG" ] && echo "  $TAG"
+      fi
+    done
+    echo ""
+  fi
+
+  # Unfinished work
+  UNFINISHED="$MEMORY_DIR/project_pattern_unfinished.md"
+  if [ -f "$UNFINISHED" ] && [ -s "$UNFINISHED" ]; then
+    echo "--- Unfinished Work ---"
+    grep "^-" "$UNFINISHED"
+    echo ""
+  fi
+
+  # Workflow trend alert
+  WORKFLOW="$MEMORY_DIR/project_pattern_workflow.md"
+  if [ -f "$WORKFLOW" ]; then
+    TREND=$(grep "^\*\*Trend:" "$WORKFLOW" 2>/dev/null)
+    if [ -n "$TREND" ]; then
+      echo "--- Workflow Alert ---"
+      echo "$TREND"
       echo ""
     fi
   fi
