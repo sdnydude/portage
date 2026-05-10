@@ -41,7 +41,7 @@ export default function ObservabilityPage() {
         <iframe
           src={grafanaUrl}
           className="w-full h-full"
-          frameBorder="0"
+          style={{ border: 0 }}
           title="Portage Grafana Dashboard"
           allow="fullscreen"
         />
