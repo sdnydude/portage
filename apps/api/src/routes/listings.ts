@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { listings, items } from '../db/schema.js';
@@ -308,6 +308,131 @@ listingsRouter.delete('/:id', async (req, res, next) => {
 
     logger.info({ userId, listingId: listing.id }, 'Listing deleted');
     res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Bulk Endpoints ───────────────────────────────────────────────────────────
+
+const bulkListingIdsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(50),
+});
+
+listingsRouter.post('/bulk/delete', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { ids } = bulkListingIdsSchema.parse(req.body);
+
+    // Verify ownership before deleting
+    const owned = await db.select({ id: listings.id, status: listings.status, marketplaceListingId: listings.marketplaceListingId, marketplace: listings.marketplace })
+      .from(listings)
+      .where(and(inArray(listings.id, ids), eq(listings.userId, userId)));
+
+    if (owned.length !== ids.length) {
+      throw new AppError(403, 'FORBIDDEN', 'One or more listings do not belong to you');
+    }
+
+    // Best-effort removal from marketplaces for active listings
+    await Promise.all(
+      owned
+        .filter((l) => l.status === 'active' && l.marketplaceListingId)
+        .map(async (l) => {
+          try {
+            const adapter = getAdapter(userId, l.marketplace);
+            await adapter.deleteListing(l.marketplaceListingId!);
+          } catch (err) {
+            logger.warn({ listingId: l.id, error: (err as Error).message }, 'Bulk delete: failed to remove from marketplace');
+          }
+        })
+    );
+
+    const deleted = await db.transaction(async (tx) => {
+      return tx.delete(listings)
+        .where(and(inArray(listings.id, ids), eq(listings.userId, userId)))
+        .returning({ id: listings.id });
+    });
+
+    logger.info({ userId, count: deleted.length }, 'Bulk listings deleted');
+    res.json({ deleted: true, count: deleted.length, ids: deleted.map((r) => r.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+listingsRouter.post('/bulk/archive', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { ids } = bulkListingIdsSchema.parse(req.body);
+
+    // Verify ownership
+    const owned = await db.select({ id: listings.id, status: listings.status, marketplaceListingId: listings.marketplaceListingId, marketplace: listings.marketplace })
+      .from(listings)
+      .where(and(inArray(listings.id, ids), eq(listings.userId, userId)));
+
+    if (owned.length !== ids.length) {
+      throw new AppError(403, 'FORBIDDEN', 'One or more listings do not belong to you');
+    }
+
+    // Best-effort removal from marketplaces for active listings
+    await Promise.all(
+      owned
+        .filter((l) => l.status === 'active' && l.marketplaceListingId)
+        .map(async (l) => {
+          try {
+            const adapter = getAdapter(userId, l.marketplace);
+            await adapter.deleteListing(l.marketplaceListingId!);
+          } catch (err) {
+            logger.warn({ listingId: l.id, error: (err as Error).message }, 'Bulk archive: failed to remove from marketplace');
+          }
+        })
+    );
+
+    const archived = await db.transaction(async (tx) => {
+      return tx.update(listings)
+        .set({ status: 'archived' })
+        .where(and(inArray(listings.id, ids), eq(listings.userId, userId)))
+        .returning({ id: listings.id });
+    });
+
+    logger.info({ userId, count: archived.length }, 'Bulk listings archived');
+    res.json({ archived: true, count: archived.length, ids: archived.map((r) => r.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+listingsRouter.post('/bulk/activate', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { ids } = bulkListingIdsSchema.parse(req.body);
+
+    // Verify ownership
+    const owned = await db.select({ id: listings.id, status: listings.status })
+      .from(listings)
+      .where(and(inArray(listings.id, ids), eq(listings.userId, userId)));
+
+    if (owned.length !== ids.length) {
+      throw new AppError(403, 'FORBIDDEN', 'One or more listings do not belong to you');
+    }
+
+    // Only allow activating draft/archived listings
+    const activatable = owned.filter((l) => l.status === 'draft' || l.status === 'archived');
+    if (activatable.length === 0) {
+      throw new AppError(400, 'INVALID_STATUS', 'No eligible listings to activate (only draft/archived listings can be activated)');
+    }
+
+    const activatableIds = activatable.map((l) => l.id);
+
+    const activated = await db.transaction(async (tx) => {
+      return tx.update(listings)
+        .set({ status: 'active' })
+        .where(and(inArray(listings.id, activatableIds), eq(listings.userId, userId)))
+        .returning({ id: listings.id });
+    });
+
+    logger.info({ userId, count: activated.length }, 'Bulk listings activated');
+    res.json({ activated: true, count: activated.length, ids: activated.map((r) => r.id), skipped: ids.length - activated.length });
   } catch (err) {
     next(err);
   }

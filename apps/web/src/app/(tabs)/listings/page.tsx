@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { PageHeader } from "@/components/layout/page-header";
+import { BulkListingBar } from "@/components/listing/bulk-listing-bar";
 import { useListings } from "@/hooks/use-listings";
 import { useAuth } from "@/hooks/use-auth";
+import { useBulkSelect } from "@/hooks/use-bulk-select";
+import { api, ApiError } from "@/lib/api";
 import Link from "next/link";
 import type { Listing } from "@/hooks/use-listings";
 
@@ -27,12 +30,32 @@ const marketplaceIcons: Record<string, string> = {
   reverb: "Reverb",
 };
 
-function ListingCard({ listing }: { listing: Listing }) {
-  return (
-    <Link
-      href={`/listings/${listing.id}`}
-      className="flex items-center gap-3 p-3 bg-surface rounded-xl border border-border hover:border-border-focus transition-colors"
-    >
+interface ListingCardProps {
+  listing: Listing;
+  isSelecting: boolean;
+  isSelected: boolean;
+  onToggle: (id: string) => void;
+}
+
+function ListingCard({ listing, isSelecting, isSelected, onToggle }: ListingCardProps) {
+  const cardContent = (
+    <div className={`flex items-center gap-3 p-3 bg-surface rounded-xl border transition-colors ${
+      isSelected ? "border-forest-green ring-2 ring-forest-green" : "border-border hover:border-border-focus"
+    }`}>
+      {isSelecting && (
+        <div
+          className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+            isSelected ? "bg-forest-green border-forest-green" : "bg-surface border-border"
+          }`}
+          aria-hidden="true"
+        >
+          {isSelected && (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColors[listing.status]}`}>
@@ -51,17 +74,42 @@ function ListingCard({ listing }: { listing: Listing }) {
             : `Created ${new Date(listing.createdAt).toLocaleDateString()}`}
         </div>
       </div>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-placeholder flex-shrink-0">
-        <path d="M9 18l6-6-6-6" />
-      </svg>
+      {!isSelecting && (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-placeholder flex-shrink-0">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      )}
+    </div>
+  );
+
+  if (isSelecting) {
+    return (
+      <button
+        onClick={() => onToggle(listing.id)}
+        className="w-full text-left focus:outline-none"
+        aria-pressed={isSelected}
+        aria-label={`${isSelected ? "Deselect" : "Select"} listing for $${listing.price.toFixed(2)} on ${listing.marketplace}`}
+      >
+        {cardContent}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={`/listings/${listing.id}`}>
+      {cardContent}
     </Link>
   );
 }
 
 export default function ListingsPage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, token } = useAuth();
   const [statusFilter, setStatusFilter] = useState("");
-  const { listings, isLoading, error } = useListings({ status: statusFilter || undefined });
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  const { listings, isLoading, error, refetch } = useListings({ status: statusFilter || undefined });
+  const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<Listing>();
 
   const statusFilters = [
     { value: "", label: "All" },
@@ -70,6 +118,68 @@ export default function ListingsPage() {
     { value: "sold", label: "Sold" },
     { value: "archived", label: "Archived" },
   ];
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0 || !token) return;
+    const confirmed = window.confirm(`Delete ${selectedIds.size} listing${selectedIds.size !== 1 ? "s" : ""}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setBulkLoading(true);
+    setBulkError(null);
+    try {
+      await api("/listings/bulk/delete", {
+        method: "POST",
+        body: { ids: Array.from(selectedIds) },
+        token,
+      });
+      clearSelection();
+      await refetch();
+    } catch (err) {
+      setBulkError(err instanceof ApiError ? err.message : "Failed to delete listings");
+    } finally {
+      setBulkLoading(false);
+    }
+  }, [selectedIds, token, clearSelection, refetch]);
+
+  const handleBulkArchive = useCallback(async () => {
+    if (selectedIds.size === 0 || !token) return;
+
+    setBulkLoading(true);
+    setBulkError(null);
+    try {
+      await api("/listings/bulk/archive", {
+        method: "POST",
+        body: { ids: Array.from(selectedIds) },
+        token,
+      });
+      clearSelection();
+      await refetch();
+    } catch (err) {
+      setBulkError(err instanceof ApiError ? err.message : "Failed to archive listings");
+    } finally {
+      setBulkLoading(false);
+    }
+  }, [selectedIds, token, clearSelection, refetch]);
+
+  const handleBulkActivate = useCallback(async () => {
+    if (selectedIds.size === 0 || !token) return;
+
+    setBulkLoading(true);
+    setBulkError(null);
+    try {
+      await api("/listings/bulk/activate", {
+        method: "POST",
+        body: { ids: Array.from(selectedIds) },
+        token,
+      });
+      clearSelection();
+      await refetch();
+    } catch (err) {
+      setBulkError(err instanceof ApiError ? err.message : "Failed to activate listings");
+    } finally {
+      setBulkLoading(false);
+    }
+  }, [selectedIds, token, clearSelection, refetch]);
 
   if (!isAuthenticated) {
     return (
@@ -86,7 +196,24 @@ export default function ListingsPage() {
 
   return (
     <>
-      <PageHeader title="Listings" subtitle={listings.length > 0 ? `${listings.length} listing${listings.length !== 1 ? "s" : ""}` : undefined} />
+      <PageHeader
+        title="Listings"
+        subtitle={listings.length > 0 ? `${listings.length} listing${listings.length !== 1 ? "s" : ""}` : undefined}
+        action={
+          listings.length > 0 ? (
+            <button
+              onClick={toggleSelecting}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                isSelecting
+                  ? "bg-forest-green text-white"
+                  : "bg-muted text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              {isSelecting ? "Done" : "Select"}
+            </button>
+          ) : undefined
+        }
+      />
       <div className="px-4 py-3 max-w-lg mx-auto space-y-3">
         <div className="flex gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
           {statusFilters.map((f) => (
@@ -103,6 +230,12 @@ export default function ListingsPage() {
             </button>
           ))}
         </div>
+
+        {bulkError && (
+          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
+            {bulkError}
+          </div>
+        )}
 
         {isLoading && (
           <div className="flex items-center justify-center py-16">
@@ -138,11 +271,31 @@ export default function ListingsPage() {
         {!isLoading && !error && listings.length > 0 && (
           <div className="flex flex-col gap-2">
             {listings.map((listing) => (
-              <ListingCard key={listing.id} listing={listing} />
+              <ListingCard
+                key={listing.id}
+                listing={listing}
+                isSelecting={isSelecting}
+                isSelected={selectedIds.has(listing.id)}
+                onToggle={toggle}
+              />
             ))}
           </div>
         )}
       </div>
+
+      {/* Bulk action bar — shown above tab bar when in select mode with listings selected */}
+      {isSelecting && (
+        <BulkListingBar
+          selectedCount={selectedCount}
+          totalCount={listings.length}
+          onSelectAll={() => selectAll(listings)}
+          onClear={clearSelection}
+          onDelete={handleBulkDelete}
+          onArchive={handleBulkArchive}
+          onActivate={handleBulkActivate}
+          isLoading={bulkLoading}
+        />
+      )}
     </>
   );
 }
