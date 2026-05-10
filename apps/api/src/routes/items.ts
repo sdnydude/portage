@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, desc, ilike, and, sql } from 'drizzle-orm';
+import { eq, desc, ilike, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { items } from '../db/schema.js';
@@ -218,6 +218,103 @@ itemsRouter.delete('/:id', async (req, res, next) => {
 
     logger.info({ userId, itemId: req.params.id }, 'Item deleted');
     res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Bulk Endpoints ───────────────────────────────────────────────────────────
+
+const bulkIdsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(50),
+});
+
+const bulkExportIdsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(100),
+});
+
+const validBulkConditions = ['new', 'like_new', 'good', 'fair', 'poor'] as const;
+
+const bulkUpdateSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(50),
+  updates: z.object({
+    category: z.string().max(255).optional(),
+    condition: z.enum(validBulkConditions).optional(),
+  }).refine((u) => u.category !== undefined || u.condition !== undefined, {
+    message: 'At least one update field (category or condition) must be provided',
+  }),
+});
+
+itemsRouter.post('/bulk/delete', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { ids } = bulkIdsSchema.parse(req.body);
+
+    // Verify all items belong to the user before deleting
+    const owned = await db.select({ id: items.id }).from(items)
+      .where(and(inArray(items.id, ids), eq(items.userId, userId)));
+
+    if (owned.length !== ids.length) {
+      throw new AppError(403, 'FORBIDDEN', 'One or more items do not belong to you');
+    }
+
+    const deleted = await db.transaction(async (tx) => {
+      const result = await tx.delete(items)
+        .where(and(inArray(items.id, ids), eq(items.userId, userId)))
+        .returning({ id: items.id });
+      return result;
+    });
+
+    logger.info({ userId, count: deleted.length }, 'Bulk items deleted');
+    res.json({ deleted: true, count: deleted.length, ids: deleted.map((r) => r.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+itemsRouter.post('/bulk/update', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { ids, updates } = bulkUpdateSchema.parse(req.body);
+
+    // Verify all items belong to the user
+    const owned = await db.select({ id: items.id }).from(items)
+      .where(and(inArray(items.id, ids), eq(items.userId, userId)));
+
+    if (owned.length !== ids.length) {
+      throw new AppError(403, 'FORBIDDEN', 'One or more items do not belong to you');
+    }
+
+    const setFields: { category?: string; condition?: typeof validBulkConditions[number]; updatedAt: Date } = {
+      updatedAt: new Date(),
+    };
+    if (updates.category !== undefined) setFields.category = updates.category;
+    if (updates.condition !== undefined) setFields.condition = updates.condition;
+
+    const updated = await db.transaction(async (tx) => {
+      return tx.update(items)
+        .set(setFields)
+        .where(and(inArray(items.id, ids), eq(items.userId, userId)))
+        .returning({ id: items.id });
+    });
+
+    logger.info({ userId, count: updated.length, updates }, 'Bulk items updated');
+    res.json({ updated: true, count: updated.length, ids: updated.map((r) => r.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+itemsRouter.post('/bulk/export', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { ids } = bulkExportIdsSchema.parse(req.body);
+
+    const results = await db.select().from(items)
+      .where(and(inArray(items.id, ids), eq(items.userId, userId)));
+
+    logger.info({ userId, count: results.length }, 'Bulk items exported');
+    res.json({ items: results, count: results.length });
   } catch (err) {
     next(err);
   }
