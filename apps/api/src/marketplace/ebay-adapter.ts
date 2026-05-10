@@ -235,6 +235,7 @@ export class EbayAdapter implements MarketplaceAdapter {
           deliveryCost: { value: string };
         };
         totalFeeBasisAmount?: { value: string };
+        lineItems?: Array<{ legacyItemId: string }>;
         fulfillmentStartInstructions?: Array<{
           shippingStep?: {
             shipTo?: {
@@ -259,6 +260,7 @@ export class EbayAdapter implements MarketplaceAdapter {
 
       return {
         marketplaceOrderId: order.orderId,
+        marketplaceListingId: order.lineItems?.[0]?.legacyItemId ?? '',
         buyerUsername: order.buyer.username,
         salePrice: parseFloat(order.pricingSummary.total.value),
         shippingCost: parseFloat(order.pricingSummary.deliveryCost?.value ?? '0'),
