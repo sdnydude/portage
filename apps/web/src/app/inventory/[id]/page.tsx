@@ -10,14 +10,7 @@ import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { useComps } from "@/hooks/use-comps";
 import type { CompListing } from "@portage/shared";
-
-const conditionLabels: Record<string, string> = {
-  new: "New",
-  like_new: "Like New",
-  good: "Good",
-  fair: "Fair",
-  poor: "Poor",
-};
+import { formatCondition } from "@/lib/format";
 
 const conditionColors: Record<string, string> = {
   new: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -270,7 +263,7 @@ export default function ItemDetailPage() {
           {/* Condition + Category */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${conditionColors[item.condition] ?? "bg-muted text-text-secondary"}`}>
-              {conditionLabels[item.condition] ?? item.condition}
+              {formatCondition(item.condition)}
             </span>
             {item.category && (
               <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-text-secondary">

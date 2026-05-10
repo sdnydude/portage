@@ -1,5 +1,7 @@
 "use client";
 
+import { formatPrice } from "@/lib/format";
+
 interface FeeEstimateProps {
   price: number;
   marketplace: 'ebay' | 'reverb' | 'etsy';
@@ -20,16 +22,16 @@ export function FeeEstimate({ price, marketplace }: FeeEstimateProps) {
     <div className="space-y-1.5 text-[13px]" style={{ color: 'var(--flow-text)' }}>
       <div className="flex justify-between opacity-60">
         <span>Sale price</span>
-        <span>${price.toFixed(2)}</span>
+        <span>{formatPrice(price, 2)}</span>
       </div>
       <div className="flex justify-between opacity-60">
         <span>{label}</span>
-        <span>-${fees.toFixed(2)}</span>
+        <span>-{formatPrice(fees, 2)}</span>
       </div>
       <div className="h-px w-full" style={{ background: 'var(--flow-text)', opacity: 0.1 }} />
       <div className="flex justify-between font-semibold">
         <span>You earn</span>
-        <span>${net.toFixed(2)}</span>
+        <span>{formatPrice(net, 2)}</span>
       </div>
     </div>
   );

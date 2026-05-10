@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
+import { formatPrice, formatCondition } from "@/lib/format";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureFlow } from "./photo-capture-flow";
@@ -247,10 +248,6 @@ function FormatBold({ text }: { text: string }) {
   );
 }
 
-function formatPrice(n: number | null | undefined): string {
-  if (!n) return "$—";
-  return `$${n.toFixed(0)}`;
-}
 
 function shippingLabel(method: string, size: string): string {
   const sizeMap: Record<string, string> = {
@@ -267,16 +264,6 @@ function shippingLabel(method: string, size: string): string {
   return `${sizeMap[size] ?? size} · ${methodMap[method] ?? method}`;
 }
 
-function conditionLabel(c: string): string {
-  const map: Record<string, string> = {
-    new: "New",
-    like_new: "Like new",
-    good: "Good",
-    fair: "Fair",
-    poor: "Poor",
-  };
-  return map[c] ?? c;
-}
 
 // ─── Message derivation ───────────────────────────────────────────────────────
 
@@ -359,7 +346,7 @@ function deriveMessages(
     msgs.push({
       id: "recognition",
       role: "porter",
-      content: `Got it! This looks like a **${candidate.name}**${candidate.brand ? ` by **${candidate.brand}**` : ""}. Condition: **${conditionLabel(candidate.condition)}**.${priceRange} (${conf}% confidence)${reasoningBullets}`,
+      content: `Got it! This looks like a **${candidate.name}**${candidate.brand ? ` by **${candidate.brand}**` : ""}. Condition: **${formatCondition(candidate.condition)}**.${priceRange} (${conf}% confidence)${reasoningBullets}`,
       pills: !hasConfirmed
         ? [
             {

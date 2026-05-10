@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
+import { formatCondition } from "@/lib/format";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureFlow } from "./photo-capture-flow";
@@ -586,7 +587,7 @@ function RecognitionPhase({
                 letterSpacing: "0.05em",
               }}
             >
-              {candidate.category} &bull; {candidate.condition.replace("_", " ").toUpperCase()}
+              {candidate.category} &bull; {formatCondition(candidate.condition)}
             </p>
 
             {/* Price range */}
@@ -999,7 +1000,7 @@ function DetailsPhase({
                 CONDITION <AiBadge />
               </span>
               <span style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>
-                {state.condition.replace("_", " ").toUpperCase()}
+                {formatCondition(state.condition)}
               </span>
             </div>
           )}
@@ -1210,7 +1211,7 @@ function ReviewPhase({
 
   const rows = [
     { label: "TITLE", value: state.title },
-    { label: "CONDITION", value: state.condition?.replace("_", " ").toUpperCase() ?? "—" },
+    { label: "CONDITION", value: state.condition ? formatCondition(state.condition) : "—" },
     { label: "CATEGORY", value: state.category || "—" },
     { label: "PACKAGE", value: (state.packageSize ?? "medium").toUpperCase() },
     state.weight ? { label: "WEIGHT", value: `${state.weight} lbs` } : null,

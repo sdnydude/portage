@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
+import { formatPrice } from "@/lib/format";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureFlow } from "./photo-capture-flow";
@@ -760,7 +761,7 @@ function ChatMode({
               <KVRow label="Title" value={state.title} />
               <KVRow label="Category" value={state.category} />
               <KVRow label="Condition" value={state.condition} />
-              <KVRow label="Price" value={state.price !== null ? `$${state.price.toFixed(2)}` : null} />
+              <KVRow label="Price" value={state.price !== null ? formatPrice(state.price, 2) : null} />
               <KVRow label="Marketplace" value={state.marketplace} />
               <KVRow label="Shipping" value={state.shippingMethod} />
 
