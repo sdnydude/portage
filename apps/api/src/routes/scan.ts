@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import multer from 'multer';
+import { z } from 'zod';
 import { createLogger } from '../lib/logger.js';
 import { requireAuth } from '../middleware/auth.js';
-import { identifyItem, identifyItemDetailed } from '../lib/vision.js';
+import { identifyItem, identifyItemDetailed, identifyItemsMulti, fetchPhotosAsBase64 } from '../lib/vision.js';
 import { processImage } from '../lib/image.js';
 import { uploadImage } from '../lib/storage.js';
 import { AppError } from '../middleware/error.js';
@@ -32,6 +33,38 @@ export const scanRouter = Router();
 
 scanRouter.use(requireAuth);
 
+async function checkScanLimit(userId: string): Promise<void> {
+  const [user] = await db.select({
+    subscriptionTier: users.subscriptionTier,
+    aiScansThisMonth: users.aiScansThisMonth,
+    scanCountResetAt: users.scanCountResetAt,
+  })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (user) {
+    const resetDate = new Date(user.scanCountResetAt);
+    const now = new Date();
+    if (resetDate.getUTCMonth() !== now.getUTCMonth() || resetDate.getUTCFullYear() !== now.getUTCFullYear()) {
+      await db.update(users)
+        .set({ aiScansThisMonth: 0, scanCountResetAt: now })
+        .where(eq(users.id, userId));
+      user.aiScansThisMonth = 0;
+    }
+
+    if (user.subscriptionTier === 'free' && user.aiScansThisMonth >= FREE_TIER_LIMITS.aiScansPerMonth) {
+      throw new AppError(429, 'SCAN_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.aiScansPerMonth} AI scans per month. Upgrade to Pro for unlimited.`);
+    }
+  }
+}
+
+async function incrementScanCount(userId: string): Promise<void> {
+  await db.update(users)
+    .set({ aiScansThisMonth: sql`${users.aiScansThisMonth} + 1` })
+    .where(eq(users.id, userId));
+}
+
 scanRouter.post('/', upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) {
@@ -40,29 +73,7 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
 
     const userId = req.user!.sub;
 
-    const [user] = await db.select({
-      subscriptionTier: users.subscriptionTier,
-      aiScansThisMonth: users.aiScansThisMonth,
-      scanCountResetAt: users.scanCountResetAt,
-    })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    if (user) {
-      const resetDate = new Date(user.scanCountResetAt);
-      const now = new Date();
-      if (resetDate.getUTCMonth() !== now.getUTCMonth() || resetDate.getUTCFullYear() !== now.getUTCFullYear()) {
-        await db.update(users)
-          .set({ aiScansThisMonth: 0, scanCountResetAt: now })
-          .where(eq(users.id, userId));
-        user.aiScansThisMonth = 0;
-      }
-
-      if (user.subscriptionTier === 'free' && user.aiScansThisMonth >= FREE_TIER_LIMITS.aiScansPerMonth) {
-        throw new AppError(429, 'SCAN_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.aiScansPerMonth} AI scans per month. Upgrade to Pro for unlimited.`);
-      }
-    }
+    await checkScanLimit(userId);
 
     logger.info({ userId, size: req.file.size }, 'Scan started');
 
@@ -97,9 +108,7 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
       logger.warn({ err: (err as Error).message }, 'R2 upload failed — returning identification without storage');
     }
 
-    await db.update(users)
-      .set({ aiScansThisMonth: sql`${users.aiScansThisMonth} + 1` })
-      .where(eq(users.id, userId));
+    await incrementScanCount(userId);
 
     logger.info({ userId, name: identification.name }, 'Scan complete');
 
@@ -116,6 +125,52 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
         key: thumbnailResult.key,
         url: thumbnailResult.url,
       } : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function buildRefineSchema() {
+  const r2Prefix = process.env.R2_PUBLIC_URL || '';
+  return z.object({
+    imageUrls: z.array(
+      z.string().url().refine(
+        (url) => r2Prefix && url.startsWith(r2Prefix),
+        { message: 'Image URLs must reference the application storage origin' },
+      ),
+    ).min(1).max(3),
+  });
+}
+
+scanRouter.post('/refine', async (req, res, next) => {
+  try {
+    const parsed = buildRefineSchema().safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError(400, 'INVALID_INPUT', parsed.error.issues.map(i => i.message).join('; '));
+    }
+
+    const userId = req.user!.sub;
+    await checkScanLimit(userId);
+
+    const { imageUrls } = parsed.data;
+    logger.info({ userId, imageCount: imageUrls.length }, 'Refine scan started');
+
+    const images = await fetchPhotosAsBase64(imageUrls, 3);
+    if (images.length === 0) {
+      throw new AppError(502, 'PHOTO_FETCH_FAILED', 'Could not fetch any of the provided images');
+    }
+
+    const detailedResult = await identifyItemsMulti(images);
+    const identification = detailedResult.candidates[0];
+
+    await incrementScanCount(userId);
+
+    logger.info({ userId, name: identification.name, imageCount: images.length }, 'Refine scan complete');
+
+    res.status(201).json({
+      identification,
+      detailed: detailedResult,
     });
   } catch (err) {
     next(err);
