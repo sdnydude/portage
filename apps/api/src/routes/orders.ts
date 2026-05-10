@@ -130,20 +130,36 @@ ordersRouter.post('/sync', async (req, res, next) => {
 
           if (existing) continue;
 
-          const [activeListing] = await db.select()
+          if (!mOrder.marketplaceListingId) {
+            logger.warn({
+              userId,
+              marketplace: account.marketplace,
+              marketplaceOrderId: mOrder.marketplaceOrderId,
+            }, 'Order skipped — no marketplace listing ID in response');
+            continue;
+          }
+
+          const [matchedListing] = await db.select()
             .from(listings)
             .where(and(
               eq(listings.userId, userId),
-              eq(listings.marketplace, account.marketplace),
-              eq(listings.status, 'active'),
+              eq(listings.marketplaceListingId, mOrder.marketplaceListingId),
             ))
             .limit(1);
 
-          if (!activeListing) continue;
+          if (!matchedListing) {
+            logger.warn({
+              userId,
+              marketplace: account.marketplace,
+              marketplaceOrderId: mOrder.marketplaceOrderId,
+              marketplaceListingId: mOrder.marketplaceListingId,
+            }, 'Order skipped — no matching local listing found');
+            continue;
+          }
 
           const [newOrder] = await db.insert(orders).values({
-            listingId: activeListing.id,
-            itemId: activeListing.itemId,
+            listingId: matchedListing.id,
+            itemId: matchedListing.itemId,
             userId,
             marketplace: account.marketplace,
             marketplaceOrderId: mOrder.marketplaceOrderId,
@@ -157,7 +173,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
 
           await db.update(listings)
             .set({ status: 'sold', soldAt: new Date() })
-            .where(eq(listings.id, activeListing.id));
+            .where(eq(listings.id, matchedListing.id));
 
           newOrderIds.push(newOrder.id);
           totalSynced++;
