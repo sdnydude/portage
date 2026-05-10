@@ -106,7 +106,8 @@ itemsRouter.get('/export', async (req, res, next) => {
     const conditions = [eq(items.userId, userId)];
 
     if (query.ids) {
-      const idList = query.ids.split(',').map(s => s.trim()).filter(Boolean);
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const idList = query.ids.split(',').map(s => s.trim()).filter(s => UUID_RE.test(s));
       if (idList.length > 0) {
         conditions.push(inArray(items.id, idList));
       }

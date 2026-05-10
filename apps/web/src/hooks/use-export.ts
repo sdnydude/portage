@@ -19,7 +19,7 @@ export function useExport() {
 
   const exportItems = useCallback(
     async (format: ExportFormat, options: ExportOptions = {}): Promise<void> => {
-      if (!token) return;
+      if (!token) throw new Error("Not authenticated");
 
       setIsExporting(true);
       setExportError(null);

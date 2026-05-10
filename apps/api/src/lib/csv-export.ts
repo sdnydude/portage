@@ -22,8 +22,6 @@ const EBAY_COLUMNS = [
   'Quantity',
   'Format',
   'Duration',
-  'PayPalAccepted',
-  'PayPalEmailAddress',
   'ShippingType',
   'ShippingService-1:Option',
   'ShippingService-1:Cost',
@@ -117,8 +115,6 @@ export function itemsToEbayCsv(
       '1',                             // Quantity
       'FixedPrice',                    // Format
       'GTC',                           // Duration (Good Till Cancelled)
-      '1',                             // PayPalAccepted
-      '',                              // PayPalEmailAddress (seller fills in)
       'Flat',                          // ShippingType
       'USPSPriority',                  // ShippingService-1:Option
       '0.00',                          // ShippingService-1:Cost (free shipping default)
