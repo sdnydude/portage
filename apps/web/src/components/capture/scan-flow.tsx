@@ -260,6 +260,18 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
   // ─── Scan (sends URLs to /scan/refine) ────────────────────────────────────
 
+  const populateFields = useCallback((candidate: RecognitionCandidate) => {
+    setEditName(candidate.name);
+    setEditDescription(candidate.description);
+    setEditCategory(candidate.category);
+    setEditCondition(candidate.condition);
+    setEditConditionNotes(candidate.conditionNotes);
+    setEditValueLow(String(candidate.estimatedValueLow));
+    setEditValueHigh(String(candidate.estimatedValueHigh));
+    setEditBrand(candidate.brand ?? "");
+    setEditModel(candidate.model ?? "");
+  }, []);
+
   const handleScan = useCallback(async () => {
     if (!token || photos.length === 0) return;
 
@@ -284,19 +296,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       setError(err instanceof Error ? err.message : "Scan failed");
       setState("capture");
     }
-  }, [token, photos]);
-
-  const populateFields = useCallback((candidate: RecognitionCandidate) => {
-    setEditName(candidate.name);
-    setEditDescription(candidate.description);
-    setEditCategory(candidate.category);
-    setEditCondition(candidate.condition);
-    setEditConditionNotes(candidate.conditionNotes);
-    setEditValueLow(String(candidate.estimatedValueLow));
-    setEditValueHigh(String(candidate.estimatedValueHigh));
-    setEditBrand(candidate.brand ?? "");
-    setEditModel(candidate.model ?? "");
-  }, []);
+  }, [token, photos, populateFields]);
 
   const handleSelectCandidate = useCallback(
     (index: number) => {
