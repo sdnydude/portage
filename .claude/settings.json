@@ -1,4 +1,22 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(~/.claude/scripts/post-insight.sh *)",
+      "Bash(~/.claude/scripts/post-decision-logs.sh *)",
+      "Bash(doppler secrets *)",
+      "Bash(doppler projects *)",
+      "Bash(docker logs *)",
+      "Bash(git worktree *)",
+      "Bash(cloudflared tunnel *)",
+      "Bash(systemctl status *)",
+      "Bash(systemctl is-active *)",
+      "Bash(crontab -l)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run lint)",
+      "Bash(npm run test:api)",
+      "Bash(npm run build *)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

@@ -35,10 +35,18 @@ export interface NotificationPreferences {
   pushEnabled: boolean;
 }
 
+export interface ItemPhoto {
+  url: string;
+  key: string;
+  width?: number;
+  height?: number;
+  isPrimary?: boolean;
+}
+
 export interface Item {
   id: string;
   userId: string;
-  photos: string[];
+  photos: ItemPhoto[];
   title: string;
   description: string;
   category: string;

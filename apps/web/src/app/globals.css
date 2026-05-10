@@ -50,7 +50,7 @@
   --text-title: 1.5rem;       /* 24px */
   --text-headline: 1.25rem;   /* 20px */
   --text-body: 1rem;          /* 16px */
-  --text-caption: 0.8125rem;  /* 13px */
+  --text-caption: 0.875rem;   /* 14px */
 
   --tab-bar-height: 5rem;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
@@ -131,6 +131,12 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+input,
+textarea,
+select {
+  font-size: 16px;
 }
 
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
