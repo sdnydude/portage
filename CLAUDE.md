@@ -171,12 +171,12 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-44/52 tasks complete, 3 partial, 5 remaining. See `docs/TODO.md` for full roadmap.
+50/52 tasks complete, 1 partial, 4 remaining. See `docs/TODO.md` for full roadmap.
 
-**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (7 pages: profile, marketplace, seller profile, shipping, notifications, help, admin), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling).
+**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (7 pages: profile, marketplace, seller profile, shipping, notifications, help, admin), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling), JWT auto-refresh, object URL leak fixes, test infra + 81 tests (P0+P1), auth middleware next(err), TOCTOU race fix, shared logger (28 files), AI SDK singletons, shippingAddress column, pagination, shared format helpers, listing flow component extraction, PWA (icons + favicon + service worker), admin observability (Prometheus + Grafana), bulk operations (select/delete/archive/activate/export), eBay CSV data export, onboarding flow (5-step carousel).
 
-**Partial:** PWA (manifest only, no icons/SW), shipping (full UI + 16-endpoint API built, rates/labels stubbed — no real carrier API calls).
+**Partial:** Shipping (full UI + 16-endpoint API built, rates/labels stubbed — no real carrier API calls).
 
-**Remaining:** Dashboard trends/insights, payments (Stripe), onboarding, bulk operations, buyer messaging, testing, carrier API integration (EasyPost/Shippo).
+**Remaining:** Payments (Stripe), buyer messaging, carrier API integration (EasyPost/Shippo), Reverb OAuth.
 
 **Demo account:** demo@portage.app / demo1234demo1234
