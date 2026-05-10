@@ -58,7 +58,7 @@ const data = await api<MyType>('/path', {
 
 ## Auth
 
-localStorage-based (`portage_token`, `portage_refresh`, `portage_user`). No automatic token refresh. No route guards in layout — pages check auth ad-hoc via `useAuth()`.
+localStorage-based (`portage_token`, `portage_refresh`, `portage_user`). Automatic token refresh on 401 via `api()` — refreshes access token, retries the request, and syncs React state through `setOnTokenRefreshed` callback. No route guards in layout — pages check auth ad-hoc via `useAuth()`.
 
 ## Hook Contract
 

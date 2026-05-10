@@ -1,5 +1,5 @@
 status: in_progress
-phase: 4
-feature: C4 — Decouple encryption key from JWT_SECRET
-approach: Use ENCRYPTION_KEY env var with fallback to JWT_SECRET; env schema already exists
-complexity: simple (1 task)
+phase: 1
+feature: Add automatic JWT token refresh in frontend
+approach: Intercept 401 in api(), auto-refresh with stored refresh token, retry request, dedup concurrent refreshes
+complexity: simple (2 files)

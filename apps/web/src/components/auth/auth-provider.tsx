@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AuthContext } from "@/hooks/use-auth";
+import { setOnTokenRefreshed } from "@/lib/api";
 
 interface AuthUser {
   id: string;
@@ -34,6 +35,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setIsReady(true);
+
+    setOnTokenRefreshed((newToken, _refreshToken, newUser) => {
+      if (!newToken) {
+        setToken(null);
+        setUser(null);
+        return;
+      }
+      setToken(newToken);
+      setUser(newUser as AuthUser);
+    });
+
+    return () => setOnTokenRefreshed(null);
   }, []);
 
   const login = useCallback((newToken: string, refreshToken: string, newUser: AuthUser | null) => {
