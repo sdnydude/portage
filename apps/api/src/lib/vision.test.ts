@@ -1,0 +1,203 @@
+import { identifyItem, identifyItemDetailed } from './vision.js';
+import { AppError } from '../middleware/error.js';
+
+vi.mock('./ai-client.js', () => ({
+  analyzeImage: vi.fn(),
+  analyzeImages: vi.fn(),
+  chatText: vi.fn(),
+}));
+
+import { analyzeImage } from './ai-client.js';
+
+const VALID_VISION_JSON = {
+  name: 'Sony WH-1000XM4 Headphones',
+  description: 'Over-ear wireless noise-cancelling headphones in excellent condition.',
+  category: 'electronics',
+  condition: 'like_new',
+  conditionNotes: 'Minor scuff on left ear cup',
+  estimatedValueLow: 150,
+  estimatedValueHigh: 220,
+  brand: 'Sony',
+  model: 'WH-1000XM4',
+  suggestedTags: ['headphones', 'wireless', 'sony', 'noise-cancelling'],
+};
+
+const VALID_DETAILED_JSON = {
+  candidates: [
+    {
+      name: 'Sony WH-1000XM4 Headphones',
+      description: 'Over-ear wireless headphones.',
+      category: 'electronics',
+      condition: 'good',
+      conditionNotes: '',
+      brand: 'Sony',
+      model: 'WH-1000XM4',
+      features: ['noise-cancelling', 'wireless'],
+      estimatedValueLow: 150,
+      estimatedValueHigh: 200,
+      confidence: 0.92,
+    },
+  ],
+  reasoning: ['Black over-ear design', 'Sony branding visible'],
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('identifyItem', () => {
+  it('parses a valid JSON response into VisionResult', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(VALID_VISION_JSON),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    const result = await identifyItem('base64data', 'image/jpeg');
+
+    expect(result.name).toBe('Sony WH-1000XM4 Headphones');
+    expect(result.description).toBe('Over-ear wireless noise-cancelling headphones in excellent condition.');
+    expect(result.category).toBe('electronics');
+    expect(result.condition).toBe('like_new');
+    expect(result.conditionNotes).toBe('Minor scuff on left ear cup');
+    expect(result.estimatedValueLow).toBe(150);
+    expect(result.estimatedValueHigh).toBe(220);
+    expect(result.brand).toBe('Sony');
+    expect(result.model).toBe('WH-1000XM4');
+    expect(result.suggestedTags).toEqual(['headphones', 'wireless', 'sony', 'noise-cancelling']);
+  });
+
+  it('parses JSON wrapped in markdown fences', async () => {
+    const fenced = '```json\n' + JSON.stringify(VALID_VISION_JSON) + '\n```';
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: fenced,
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    const result = await identifyItem('base64data', 'image/jpeg');
+    expect(result.name).toBe('Sony WH-1000XM4 Headphones');
+    expect(result.condition).toBe('like_new');
+  });
+
+  it('parses JSON wrapped in plain fences (no language tag)', async () => {
+    const fenced = '```\n' + JSON.stringify(VALID_VISION_JSON) + '\n```';
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: fenced,
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    const result = await identifyItem('base64data', 'image/png');
+    expect(result.name).toBe('Sony WH-1000XM4 Headphones');
+  });
+
+  it('throws AppError with code AI_RESPONSE_INVALID for missing required fields', async () => {
+    const incomplete = { name: 'Something', description: 'Desc' };
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(incomplete),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    await expect(identifyItem('base64data', 'image/jpeg'))
+      .rejects.toMatchObject({ statusCode: 502, code: 'AI_RESPONSE_INVALID' });
+  });
+
+  it('throws SyntaxError for completely malformed JSON', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: 'not json at all',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    await expect(identifyItem('base64data', 'image/jpeg')).rejects.toThrow();
+  });
+
+  it('normalizes unrecognized condition to good', async () => {
+    const withOddCondition = { ...VALID_VISION_JSON, condition: 'used' };
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(withOddCondition),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    const result = await identifyItem('base64data', 'image/jpeg');
+    expect(result.condition).toBe('good');
+  });
+
+  it('defaults suggestedTags to empty array when omitted', async () => {
+    const withoutTags = { ...VALID_VISION_JSON };
+    delete (withoutTags as Partial<typeof VALID_VISION_JSON>).suggestedTags;
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(withoutTags),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    const result = await identifyItem('base64data', 'image/webp');
+    expect(result.suggestedTags).toEqual([]);
+  });
+});
+
+describe('identifyItemDetailed', () => {
+  it('returns DetailedVisionResult with candidates array', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    const result = await identifyItemDetailed('base64data', 'image/jpeg');
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].name).toBe('Sony WH-1000XM4 Headphones');
+    expect(result.candidates[0].confidence).toBe(0.92);
+    expect(result.reasoning).toEqual(['Black over-ear design', 'Sony branding visible']);
+  });
+
+  it('falls back to single-candidate VisionResult when detailed parse fails', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(VALID_VISION_JSON),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    const result = await identifyItemDetailed('base64data', 'image/jpeg');
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].name).toBe('Sony WH-1000XM4 Headphones');
+    expect(result.candidates[0].confidence).toBe(0.8);
+    expect(result.reasoning).toEqual(['Identified by visual analysis']);
+  });
+
+  it('throws AppError when both detailed and simple parse fail', async () => {
+    const invalid = { foo: 'bar' };
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(invalid),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    await expect(identifyItemDetailed('base64data', 'image/jpeg'))
+      .rejects.toMatchObject({ statusCode: 502, code: 'AI_RESPONSE_INVALID' });
+  });
+});
