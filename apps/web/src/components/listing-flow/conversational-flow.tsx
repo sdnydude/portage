@@ -99,9 +99,9 @@ function PorterBubble({
               borderRadius: "18px 18px 18px 4px",
               color: "#1A1A1A",
             }}
-            // eslint-disable-next-line react/no-danger
-            dangerouslySetInnerHTML={{ __html: formatBold(message.content) }}
-          />
+          >
+            <FormatBold text={message.content} />
+          </div>
         )}
         {message.card && !showTyping && (
           <div className="mt-1">{message.card}</div>
@@ -235,8 +235,16 @@ function InlineInput({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatBold(text: string): string {
-  return text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+function FormatBold({ text }: { text: string }) {
+  const parts = text.split(/(\*\*.+?\*\*)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const bold = part.match(/^\*\*(.+)\*\*$/);
+        return bold ? <strong key={i}>{bold[1]}</strong> : part;
+      })}
+    </>
+  );
 }
 
 function formatPrice(n: number | null | undefined): string {
