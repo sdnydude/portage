@@ -5,6 +5,9 @@ import { db } from '../db/index.js';
 import { users, marketplaceAccounts } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
+import { createLogger } from '../lib/logger.js';
+
+const logger = createLogger('users');
 
 const addressSchema = z.object({
   street1: z.string().max(255),
@@ -76,6 +79,27 @@ usersRouter.patch('/', async (req, res, next) => {
       });
 
     res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const onboardingSchema = z.object({
+  completed: z.literal(true),
+});
+
+usersRouter.patch('/onboarding', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    onboardingSchema.parse(req.body);
+
+    await db.update(users)
+      .set({ onboardingCompleted: true })
+      .where(eq(users.id, userId));
+
+    logger.info({ userId }, 'Onboarding completed');
+
+    res.json({ onboardingCompleted: true });
   } catch (err) {
     next(err);
   }
