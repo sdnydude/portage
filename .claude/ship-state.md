@@ -1,5 +1,5 @@
 status: in_progress
-phase: 4
+phase: 5
 feature: Listings CRUD — edit/update/delete from UI
 approach: Fix & Complete — fix broken save, add marketplace sync, wire missing UI actions
 complexity: simple (5 tasks)
@@ -24,5 +24,16 @@ commits:
   - c66363c: feat: add Publish, Archive, and Relist buttons to listing detail page
   - 07d0ec9: feat: add Archived filter tab and Reverb to listings index
 
+verification:
+  typecheck: pass (all 3 workspaces)
+  lint_our_files: 0 errors, 1 warning (pre-existing img tag)
+  lint_global: 1 error in settings/marketplace/page.tsx (pre-existing, not our change)
+  tests: no test files exist for API
+  services: portage-db healthy, portage-api healthy, portage-app unhealthy (needs rebuild with new code)
+
+cleanup_needed:
+  - f83e75b: chore: test commit-log hook (test commit — revert before PR)
+  - 296c944: fix: update ship-state progress + make commit-log hook portable (mixed — has real fix)
+  - 1abe448: chore: hook debug test (test commit — revert before PR)
+
 deferred: []
-# test2

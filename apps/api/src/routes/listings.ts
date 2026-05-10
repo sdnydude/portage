@@ -154,6 +154,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
     if (!existing) throw new AppError(404, 'NOT_FOUND', 'Listing not found');
 
     let warning: string | undefined;
+    // Only call deleteListing when transitioning active→archived; drafts were never pushed to the marketplace.
     const isArchiving = body.status === 'archived' && existing.status === 'active' && !!existing.marketplaceListingId;
 
     if (isArchiving) {
@@ -161,39 +162,46 @@ listingsRouter.patch('/:id', async (req, res, next) => {
         const adapter = getAdapter(userId, existing.marketplace);
         await adapter.deleteListing(existing.marketplaceListingId!);
       } catch (err) {
+        if (err instanceof AppError) throw err;
         logger.warn({ listingId: existing.id, error: (err as Error).message }, 'Failed to remove from marketplace during archive');
         warning = 'Archived locally but failed to remove from marketplace';
       }
     }
 
-    const updates: Record<string, unknown> = {};
+    const updates: {
+      price?: number;
+      status?: 'draft' | 'active' | 'sold' | 'archived';
+      marketplaceSpecificFields?: Record<string, unknown>;
+    } = {};
     if (body.price !== undefined) updates.price = body.price;
     if (body.status !== undefined) updates.status = body.status;
     if (body.marketplaceSpecificFields !== undefined) updates.marketplaceSpecificFields = body.marketplaceSpecificFields;
 
     const [updated] = await db.update(listings)
       .set(updates)
-      .where(eq(listings.id, req.params.id))
+      .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
       .returning();
 
+    // Skip marketplace sync when archiving — the listing was already removed above.
     if (!isArchiving && updated.status === 'active' && updated.marketplaceListingId) {
-      try {
-        const [item] = await db.select()
-          .from(items)
-          .where(eq(items.id, updated.itemId))
-          .limit(1);
+      const [item] = await db.select()
+        .from(items)
+        .where(eq(items.id, updated.itemId))
+        .limit(1);
 
-        if (item) {
+      if (item) {
+        try {
           const adapter = getAdapter(userId, updated.marketplace);
           await adapter.updateListing(updated.marketplaceListingId, {
             title: item.title,
             description: item.description,
             price: updated.price,
           });
+        } catch (err) {
+          if (err instanceof AppError) throw err;
+          logger.warn({ listingId: updated.id, error: (err as Error).message }, 'Failed to sync update to marketplace');
+          warning = 'Saved locally but failed to sync to marketplace';
         }
-      } catch (err) {
-        logger.warn({ listingId: updated.id, error: (err as Error).message }, 'Failed to sync update to marketplace');
-        warning = 'Saved locally but failed to sync to marketplace';
       }
     }
 

@@ -182,6 +182,7 @@ export default function ListingDetailPage() {
     : null;
 
   const handleSave = async () => {
+    // item guard required: handleSave may PATCH /items/:id for title/description changes
     if (!token || !listing || !item) return;
     setIsSaving(true);
     setSaveError(null);
@@ -237,6 +238,7 @@ export default function ListingDetailPage() {
       router.replace("/listings");
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Failed to end listing");
+    } finally {
       setIsEnding(false);
       setShowEndConfirm(false);
     }
@@ -525,7 +527,6 @@ export default function ListingDetailPage() {
 
           {/* Action Buttons */}
           <div className="space-y-3 pt-1">
-            {/* Save Changes — shown when any field is edited */}
             {hasChanges && (
               <button
                 onClick={handleSave}
@@ -543,11 +544,11 @@ export default function ListingDetailPage() {
               </button>
             )}
 
-            {/* Draft: Publish */}
             {listing.status === "draft" && (
               <button
                 onClick={handlePublish}
-                disabled={isPublishing}
+                disabled={isPublishing || hasChanges}
+                title={hasChanges ? "Save your changes before publishing" : undefined}
                 className="w-full py-3 rounded-xl bg-forest-green text-white text-sm font-semibold hover:bg-forest-green/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isPublishing ? (
@@ -561,7 +562,6 @@ export default function ListingDetailPage() {
               </button>
             )}
 
-            {/* View on Marketplace */}
             {externalUrl && (
               <a
                 href={externalUrl}
@@ -578,7 +578,6 @@ export default function ListingDetailPage() {
               </a>
             )}
 
-            {/* Active: Archive */}
             {listing.status === "active" && (
               <button
                 onClick={() => setShowArchiveConfirm(true)}
@@ -588,7 +587,6 @@ export default function ListingDetailPage() {
               </button>
             )}
 
-            {/* Sold/Archived: Relist */}
             {(listing.status === "sold" || listing.status === "archived") && (
               <button
                 onClick={() => router.push(`/list?itemId=${listing.itemId}`)}
@@ -598,7 +596,6 @@ export default function ListingDetailPage() {
               </button>
             )}
 
-            {/* Draft/Archived: Delete */}
             {(listing.status === "draft" || listing.status === "archived") && (
               <button
                 onClick={() => setShowEndConfirm(true)}
@@ -609,7 +606,6 @@ export default function ListingDetailPage() {
             )}
           </div>
 
-          {/* Cross-list Nudge */}
           {otherMarketplaces.length > 0 && listing.status !== "sold" && listing.status !== "archived" && (
             <div className="bg-forest-green-50 dark:bg-forest-green/10 border border-forest-green/20 rounded-xl p-4 space-y-3">
               <div>
@@ -631,7 +627,6 @@ export default function ListingDetailPage() {
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
       {showEndConfirm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
           <div className="fixed inset-0 bg-black/50" onClick={() => setShowEndConfirm(false)} />
@@ -661,7 +656,6 @@ export default function ListingDetailPage() {
         </div>
       )}
 
-      {/* Archive Confirmation Modal */}
       {showArchiveConfirm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
           <div className="fixed inset-0 bg-black/50" onClick={() => setShowArchiveConfirm(false)} />
@@ -670,7 +664,7 @@ export default function ListingDetailPage() {
               Archive Listing
             </h3>
             <p className="text-sm text-text-secondary">
-              This will remove your listing from {marketplaceLabel} and archive it. You can relist the item later.
+              This will archive your listing and attempt to remove it from {marketplaceLabel}. You can relist the item later.
             </p>
             <div className="flex gap-3">
               <button
