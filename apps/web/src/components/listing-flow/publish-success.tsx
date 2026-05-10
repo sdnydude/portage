@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { formatPrice, formatMarketplace } from "@/lib/format";
 
 interface PublishSuccessProps {
   listingId: string;
@@ -19,7 +20,7 @@ export function PublishSuccess({
   const router = useRouter();
   const showDiscovery = isFirstListing;
 
-  const marketplaceLabel = { ebay: 'eBay', reverb: 'Reverb', etsy: 'Etsy' }[marketplace];
+  const marketplaceLabel = formatMarketplace(marketplace);
 
   return (
     <div className="flex flex-col items-center px-6 py-10 text-center" style={{ color: 'var(--flow-text)' }}>
@@ -38,7 +39,7 @@ export function PublishSuccess({
           </div>
         )}
         <p className="font-semibold text-[15px] mb-1">{title}</p>
-        <p className="text-lg font-bold" style={{ color: 'var(--flow-accent)' }}>${price.toFixed(2)}</p>
+        <p className="text-lg font-bold" style={{ color: 'var(--flow-accent)' }}>{formatPrice(price, 2)}</p>
       </div>
 
       <div className="flex flex-col gap-3 w-full max-w-xs">

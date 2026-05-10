@@ -1,18 +1,11 @@
 import type { Item } from "@/hooks/use-items";
 import Link from "next/link";
+import { formatCondition } from "@/lib/format";
 
 interface ItemCardProps {
   item: Item;
   view: "grid" | "list";
 }
-
-const conditionLabels: Record<string, string> = {
-  new: "New",
-  like_new: "Like New",
-  good: "Good",
-  fair: "Fair",
-  poor: "Poor",
-};
 
 export function ItemCard({ item, view }: ItemCardProps) {
   const primaryPhoto = item.photos.find((p) => p.isPrimary) ?? item.photos[0];
@@ -45,7 +38,7 @@ export function ItemCard({ item, view }: ItemCardProps) {
               <span className="text-xs text-text-secondary">{item.category}</span>
             )}
             <span className="text-xs text-text-secondary">·</span>
-            <span className="text-xs text-text-secondary">{conditionLabels[item.condition] ?? item.condition}</span>
+            <span className="text-xs text-text-secondary">{formatCondition(item.condition)}</span>
           </div>
         </div>
         {valueDisplay && (
@@ -73,7 +66,7 @@ export function ItemCard({ item, view }: ItemCardProps) {
       <div className="p-3">
         <div className="text-sm font-medium text-text-primary truncate">{item.title}</div>
         <div className="flex items-center justify-between mt-1">
-          <span className="text-xs text-text-secondary">{conditionLabels[item.condition] ?? item.condition}</span>
+          <span className="text-xs text-text-secondary">{formatCondition(item.condition)}</span>
           {valueDisplay && (
             <span className="text-xs font-medium text-forest-green">{valueDisplay}</span>
           )}
