@@ -93,6 +93,7 @@ export default function ListingDetailPage() {
   // Save state
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const [isEnding, setIsEnding] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
@@ -178,9 +179,10 @@ export default function ListingDetailPage() {
     : null;
 
   const handleSave = async () => {
-    if (!token || !listing) return;
+    if (!token || !listing || !item) return;
     setIsSaving(true);
     setSaveError(null);
+    setSaveWarning(null);
 
     try {
       const parsedPrice = parseFloat(editedPrice);
@@ -190,11 +192,27 @@ export default function ListingDetailPage() {
         return;
       }
 
-      const updated = await api<Listing>(`/listings/${listing.id}`, {
+      const titleChanged = editedTitle !== originalTitle;
+      const descChanged = editedDescription !== originalDescription;
+
+      if (titleChanged || descChanged) {
+        const itemUpdates: Record<string, string> = {};
+        if (titleChanged) itemUpdates.title = editedTitle;
+        if (descChanged) itemUpdates.description = editedDescription;
+        const updatedItem = await api<ItemDetail>(`/items/${listing.itemId}`, {
+          method: "PATCH",
+          token,
+          body: itemUpdates,
+        });
+        setItem(updatedItem);
+      }
+
+      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}`, {
         method: "PATCH",
         token,
         body: { price: parsedPrice },
       });
+      if (updated.warning) setSaveWarning(updated.warning);
       setListing(updated);
       setEditedPrice(String(updated.price));
       setEditingPrice(false);
@@ -214,7 +232,8 @@ export default function ListingDetailPage() {
     try {
       await api(`/listings/${listing.id}`, { method: "DELETE", token });
       router.replace("/listings");
-    } catch {
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Failed to end listing");
       setIsEnding(false);
       setShowEndConfirm(false);
     }
@@ -271,6 +290,13 @@ export default function ListingDetailPage() {
           {saveError && (
             <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
               {saveError}
+            </div>
+          )}
+
+          {/* Marketplace Sync Warning */}
+          {saveWarning && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm text-amber-700 dark:text-amber-300">
+              {saveWarning}
             </div>
           )}
 
