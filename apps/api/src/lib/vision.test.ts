@@ -1,4 +1,4 @@
-import { identifyItem, identifyItemDetailed } from './vision.js';
+import { identifyItem, identifyItemDetailed, identifyItemsMulti } from './vision.js';
 import { AppError } from '../middleware/error.js';
 
 vi.mock('./ai-client.js', () => ({
@@ -7,7 +7,7 @@ vi.mock('./ai-client.js', () => ({
   chatText: vi.fn(),
 }));
 
-import { analyzeImage } from './ai-client.js';
+import { analyzeImage, analyzeImages } from './ai-client.js';
 
 const VALID_VISION_JSON = {
   name: 'Sony WH-1000XM4 Headphones',
@@ -199,5 +199,105 @@ describe('identifyItemDetailed', () => {
 
     await expect(identifyItemDetailed('base64data', 'image/jpeg'))
       .rejects.toMatchObject({ statusCode: 502, code: 'AI_RESPONSE_INVALID' });
+  });
+});
+
+describe('identifyItemsMulti', () => {
+  const mockImages = [
+    { base64: 'img1base64', mediaType: 'image/webp' },
+    { base64: 'img2base64', mediaType: 'image/webp' },
+  ];
+
+  it('returns DetailedVisionResult from multi-image call', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    const result = await identifyItemsMulti(mockImages);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].name).toBe('Sony WH-1000XM4 Headphones');
+    expect(result.candidates[0].confidence).toBe(0.92);
+    expect(result.reasoning).toEqual(['Black over-ear design', 'Sony branding visible']);
+  });
+
+  it('uses single-image prompt when given 1 image', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    await identifyItemsMulti([mockImages[0]]);
+    const call = vi.mocked(analyzeImages).mock.calls[0];
+    expect(call[2]).toContain('Identify this item');
+    expect(call[2]).not.toContain('photos of the SAME item');
+  });
+
+  it('uses multi-image prompt when given 2+ images', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    await identifyItemsMulti(mockImages);
+    const call = vi.mocked(analyzeImages).mock.calls[0];
+    expect(call[2]).toContain('2 photos of the SAME item');
+  });
+
+  it('falls back to single-candidate when detailed parse fails', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_VISION_JSON),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    const result = await identifyItemsMulti(mockImages);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].name).toBe('Sony WH-1000XM4 Headphones');
+    expect(result.candidates[0].confidence).toBe(0.8);
+  });
+
+  it('throws AppError when both parse paths fail', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ foo: 'bar' }),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    await expect(identifyItemsMulti(mockImages))
+      .rejects.toMatchObject({ statusCode: 502, code: 'AI_RESPONSE_INVALID' });
+  });
+
+  it('normalizes condition through Zod transform', async () => {
+    const withRawCondition = {
+      ...VALID_DETAILED_JSON,
+      candidates: [{
+        ...VALID_DETAILED_JSON.candidates[0],
+        condition: 'excellent',
+      }],
+    };
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(withRawCondition),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    const result = await identifyItemsMulti(mockImages);
+    expect(result.candidates[0].condition).toBe('like_new');
   });
 });

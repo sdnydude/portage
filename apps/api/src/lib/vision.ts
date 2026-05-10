@@ -304,7 +304,38 @@ export interface ListingFieldsOutput {
   } | null;
 }
 
-async function fetchPhotosAsBase64(urls: string[], limit: number): Promise<ImageInput[]> {
+export async function identifyItemsMulti(
+  images: ImageInput[],
+): Promise<DetailedVisionResult> {
+  const prompt = images.length === 1
+    ? 'Identify this item with multiple candidates and reasoning. Respond with ONLY valid JSON.'
+    : `You are viewing ${images.length} photos of the SAME item from different angles. Cross-reference all photos to identify it precisely. Respond with ONLY valid JSON.`;
+
+  const { text } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, { temperature: 0, maxTokens: 2048 });
+
+  const parsed = JSON.parse(extractJSON(text));
+
+  const detailed = DetailedVisionResultSchema.safeParse(parsed);
+  if (detailed.success) return detailed.data;
+
+  const single = VisionResultSchema.safeParse(parsed);
+  if (single.success) {
+    return {
+      candidates: [{
+        ...single.data,
+        features: single.data.suggestedTags,
+        confidence: 0.8,
+      }],
+      reasoning: Array.isArray((parsed as Record<string, unknown>).reasoning)
+        ? (parsed as Record<string, unknown>).reasoning as string[]
+        : ['Identified by visual analysis'],
+    };
+  }
+
+  throw new AppError(502, 'AI_RESPONSE_INVALID', `AI multi-image scan returned invalid response: ${detailed.error.message}`);
+}
+
+export async function fetchPhotosAsBase64(urls: string[], limit: number): Promise<ImageInput[]> {
   const selected = urls.slice(0, limit);
   const results: ImageInput[] = [];
 
