@@ -28,38 +28,48 @@ describe('requireAuth', () => {
     expect(mockNext).toHaveBeenCalledOnce();
   });
 
-  it('throws 401 for missing Authorization header', () => {
+  it('passes 401 to next for missing Authorization header', () => {
     const req = mockReq();
-    expect(() => requireAuth(req, mockRes, mockNext)).toThrow(AppError);
-    try { requireAuth(req, mockRes, mockNext); } catch (e) {
-      expect((e as AppError).statusCode).toBe(401);
-      expect((e as AppError).code).toBe('UNAUTHORIZED');
-    }
+    requireAuth(req, mockRes, mockNext);
+    expect(mockNext).toHaveBeenCalledOnce();
+    const err = vi.mocked(mockNext).mock.calls[0][0] as unknown as AppError;
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.statusCode).toBe(401);
+    expect(err.code).toBe('UNAUTHORIZED');
   });
 
-  it('throws 401 for malformed header without Bearer prefix', () => {
+  it('passes 401 to next for malformed header without Bearer prefix', () => {
     const req = mockReq({ authorization: 'Token abc123' });
-    expect(() => requireAuth(req, mockRes, mockNext)).toThrow(AppError);
+    requireAuth(req, mockRes, mockNext);
+    const err = vi.mocked(mockNext).mock.calls[0][0] as unknown as AppError;
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.statusCode).toBe(401);
   });
 
-  it('throws 401 for expired token', () => {
+  it('passes 401 to next for expired token', () => {
     const token = jwt.sign(
       { sub: 'u1', email: 'a@b.com', tier: 'pro', role: 'user' },
       env().JWT_SECRET,
       { expiresIn: '0s' },
     );
     const req = mockReq({ authorization: `Bearer ${token}` });
-    expect(() => requireAuth(req, mockRes, mockNext)).toThrow(AppError);
+    requireAuth(req, mockRes, mockNext);
+    const err = vi.mocked(mockNext).mock.calls[0][0] as unknown as AppError;
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.statusCode).toBe(401);
   });
 
-  it('throws 401 when refresh token is used as access token', () => {
+  it('passes 401 to next when refresh token is used as access token', () => {
     const token = jwt.sign(
       { sub: 'u1', email: 'a@b.com', tier: 'pro', role: 'user', type: 'refresh' },
       env().JWT_SECRET,
       { expiresIn: '1h' },
     );
     const req = mockReq({ authorization: `Bearer ${token}` });
-    expect(() => requireAuth(req, mockRes, mockNext)).toThrow(AppError);
+    requireAuth(req, mockRes, mockNext);
+    const err = vi.mocked(mockNext).mock.calls[0][0] as unknown as AppError;
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.statusCode).toBe(401);
   });
 });
 
@@ -72,15 +82,16 @@ describe('requirePro', () => {
     expect(mockNext).toHaveBeenCalledOnce();
   });
 
-  it('throws 403 for free user', () => {
+  it('passes 403 to next for free user', () => {
     const req = mockReq();
     req.user = { sub: 'u1', email: 'a@b.com', tier: 'free', role: 'user' };
 
-    expect(() => requirePro(req, mockRes, mockNext)).toThrow(AppError);
-    try { requirePro(req, mockRes, mockNext); } catch (e) {
-      expect((e as AppError).statusCode).toBe(403);
-      expect((e as AppError).code).toBe('PRO_REQUIRED');
-    }
+    requirePro(req, mockRes, mockNext);
+    expect(mockNext).toHaveBeenCalledOnce();
+    const err = vi.mocked(mockNext).mock.calls[0][0] as unknown as AppError;
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.statusCode).toBe(403);
+    expect(err.code).toBe('PRO_REQUIRED');
   });
 });
 
@@ -93,14 +104,15 @@ describe('requireAdmin', () => {
     expect(mockNext).toHaveBeenCalledOnce();
   });
 
-  it('throws 403 for non-admin user', () => {
+  it('passes 403 to next for non-admin user', () => {
     const req = mockReq();
     req.user = { sub: 'u1', email: 'a@b.com', tier: 'pro', role: 'user' };
 
-    expect(() => requireAdmin(req, mockRes, mockNext)).toThrow(AppError);
-    try { requireAdmin(req, mockRes, mockNext); } catch (e) {
-      expect((e as AppError).statusCode).toBe(403);
-      expect((e as AppError).code).toBe('ADMIN_REQUIRED');
-    }
+    requireAdmin(req, mockRes, mockNext);
+    expect(mockNext).toHaveBeenCalledOnce();
+    const err = vi.mocked(mockNext).mock.calls[0][0] as unknown as AppError;
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.statusCode).toBe(403);
+    expect(err.code).toBe('ADMIN_REQUIRED');
   });
 });
