@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" font-family="'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2D5A27"/>
+    </marker>
+    <marker id="a-red" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#C0392B"/>
+    </marker>
+    <marker id="a-blue" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3B5998"/>
+    </marker>
+    <filter id="s" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="820" fill="#FAFAF9" rx="8"/>
+
+  <text x="600" y="40" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1a1a">Self-Training Feedback Loops</text>
+  <text x="600" y="62" text-anchor="middle" font-size="13" fill="#666">How the memory system learns from its own operation</text>
+
+  <!-- ====== LOOP 1: Behavioral Learning ====== -->
+  <rect x="30" y="85" width="550" height="340" rx="12" fill="#F0F7EE" stroke="#2D5A27" stroke-width="1.5" filter="url(#s)"/>
+  <text x="50" y="112" font-size="15" font-weight="700" fill="#2D5A27">Loop 1: Behavioral Learning</text>
+  <text x="50" y="130" font-size="11" fill="#666">User corrections become persistent rules</text>
+
+  <!-- Loop nodes -->
+  <rect x="60" y="150" width="170" height="55" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#s)"/>
+  <text x="145" y="175" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">User corrects Claude</text>
+  <text x="145" y="192" text-anchor="middle" font-size="9" fill="#888">"don't do X" / "yes, exactly"</text>
+
+  <line x1="230" y1="178" x2="275" y2="178" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="280" y="150" width="170" height="55" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#s)"/>
+  <text x="365" y="175" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">Save feedback_*.md</text>
+  <text x="365" y="192" text-anchor="middle" font-size="9" fill="#888">rule + why + how to apply</text>
+
+  <line x1="365" y1="205" x2="365" y2="245" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="280" y="250" width="170" height="55" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#s)"/>
+  <text x="365" y="275" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">MEMORY.md updated</text>
+  <text x="365" y="292" text-anchor="middle" font-size="9" fill="#888">indexed for future recall</text>
+
+  <line x1="280" y1="277" x2="230" y2="277" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="60" y="250" width="170" height="55" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#s)"/>
+  <text x="145" y="275" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">Next session loads rule</text>
+  <text x="145" y="292" text-anchor="middle" font-size="9" fill="#888">MEMORY.md → context</text>
+
+  <line x1="145" y1="305" x2="145" y2="350" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="60" y="355" width="390" height="50" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="2" filter="url(#s)"/>
+  <text x="255" y="380" text-anchor="middle" font-size="12" font-weight="700" fill="#2D5A27">Claude follows the rule — user never repeats correction</text>
+
+  <!-- Example list — positioned below the flow boxes -->
+  <text x="480" y="260" font-size="10" fill="#2D5A27" font-style="italic">Examples:</text>
+  <text x="480" y="276" font-size="9" fill="#555">feedback_parallel_agents.md</text>
+  <text x="480" y="290" font-size="9" fill="#555">feedback_never_guess_ui.md</text>
+  <text x="480" y="304" font-size="9" fill="#555">feedback_check_doppler_first.md</text>
+  <text x="480" y="318" font-size="9" fill="#555">feedback_follow_claude_md.md</text>
+  <text x="480" y="332" font-size="9" fill="#555">feedback_design_quality.md</text>
+  <text x="480" y="346" font-size="9" fill="#555">feedback_no_selfhosted_secrets.md</text>
+
+  <!-- ====== LOOP 2: Pattern Recognition ====== -->
+  <rect x="620" y="85" width="550" height="340" rx="12" fill="#F0F4FF" stroke="#3B5998" stroke-width="1.5" filter="url(#s)"/>
+  <text x="640" y="112" font-size="15" font-weight="700" fill="#3B5998">Loop 2: Pattern Recognition</text>
+  <text x="640" y="130" font-size="11" fill="#666">Journal analysis surfaces work patterns automatically</text>
+
+  <rect x="650" y="150" width="170" height="55" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#s)"/>
+  <text x="735" y="175" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">Sessions accumulate</text>
+  <text x="735" y="192" text-anchor="middle" font-size="9" fill="#888">today-*.md journals</text>
+
+  <line x1="820" y1="178" x2="865" y2="178" stroke="#3B5998" stroke-width="1.5" marker-end="url(#a-blue)"/>
+
+  <rect x="870" y="150" width="170" height="55" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#s)"/>
+  <text x="955" y="175" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">6am cron /sync-memory</text>
+  <text x="955" y="192" text-anchor="middle" font-size="9" fill="#888">Phase 3c: pattern detect</text>
+
+  <line x1="955" y1="205" x2="955" y2="240" stroke="#3B5998" stroke-width="1.5" marker-end="url(#a-blue)"/>
+
+  <rect x="870" y="245" width="170" height="55" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#s)"/>
+  <text x="955" y="265" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">Pattern files written</text>
+  <text x="955" y="282" text-anchor="middle" font-size="9" fill="#888">hot areas, workflow, branches</text>
+
+  <line x1="870" y1="272" x2="820" y2="272" stroke="#3B5998" stroke-width="1.5" marker-end="url(#a-blue)"/>
+
+  <rect x="650" y="245" width="170" height="55" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#s)"/>
+  <text x="735" y="270" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">Briefing Section 7</text>
+  <text x="735" y="287" text-anchor="middle" font-size="9" fill="#888">shows patterns at start</text>
+
+  <line x1="735" y1="300" x2="735" y2="350" stroke="#3B5998" stroke-width="1.5" marker-end="url(#a-blue)"/>
+
+  <rect x="650" y="355" width="390" height="50" rx="8" fill="#E0E8F5" stroke="#3B5998" stroke-width="2" filter="url(#s)"/>
+  <text x="845" y="380" text-anchor="middle" font-size="12" font-weight="700" fill="#3B5998">Claude knows what's hot, what's stale, what's abandoned</text>
+
+  <!-- Example -->
+  <text x="1070" y="162" font-size="10" fill="#3B5998" font-style="italic">Outputs:</text>
+  <text x="1070" y="178" font-size="9" fill="#555">hotarea_*.md</text>
+  <text x="1070" y="192" font-size="9" fill="#555">workflow.md</text>
+  <text x="1070" y="206" font-size="9" fill="#555">unfinished.md</text>
+  <text x="1070" y="220" font-size="9" fill="#555">trend alerts</text>
+
+  <!-- ====== LOOP 3: Memory Hygiene ====== -->
+  <rect x="30" y="445" width="550" height="340" rx="12" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#s)"/>
+  <text x="50" y="472" font-size="15" font-weight="700" fill="#C4722A">Loop 3: Memory Hygiene</text>
+  <text x="50" y="490" font-size="11" fill="#666">Automatic pruning prevents knowledge rot</text>
+
+  <rect x="60" y="510" width="160" height="55" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#s)"/>
+  <text x="140" y="535" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Staleness scan</text>
+  <text x="140" y="552" text-anchor="middle" font-size="9" fill="#888">Phase 3a: verify vs code</text>
+
+  <line x1="220" y1="538" x2="265" y2="538" stroke="#C4722A" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <rect x="270" y="510" width="160" height="55" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#s)"/>
+  <text x="350" y="535" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Contradiction scan</text>
+  <text x="350" y="552" text-anchor="middle" font-size="9" fill="#888">find conflicting memories</text>
+
+  <line x1="350" y1="565" x2="350" y2="600" stroke="#C4722A" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <rect x="270" y="605" width="160" height="55" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#s)"/>
+  <text x="350" y="630" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Pruning (max 3)</text>
+  <text x="350" y="647" text-anchor="middle" font-size="9" fill="#888">archive + delete stale</text>
+
+  <line x1="270" y1="632" x2="220" y2="632" stroke="#C4722A" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <rect x="60" y="605" width="160" height="55" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#s)"/>
+  <text x="140" y="630" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Rebuild index</text>
+  <text x="140" y="647" text-anchor="middle" font-size="9" fill="#888">MEMORY.md matches disk</text>
+
+  <line x1="140" y1="660" x2="140" y2="700" stroke="#C4722A" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <rect x="60" y="705" width="390" height="55" rx="8" fill="#FEE8DF" stroke="#C4722A" stroke-width="2" filter="url(#s)"/>
+  <text x="255" y="728" text-anchor="middle" font-size="12" font-weight="700" fill="#C4722A">Memory stays fresh, compact, and non-contradictory</text>
+  <text x="255" y="745" text-anchor="middle" font-size="10" fill="#888">Safety: 7-day min age, max 3/run, behavioral exemption</text>
+
+  <!-- ====== LOOP 4: Future — Self-Training ====== -->
+  <rect x="620" y="445" width="550" height="340" rx="12" fill="#FFF0F0" stroke="#C0392B" stroke-width="1.5" stroke-dasharray="6 3" filter="url(#s)"/>
+  <text x="640" y="472" font-size="15" font-weight="700" fill="#C0392B">Loop 4: Self-Training (PLANNED)</text>
+  <text x="640" y="490" font-size="11" fill="#666">Future: Claude learns from outcome analysis</text>
+
+  <rect x="650" y="510" width="180" height="55" rx="8" fill="#fff" stroke="#C0392B" stroke-width="1" filter="url(#s)"/>
+  <text x="740" y="535" text-anchor="middle" font-size="11" font-weight="600" fill="#C0392B">Action tracking</text>
+  <text x="740" y="552" text-anchor="middle" font-size="9" fill="#888">log decisions + outcomes</text>
+
+  <line x1="830" y1="538" x2="875" y2="538" stroke="#C0392B" stroke-width="1.5" marker-end="url(#a-red)"/>
+
+  <rect x="880" y="510" width="180" height="55" rx="8" fill="#fff" stroke="#C0392B" stroke-width="1" filter="url(#s)"/>
+  <text x="970" y="535" text-anchor="middle" font-size="11" font-weight="600" fill="#C0392B">Outcome evaluation</text>
+  <text x="970" y="552" text-anchor="middle" font-size="9" fill="#888">did the choice work?</text>
+
+  <line x1="970" y1="565" x2="970" y2="600" stroke="#C0392B" stroke-width="1.5" marker-end="url(#a-red)"/>
+
+  <rect x="880" y="605" width="180" height="55" rx="8" fill="#fff" stroke="#C0392B" stroke-width="1" filter="url(#s)"/>
+  <text x="970" y="630" text-anchor="middle" font-size="11" font-weight="600" fill="#C0392B">Strategy refinement</text>
+  <text x="970" y="647" text-anchor="middle" font-size="9" fill="#888">update rules from data</text>
+
+  <line x1="880" y1="632" x2="830" y2="632" stroke="#C0392B" stroke-width="1.5" marker-end="url(#a-red)"/>
+
+  <rect x="650" y="605" width="180" height="55" rx="8" fill="#fff" stroke="#C0392B" stroke-width="1" filter="url(#s)"/>
+  <text x="740" y="630" text-anchor="middle" font-size="11" font-weight="600" fill="#C0392B">Better default behavior</text>
+  <text x="740" y="647" text-anchor="middle" font-size="9" fill="#888">fewer corrections needed</text>
+
+  <line x1="740" y1="660" x2="740" y2="700" stroke="#C0392B" stroke-width="1.5" marker-end="url(#a-red)"/>
+
+  <rect x="650" y="705" width="390" height="55" rx="8" fill="#FFE0E0" stroke="#C0392B" stroke-width="2" filter="url(#s)"/>
+  <text x="845" y="725" text-anchor="middle" font-size="12" font-weight="700" fill="#C0392B">Measurable: correction rate decreases over time</text>
+  <text x="845" y="742" text-anchor="middle" font-size="10" fill="#888">Requires: outcome tagging, A/B tracking, metric dashboards</text>
+
+  <!-- Sub-items for Loop 4 -->
+  <text x="1080" y="520" font-size="10" fill="#C0392B" font-style="italic">Needs:</text>
+  <text x="1080" y="536" font-size="9" fill="#555">outcome_*.md type</text>
+  <text x="1080" y="550" font-size="9" fill="#555">correction counter</text>
+  <text x="1080" y="564" font-size="9" fill="#555">strategy scoring</text>
+  <text x="1080" y="578" font-size="9" fill="#555">A/B memory tests</text>
+  <text x="1080" y="592" font-size="9" fill="#555">Grafana dashboard</text>
+
+</svg>

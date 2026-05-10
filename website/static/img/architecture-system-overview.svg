@@ -1,0 +1,231 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" font-family="'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2D5A27"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3B82F6"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="900" fill="#FAFAF9" rx="8"/>
+
+  <!-- Title -->
+  <text x="600" y="40" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1a1a">Portage — System Architecture</text>
+  <text x="600" y="62" text-anchor="middle" font-size="13" fill="#666">AI-powered inventory &amp; multi-marketplace seller platform</text>
+
+  <!-- ====== CLIENT LAYER ====== -->
+  <rect x="30" y="85" width="1140" height="180" rx="12" fill="#F0F7EE" stroke="#2D5A27" stroke-width="1.5" stroke-dasharray="6 3" filter="url(#shadow)"/>
+  <text x="50" y="110" font-size="14" font-weight="700" fill="#2D5A27">CLIENT — Mobile Browser (PWA)</text>
+
+  <!-- Next.js App -->
+  <rect x="60" y="125" width="280" height="120" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="60" y="125" width="280" height="28" rx="8" fill="#2D5A27"/>
+  <rect x="60" y="145" width="280" height="8" fill="#2D5A27"/>
+  <text x="200" y="147" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Next.js 16 — port 3002</text>
+  <text x="80" y="172" font-size="10" fill="#333">React 19 + Tailwind v4 + App Router</text>
+  <text x="80" y="188" font-size="10" fill="#333">5-tab bottom nav + Camera FAB</text>
+  <text x="80" y="204" font-size="10" fill="#333">Glass morphism design system</text>
+  <text x="80" y="220" font-size="10" fill="#333">Service Worker (offline PWA)</text>
+  <text x="80" y="236" font-size="10" fill="#2D5A27" font-weight="600">HTTPS required (camera access)</text>
+
+  <!-- Pages breakdown -->
+  <rect x="380" y="125" width="220" height="120" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="380" y="125" width="220" height="28" rx="8" fill="#2D5A27"/>
+  <rect x="380" y="145" width="220" height="8" fill="#2D5A27"/>
+  <text x="490" y="147" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Pages (30+ routes)</text>
+  <text x="400" y="172" font-size="10" fill="#333">/home /inventory /orders /more</text>
+  <text x="400" y="188" font-size="10" fill="#333">/list (3 listing interfaces)</text>
+  <text x="400" y="204" font-size="10" fill="#333">/settings/* (7 pages)</text>
+  <text x="400" y="220" font-size="10" fill="#333">/admin/* (11 pages, sidebar)</text>
+  <text x="400" y="236" font-size="10" fill="#333">/porter (AI chat)</text>
+
+  <!-- Hooks & State -->
+  <rect x="640" y="125" width="240" height="120" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="640" y="125" width="240" height="28" rx="8" fill="#2D5A27"/>
+  <rect x="640" y="145" width="240" height="8" fill="#2D5A27"/>
+  <text x="760" y="147" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Hooks &amp; State</text>
+  <text x="660" y="172" font-size="10" fill="#333">AuthContext (sole global provider)</text>
+  <text x="660" y="188" font-size="10" fill="#333">useListingFlow (3-mode SM)</text>
+  <text x="660" y="204" font-size="10" fill="#333">useItems/Listings/Orders/Comps</text>
+  <text x="660" y="220" font-size="10" fill="#333">useCamera + useBgRemoval</text>
+  <text x="660" y="236" font-size="10" fill="#333">useShippingPresets/Rates/Label</text>
+
+  <!-- API Client -->
+  <rect x="920" y="125" width="230" height="120" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="920" y="125" width="230" height="28" rx="8" fill="#2D5A27"/>
+  <rect x="920" y="145" width="230" height="8" fill="#2D5A27"/>
+  <text x="1035" y="147" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">lib/api.ts</text>
+  <text x="940" y="172" font-size="10" fill="#333">fetch wrapper + JWT Bearer</text>
+  <text x="940" y="188" font-size="10" fill="#333">401 → auto refresh (singleton)</text>
+  <text x="940" y="204" font-size="10" fill="#333">ApiError class (status/code)</text>
+  <text x="940" y="220" font-size="10" fill="#333">localStorage token storage</text>
+  <text x="940" y="236" font-size="10" fill="#2D5A27" font-weight="600">setOnTokenRefreshed → React</text>
+
+  <!-- ====== API LAYER ====== -->
+  <rect x="30" y="290" width="1140" height="240" rx="12" fill="#F0F4FF" stroke="#3B5998" stroke-width="1.5" stroke-dasharray="6 3" filter="url(#shadow)"/>
+  <text x="50" y="315" font-size="14" font-weight="700" fill="#3B5998">API — Express 5 — port 8016</text>
+
+  <!-- Route groups -->
+  <rect x="60" y="330" width="200" height="180" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="60" y="330" width="200" height="28" rx="8" fill="#3B5998"/>
+  <rect x="60" y="350" width="200" height="8" fill="#3B5998"/>
+  <text x="160" y="352" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Auth &amp; Users (4 routers)</text>
+  <text x="80" y="377" font-size="10" fill="#333">/auth  login, register, refresh</text>
+  <text x="80" y="393" font-size="10" fill="#333">/users/me  profile CRUD</text>
+  <text x="80" y="409" font-size="10" fill="#333">/users/me/preferences</text>
+  <text x="80" y="425" font-size="10" fill="#333">/seller-profile  CRUD</text>
+  <text x="80" y="445" font-size="10" fill="#666">Middleware: requireAuth</text>
+  <text x="80" y="461" font-size="10" fill="#666">  requirePro, requireAdmin</text>
+  <text x="80" y="477" font-size="10" fill="#666">JWT: bcrypt + AES-256-GCM</text>
+  <text x="80" y="497" font-size="10" fill="#3B5998" font-weight="600">next(err) error propagation</text>
+
+  <rect x="290" y="330" width="200" height="180" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="290" y="330" width="200" height="28" rx="8" fill="#3B5998"/>
+  <rect x="290" y="350" width="200" height="8" fill="#3B5998"/>
+  <text x="390" y="352" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Core CRUD (6 routers)</text>
+  <text x="310" y="377" font-size="10" fill="#333">/items  CRUD + bulk-delete</text>
+  <text x="310" y="393" font-size="10" fill="#333">/items/comps/search</text>
+  <text x="310" y="409" font-size="10" fill="#333">/items/export  CSV + JSON</text>
+  <text x="310" y="425" font-size="10" fill="#333">/items/:id/prepare-listing</text>
+  <text x="310" y="441" font-size="10" fill="#333">/listings  CRUD + bulk ops</text>
+  <text x="310" y="457" font-size="10" fill="#333">/orders  sync + ship</text>
+  <text x="310" y="473" font-size="10" fill="#333">/drafts  auto-save (2s)</text>
+  <text x="310" y="489" font-size="10" fill="#333">/dashboard  portfolio stats</text>
+  <text x="310" y="505" font-size="10" fill="#3B5998" font-weight="600">Drizzle ORM (parameterized)</text>
+
+  <rect x="520" y="330" width="200" height="180" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="520" y="330" width="200" height="28" rx="8" fill="#3B5998"/>
+  <rect x="520" y="350" width="200" height="8" fill="#3B5998"/>
+  <text x="620" y="352" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">AI &amp; Media (4 routers)</text>
+  <text x="540" y="377" font-size="10" fill="#333">/scan  single-image scan</text>
+  <text x="540" y="393" font-size="10" fill="#333">/scan/refine  multi-image AI</text>
+  <text x="540" y="409" font-size="10" fill="#333">/images  upload to R2</text>
+  <text x="540" y="425" font-size="10" fill="#333">/images/enhance  Sharp pipe</text>
+  <text x="540" y="441" font-size="10" fill="#333">/images/remove-bg  server BG</text>
+  <text x="540" y="457" font-size="10" fill="#333">/porter  tool_use loop</text>
+  <text x="540" y="477" font-size="10" fill="#666">Claude Vision (primary)</text>
+  <text x="540" y="493" font-size="10" fill="#666">5-provider fallback chain</text>
+  <text x="540" y="509" font-size="10" fill="#3B5998" font-weight="600">SSRF: R2_PUBLIC_URL guard</text>
+
+  <rect x="750" y="330" width="200" height="180" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="750" y="330" width="200" height="28" rx="8" fill="#3B5998"/>
+  <rect x="750" y="350" width="200" height="8" fill="#3B5998"/>
+  <text x="850" y="352" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Marketplace (3 adapters)</text>
+  <text x="770" y="377" font-size="10" fill="#333">/marketplace/ebay  OAuth2</text>
+  <text x="770" y="393" font-size="10" fill="#333">/marketplace/etsy  PKCE</text>
+  <text x="770" y="409" font-size="10" fill="#333">Reverb adapter (pending)</text>
+  <text x="770" y="429" font-size="10" fill="#666">Inventory API (SKU/Offer)</text>
+  <text x="770" y="445" font-size="10" fill="#666">Browse API (comps, prod)</text>
+  <text x="770" y="461" font-size="10" fill="#666">Fulfillment API (orders)</text>
+  <text x="770" y="477" font-size="10" fill="#666">Taxonomy API (categories)</text>
+  <text x="770" y="497" font-size="10" fill="#3B5998" font-weight="600">Tokens: AES-256-GCM at rest</text>
+
+  <rect x="980" y="330" width="170" height="180" rx="8" fill="#fff" stroke="#3B5998" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="980" y="330" width="170" height="28" rx="8" fill="#3B5998"/>
+  <rect x="980" y="350" width="170" height="8" fill="#3B5998"/>
+  <text x="1065" y="352" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Ops (3 routers)</text>
+  <text x="1000" y="377" font-size="10" fill="#333">/shipping  presets,</text>
+  <text x="1000" y="393" font-size="10" fill="#333">  rates, labels, provider</text>
+  <text x="1000" y="409" font-size="10" fill="#333">/admin  stats, users,</text>
+  <text x="1000" y="425" font-size="10" fill="#333">  audit, settings</text>
+  <text x="1000" y="441" font-size="10" fill="#333">/health  liveness probe</text>
+  <text x="1000" y="461" font-size="10" fill="#666">/metrics  Prometheus</text>
+  <text x="1000" y="477" font-size="10" fill="#666">pino structured logging</text>
+  <text x="1000" y="497" font-size="10" fill="#3B5998" font-weight="600">20 routers, 80+ endpoints</text>
+
+  <!-- HTTPS arrow -->
+  <line x1="600" y1="265" x2="600" y2="325" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="620" y="298" font-size="10" fill="#555">HTTPS + JWT Bearer</text>
+
+  <!-- ====== DATA LAYER ====== -->
+  <rect x="30" y="555" width="1140" height="165" rx="12" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" stroke-dasharray="6 3" filter="url(#shadow)"/>
+  <text x="50" y="580" font-size="14" font-weight="700" fill="#C4722A">DATA &amp; STORAGE</text>
+
+  <!-- PostgreSQL -->
+  <rect x="60" y="595" width="320" height="105" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="60" y="595" width="320" height="28" rx="8" fill="#C4722A"/>
+  <rect x="60" y="615" width="320" height="8" fill="#C4722A"/>
+  <text x="220" y="617" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">PostgreSQL 15 — port 5436</text>
+  <text x="80" y="642" font-size="10" fill="#333">16 tables — Drizzle schema-push (no migrations)</text>
+  <text x="80" y="658" font-size="10" fill="#333">users, items, listings, orders, conversations</text>
+  <text x="80" y="674" font-size="10" fill="#333">marketplace_accounts, shipping_presets, drafts</text>
+  <text x="80" y="690" font-size="10" fill="#333">admin_audit_log, seller_profiles, notifications</text>
+
+  <!-- R2 -->
+  <rect x="420" y="595" width="240" height="105" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="420" y="595" width="240" height="28" rx="8" fill="#C4722A"/>
+  <rect x="420" y="615" width="240" height="8" fill="#C4722A"/>
+  <text x="540" y="617" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Cloudflare R2</text>
+  <text x="440" y="642" font-size="10" fill="#333">portage-images bucket</text>
+  <text x="440" y="658" font-size="10" fill="#333">S3-compatible API</text>
+  <text x="440" y="674" font-size="10" fill="#333">CDN + custom domain</text>
+  <text x="440" y="690" font-size="10" fill="#C4722A" font-weight="600">Zero egress fees</text>
+
+  <!-- Doppler -->
+  <rect x="700" y="595" width="210" height="105" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="700" y="595" width="210" height="28" rx="8" fill="#C4722A"/>
+  <rect x="700" y="615" width="210" height="8" fill="#C4722A"/>
+  <text x="805" y="617" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Doppler Secrets</text>
+  <text x="720" y="642" font-size="10" fill="#333">54 secrets managed</text>
+  <text x="720" y="658" font-size="10" fill="#333">Auto-sync on session start</text>
+  <text x="720" y="674" font-size="10" fill="#333">No .env committed</text>
+  <text x="720" y="690" font-size="10" fill="#C4722A" font-weight="600">Hosted SaaS — no self-host</text>
+
+  <!-- External APIs -->
+  <rect x="950" y="595" width="200" height="105" rx="8" fill="#fff" stroke="#C4722A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="950" y="595" width="200" height="28" rx="8" fill="#C4722A"/>
+  <rect x="950" y="615" width="200" height="8" fill="#C4722A"/>
+  <text x="1050" y="617" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">External APIs</text>
+  <text x="970" y="642" font-size="10" fill="#333">eBay (prod Browse + sandbox)</text>
+  <text x="970" y="658" font-size="10" fill="#333">Etsy (Listings + Receipts)</text>
+  <text x="970" y="674" font-size="10" fill="#333">Claude / OpenAI / Gemini</text>
+  <text x="970" y="690" font-size="10" fill="#333">EasyPost / Shippo (pending)</text>
+
+  <!-- Data flow arrows -->
+  <line x1="390" y1="530" x2="220" y2="590" stroke="#555" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="620" y1="530" x2="540" y2="590" stroke="#555" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="850" y1="530" x2="1050" y2="590" stroke="#555" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+
+  <!-- ====== INFRA LAYER ====== -->
+  <rect x="30" y="740" width="1140" height="140" rx="12" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" stroke-dasharray="6 3" filter="url(#shadow)"/>
+  <text x="50" y="765" font-size="14" font-weight="700" fill="#5B4B8A">INFRASTRUCTURE</text>
+
+  <rect x="60" y="780" width="260" height="80" rx="8" fill="#fff" stroke="#5B4B8A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="60" y="780" width="260" height="28" rx="8" fill="#5B4B8A"/>
+  <rect x="60" y="800" width="260" height="8" fill="#5B4B8A"/>
+  <text x="190" y="802" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Docker Compose</text>
+  <text x="80" y="827" font-size="10" fill="#333">3 containers: db, api, app</text>
+  <text x="80" y="843" font-size="10" fill="#333">Health checks (pg_isready, curl)</text>
+  <text x="80" y="855" font-size="10" fill="#5B4B8A" font-weight="600">g700data1 — Ubuntu 24.04, 64GB</text>
+
+  <rect x="360" y="780" width="260" height="80" rx="8" fill="#fff" stroke="#5B4B8A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="360" y="780" width="260" height="28" rx="8" fill="#5B4B8A"/>
+  <rect x="360" y="800" width="260" height="8" fill="#5B4B8A"/>
+  <text x="490" y="802" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Cloudflare Tunnel</text>
+  <text x="380" y="827" font-size="10" fill="#333">portage.digitalharmonyai.com</text>
+  <text x="380" y="843" font-size="10" fill="#333">noTLSVerify (self-signed local)</text>
+  <text x="380" y="855" font-size="10" fill="#5B4B8A" font-weight="600">No exposed ports</text>
+
+  <rect x="660" y="780" width="230" height="80" rx="8" fill="#fff" stroke="#5B4B8A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="660" y="780" width="230" height="28" rx="8" fill="#5B4B8A"/>
+  <rect x="660" y="800" width="230" height="8" fill="#5B4B8A"/>
+  <text x="775" y="802" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Observability</text>
+  <text x="680" y="827" font-size="10" fill="#333">7 Prometheus metrics</text>
+  <text x="680" y="843" font-size="10" fill="#333">Grafana dashboard</text>
+  <text x="680" y="855" font-size="10" fill="#333">pino structured logging</text>
+
+  <rect x="930" y="780" width="220" height="80" rx="8" fill="#fff" stroke="#5B4B8A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="930" y="780" width="220" height="28" rx="8" fill="#5B4B8A"/>
+  <rect x="930" y="800" width="220" height="8" fill="#5B4B8A"/>
+  <text x="1040" y="802" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Security</text>
+  <text x="950" y="827" font-size="10" fill="#333">SSRF protection (fail-closed)</text>
+  <text x="950" y="843" font-size="10" fill="#333">Parameterized SQL only</text>
+  <text x="950" y="855" font-size="10" fill="#333">TOCTOU race guards (txn)</text>
+</svg>

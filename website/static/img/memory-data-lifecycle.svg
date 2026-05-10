@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" font-family="'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2D5A27"/>
+    </marker>
+    <marker id="arr-purple" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#5B4B8A"/>
+    </marker>
+    <marker id="arr-orange" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#C4722A"/>
+    </marker>
+    <filter id="sh" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="#FAFAF9" rx="8"/>
+
+  <text x="600" y="40" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1a1a">Memory Data Lifecycle</text>
+  <text x="600" y="62" text-anchor="middle" font-size="13" fill="#666">How information flows from session activity to persistent knowledge</text>
+
+  <!-- ====== ROW 1: Session Capture ====== -->
+  <text x="50" y="105" font-size="13" font-weight="700" fill="#2D5A27">1. CAPTURE (every session)</text>
+
+  <rect x="50" y="120" width="160" height="70" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="130" y="148" text-anchor="middle" font-size="12" font-weight="600" fill="#2D5A27">User + Claude</text>
+  <text x="130" y="168" text-anchor="middle" font-size="10" fill="#555">work in session</text>
+
+  <line x1="210" y1="155" x2="265" y2="155" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="270" y="120" width="150" height="70" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="345" y="143" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">now.md</text>
+  <text x="345" y="160" text-anchor="middle" font-size="10" fill="#555">session journal</text>
+  <text x="345" y="175" text-anchor="middle" font-size="9" fill="#888">timestamped entries</text>
+
+  <line x1="420" y1="155" x2="475" y2="155" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="448" y="147" text-anchor="middle" font-size="9" fill="#2D5A27">Stop</text>
+  <text x="448" y="162" text-anchor="middle" font-size="9" fill="#2D5A27">hook</text>
+
+  <rect x="480" y="120" width="150" height="70" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="555" y="143" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">today-MM-DD.md</text>
+  <text x="555" y="160" text-anchor="middle" font-size="10" fill="#555">daily journal</text>
+  <text x="555" y="175" text-anchor="middle" font-size="9" fill="#888">appended per session</text>
+
+  <line x1="630" y1="140" x2="685" y2="140" stroke="#C4722A" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+  <text x="658" y="133" text-anchor="middle" font-size="9" fill="#C4722A">Stop</text>
+
+  <rect x="690" y="120" width="180" height="70" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="780" y="143" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Registry API</text>
+  <text x="780" y="160" text-anchor="middle" font-size="10" fill="#555">agent_sessions table</text>
+  <text x="780" y="175" text-anchor="middle" font-size="9" fill="#888">summary + tldr + commits</text>
+
+  <line x1="630" y1="170" x2="685" y2="170" stroke="#5B4B8A" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+  <text x="658" y="183" text-anchor="middle" font-size="9" fill="#5B4B8A">in-session</text>
+
+  <rect x="920" y="120" width="230" height="70" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="1035" y="143" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">Auto-Memory Files</text>
+  <text x="1035" y="160" text-anchor="middle" font-size="10" fill="#555">decision/feedback/project/ref</text>
+  <text x="1035" y="175" text-anchor="middle" font-size="9" fill="#888">saved when criteria met</text>
+
+  <!-- ====== ROW 2: Consolidation ====== -->
+  <text x="50" y="235" font-size="13" font-weight="700" fill="#5B4B8A">2. CONSOLIDATION (/sync-memory Phase 2 — daily cron or manual)</text>
+
+  <rect x="50" y="250" width="160" height="80" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="130" y="275" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">today-*.md</text>
+  <text x="130" y="292" text-anchor="middle" font-size="10" fill="#555">older than 7 days</text>
+  <text x="130" y="307" text-anchor="middle" font-size="9" fill="#888">summarized + renamed</text>
+
+  <line x1="210" y1="290" x2="265" y2="290" stroke="#5B4B8A" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+  <text x="238" y="283" text-anchor="middle" font-size="9" fill="#5B4B8A">7d</text>
+
+  <rect x="270" y="250" width="150" height="80" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="345" y="275" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">recent.md</text>
+  <text x="345" y="292" text-anchor="middle" font-size="10" fill="#555">7-day rolling</text>
+  <text x="345" y="307" text-anchor="middle" font-size="9" fill="#888">key points only</text>
+
+  <line x1="420" y1="290" x2="475" y2="290" stroke="#5B4B8A" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+  <text x="448" y="283" text-anchor="middle" font-size="9" fill="#5B4B8A">14d</text>
+
+  <rect x="480" y="250" width="150" height="80" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="555" y="275" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">archive.md</text>
+  <text x="555" y="292" text-anchor="middle" font-size="10" fill="#555">compressed history</text>
+  <text x="555" y="307" text-anchor="middle" font-size="9" fill="#888">permanent record</text>
+
+  <rect x="690" y="250" width="180" height="80" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="780" y="275" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">*.done.md</text>
+  <text x="780" y="292" text-anchor="middle" font-size="10" fill="#555">aged daily journals</text>
+  <text x="780" y="307" text-anchor="middle" font-size="9" fill="#888">deleted after 30 days</text>
+
+  <rect x="920" y="250" width="230" height="80" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="1035" y="275" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">Git Backfill</text>
+  <text x="1035" y="292" text-anchor="middle" font-size="10" fill="#555">Fill gaps from commit history</text>
+  <text x="1035" y="307" text-anchor="middle" font-size="9" fill="#888">14-day lookback, full mode only</text>
+
+  <!-- ====== ROW 3: Analysis ====== -->
+  <text x="50" y="375" font-size="13" font-weight="700" fill="#C4722A">3. ANALYSIS (/sync-memory Phase 3 — full mode only)</text>
+
+  <rect x="50" y="390" width="200" height="90" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="150" y="415" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">3a: Staleness Audit</text>
+  <text x="70" y="435" font-size="10" fill="#555">Verify each memory against</text>
+  <text x="70" y="450" font-size="10" fill="#555">current codebase state</text>
+  <text x="70" y="465" font-size="10" fill="#555">+ contradiction detection</text>
+
+  <line x1="250" y1="435" x2="295" y2="435" stroke="#C4722A" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <rect x="300" y="390" width="200" height="90" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="400" y="415" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">3c: Pattern Detection</text>
+  <text x="320" y="435" font-size="10" fill="#555">Hot areas (3+/7 sessions)</text>
+  <text x="320" y="450" font-size="10" fill="#555">Workflow distribution</text>
+  <text x="320" y="465" font-size="10" fill="#555">Unfinished branches</text>
+
+  <line x1="500" y1="435" x2="545" y2="435" stroke="#C4722A" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <rect x="550" y="390" width="200" height="90" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="650" y="415" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">3d: Memory Pruning</text>
+  <text x="570" y="435" font-size="10" fill="#555">Archive stale memories</text>
+  <text x="570" y="450" font-size="10" fill="#555">Max 3 per run (safety)</text>
+  <text x="570" y="465" font-size="10" fill="#555">7-day minimum age</text>
+
+  <line x1="750" y1="435" x2="795" y2="435" stroke="#C4722A" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <rect x="800" y="390" width="180" height="90" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="890" y="415" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">3e: Rebuild Index</text>
+  <text x="820" y="435" font-size="10" fill="#555">Regenerate MEMORY.md</text>
+  <text x="820" y="450" font-size="10" fill="#555">Rebuild decisions_index</text>
+  <text x="820" y="465" font-size="10" fill="#555">After patterns + pruning</text>
+
+  <line x1="980" y1="435" x2="1005" y2="435" stroke="#C4722A" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <rect x="1010" y="395" width="150" height="80" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="1085" y="418" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">3f: Metrics</text>
+  <text x="1030" y="438" font-size="10" fill="#555">POST to registry</text>
+  <text x="1030" y="453" font-size="10" fill="#555">Trend comparison</text>
+  <text x="1030" y="468" font-size="10" fill="#555">Health snapshot</text>
+
+  <!-- ====== ROW 4: Recall ====== -->
+  <text x="50" y="530" font-size="13" font-weight="700" fill="#3B5998">4. RECALL (every session start)</text>
+
+  <rect x="50" y="545" width="250" height="120" rx="8" fill="#F0F4FF" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="175" y="570" text-anchor="middle" font-size="12" font-weight="600" fill="#3B5998">Session Briefing (7 sections)</text>
+  <text x="70" y="592" font-size="10" fill="#555">1. Freshness (.last-full-sync)</text>
+  <text x="70" y="607" font-size="10" fill="#555">2. Recent sessions (registry API)</text>
+  <text x="70" y="622" font-size="10" fill="#555">3. 7-day activity (recent.md)</text>
+  <text x="70" y="637" font-size="10" fill="#555">4. Today's journal</text>
+  <text x="70" y="652" font-size="10" fill="#555">5. Decisions | 6. Git | 7. Patterns</text>
+
+  <rect x="370" y="545" width="220" height="120" rx="8" fill="#F0F4FF" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="480" y="570" text-anchor="middle" font-size="12" font-weight="600" fill="#3B5998">MEMORY.md Index</text>
+  <text x="390" y="592" font-size="10" fill="#555">Loaded into every conversation</text>
+  <text x="390" y="607" font-size="10" fill="#555">Pointers to 23 memory files</text>
+  <text x="390" y="622" font-size="10" fill="#555">Read on demand by Claude</text>
+  <text x="390" y="647" font-size="10" fill="#3B5998" font-weight="600">This is the "recall" mechanism</text>
+
+  <rect x="660" y="545" width="200" height="120" rx="8" fill="#F0F4FF" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="760" y="570" text-anchor="middle" font-size="12" font-weight="600" fill="#3B5998">CLAUDE.md</text>
+  <text x="680" y="592" font-size="10" fill="#555">Architecture snapshot</text>
+  <text x="680" y="607" font-size="10" fill="#555">Production rules</text>
+  <text x="680" y="622" font-size="10" fill="#555">Progress: 37/52</text>
+  <text x="680" y="647" font-size="10" fill="#3B5998" font-weight="600">Kept current by /sync-memory</text>
+
+  <rect x="930" y="545" width="220" height="120" rx="8" fill="#F0F4FF" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="1040" y="570" text-anchor="middle" font-size="12" font-weight="600" fill="#3B5998">Doppler Sync</text>
+  <text x="950" y="592" font-size="10" fill="#555">SessionStart hook</text>
+  <text x="950" y="607" font-size="10" fill="#555">Syncs 54 secrets to .env</text>
+  <text x="950" y="622" font-size="10" fill="#555">Before any code runs</text>
+  <text x="950" y="647" font-size="10" fill="#3B5998" font-weight="600">Prevents stale credentials</text>
+
+</svg>
