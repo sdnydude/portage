@@ -46,6 +46,12 @@ const INITIAL_STATE: ListingFlowState = {
   inventoryItemId: null,
 };
 
+function revokeLocalUrls(photos: ListingFlowState['photos']) {
+  for (const p of photos) {
+    if (p.url.startsWith('blob:')) URL.revokeObjectURL(p.url);
+  }
+}
+
 export function useListingFlow() {
   const { token } = useAuth();
   const { debouncedSave, saveDraft, deleteDraft, getDraft } = useDrafts();
@@ -108,23 +114,26 @@ export function useListingFlow() {
       }];
       const reasoning = detailed?.reasoning ?? [];
 
-      setState(prev => ({
-        ...prev,
-        recognition: {
-          status: 'complete',
-          candidates,
-          selectedIndex: 0,
-          reasoning,
-          confidence: candidates[0]?.confidence ?? 0,
-        },
-        photos: data.image ? [{
-          url: data.image.url,
-          key: data.image.key,
-          width: data.image.width,
-          height: data.image.height,
-          isPrimary: true,
-        }] : prev.photos,
-      }));
+      setState(prev => {
+        if (data.image) revokeLocalUrls(prev.photos);
+        return {
+          ...prev,
+          recognition: {
+            status: 'complete',
+            candidates,
+            selectedIndex: 0,
+            reasoning,
+            confidence: candidates[0]?.confidence ?? 0,
+          },
+          photos: data.image ? [{
+            url: data.image.url,
+            key: data.image.key,
+            width: data.image.width,
+            height: data.image.height,
+            isPrimary: true,
+          }] : prev.photos,
+        };
+      });
       setLastStep('recognition');
     } catch {
       setState(prev => ({
@@ -346,6 +355,7 @@ export function useListingFlow() {
   }, [saveDraft, lastStep]);
 
   const reset = useCallback(() => {
+    revokeLocalUrls(stateRef.current.photos);
     setState(INITIAL_STATE);
     setLastStep('idle');
     setSaveWarning(false);

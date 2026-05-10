@@ -58,8 +58,15 @@ export default function CameraMockup() {
   const [processingAi, setProcessingAi] = useState(false);
   const [removingBg, setRemovingBg] = useState(false);
   const [bgRemoved, setBgRemoved] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedImage, _setCapturedImage] = useState<string | null>(null);
   const [capturedOriginal, setCapturedOriginal] = useState<string | null>(null);
+
+  const setCapturedImage = useCallback((next: string | null) => {
+    _setCapturedImage(prev => {
+      if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+      return next;
+    });
+  }, []);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [, setListingPanel] = useState(false);
