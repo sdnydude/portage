@@ -7,6 +7,7 @@ import { items } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
+import { itemsToEbayCsv } from '../lib/csv-export.js';
 
 const logger = createLogger('items');
 
@@ -85,6 +86,56 @@ itemsRouter.get('/', async (req, res, next) => {
       limit: query.limit,
       offset: query.offset,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const exportQuerySchema = z.object({
+  format: z.enum(['ebay_csv', 'json']).default('json'),
+  ids: z.string().optional(),
+  category: z.string().optional(),
+  condition: z.enum(['new', 'like_new', 'good', 'fair', 'poor']).optional(),
+});
+
+itemsRouter.get('/export', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const query = exportQuerySchema.parse(req.query);
+
+    const conditions = [eq(items.userId, userId)];
+
+    if (query.ids) {
+      const idList = query.ids.split(',').map(s => s.trim()).filter(Boolean);
+      if (idList.length > 0) {
+        conditions.push(inArray(items.id, idList));
+      }
+    }
+
+    if (query.category) {
+      conditions.push(eq(items.category, query.category));
+    }
+
+    if (query.condition) {
+      conditions.push(eq(items.condition, query.condition));
+    }
+
+    const results = await db.select().from(items)
+      .where(and(...conditions))
+      .orderBy(desc(items.createdAt));
+
+    logger.info({ userId, count: results.length, format: query.format }, 'Items export requested');
+
+    if (query.format === 'ebay_csv') {
+      const date = new Date().toISOString().slice(0, 10);
+      const csv = itemsToEbayCsv(results);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="portage-ebay-export-${date}.csv"`);
+      return res.send(csv);
+    }
+
+    // Default: JSON
+    res.json(results);
   } catch (err) {
     next(err);
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { SearchBar } from "@/components/inventory/search-bar";
 import { ViewControls } from "@/components/inventory/view-controls";
@@ -10,6 +10,100 @@ import { useItems } from "@/hooks/use-items";
 import { useAuth } from "@/hooks/use-auth";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { api, ApiError } from "@/lib/api";
+import { useExport } from "@/hooks/use-export";
+
+function ExportButton() {
+  const { exportItems, isExporting } = useExport();
+  const [open, setOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  async function handleExport(format: "ebay_csv" | "json") {
+    setOpen(false);
+    try {
+      await exportItems(format);
+      setToast(format === "ebay_csv" ? "eBay CSV downloaded" : "JSON exported");
+      setTimeout(() => setToast(null), 3000);
+    } catch {
+      setToast("Export failed — please try again");
+      setTimeout(() => setToast(null), 4000);
+    }
+  }
+
+  return (
+    <>
+      <div className="relative" ref={menuRef}>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          disabled={isExporting}
+          aria-label="Export inventory"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-text-secondary hover:text-text-primary hover:bg-muted/80 transition-colors disabled:opacity-50"
+        >
+          {isExporting ? (
+            <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          )}
+          Export
+        </button>
+
+        {open && (
+          <div className="absolute right-0 top-full mt-1 w-48 bg-background border border-border rounded-xl shadow-lg z-50 overflow-hidden py-1">
+            <button
+              onClick={() => handleExport("ebay_csv")}
+              className="w-full text-left px-4 py-2.5 text-sm text-text-primary hover:bg-muted transition-colors flex items-center gap-2"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+              Export to eBay CSV
+            </button>
+            <button
+              onClick={() => handleExport("json")}
+              className="w-full text-left px-4 py-2.5 text-sm text-text-primary hover:bg-muted transition-colors flex items-center gap-2"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+              </svg>
+              Export as JSON
+            </button>
+          </div>
+        )}
+      </div>
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-text-primary text-background text-sm font-medium shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200"
+        >
+          {toast}
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function InventoryPage() {
   const { isAuthenticated, token } = useAuth();
@@ -129,16 +223,19 @@ export default function InventoryPage() {
         subtitle={total > 0 ? `${total} item${total !== 1 ? "s" : ""}` : undefined}
         action={
           items.length > 0 ? (
-            <button
-              onClick={toggleSelecting}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                isSelecting
-                  ? "bg-forest-green text-white"
-                  : "bg-muted text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              {isSelecting ? "Done" : "Select"}
-            </button>
+            <div className="flex items-center gap-2">
+              <ExportButton />
+              <button
+                onClick={toggleSelecting}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  isSelecting
+                    ? "bg-forest-green text-white"
+                    : "bg-muted text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {isSelecting ? "Done" : "Select"}
+              </button>
+            </div>
           ) : undefined
         }
       />
