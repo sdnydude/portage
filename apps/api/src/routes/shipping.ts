@@ -62,25 +62,28 @@ shippingRouter.post('/presets', async (req, res, next) => {
     const userId = req.user!.sub;
     const body = createPresetSchema.parse(req.body);
 
-    // If this preset is default, unset any existing default
-    if (body.isDefault) {
-      await db.update(shippingPresets)
-        .set({ isDefault: false })
-        .where(and(eq(shippingPresets.userId, userId), eq(shippingPresets.isDefault, true)));
-    }
+    const preset = await db.transaction(async (tx) => {
+      if (body.isDefault) {
+        await tx.update(shippingPresets)
+          .set({ isDefault: false })
+          .where(and(eq(shippingPresets.userId, userId), eq(shippingPresets.isDefault, true)));
+      }
 
-    const [preset] = await db.insert(shippingPresets).values({
-      userId,
-      name: body.name,
-      packageType: body.packageType,
-      length: body.length,
-      width: body.width,
-      height: body.height,
-      weightLbs: body.weightLbs,
-      weightOz: body.weightOz,
-      isDefault: body.isDefault,
-      sortOrder: body.sortOrder,
-    }).returning();
+      const [created] = await tx.insert(shippingPresets).values({
+        userId,
+        name: body.name,
+        packageType: body.packageType,
+        length: body.length,
+        width: body.width,
+        height: body.height,
+        weightLbs: body.weightLbs,
+        weightOz: body.weightOz,
+        isDefault: body.isDefault,
+        sortOrder: body.sortOrder,
+      }).returning();
+
+      return created;
+    });
 
     logger.info({ userId, presetId: preset.id }, 'Shipping preset created');
 
@@ -96,35 +99,38 @@ shippingRouter.put('/presets/:id', async (req, res, next) => {
     const userId = req.user!.sub;
     const body = updatePresetSchema.parse(req.body);
 
-    const [existing] = await db.select({ id: shippingPresets.id })
-      .from(shippingPresets)
-      .where(and(eq(shippingPresets.id, req.params.id), eq(shippingPresets.userId, userId)))
-      .limit(1);
+    const updated = await db.transaction(async (tx) => {
+      const [existing] = await tx.select({ id: shippingPresets.id })
+        .from(shippingPresets)
+        .where(and(eq(shippingPresets.id, req.params.id), eq(shippingPresets.userId, userId)))
+        .limit(1);
 
-    if (!existing) throw new AppError(404, 'NOT_FOUND', 'Shipping preset not found');
+      if (!existing) throw new AppError(404, 'NOT_FOUND', 'Shipping preset not found');
 
-    // If setting this as default, unset any existing default
-    if (body.isDefault) {
-      await db.update(shippingPresets)
-        .set({ isDefault: false })
-        .where(and(eq(shippingPresets.userId, userId), eq(shippingPresets.isDefault, true)));
-    }
+      if (body.isDefault) {
+        await tx.update(shippingPresets)
+          .set({ isDefault: false })
+          .where(and(eq(shippingPresets.userId, userId), eq(shippingPresets.isDefault, true)));
+      }
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (body.name !== undefined) updates.name = body.name;
-    if (body.packageType !== undefined) updates.packageType = body.packageType;
-    if (body.length !== undefined) updates.length = body.length;
-    if (body.width !== undefined) updates.width = body.width;
-    if (body.height !== undefined) updates.height = body.height;
-    if (body.weightLbs !== undefined) updates.weightLbs = body.weightLbs;
-    if (body.weightOz !== undefined) updates.weightOz = body.weightOz;
-    if (body.isDefault !== undefined) updates.isDefault = body.isDefault;
-    if (body.sortOrder !== undefined) updates.sortOrder = body.sortOrder;
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if (body.name !== undefined) updates.name = body.name;
+      if (body.packageType !== undefined) updates.packageType = body.packageType;
+      if (body.length !== undefined) updates.length = body.length;
+      if (body.width !== undefined) updates.width = body.width;
+      if (body.height !== undefined) updates.height = body.height;
+      if (body.weightLbs !== undefined) updates.weightLbs = body.weightLbs;
+      if (body.weightOz !== undefined) updates.weightOz = body.weightOz;
+      if (body.isDefault !== undefined) updates.isDefault = body.isDefault;
+      if (body.sortOrder !== undefined) updates.sortOrder = body.sortOrder;
 
-    const [updated] = await db.update(shippingPresets)
-      .set(updates)
-      .where(eq(shippingPresets.id, req.params.id))
-      .returning();
+      const [result] = await tx.update(shippingPresets)
+        .set(updates)
+        .where(eq(shippingPresets.id, req.params.id))
+        .returning();
+
+      return result;
+    });
 
     logger.info({ userId, presetId: updated.id }, 'Shipping preset updated');
 
