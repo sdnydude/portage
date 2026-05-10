@@ -21,7 +21,7 @@ const prepareSchema = z.object({
   targetMarketplaces: z.array(z.enum(['ebay', 'reverb'])).min(1),
 });
 
-const EBAY_CONDITION_MAP: Record<string, string> = {
+export const EBAY_CONDITION_MAP: Record<string, string> = {
   new: 'NEW',
   like_new: 'LIKE_NEW',
   good: 'GOOD',
@@ -29,9 +29,9 @@ const EBAY_CONDITION_MAP: Record<string, string> = {
   poor: 'ACCEPTABLE',
 };
 
-const EBAY_CONDITION_ORDER = ['NEW', 'LIKE_NEW', 'VERY_GOOD', 'GOOD', 'ACCEPTABLE'];
+export const EBAY_CONDITION_ORDER = ['NEW', 'LIKE_NEW', 'VERY_GOOD', 'GOOD', 'ACCEPTABLE'];
 
-function conditionNeighbors(condition: string): string[] {
+export function conditionNeighbors(condition: string): string[] {
   const idx = EBAY_CONDITION_ORDER.indexOf(condition);
   if (idx === -1) return EBAY_CONDITION_ORDER;
   const result = [condition];
@@ -40,7 +40,7 @@ function conditionNeighbors(condition: string): string[] {
   return result;
 }
 
-function computePricing(
+export function computePricing(
   soldComps: Array<{ price: number; condition: string }>,
   aiCondition: string,
   currency: string,
