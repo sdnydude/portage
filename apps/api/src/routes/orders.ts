@@ -184,6 +184,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
             shippingCost: mOrder.shippingCost,
             marketplaceFees: mOrder.marketplaceFees,
             currency: mOrder.currency,
+            shippingAddress: mOrder.shippingAddress,
             status: 'payment_received',
           }).returning();
 

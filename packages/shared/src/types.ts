@@ -83,6 +83,15 @@ export interface Order {
   trackingNumber?: string;
   carrier?: string;
   shippingLabelUrl?: string;
+  shippingAddress?: {
+    name: string;
+    street1: string;
+    street2?: string;
+    city: string;
+    state: string;
+    zip: string;
+    country: string;
+  };
   soldAt: Date;
   shippedAt?: Date;
   deliveredAt?: Date;
