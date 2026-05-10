@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { pino } from 'pino';
 import { db } from '../db/index.js';
 import { users, items, listings, orders, conversations, marketplaceAccounts, adminAuditLog, appSettings } from '../db/schema.js';
-import { eq, sql, desc, count, sum, and, isNull, isNotNull, ilike, or } from 'drizzle-orm';
+import { eq, sql, desc, count, sum, and, isNull, isNotNull, ilike, or, inArray, gte } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 
@@ -42,13 +42,13 @@ adminRouter.get('/stats', async (_req, res, next) => {
     }).from(listings);
 
     const [orderStats] = await db.select({
-      thisMonth: count(sql`CASE WHEN ${orders.soldAt} >= ${sql.raw(`'${monthStart}'`)} THEN 1 END`),
-      revenueThisMonth: sum(sql`CASE WHEN ${orders.soldAt} >= ${sql.raw(`'${monthStart}'`)} THEN ${orders.salePrice} ELSE 0 END`),
+      thisMonth: count(sql`CASE WHEN ${orders.soldAt} >= ${monthStart} THEN 1 END`),
+      revenueThisMonth: sum(sql`CASE WHEN ${orders.soldAt} >= ${monthStart} THEN ${orders.salePrice} ELSE 0 END`),
     }).from(orders);
 
     const [usersLastWeek] = await db.select({ total: count() })
       .from(users)
-      .where(sql`${users.createdAt} >= ${weekAgo}`);
+      .where(gte(users.createdAt, new Date(weekAgo)));
 
     res.json({
       users: { total: userStats.total, activeToday: userStats.activeToday, newLastWeek: usersLastWeek.total },
@@ -146,15 +146,15 @@ adminRouter.get('/users', async (req, res, next) => {
     const userIds = rows.map(r => r.id);
 
     const itemCounts = userIds.length > 0
-      ? await db.select({ userId: items.userId, count: count() }).from(items).where(sql`${items.userId} IN ${userIds}`).groupBy(items.userId)
+      ? await db.select({ userId: items.userId, count: count() }).from(items).where(inArray(items.userId, userIds)).groupBy(items.userId)
       : [];
 
     const listingCounts = userIds.length > 0
-      ? await db.select({ userId: listings.userId, count: count() }).from(listings).where(and(sql`${listings.userId} IN ${userIds}`, eq(listings.status, 'active'))).groupBy(listings.userId)
+      ? await db.select({ userId: listings.userId, count: count() }).from(listings).where(and(inArray(listings.userId, userIds), eq(listings.status, 'active'))).groupBy(listings.userId)
       : [];
 
     const revenueSums = userIds.length > 0
-      ? await db.select({ userId: orders.userId, total: sum(orders.salePrice) }).from(orders).where(sql`${orders.userId} IN ${userIds}`).groupBy(orders.userId)
+      ? await db.select({ userId: orders.userId, total: sum(orders.salePrice) }).from(orders).where(inArray(orders.userId, userIds)).groupBy(orders.userId)
       : [];
 
     const itemMap = Object.fromEntries(itemCounts.map(r => [r.userId, r.count]));
