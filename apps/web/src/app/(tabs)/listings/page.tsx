@@ -24,6 +24,7 @@ const statusColors: Record<string, string> = {
 const marketplaceIcons: Record<string, string> = {
   ebay: "eBay",
   etsy: "Etsy",
+  reverb: "Reverb",
 };
 
 function ListingCard({ listing }: { listing: Listing }) {
@@ -67,6 +68,7 @@ export default function ListingsPage() {
     { value: "active", label: "Active" },
     { value: "draft", label: "Drafts" },
     { value: "sold", label: "Sold" },
+    { value: "archived", label: "Archived" },
   ];
 
   if (!isAuthenticated) {
@@ -128,7 +130,7 @@ export default function ListingsPage() {
             <p className="text-sm text-text-secondary max-w-xs">
               {statusFilter
                 ? "Try a different filter."
-                : "List items from your inventory on eBay or Etsy with one tap."}
+                : "List items from your inventory on eBay, Etsy, or Reverb."}
             </p>
           </div>
         )}
