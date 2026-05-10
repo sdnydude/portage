@@ -8,6 +8,29 @@ const logger = createLogger('ai-client');
 
 const MAX_TOOL_ITERATIONS = 10;
 
+// ─── Client singletons ────────────────────────────────────
+
+const anthropicClients = new Map<string, Anthropic>();
+const openaiClients = new Map<string, OpenAI>();
+
+function getAnthropicClient(config: ProviderConfig): Anthropic {
+  let client = anthropicClients.get(config.name);
+  if (!client) {
+    client = new Anthropic({ apiKey: config.apiKey });
+    anthropicClients.set(config.name, client);
+  }
+  return client;
+}
+
+function getOpenAIClient(config: ProviderConfig): OpenAI {
+  let client = openaiClients.get(config.name);
+  if (!client) {
+    client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
+    openaiClients.set(config.name, client);
+  }
+  return client;
+}
+
 // ─── Provider chain ────────────────────────────────────────
 
 interface ProviderConfig {
@@ -153,7 +176,7 @@ async function visionAnthropic(
   userPrompt: string,
   options?: AIOptions,
 ) {
-  const client = new Anthropic({ apiKey: config.apiKey });
+  const client = getAnthropicClient(config);
 
   const response = await client.messages.create({
     model: config.visionModel,
@@ -196,7 +219,7 @@ async function visionOpenAI(
   userPrompt: string,
   options?: AIOptions,
 ) {
-  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
+  const client = getOpenAIClient(config);
 
   const response = await client.chat.completions.create({
     model: config.visionModel,
@@ -273,7 +296,7 @@ async function visionMultiAnthropic(
   userPrompt: string,
   options?: AIOptions,
 ) {
-  const client = new Anthropic({ apiKey: config.apiKey });
+  const client = getAnthropicClient(config);
 
   const imageBlocks: Anthropic.ImageBlockParam[] = images.map(img => ({
     type: 'image',
@@ -317,7 +340,7 @@ async function visionMultiOpenAI(
   userPrompt: string,
   options?: AIOptions,
 ) {
-  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
+  const client = getOpenAIClient(config);
 
   const imageBlocks = images.map(img => ({
     type: 'image_url' as const,
@@ -415,7 +438,7 @@ async function chatAnthropic(
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
   options?: AIOptions,
 ): Promise<{ text: string; model: string }> {
-  const client = new Anthropic({ apiKey: config.apiKey });
+  const client = getAnthropicClient(config);
 
   const anthropicTools: Anthropic.Tool[] = tools.map(t => ({
     name: t.name,
@@ -487,7 +510,7 @@ async function chatOpenAI(
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
   options?: AIOptions,
 ): Promise<{ text: string; model: string }> {
-  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
+  const client = getOpenAIClient(config);
 
   const openaiTools: OpenAI.ChatCompletionTool[] = tools.map(t => ({
     type: 'function' as const,
