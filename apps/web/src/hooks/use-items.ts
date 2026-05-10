@@ -43,6 +43,8 @@ interface UseItemsOptions {
   search?: string;
   category?: string;
   condition?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export function useItems(options: UseItemsOptions = {}) {
@@ -62,6 +64,8 @@ export function useItems(options: UseItemsOptions = {}) {
       if (options.search) params.set("search", options.search);
       if (options.category) params.set("category", options.category);
       if (options.condition) params.set("condition", options.condition);
+      if (options.limit != null) params.set("limit", String(options.limit));
+      if (options.offset != null) params.set("offset", String(options.offset));
 
       const qs = params.toString();
       const data = await api<ItemsResponse>(`/items${qs ? `?${qs}` : ""}`, { token });
@@ -72,7 +76,7 @@ export function useItems(options: UseItemsOptions = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [token, options.search, options.category, options.condition]);
+  }, [token, options.search, options.category, options.condition, options.limit, options.offset]);
 
   useEffect(() => {
     fetchItems();
