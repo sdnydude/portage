@@ -93,8 +93,12 @@ export default function ListingDetailPage() {
   // Save state
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const [isEnding, setIsEnding] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -178,9 +182,11 @@ export default function ListingDetailPage() {
     : null;
 
   const handleSave = async () => {
-    if (!token || !listing) return;
+    // item guard required: handleSave may PATCH /items/:id for title/description changes
+    if (!token || !listing || !item) return;
     setIsSaving(true);
     setSaveError(null);
+    setSaveWarning(null);
 
     try {
       const parsedPrice = parseFloat(editedPrice);
@@ -190,11 +196,27 @@ export default function ListingDetailPage() {
         return;
       }
 
-      const updated = await api<Listing>(`/listings/${listing.id}`, {
+      const titleChanged = editedTitle !== originalTitle;
+      const descChanged = editedDescription !== originalDescription;
+
+      if (titleChanged || descChanged) {
+        const itemUpdates: Record<string, string> = {};
+        if (titleChanged) itemUpdates.title = editedTitle;
+        if (descChanged) itemUpdates.description = editedDescription;
+        const updatedItem = await api<ItemDetail>(`/items/${listing.itemId}`, {
+          method: "PATCH",
+          token,
+          body: itemUpdates,
+        });
+        setItem(updatedItem);
+      }
+
+      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}`, {
         method: "PATCH",
         token,
         body: { price: parsedPrice },
       });
+      if (updated.warning) setSaveWarning(updated.warning);
       setListing(updated);
       setEditedPrice(String(updated.price));
       setEditingPrice(false);
@@ -214,9 +236,48 @@ export default function ListingDetailPage() {
     try {
       await api(`/listings/${listing.id}`, { method: "DELETE", token });
       router.replace("/listings");
-    } catch {
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Failed to end listing");
+    } finally {
       setIsEnding(false);
       setShowEndConfirm(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!token || !listing) return;
+    setIsPublishing(true);
+    setSaveError(null);
+
+    try {
+      const updated = await api<Listing>(`/listings/${listing.id}/publish`, { method: "POST", token });
+      setListing(updated);
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Failed to publish listing");
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!token || !listing) return;
+    setIsArchiving(true);
+    setSaveError(null);
+    setSaveWarning(null);
+
+    try {
+      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}`, {
+        method: "PATCH",
+        token,
+        body: { status: "archived" },
+      });
+      if (updated.warning) setSaveWarning(updated.warning);
+      setListing(updated);
+      setShowArchiveConfirm(false);
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Failed to archive listing");
+    } finally {
+      setIsArchiving(false);
     }
   };
 
@@ -271,6 +332,13 @@ export default function ListingDetailPage() {
           {saveError && (
             <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
               {saveError}
+            </div>
+          )}
+
+          {/* Marketplace Sync Warning */}
+          {saveWarning && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm text-amber-700 dark:text-amber-300">
+              {saveWarning}
             </div>
           )}
 
@@ -459,7 +527,6 @@ export default function ListingDetailPage() {
 
           {/* Action Buttons */}
           <div className="space-y-3 pt-1">
-            {/* Save Changes */}
             {hasChanges && (
               <button
                 onClick={handleSave}
@@ -477,7 +544,24 @@ export default function ListingDetailPage() {
               </button>
             )}
 
-            {/* View on Marketplace */}
+            {listing.status === "draft" && (
+              <button
+                onClick={handlePublish}
+                disabled={isPublishing || hasChanges}
+                title={hasChanges ? "Save your changes before publishing" : undefined}
+                className="w-full py-3 rounded-xl bg-forest-green text-white text-sm font-semibold hover:bg-forest-green/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isPublishing ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Publishing...
+                  </>
+                ) : (
+                  `Publish to ${marketplaceLabel}`
+                )}
+              </button>
+            )}
+
             {externalUrl && (
               <a
                 href={externalUrl}
@@ -494,18 +578,34 @@ export default function ListingDetailPage() {
               </a>
             )}
 
-            {/* End Listing */}
             {listing.status === "active" && (
+              <button
+                onClick={() => setShowArchiveConfirm(true)}
+                className="w-full py-3 rounded-xl border border-amber-300 text-amber-600 dark:text-amber-400 text-sm font-semibold hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+              >
+                Archive Listing
+              </button>
+            )}
+
+            {(listing.status === "sold" || listing.status === "archived") && (
+              <button
+                onClick={() => router.push(`/list?itemId=${listing.itemId}`)}
+                className="w-full py-3 rounded-xl bg-forest-green text-white text-sm font-semibold hover:bg-forest-green/90 transition-colors"
+              >
+                Relist Item
+              </button>
+            )}
+
+            {(listing.status === "draft" || listing.status === "archived") && (
               <button
                 onClick={() => setShowEndConfirm(true)}
                 className="w-full py-3 rounded-xl border border-red-300 text-red-600 text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
               >
-                End Listing
+                Delete Listing
               </button>
             )}
           </div>
 
-          {/* Cross-list Nudge */}
           {otherMarketplaces.length > 0 && listing.status !== "sold" && listing.status !== "archived" && (
             <div className="bg-forest-green-50 dark:bg-forest-green/10 border border-forest-green/20 rounded-xl p-4 space-y-3">
               <div>
@@ -527,16 +627,15 @@ export default function ListingDetailPage() {
         </div>
       </div>
 
-      {/* End Listing Confirmation Modal */}
       {showEndConfirm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
           <div className="fixed inset-0 bg-black/50" onClick={() => setShowEndConfirm(false)} />
           <div className="relative bg-surface rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-4 p-6 space-y-4">
             <h3 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
-              End Listing
+              Delete Listing
             </h3>
             <p className="text-sm text-text-secondary">
-              Are you sure you want to end this listing on {marketplaceLabel}? This will remove it from the marketplace.
+              This will permanently remove this listing. This action cannot be undone.
             </p>
             <div className="flex gap-3">
               <button
@@ -550,7 +649,36 @@ export default function ListingDetailPage() {
                 disabled={isEnding}
                 className="flex-1 py-2.5 px-4 rounded-xl bg-red-500 text-white text-sm font-medium disabled:opacity-50"
               >
-                {isEnding ? "Ending..." : "End Listing"}
+                {isEnding ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showArchiveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setShowArchiveConfirm(false)} />
+          <div className="relative bg-surface rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <h3 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
+              Archive Listing
+            </h3>
+            <p className="text-sm text-text-secondary">
+              This will archive your listing and attempt to remove it from {marketplaceLabel}. You can relist the item later.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowArchiveConfirm(false)}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-border text-sm font-medium text-text-primary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleArchive}
+                disabled={isArchiving}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 text-white text-sm font-medium disabled:opacity-50"
+              >
+                {isArchiving ? "Archiving..." : "Archive"}
               </button>
             </div>
           </div>

@@ -8,7 +8,7 @@ export interface Listing {
   id: string;
   itemId: string;
   userId: string;
-  marketplace: "ebay" | "etsy";
+  marketplace: "ebay" | "etsy" | "reverb";
   marketplaceListingId: string | null;
   marketplaceSpecificFields: Record<string, unknown> | null;
   status: "draft" | "active" | "sold" | "archived";
@@ -60,7 +60,7 @@ export function useListings(options: UseListingsOptions = {}) {
 
   const createListing = useCallback(async (body: {
     itemId: string;
-    marketplace: "ebay" | "etsy";
+    marketplace: "ebay" | "etsy" | "reverb";
     price: number;
     currency?: string;
     publishImmediately?: boolean;
@@ -79,11 +79,22 @@ export function useListings(options: UseListingsOptions = {}) {
     return data;
   }, [token, fetchListings]);
 
+  const updateListing = useCallback(async (listingId: string, body: {
+    price?: number;
+    status?: "draft" | "active" | "archived";
+    marketplaceSpecificFields?: Record<string, unknown>;
+  }) => {
+    if (!token) return null;
+    const data = await api<Listing & { warning?: string }>(`/listings/${listingId}`, { method: "PATCH", body, token });
+    await fetchListings();
+    return data;
+  }, [token, fetchListings]);
+
   const deleteListing = useCallback(async (listingId: string) => {
     if (!token) return;
     await api(`/listings/${listingId}`, { method: "DELETE", token });
     await fetchListings();
   }, [token, fetchListings]);
 
-  return { listings, isLoading, error, refetch: fetchListings, createListing, publishListing, deleteListing };
+  return { listings, isLoading, error, refetch: fetchListings, createListing, updateListing, publishListing, deleteListing };
 }
