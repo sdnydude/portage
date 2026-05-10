@@ -6,9 +6,11 @@ import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { formatPrice } from "@/lib/format";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
-import { PhotoCaptureFlow } from "./photo-capture-flow";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
+import { ShippingConfigCard } from "./shipping-config-card";
+import { PricingStrategyPicker } from "./pricing-strategy-picker";
+import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -17,7 +19,6 @@ export interface HybridFlowProps {
 }
 
 type Marketplace = "ebay" | "etsy" | "reverb";
-type PackageSize = "small" | "medium" | "large";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
 
@@ -627,21 +628,12 @@ function ChatMode({
                 </div>
               </div>
 
-              <div>
-                <p style={{ fontSize: 11, fontWeight: 600, color: SECONDARY, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Strategy</p>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {(["fast", "market", "max"] as const).map((s) => (
-                    <Pill
-                      key={s}
-                      small
-                      active={state.pricingStrategy === s}
-                      onClick={() => applyPricingStrategy(s)}
-                    >
-                      {s === "fast" ? "Sell Fast" : s === "market" ? "Market" : "Max"}
-                    </Pill>
-                  ))}
-                </div>
-              </div>
+              <PricingStrategyPicker
+                active={state.pricingStrategy}
+                onSelect={applyPricingStrategy}
+                Pill={Pill}
+                tokens={{ secondary: SECONDARY }}
+              />
 
               {state.compsStatus === "loading" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -663,60 +655,16 @@ function ChatMode({
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <PorterMessage>Almost done — how will you ship it?</PorterMessage>
           <InlineCard title="Shipping">
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div>
-                <p style={{ fontSize: 11, fontWeight: 600, color: SECONDARY, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Package size</p>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {(["small", "medium", "large"] as PackageSize[]).map((s) => (
-                    <Pill
-                      key={s}
-                      small
-                      active={state.packageSize === s}
-                      onClick={() => setField("packageSize", s)}
-                    >
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
-                    </Pill>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p style={{ fontSize: 11, fontWeight: 600, color: SECONDARY, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Weight (lbs)</p>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.1}
-                  value={state.weight ?? ""}
-                  onChange={(e) => setField("weight", parseFloat(e.target.value) || null)}
-                  placeholder="0.0"
-                  style={{
-                    width: "100%",
-                    fontSize: 14,
-                    color: TEXT,
-                    background: CARD_BG,
-                    border: `1px solid ${CARD_BORDER}`,
-                    borderRadius: 8,
-                    padding: "8px 12px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-              <div>
-                <p style={{ fontSize: 11, fontWeight: 600, color: SECONDARY, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Method</p>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {(["calculated", "flat", "free"] as const).map((m) => (
-                    <Pill
-                      key={m}
-                      small
-                      active={state.shippingMethod === m}
-                      onClick={() => setField("shippingMethod", m)}
-                    >
-                      {m === "calculated" ? "Calculated" : m === "flat" ? "Flat rate" : "Free"}
-                    </Pill>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <ShippingConfigCard
+              packageSize={state.packageSize}
+              weight={state.weight}
+              shippingMethod={state.shippingMethod}
+              onPackageSizeChange={(s) => setField("packageSize", s)}
+              onWeightChange={(w) => setField("weight", w)}
+              onShippingMethodChange={(m) => setField("shippingMethod", m)}
+              Pill={Pill}
+              tokens={{ text: TEXT, secondary: SECONDARY, cardBg: CARD_BG, cardBorder: CARD_BORDER }}
+            />
           </InlineCard>
         </div>
       )}
@@ -977,14 +925,12 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
             }}
           />
         </div>
-        <label style={{ ...labelStyle, marginBottom: 6 }}>Strategy</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          {(["fast", "market", "max"] as const).map((s) => (
-            <Pill key={s} small active={state.pricingStrategy === s} onClick={() => applyPricingStrategy(s)}>
-              {s === "fast" ? "Sell Fast" : s === "market" ? "Market" : "Max"}
-            </Pill>
-          ))}
-        </div>
+        <PricingStrategyPicker
+          active={state.pricingStrategy}
+          onSelect={applyPricingStrategy}
+          Pill={Pill}
+          tokens={{ secondary: SECONDARY }}
+        />
       </div>
 
       {/* Marketplace */}
@@ -1001,43 +947,17 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
 
       {/* Shipping */}
       <div style={{ ...rowStyle, paddingTop: 14 }}>
-        <label style={labelStyle}>Package size</label>
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-          {(["small", "medium", "large"] as PackageSize[]).map((s) => (
-            <Pill key={s} small active={state.packageSize === s} onClick={() => setField("packageSize", s)}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </Pill>
-          ))}
-        </div>
-        <label style={{ ...labelStyle, marginBottom: 6 }}>Weight (lbs)</label>
-        <input
-          type="number"
-          min={0}
-          step={0.1}
-          value={state.weight ?? ""}
-          onChange={(e) => setField("weight", parseFloat(e.target.value) || null)}
-          placeholder="0.0"
-          style={{
-            width: "100%",
-            fontSize: 14,
-            color: TEXT,
-            background: CARD_BG,
-            border: `1px solid ${CARD_BORDER}`,
-            borderRadius: 8,
-            padding: "8px 12px",
-            outline: "none",
-            boxSizing: "border-box",
-            marginBottom: 10,
-          }}
+        <ShippingConfigCard
+          packageSize={state.packageSize}
+          weight={state.weight}
+          shippingMethod={state.shippingMethod}
+          onPackageSizeChange={(s) => setField("packageSize", s)}
+          onWeightChange={(w) => setField("weight", w)}
+          onShippingMethodChange={(m) => setField("shippingMethod", m)}
+          Pill={Pill}
+          tokens={{ text: TEXT, secondary: SECONDARY, cardBg: CARD_BG, cardBorder: CARD_BORDER }}
+          labelStyleOverride={labelStyle}
         />
-        <label style={{ ...labelStyle, marginBottom: 6 }}>Shipping method</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          {(["calculated", "flat", "free"] as const).map((m) => (
-            <Pill key={m} small active={state.shippingMethod === m} onClick={() => setField("shippingMethod", m)}>
-              {m === "calculated" ? "Calculated" : m === "flat" ? "Flat rate" : "Free"}
-            </Pill>
-          ))}
-        </div>
       </div>
 
       {/* Fee estimate */}
@@ -1161,17 +1081,11 @@ export function HybridFlow({ itemId }: HybridFlowProps) {
         )}
       </div>
 
-      {showCapture && (
-        <PhotoCaptureFlow
-          onComplete={(photos) => {
-            setShowCapture(false);
-            if (photos.length > 0) {
-              flow.startFromPhoto(photos);
-            }
-          }}
-          onCancel={() => setShowCapture(false)}
-        />
-      )}
+      <PhotoCaptureOverlay
+        show={showCapture}
+        onPhotos={(photos) => flow.startFromPhoto(photos)}
+        onCancel={() => setShowCapture(false)}
+      />
     </div>
   );
 }
