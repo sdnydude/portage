@@ -25,7 +25,7 @@ export function BulkActionBar({
 
   return (
     <div
-      className="fixed bottom-20 left-0 right-0 z-50 px-4 pb-2"
+      className="fixed bottom-20 left-0 right-0 z-[55] px-4 pb-2"
       style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
     >
       <div className="max-w-lg mx-auto rounded-2xl border border-border bg-surface/95 backdrop-blur-md shadow-lg overflow-hidden">

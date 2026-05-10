@@ -143,6 +143,8 @@ export default function ListingsPage() {
 
   const handleBulkArchive = useCallback(async () => {
     if (selectedIds.size === 0 || !token) return;
+    const confirmed = window.confirm(`Archive ${selectedIds.size} listing${selectedIds.size !== 1 ? "s" : ""}? Active listings will be removed from their marketplace.`);
+    if (!confirmed) return;
 
     setBulkLoading(true);
     setBulkError(null);

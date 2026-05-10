@@ -408,7 +408,7 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
     const { ids } = bulkListingIdsSchema.parse(req.body);
 
     // Verify ownership
-    const owned = await db.select({ id: listings.id, status: listings.status })
+    const owned = await db.select({ id: listings.id, status: listings.status, marketplaceListingId: listings.marketplaceListingId })
       .from(listings)
       .where(and(inArray(listings.id, ids), eq(listings.userId, userId)));
 
@@ -416,23 +416,40 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
       throw new AppError(403, 'FORBIDDEN', 'One or more listings do not belong to you');
     }
 
-    // Only allow activating draft/archived listings
-    const activatable = owned.filter((l) => l.status === 'draft' || l.status === 'archived');
-    if (activatable.length === 0) {
+    // Only allow activating draft/archived listings without a prior marketplace publish
+    const activatable = owned.filter((l) =>
+      (l.status === 'draft' || l.status === 'archived') && !l.marketplaceListingId
+    );
+    const skippedMarketplace = owned.filter((l) =>
+      (l.status === 'draft' || l.status === 'archived') && l.marketplaceListingId
+    );
+
+    if (activatable.length === 0 && skippedMarketplace.length === 0) {
       throw new AppError(400, 'INVALID_STATUS', 'No eligible listings to activate (only draft/archived listings can be activated)');
     }
 
-    const activatableIds = activatable.map((l) => l.id);
+    let activated: { id: string }[] = [];
+    if (activatable.length > 0) {
+      const activatableIds = activatable.map((l) => l.id);
+      activated = await db.transaction(async (tx) => {
+        return tx.update(listings)
+          .set({ status: 'active' })
+          .where(and(inArray(listings.id, activatableIds), eq(listings.userId, userId)))
+          .returning({ id: listings.id });
+      });
+    }
 
-    const activated = await db.transaction(async (tx) => {
-      return tx.update(listings)
-        .set({ status: 'active' })
-        .where(and(inArray(listings.id, activatableIds), eq(listings.userId, userId)))
-        .returning({ id: listings.id });
+    logger.info({ userId, count: activated.length, skippedMarketplace: skippedMarketplace.length }, 'Bulk listings activated');
+    res.json({
+      activated: true,
+      count: activated.length,
+      ids: activated.map((r) => r.id),
+      skipped: ids.length - activated.length,
+      skippedMarketplace: skippedMarketplace.length,
+      warning: skippedMarketplace.length > 0
+        ? `${skippedMarketplace.length} archived listing(s) were previously published to a marketplace and must be re-listed individually`
+        : undefined,
     });
-
-    logger.info({ userId, count: activated.length }, 'Bulk listings activated');
-    res.json({ activated: true, count: activated.length, ids: activated.map((r) => r.id), skipped: ids.length - activated.length });
   } catch (err) {
     next(err);
   }
