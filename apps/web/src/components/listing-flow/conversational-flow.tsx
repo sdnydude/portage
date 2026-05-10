@@ -5,7 +5,7 @@ import { useListingFlow } from "@/hooks/use-listing-flow";
 import { formatPrice, formatCondition } from "@/lib/format";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
-import { PhotoCaptureFlow } from "./photo-capture-flow";
+import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
 import type { ListingFlowState } from "@portage/shared";
@@ -891,17 +891,11 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         </div>
       )}
 
-      {showCapture && (
-        <PhotoCaptureFlow
-          onComplete={(photos) => {
-            setShowCapture(false);
-            if (photos.length > 0) {
-              flow.startFromPhoto(photos);
-            }
-          }}
-          onCancel={() => setShowCapture(false)}
-        />
-      )}
+      <PhotoCaptureOverlay
+        show={showCapture}
+        onPhotos={(photos) => flow.startFromPhoto(photos)}
+        onCancel={() => setShowCapture(false)}
+      />
     </div>
   );
 }

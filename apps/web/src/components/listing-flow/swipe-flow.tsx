@@ -5,7 +5,7 @@ import { useListingFlow } from "@/hooks/use-listing-flow";
 import { formatCondition } from "@/lib/format";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
-import { PhotoCaptureFlow } from "./photo-capture-flow";
+import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
 
 /* ─────────────────────────────────────────────
@@ -1675,17 +1675,11 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
         )}
       </div>
 
-      {showCapture && (
-        <PhotoCaptureFlow
-          onComplete={(photos) => {
-            setShowCapture(false);
-            if (photos.length > 0) {
-              flow.startFromPhoto(photos);
-            }
-          }}
-          onCancel={() => setShowCapture(false)}
-        />
-      )}
+      <PhotoCaptureOverlay
+        show={showCapture}
+        onPhotos={(photos) => flow.startFromPhoto(photos)}
+        onCancel={() => setShowCapture(false)}
+      />
     </div>
   );
 }
