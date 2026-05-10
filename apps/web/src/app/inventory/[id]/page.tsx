@@ -34,6 +34,7 @@ export default function ItemDetailPage() {
   const [showBgRemoval, setShowBgRemoval] = useState(false);
   const [showListingSheet, setShowListingSheet] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(params.id);
 
@@ -41,32 +42,46 @@ export default function ItemDetailPage() {
     async (files: File[]) => {
       if (!token || !item) return;
       setIsUploading(true);
+      setUploadError(null);
 
       try {
         const newPhotos = [];
+        let failCount = 0;
         for (const file of files) {
           const formData = new FormData();
           formData.append("image", file);
-          const res = await fetch(`${API_BASE}/images`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          });
-          if (!res.ok) continue;
-          const data = await res.json();
-          newPhotos.push({
-            url: data.image.url,
-            key: data.image.key,
-            width: data.image.width,
-            height: data.image.height,
-            isPrimary: false,
-          });
+          try {
+            const res = await fetch(`${API_BASE}/images`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+              body: formData,
+            });
+            if (!res.ok) { failCount++; continue; }
+            const data = await res.json();
+            newPhotos.push({
+              url: data.image.url,
+              key: data.image.key,
+              width: data.image.width,
+              height: data.image.height,
+              isPrimary: false,
+            });
+          } catch {
+            failCount++;
+          }
         }
 
         if (newPhotos.length > 0) {
           const updatedPhotos = [...(item.photos ?? []), ...newPhotos];
           await updateItem({ photos: updatedPhotos });
         }
+
+        if (failCount > 0 && newPhotos.length === 0) {
+          setUploadError("All photos failed to upload. Please try again.");
+        } else if (failCount > 0) {
+          setUploadError(`${failCount} photo(s) failed to upload and were skipped.`);
+        }
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Failed to save photos");
       } finally {
         setIsUploading(false);
       }
@@ -77,7 +92,11 @@ export default function ItemDetailPage() {
   const handleUseCompTitle = useCallback(
     async (comp: CompListing) => {
       if (!item) return;
-      await updateItem({ title: comp.title });
+      try {
+        await updateItem({ title: comp.title });
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Failed to update title");
+      }
     },
     [item, updateItem],
   );
@@ -85,8 +104,12 @@ export default function ItemDetailPage() {
   const handleUseCompCondition = useCallback(
     async (comp: CompListing) => {
       if (!item) return;
-      const mapped = mapEbayCondition(comp.condition);
-      await updateItem({ condition: mapped });
+      try {
+        const mapped = mapEbayCondition(comp.condition);
+        await updateItem({ condition: mapped });
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Failed to update condition");
+      }
     },
     [item, updateItem],
   );
@@ -257,6 +280,11 @@ export default function ItemDetailPage() {
               )}
             </div>
           </ImagePicker>
+          {uploadError && (
+            <div className="mt-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
+              {uploadError}
+            </div>
+          )}
         </div>
 
         {/* Photo Tools */}

@@ -332,7 +332,8 @@ export async function identifyItemsMulti(
     };
   }
 
-  throw new AppError(502, 'AI_RESPONSE_INVALID', `AI multi-image scan returned invalid response: ${detailed.error.message}`);
+  logger.warn({ detailedError: detailed.error.message, singleError: single.error.message }, 'AI multi-image scan returned invalid response');
+  throw new AppError(502, 'AI_RESPONSE_INVALID', `AI multi-image scan returned invalid response — detailed: ${detailed.error.message}; single: ${single.error.message}`);
 }
 
 export async function fetchPhotosAsBase64(urls: string[], limit: number): Promise<ImageInput[]> {

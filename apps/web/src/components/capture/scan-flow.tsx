@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { api, API_BASE } from "@/lib/api";
 import { CameraCapture } from "./camera-capture";
@@ -129,7 +129,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [activeTool, setActiveTool] = useState<"none" | "crop">("none");
   const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
 
-  const stripRef = useRef<HTMLDivElement>(null);
+
 
   // Reset editing hooks when switching photos
   useEffect(() => {
@@ -272,9 +272,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     setEditModel(candidate.model ?? "");
   }, []);
 
-  const handleScan = useCallback(async () => {
+  const runScan = useCallback(async (fallbackState: ScanState) => {
     if (!token || photos.length === 0) return;
-
     setState("scanning");
     setError(null);
 
@@ -287,16 +286,26 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         body: { imageUrls },
       });
 
-      setCandidates(data.detailed.candidates);
+      const resultCandidates = data.detailed.candidates;
+      if (resultCandidates.length === 0) {
+        setError("AI could not identify this item. Try adding more photos or better lighting.");
+        setState(fallbackState);
+        return;
+      }
+
+      setCandidates(resultCandidates);
       setReasoning(data.detailed.reasoning);
       setSelectedCandidateIndex(0);
-      populateFields(data.detailed.candidates[0]);
+      populateFields(resultCandidates[0]);
       setState("review");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
-      setState("capture");
+      setState(fallbackState);
     }
   }, [token, photos, populateFields]);
+
+  const handleScan = useCallback(() => runScan("capture"), [runScan]);
+  const handleRescan = useCallback(() => runScan("review"), [runScan]);
 
   const handleSelectCandidate = useCallback(
     (index: number) => {
@@ -305,32 +314,6 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     },
     [candidates, populateFields],
   );
-
-  // ─── Rescan ────────────────────────────────────────────────────────────────
-
-  const handleRescan = useCallback(async () => {
-    if (!token || photos.length === 0) return;
-    setState("scanning");
-    setError(null);
-
-    try {
-      const imageUrls = photos.slice(0, 3).map((p) => p.url);
-      const data = await api<RefineResponse>("/scan/refine", {
-        method: "POST",
-        token,
-        body: { imageUrls },
-      });
-
-      setCandidates(data.detailed.candidates);
-      setReasoning(data.detailed.reasoning);
-      setSelectedCandidateIndex(0);
-      populateFields(data.detailed.candidates[0]);
-      setState("review");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Rescan failed");
-      setState("review");
-    }
-  }, [token, photos, populateFields]);
 
   // ─── Photo editing tools ───────────────────────────────────────────────────
 
@@ -598,7 +581,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
               {/* Horizontal photo strip */}
               <div className="bg-surface border-t border-border">
-                <div ref={stripRef} className="flex gap-2 px-3 py-3 overflow-x-auto scrollbar-hide">
+                <div className="flex gap-2 px-3 py-3 overflow-x-auto scrollbar-hide">
                   {photos.map((photo, i) => (
                     <button
                       key={photo.key}

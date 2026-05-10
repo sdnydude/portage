@@ -43,19 +43,21 @@ async function checkScanLimit(userId: string): Promise<void> {
     .where(eq(users.id, userId))
     .limit(1);
 
-  if (user) {
-    const resetDate = new Date(user.scanCountResetAt);
-    const now = new Date();
-    if (resetDate.getUTCMonth() !== now.getUTCMonth() || resetDate.getUTCFullYear() !== now.getUTCFullYear()) {
-      await db.update(users)
-        .set({ aiScansThisMonth: 0, scanCountResetAt: now })
-        .where(eq(users.id, userId));
-      user.aiScansThisMonth = 0;
-    }
+  if (!user) {
+    throw new AppError(401, 'USER_NOT_FOUND', 'Your account could not be verified. Please sign in again.');
+  }
 
-    if (user.subscriptionTier === 'free' && user.aiScansThisMonth >= FREE_TIER_LIMITS.aiScansPerMonth) {
-      throw new AppError(429, 'SCAN_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.aiScansPerMonth} AI scans per month. Upgrade to Pro for unlimited.`);
-    }
+  const resetDate = new Date(user.scanCountResetAt);
+  const now = new Date();
+  if (resetDate.getUTCMonth() !== now.getUTCMonth() || resetDate.getUTCFullYear() !== now.getUTCFullYear()) {
+    await db.update(users)
+      .set({ aiScansThisMonth: 0, scanCountResetAt: now })
+      .where(eq(users.id, userId));
+    user.aiScansThisMonth = 0;
+  }
+
+  if (user.subscriptionTier === 'free' && user.aiScansThisMonth >= FREE_TIER_LIMITS.aiScansPerMonth) {
+    throw new AppError(429, 'SCAN_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.aiScansPerMonth} AI scans per month. Upgrade to Pro for unlimited.`);
   }
 }
 
@@ -132,11 +134,22 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
 });
 
 function buildRefineSchema() {
-  const r2Prefix = process.env.R2_PUBLIC_URL || '';
+  const r2Prefix = process.env.R2_PUBLIC_URL;
+  if (!r2Prefix) {
+    logger.error('R2_PUBLIC_URL is not set — /scan/refine will reject all image URLs');
+    return z.object({
+      imageUrls: z.array(
+        z.string().url().refine(
+          () => false,
+          { message: 'Image storage is not configured. Contact support.' },
+        ),
+      ).min(1).max(3),
+    });
+  }
   return z.object({
     imageUrls: z.array(
       z.string().url().refine(
-        (url) => r2Prefix && url.startsWith(r2Prefix),
+        (url) => url.startsWith(r2Prefix),
         { message: 'Image URLs must reference the application storage origin' },
       ),
     ).min(1).max(3),
