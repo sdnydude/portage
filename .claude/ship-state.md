@@ -12,11 +12,16 @@ plan:
   5: Add Archived filter tab to listings index
 
 progress:
-  task_1: pending
-  task_2: pending
-  task_3: pending
-  task_4: pending
-  task_5: pending
+  task_1: complete
+  task_2: complete
+  task_3: complete
+  task_4: complete
+  task_5: complete
+
+commits:
+  - 6eb7db4: feat: add marketplace sync to listing PATCH + fix hook types
+  - b0f2b83: fix: detail page save now persists title/description to items table
+  - c66363c: feat: add Publish, Archive, and Relist buttons to listing detail page
+  - 07d0ec9: feat: add Archived filter tab and Reverb to listings index
 
 deferred: []
-# hook test
