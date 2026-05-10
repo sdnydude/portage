@@ -153,6 +153,19 @@ listingsRouter.patch('/:id', async (req, res, next) => {
 
     if (!existing) throw new AppError(404, 'NOT_FOUND', 'Listing not found');
 
+    let warning: string | undefined;
+    const isArchiving = body.status === 'archived' && existing.status === 'active' && !!existing.marketplaceListingId;
+
+    if (isArchiving) {
+      try {
+        const adapter = getAdapter(userId, existing.marketplace);
+        await adapter.deleteListing(existing.marketplaceListingId!);
+      } catch (err) {
+        logger.warn({ listingId: existing.id, error: (err as Error).message }, 'Failed to remove from marketplace during archive');
+        warning = 'Archived locally but failed to remove from marketplace';
+      }
+    }
+
     const updates: Record<string, unknown> = {};
     if (body.price !== undefined) updates.price = body.price;
     if (body.status !== undefined) updates.status = body.status;
@@ -163,9 +176,30 @@ listingsRouter.patch('/:id', async (req, res, next) => {
       .where(eq(listings.id, req.params.id))
       .returning();
 
-    logger.info({ userId, listingId: updated.id }, 'Listing updated');
+    if (!isArchiving && updated.status === 'active' && updated.marketplaceListingId) {
+      try {
+        const [item] = await db.select()
+          .from(items)
+          .where(eq(items.id, updated.itemId))
+          .limit(1);
 
-    res.json(updated);
+        if (item) {
+          const adapter = getAdapter(userId, updated.marketplace);
+          await adapter.updateListing(updated.marketplaceListingId, {
+            title: item.title,
+            description: item.description,
+            price: updated.price,
+          });
+        }
+      } catch (err) {
+        logger.warn({ listingId: updated.id, error: (err as Error).message }, 'Failed to sync update to marketplace');
+        warning = 'Saved locally but failed to sync to marketplace';
+      }
+    }
+
+    logger.info({ userId, listingId: updated.id, synced: !warning }, 'Listing updated');
+
+    res.json(warning ? { ...updated, warning } : updated);
   } catch (err) {
     next(err);
   }
