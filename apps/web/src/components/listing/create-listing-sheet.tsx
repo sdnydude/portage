@@ -97,7 +97,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
               placeholder="0.00"
               min="0.01"
               step="0.01"
-              className="w-full pl-7 pr-4 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+              className="w-full pl-7 pr-4 py-2.5 bg-muted rounded-xl text-base text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
             />
           </div>
         </div>
