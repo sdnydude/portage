@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
 import { useAuth } from "@/hooks/use-auth";
@@ -9,6 +9,8 @@ import { useEnhance } from "@/hooks/use-enhance";
 import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { useComps } from "@/hooks/use-comps";
+import { ImagePicker } from "@/components/capture/image-picker";
+import { API_BASE } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
 import { formatCondition } from "@/lib/format";
 
@@ -23,15 +25,71 @@ const conditionColors: Record<string, string> = {
 export default function ItemDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
-  const { item, isLoading, error, deleteItem } = useItem(params.id);
+  const { isAuthenticated, token } = useAuth();
+  const { item, isLoading, error, deleteItem, updateItem } = useItem(params.id);
   const { isProcessing: isEnhancing, result: enhanceResult, error: enhanceError, enhance, reset: resetEnhance } = useEnhance();
   const [photoIndex, setPhotoIndex] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBgRemoval, setShowBgRemoval] = useState(false);
   const [showListingSheet, setShowListingSheet] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(params.id);
+
+  const handleAddPhotos = useCallback(
+    async (files: File[]) => {
+      if (!token || !item) return;
+      setIsUploading(true);
+
+      try {
+        const newPhotos = [];
+        for (const file of files) {
+          const formData = new FormData();
+          formData.append("image", file);
+          const res = await fetch(`${API_BASE}/images`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          });
+          if (!res.ok) continue;
+          const data = await res.json();
+          newPhotos.push({
+            url: data.image.url,
+            key: data.image.key,
+            width: data.image.width,
+            height: data.image.height,
+            isPrimary: false,
+          });
+        }
+
+        if (newPhotos.length > 0) {
+          const updatedPhotos = [...(item.photos ?? []), ...newPhotos];
+          await updateItem({ photos: updatedPhotos });
+        }
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [token, item, updateItem],
+  );
+
+  const handleUseCompTitle = useCallback(
+    async (comp: CompListing) => {
+      if (!item) return;
+      await updateItem({ title: comp.title });
+    },
+    [item, updateItem],
+  );
+
+  const handleUseCompCondition = useCallback(
+    async (comp: CompListing) => {
+      if (!item) return;
+      const mapped = mapEbayCondition(comp.condition);
+      await updateItem({ condition: mapped });
+    },
+    [item, updateItem],
+  );
 
   if (!isAuthenticated) {
     router.replace("/inventory");
@@ -178,6 +236,27 @@ export default function ItemDetailPage() {
               </div>
             </>
           )}
+        </div>
+
+        {/* Add Photos */}
+        <div className="px-4 pt-3">
+          <ImagePicker onSelect={handleAddPhotos} multiple>
+            <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-border text-text-secondary text-sm font-medium cursor-pointer hover:border-forest-green hover:text-forest-green transition-colors">
+              {isUploading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Add Photos ({photos.length}/12)
+                </>
+              )}
+            </div>
+          </ImagePicker>
         </div>
 
         {/* Photo Tools */}
@@ -411,10 +490,24 @@ export default function ItemDetailPage() {
                     </div>
 
                     {comps.sold.length > 0 && (
-                      <CompSection title="Recently Sold" listings={comps.sold} />
+                      <CompSection
+                        title="Recently Sold"
+                        listings={comps.sold}
+                        expandedUrl={expandedCompUrl}
+                        onToggle={(url) => setExpandedCompUrl(expandedCompUrl === url ? null : url)}
+                        onUseTitle={handleUseCompTitle}
+                        onUseCondition={handleUseCompCondition}
+                      />
                     )}
                     {comps.active.length > 0 && (
-                      <CompSection title="Active Listings" listings={comps.active} />
+                      <CompSection
+                        title="Active Listings"
+                        listings={comps.active}
+                        expandedUrl={expandedCompUrl}
+                        onToggle={(url) => setExpandedCompUrl(expandedCompUrl === url ? null : url)}
+                        onUseTitle={handleUseCompTitle}
+                        onUseCondition={handleUseCompCondition}
+                      />
                     )}
                   </>
                 )}
@@ -494,40 +587,102 @@ function DetailField({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CompSection({ title, listings }: { title: string; listings: CompListing[] }) {
+function mapEbayCondition(ebayCondition: string): "new" | "like_new" | "good" | "fair" | "poor" {
+  const lower = ebayCondition.toLowerCase();
+  if (lower.includes("new") && !lower.includes("pre") && !lower.includes("open")) return "new";
+  if (lower.includes("like new") || lower.includes("open box") || lower.includes("refurbished")) return "like_new";
+  if (lower.includes("very good") || lower.includes("good") || lower.includes("pre-owned")) return "good";
+  if (lower.includes("acceptable") || lower.includes("fair")) return "fair";
+  if (lower.includes("parts") || lower.includes("poor")) return "poor";
+  return "good";
+}
+
+function CompSection({
+  title,
+  listings,
+  expandedUrl,
+  onToggle,
+  onUseTitle,
+  onUseCondition,
+}: {
+  title: string;
+  listings: CompListing[];
+  expandedUrl: string | null;
+  onToggle: (url: string) => void;
+  onUseTitle: (comp: CompListing) => void;
+  onUseCondition: (comp: CompListing) => void;
+}) {
   return (
     <div>
       <h3 className="text-xs font-medium text-text-secondary mb-2">{title}</h3>
       <div className="space-y-2">
-        {listings.map((comp) => (
-          <a
-            key={comp.listingUrl}
-            href={comp.listingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 bg-surface border border-border rounded-xl p-2.5 hover:border-forest-green/50 transition-colors"
-          >
-            {comp.imageUrl ? (
-              <img src={comp.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-            ) : (
-              <div className="w-12 h-12 rounded-lg bg-muted flex-shrink-0" />
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-text-primary truncate">{comp.title}</p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-text-secondary">{comp.condition}</span>
-                {comp.soldDate && (
-                  <span className="text-xs text-text-secondary">
-                    {new Date(comp.soldDate).toLocaleDateString()}
-                  </span>
+        {listings.map((comp) => {
+          const isExpanded = expandedUrl === comp.listingUrl;
+          return (
+            <div
+              key={comp.listingUrl}
+              className="bg-surface border border-border rounded-xl overflow-hidden transition-colors"
+            >
+              <button
+                onClick={() => onToggle(comp.listingUrl)}
+                className="w-full flex items-center gap-3 p-2.5 text-left"
+              >
+                {comp.imageUrl ? (
+                  <img src={comp.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-muted flex-shrink-0" />
                 )}
-              </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-text-primary truncate">{comp.title}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-text-secondary">{comp.condition}</span>
+                    {comp.soldDate && (
+                      <span className="text-xs text-text-secondary">
+                        {new Date(comp.soldDate).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span className="text-sm font-semibold text-forest-green flex-shrink-0">
+                  ${comp.price.toFixed(0)}
+                </span>
+                <svg
+                  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                  className={`flex-shrink-0 text-text-secondary transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+
+              {isExpanded && (
+                <div className="px-2.5 pb-2.5 space-y-2 border-t border-border pt-2">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onUseTitle(comp)}
+                      className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium hover:bg-forest-green-100 transition-colors"
+                    >
+                      Use Title
+                    </button>
+                    <button
+                      onClick={() => onUseCondition(comp)}
+                      className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium hover:bg-forest-green-100 transition-colors"
+                    >
+                      Use Condition
+                    </button>
+                  </div>
+                  <a
+                    href={comp.listingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-center py-2 rounded-lg border border-border text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    View on eBay
+                  </a>
+                </div>
+              )}
             </div>
-            <span className="text-sm font-semibold text-forest-green flex-shrink-0">
-              ${comp.price.toFixed(0)}
-            </span>
-          </a>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
