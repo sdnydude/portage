@@ -72,3 +72,7 @@ export function env(): Env {
   if (!_env) throw new Error('Call loadEnv() before accessing env()');
   return _env;
 }
+
+export function resetEnv(): void {
+  _env = null;
+}
