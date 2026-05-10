@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { identifyItem, identifyItemDetailed } from '../lib/vision.js';
 import { processImage } from '../lib/image.js';
@@ -11,7 +11,7 @@ import { users } from '../db/schema.js';
 import { eq, sql } from 'drizzle-orm';
 import { FREE_TIER_LIMITS } from '@portage/shared';
 
-const logger = pino({ name: 'scan' });
+const logger = createLogger('scan');
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;

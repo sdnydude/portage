@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { users, items, listings, orders, conversations, marketplaceAccounts, adminAuditLog, appSettings } from '../db/schema.js';
 import { eq, sql, desc, count, sum, and, isNull, isNotNull, ilike, or, inArray, gte } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 
-const logger = pino({ name: 'admin' });
+const logger = createLogger('admin');
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);

@@ -1,11 +1,11 @@
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { marketplaceAccounts } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { env } from '../lib/env.js';
 
-const logger = pino({ name: 'token-manager' });
+const logger = createLogger('token-manager');
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 

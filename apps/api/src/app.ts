@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { pinoHttp } from 'pino-http';
+import { rootLogger } from './lib/logger.js';
 import { env } from './lib/env.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { healthRouter } from './routes/health.js';
@@ -36,7 +37,7 @@ export function createApp() {
   }));
 
   app.use(express.json({ limit: '10mb' }));
-  app.use(pinoHttp({ level: config.NODE_ENV === 'production' ? 'info' : 'debug' }));
+  app.use(pinoHttp({ logger: rootLogger }));
 
   app.use('/health', healthRouter);
   app.use('/auth', authRouter);

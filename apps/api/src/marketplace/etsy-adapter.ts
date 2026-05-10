@@ -1,4 +1,4 @@
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { marketplaceAccounts } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
@@ -12,7 +12,7 @@ import type {
   MarketplaceCategoryResult,
 } from '@portage/shared';
 
-const logger = pino({ name: 'etsy-adapter' });
+const logger = createLogger('etsy-adapter');
 
 const ETSY_BASE = 'https://api.etsy.com/v3';
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;

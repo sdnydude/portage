@@ -1,4 +1,4 @@
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { env } from '../lib/env.js';
 import type {
   MarketplaceAdapter,
@@ -10,7 +10,7 @@ import type {
   ReverbCompResult,
 } from '@portage/shared';
 
-const logger = pino({ name: 'reverb-adapter' });
+const logger = createLogger('reverb-adapter');
 
 const REVERB_BASE = 'https://api.reverb.com/api';
 

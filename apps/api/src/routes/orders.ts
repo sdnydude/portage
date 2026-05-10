@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, desc, and, isNotNull } from 'drizzle-orm';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { orders, listings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -12,7 +12,7 @@ import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { decrypt } from '../lib/crypto.js';
 import { marketplaceAccounts } from '../db/schema.js';
 
-const logger = pino({ name: 'orders' });
+const logger = createLogger('orders');
 
 export const ordersRouter = Router();
 

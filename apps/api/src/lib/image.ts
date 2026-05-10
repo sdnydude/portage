@@ -1,7 +1,7 @@
 import sharp from 'sharp';
-import { pino } from 'pino';
+import { createLogger } from './logger.js';
 
-const logger = pino({ name: 'image' });
+const logger = createLogger('image');
 
 const MAX_DIMENSION = 2048;
 const QUALITY = 85;

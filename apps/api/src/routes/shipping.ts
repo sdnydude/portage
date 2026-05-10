@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, and, asc } from 'drizzle-orm';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { shippingPresets, shippingProviders, orders, users, disclaimerAcceptances, listings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 
-const logger = pino({ name: 'shipping' });
+const logger = createLogger('shipping');
 
 export const shippingRouter = Router();
 

@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, desc, ilike, and, sql } from 'drizzle-orm';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { items } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 
-const logger = pino({ name: 'items' });
+const logger = createLogger('items');
 
 const photoSchema = z.object({
   url: z.string(),

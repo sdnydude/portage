@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { db } from '../db/index.js';
@@ -7,7 +7,7 @@ import { users } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { FREE_TIER_LIMITS } from '@portage/shared';
 
-const logger = pino({ name: 'usage' });
+const logger = createLogger('usage');
 
 export const usageRouter = Router();
 

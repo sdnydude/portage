@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, and, desc, lt } from 'drizzle-orm';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { listingDrafts } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 
-const logger = pino({ name: 'drafts' });
+const logger = createLogger('drafts');
 
 const upsertDraftSchema = z.object({
   id: z.string().uuid().optional(),

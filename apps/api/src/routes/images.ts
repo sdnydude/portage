@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { processImage, generateThumbnail, enhanceImage, rotateImage, cropImage } from '../lib/image.js';
 import { uploadImage, deleteImage, getImage } from '../lib/storage.js';
@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { AppError } from '../middleware/error.js';
 import { env } from '../lib/env.js';
 
-const logger = pino({ name: 'images' });
+const logger = createLogger('images');
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;

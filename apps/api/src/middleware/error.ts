@@ -1,8 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
-import { pino } from 'pino';
 import { ZodError } from 'zod';
+import { createLogger } from '../lib/logger.js';
 
-const logger = pino({ name: 'error-handler' });
+const logger = createLogger('error-handler');
 
 export class AppError extends Error {
   constructor(

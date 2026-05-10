@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { pino } from 'pino';
+import { createLogger } from '../../lib/logger.js';
 import { z } from 'zod';
 import { requireAuth } from '../../middleware/auth.js';
 import { AppError } from '../../middleware/error.js';
@@ -9,7 +9,7 @@ import { db } from '../../db/index.js';
 import { marketplaceAccounts } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
-const logger = pino({ name: 'ebay-auth' });
+const logger = createLogger('ebay-auth');
 
 export const ebayAuthRouter = Router();
 

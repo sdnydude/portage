@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken } from '../lib/jwt.js';
 import { AppError } from '../middleware/error.js';
 
-const logger = pino({ name: 'auth' });
+const logger = createLogger('auth');
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),

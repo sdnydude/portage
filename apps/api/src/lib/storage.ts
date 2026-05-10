@@ -1,9 +1,9 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { pino } from 'pino';
 import { env } from './env.js';
+import { createLogger } from './logger.js';
 import crypto from 'node:crypto';
 
-const logger = pino({ name: 'storage' });
+const logger = createLogger('storage');
 
 let _client: S3Client | null = null;
 
