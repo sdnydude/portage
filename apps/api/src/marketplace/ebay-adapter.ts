@@ -1,4 +1,4 @@
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { env } from '../lib/env.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
 import type {
@@ -11,7 +11,7 @@ import type {
   CompResult,
 } from '@portage/shared';
 
-const logger = pino({ name: 'ebay-adapter' });
+const logger = createLogger('ebay-adapter');
 
 const BROWSE_CONDITION_NORMALIZE: Record<string, string> = {
   'New': 'NEW',

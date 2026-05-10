@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { eq, desc, sql, and } from 'drizzle-orm';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { items, listings, orders, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 
-const logger = pino({ name: 'dashboard' });
+const logger = createLogger('dashboard');
 
 export const dashboardRouter = Router();
 

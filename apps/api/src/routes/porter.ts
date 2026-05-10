@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, desc, and, ilike, sql } from 'drizzle-orm';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { conversations, items, listings, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -9,7 +9,7 @@ import { AppError } from '../middleware/error.js';
 import { chat, type ToolDef } from '../lib/ai-client.js';
 import { FREE_TIER_LIMITS } from '@portage/shared';
 
-const logger = pino({ name: 'porter' });
+const logger = createLogger('porter');
 
 const PORTER_SYSTEM = `You are Porter, an AI assistant for the Portage app — a personal effects inventory and marketplace seller tool.
 

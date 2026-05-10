@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { pino } from 'pino';
+import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { items, sellerProfiles } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -11,7 +11,7 @@ import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
 import type { PreparedListingData, PricingData, CompResult, ReverbCompResult } from '@portage/shared';
 
-const logger = pino({ name: 'prepare-listing' });
+const logger = createLogger('prepare-listing');
 
 export const prepareListingRouter = Router();
 

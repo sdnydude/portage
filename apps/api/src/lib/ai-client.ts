@@ -1,10 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import { pino } from 'pino';
 import { env } from './env.js';
+import { createLogger } from './logger.js';
 import { AppError } from '../middleware/error.js';
 
-const logger = pino({ name: 'ai-client' });
+const logger = createLogger('ai-client');
 
 const MAX_TOOL_ITERATIONS = 10;
 

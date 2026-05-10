@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { pino } from 'pino';
+import { createLogger } from '../../lib/logger.js';
 import { z } from 'zod';
 import { randomBytes, createHash } from 'node:crypto';
 import { requireAuth } from '../../middleware/auth.js';
@@ -10,7 +10,7 @@ import { db } from '../../db/index.js';
 import { marketplaceAccounts } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
-const logger = pino({ name: 'etsy-auth' });
+const logger = createLogger('etsy-auth');
 
 const ETSY_BASE = 'https://api.etsy.com/v3';
 const ETSY_AUTH_URL = 'https://www.etsy.com/oauth/connect';

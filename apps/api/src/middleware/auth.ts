@@ -1,9 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
-import { pino } from 'pino';
 import { verifyAccessToken, type JwtPayload } from '../lib/jwt.js';
+import { createLogger } from '../lib/logger.js';
 import { AppError } from './error.js';
 
-const logger = pino({ name: 'auth-middleware' });
+const logger = createLogger('auth-middleware');
 
 declare global {
   namespace Express {
