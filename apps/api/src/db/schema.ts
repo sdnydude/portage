@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, jsonb, pgEnum, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, jsonb, pgEnum, unique, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
 export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro']);
@@ -159,7 +160,11 @@ export const shippingPresets = pgTable('shipping_presets', {
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [
+  uniqueIndex('shipping_presets_one_default_per_user')
+    .on(t.userId)
+    .where(sql`is_default = true`),
+]);
 
 export const shippingProviders = pgTable('shipping_providers', {
   id: uuid('id').defaultRandom().primaryKey(),
