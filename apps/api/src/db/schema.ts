@@ -93,6 +93,7 @@ export const orders = pgTable('orders', {
   trackingNumber: varchar('tracking_number', { length: 255 }),
   carrier: varchar('carrier', { length: 100 }),
   shippingLabelUrl: text('shipping_label_url'),
+  shippingAddress: jsonb('shipping_address'),
   soldAt: timestamp('sold_at').notNull().defaultNow(),
   shippedAt: timestamp('shipped_at'),
   deliveredAt: timestamp('delivered_at'),
