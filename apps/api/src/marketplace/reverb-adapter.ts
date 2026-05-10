@@ -153,7 +153,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
 
     return (data.orders ?? []).map(order => ({
       marketplaceOrderId: order.order_number,
-      marketplaceListingId: order.listing_id ?? '',
+      marketplaceListingId: order.listing_id ?? null,
       buyerUsername: order.buyer_name,
       salePrice: parseFloat(order.amount_product.amount),
       shippingCost: parseFloat(order.shipping?.amount ?? '0'),

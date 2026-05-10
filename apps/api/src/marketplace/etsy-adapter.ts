@@ -268,7 +268,9 @@ export class EtsyAdapter implements MarketplaceAdapter {
 
     return (data.results ?? []).map((receipt) => ({
       marketplaceOrderId: String(receipt.receipt_id),
-      marketplaceListingId: String(receipt.transactions?.[0]?.listing_id ?? ''),
+      marketplaceListingId: receipt.transactions?.[0]?.listing_id != null
+        ? String(receipt.transactions[0].listing_id)
+        : null,
       buyerUsername: receipt.name,
       salePrice: receipt.grandtotal.amount / receipt.grandtotal.divisor,
       shippingCost: receipt.total_shipping_cost.amount / receipt.total_shipping_cost.divisor,

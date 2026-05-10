@@ -24,7 +24,7 @@ export interface MarketplaceListingResult {
 
 export interface MarketplaceOrderResult {
   marketplaceOrderId: string;
-  marketplaceListingId: string;
+  marketplaceListingId: string | null;
   buyerUsername: string;
   salePrice: number;
   shippingCost: number;
