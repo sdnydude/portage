@@ -47,6 +47,10 @@ surprises:
   - No API changes were originally planned — now adding 2 endpoint changes
   - CompListing has no description field — copy limited to title + condition
 
+completed:
+  - task_2: identifyItemsMulti + export fetchPhotosAsBase64 (commit 0b2b2f6)
+  - task_3: POST /scan/refine with SSRF protection + checkScanLimit helper (commit 4d984fd)
+
 decisions:
   - Capture-first flow (take 2-3 photos, then scan) over scan-on-first-photo
   - Use identifyItemDetailed (candidates + reasoning) for multi-image, not identifyItem (single result)
@@ -54,3 +58,11 @@ decisions:
   - Rescan costs 1 scan credit (user approved)
   - Minimum 1 photo to scan, recommend 2+, send up to 3 to vision
   - Admin pages excluded from text-sm sweep (desktop-only)
+  - Upload-on-capture: photos upload via POST /images immediately, ScanFlow stores URLs not Files
+  - SSRF: Zod refine validates imageUrls start with R2_PUBLIC_URL (lazy read, not module-level const)
+  - Candidates + reasoning: identifyItemsMulti returns DetailedVisionResult, UI shows collapsible reasoning
+
+deferred:
+  - WebP format incompatible with marketplace APIs — eBay Inventory API requires JPEG/PNG, not WebP. processImage() converts everything to WebP. Need JPEG fallback or dual-format storage for publishing.
+  - Etsy recommends 2000px+ for zoom — current MAX_DIMENSION=2048 is borderline, withoutEnlargement:true passes smaller photos through. Consider storing original resolution alongside processed.
+  - Reverb min 620px width — not a problem with current pipeline but no validation exists.
