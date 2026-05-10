@@ -9,6 +9,7 @@ interface AuthUser {
   email: string;
   subscriptionTier: "free" | "pro";
   role: "user" | "admin";
+  onboardingCompleted?: boolean;
 }
 
 const TOKEN_KEY = "portage_token";
@@ -65,6 +66,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(USER_KEY);
   }, []);
 
+  const setOnboardingCompleted = useCallback(() => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, onboardingCompleted: true };
+      localStorage.setItem(USER_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   if (!isReady) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -80,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: !!token,
       login,
       logout,
+      setOnboardingCompleted,
     }}>
       {children}
     </AuthContext>

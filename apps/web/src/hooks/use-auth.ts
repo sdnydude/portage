@@ -9,10 +9,12 @@ interface AuthState {
     email: string;
     subscriptionTier: "free" | "pro";
     role: "user" | "admin";
+    onboardingCompleted?: boolean;
   } | null;
   isAuthenticated: boolean;
   login: (token: string, refreshToken: string, user: AuthState["user"]) => void;
   logout: () => void;
+  setOnboardingCompleted: () => void;
 }
 
 export const AuthContext = createContext<AuthState>({
@@ -21,6 +23,7 @@ export const AuthContext = createContext<AuthState>({
   isAuthenticated: false,
   login: () => {},
   logout: () => {},
+  setOnboardingCompleted: () => {},
 });
 
 export function useAuth() {

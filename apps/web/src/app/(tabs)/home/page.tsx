@@ -2,6 +2,8 @@
 
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
+import { useOnboarding } from "@/hooks/use-onboarding";
+import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
 import Link from "next/link";
 
 function getGreeting(): string {
@@ -35,6 +37,7 @@ function formatDate(dateStr: string): string {
 export default function HomePage() {
   const { isAuthenticated } = useAuth();
   const { data, isLoading, error } = useDashboard();
+  const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
 
   if (!isAuthenticated) {
     return (
@@ -418,6 +421,15 @@ export default function HomePage() {
           <circle cx="12" cy="13" r="4" />
         </svg>
       </Link>
+
+      {/* Onboarding overlay — shown once for new users */}
+      {shouldShowOnboarding && (
+        <OnboardingFlow
+          onComplete={completeOnboarding}
+          onSkip={completeOnboarding}
+          isCompleting={isCompleting}
+        />
+      )}
     </div>
   );
 }
