@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, sql } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { listings, items } from '../db/schema.js';
@@ -41,6 +41,13 @@ const updateListingSchema = z.object({
   marketplaceSpecificFields: z.record(z.unknown()).optional(),
 });
 
+const listQuerySchema = z.object({
+  status: z.enum(['draft', 'active', 'sold', 'archived']).optional(),
+  marketplace: z.enum(['ebay', 'etsy', 'reverb']).optional(),
+  limit: z.coerce.number().min(1).max(100).default(50),
+  offset: z.coerce.number().min(0).default(0),
+});
+
 export const listingsRouter = Router();
 
 listingsRouter.use(requireAuth);
@@ -48,19 +55,30 @@ listingsRouter.use(requireAuth);
 listingsRouter.get('/', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
-    const status = req.query.status as string | undefined;
-    const marketplace = req.query.marketplace as string | undefined;
+    const query = listQuerySchema.parse(req.query);
 
     const conditions = [eq(listings.userId, userId)];
-    if (status) conditions.push(eq(listings.status, status as 'draft' | 'active' | 'sold' | 'archived'));
-    if (marketplace) conditions.push(eq(listings.marketplace, marketplace as 'ebay' | 'etsy' | 'reverb'));
+    if (query.status) conditions.push(eq(listings.status, query.status));
+    if (query.marketplace) conditions.push(eq(listings.marketplace, query.marketplace));
 
-    const results = await db.select()
-      .from(listings)
-      .where(and(...conditions))
-      .orderBy(desc(listings.createdAt));
+    const [results, countResult] = await Promise.all([
+      db.select()
+        .from(listings)
+        .where(and(...conditions))
+        .orderBy(desc(listings.createdAt))
+        .limit(query.limit)
+        .offset(query.offset),
+      db.select({ count: sql<number>`count(*)` })
+        .from(listings)
+        .where(and(...conditions)),
+    ]);
 
-    res.json({ listings: results });
+    res.json({
+      listings: results,
+      total: Number(countResult[0].count),
+      limit: query.limit,
+      offset: query.offset,
+    });
   } catch (err) {
     next(err);
   }
