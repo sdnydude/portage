@@ -1,51 +1,51 @@
 status: in_progress
 phase: 6
-feature: Listings CRUD — edit/update/delete from UI
-approach: Fix & Complete — fix broken save, add marketplace sync, wire missing UI actions
-complexity: simple (5 tasks)
+feature: C1 — Fix order sync assigns wrong listing to incoming orders
+approach: Add marketplaceListingId to MarketplaceOrderResult, parse from each adapter's API response, match in order sync
+complexity: simple (3 tasks)
 
 plan:
-  1: Add marketplace sync to PATCH /listings/:id
-  2: Fix detail page save — title/desc to items, price to listings
-  3: Add Publish, Archive, Relist buttons to detail page
-  4: Add updateListing to hook + fix reverb type
-  5: Add Archived filter tab to listings index
+  1: Add marketplaceListingId to MarketplaceOrderResult + update all 3 adapters
+  2: Fix order sync matching logic
+  3: Rebuild shared package + API container, verify end-to-end
 
 progress:
   task_1: complete
   task_2: complete
   task_3: complete
-  task_4: complete
-  task_5: complete
 
 commits:
-  - 6eb7db4: feat: add marketplace sync to listing PATCH + fix hook types
-  - b0f2b83: fix: detail page save now persists title/description to items table
-  - c66363c: feat: add Publish, Archive, and Relist buttons to listing detail page
-  - 07d0ec9: feat: add Archived filter tab and Reverb to listings index
-  - a250817: fix: review fixes — error states, aria labels, address dirty tracking
+  - 2c640e3: feat: add marketplaceListingId to MarketplaceOrderResult in all adapters
+  - cb95aec: fix: order sync matches by marketplaceListingId instead of first active
+  - 9fcac4a: fix: review fixes — marketplace filter, Reverb sync, null type, error logging
 
 verification:
   typecheck: pass (all 3 workspaces)
-  lint_our_files: 0 errors, 1 warning (pre-existing img tag)
-  lint_global: 1 error in settings/marketplace/page.tsx (pre-existing, not our change)
-  tests: no test files exist for API
-  services: portage-db healthy, portage-api healthy, portage-app unhealthy (needs rebuild with new code)
-
-cleanup_needed:
-  - f83e75b: chore: test commit-log hook (test commit — revert before PR)
-  - 296c944: fix: update ship-state progress + make commit-log hook portable (mixed — has real fix)
-  - 1abe448: chore: hook debug test (test commit — revert before PR)
+  lint_our_files: 0 errors, 0 warnings
+  lint_global: 1 pre-existing error in settings/marketplace/page.tsx
+  services: portage-db healthy, portage-api healthy
+  regression: auth guards correct (401 on /items, /orders)
+  performance: health 4.2ms
+  tests: no test files exist
 
 review:
   agents: silent-failure-hunter, type-design-analyzer, code-reviewer, comment-analyzer, pr-test-analyzer, code-simplifier
-  critical_fixed: 2 (userId guard on db.update, AppError re-throw in catch blocks)
-  important_fixed: 6 (publish-with-unsaved, item fetch outside try, typed updates, finally block, modal text, invariant comments)
-  deferred_to_future:
-    - Duplicate Listing type in hook vs @portage/shared (nullability diverged)
-    - statusConfig Record<string> should use exhaustive key union
-    - Duplicate editable field / confirmation modal patterns (extract components)
-    - Test coverage (no API tests exist — listings.test.ts recommended)
-    - Three independent loading flags (consolidate to pendingAction)
+  critical_found: 3
+  critical_resolved: 3
+  important_found: 3
+  important_resolved: 3
+  minor_deferred: 2
+  fixes:
+    - "Added eq(listings.marketplace) filter to prevent cross-marketplace ID collision"
+    - "Added Reverb to adapter switch (was silently routing to EtsyAdapter)"
+    - "Fixed catch block: logger.error + full err object + userId"
+    - "Changed marketplaceListingId type to string | null (was string with '' sentinel)"
+    - "Fixed Etsy String(0) edge case with null check"
+    - "Added isNotNull(listings.marketplaceListingId) guard to DB query"
 
-deferred: []
+deferred:
+  - Missing shippingAddress column on orders table
+  - Hardcoded marketplaceFees: 0 for Etsy and Reverb
+  - Lost soldAt timestamps from marketplace APIs (using NOW() instead)
+  - Multi-item eBay orders only sync first line item
+  - No test coverage for order sync

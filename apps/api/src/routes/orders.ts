@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, isNotNull } from 'drizzle-orm';
 import { pino } from 'pino';
 import { db } from '../db/index.js';
 import { orders, listings } from '../db/schema.js';
@@ -8,6 +8,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
+import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
+import { decrypt } from '../lib/crypto.js';
 import { marketplaceAccounts } from '../db/schema.js';
 
 const logger = pino({ name: 'orders' });
@@ -112,9 +114,21 @@ ordersRouter.post('/sync', async (req, res, next) => {
     const newOrderIds: string[] = [];
 
     for (const account of accounts) {
-      const adapter = account.marketplace === 'ebay'
-        ? new EbayAdapter(userId)
-        : new EtsyAdapter(userId);
+      let adapter;
+      switch (account.marketplace) {
+        case 'ebay':
+          adapter = new EbayAdapter(userId);
+          break;
+        case 'etsy':
+          adapter = new EtsyAdapter(userId);
+          break;
+        case 'reverb':
+          adapter = new ReverbAdapter(decrypt(account.accessTokenEncrypted));
+          break;
+        default:
+          logger.warn({ userId, marketplace: account.marketplace }, 'Unsupported marketplace — skipping order sync');
+          continue;
+      }
 
       try {
         const marketplaceOrders = await adapter.getOrders(since);
@@ -130,20 +144,38 @@ ordersRouter.post('/sync', async (req, res, next) => {
 
           if (existing) continue;
 
-          const [activeListing] = await db.select()
+          if (!mOrder.marketplaceListingId) {
+            logger.warn({
+              userId,
+              marketplace: account.marketplace,
+              marketplaceOrderId: mOrder.marketplaceOrderId,
+            }, 'Order skipped — no marketplace listing ID in response');
+            continue;
+          }
+
+          const [matchedListing] = await db.select()
             .from(listings)
             .where(and(
               eq(listings.userId, userId),
               eq(listings.marketplace, account.marketplace),
-              eq(listings.status, 'active'),
+              eq(listings.marketplaceListingId, mOrder.marketplaceListingId),
+              isNotNull(listings.marketplaceListingId),
             ))
             .limit(1);
 
-          if (!activeListing) continue;
+          if (!matchedListing) {
+            logger.warn({
+              userId,
+              marketplace: account.marketplace,
+              marketplaceOrderId: mOrder.marketplaceOrderId,
+              marketplaceListingId: mOrder.marketplaceListingId,
+            }, 'Order skipped — no matching local listing found');
+            continue;
+          }
 
           const [newOrder] = await db.insert(orders).values({
-            listingId: activeListing.id,
-            itemId: activeListing.itemId,
+            listingId: matchedListing.id,
+            itemId: matchedListing.itemId,
             userId,
             marketplace: account.marketplace,
             marketplaceOrderId: mOrder.marketplaceOrderId,
@@ -157,7 +189,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
 
           await db.update(listings)
             .set({ status: 'sold', soldAt: new Date() })
-            .where(eq(listings.id, activeListing.id));
+            .where(eq(listings.id, matchedListing.id));
 
           newOrderIds.push(newOrder.id);
           totalSynced++;
@@ -170,9 +202,10 @@ ordersRouter.post('/sync', async (req, res, next) => {
           }, 'Order synced and listing marked sold');
         }
       } catch (err) {
-        logger.warn({
+        logger.error({
+          userId,
           marketplace: account.marketplace,
-          err: (err as Error).message,
+          err,
         }, 'Failed to sync orders from marketplace');
       }
     }

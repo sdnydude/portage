@@ -135,6 +135,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
     const data = await this.request<{
       orders?: Array<{
         order_number: string;
+        listing_id?: string;
         buyer_name: string;
         amount_product: { amount: string; currency: string };
         shipping: { amount: string };
@@ -152,6 +153,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
 
     return (data.orders ?? []).map(order => ({
       marketplaceOrderId: order.order_number,
+      marketplaceListingId: order.listing_id ?? null,
       buyerUsername: order.buyer_name,
       salePrice: parseFloat(order.amount_product.amount),
       shippingCost: parseFloat(order.shipping?.amount ?? '0'),

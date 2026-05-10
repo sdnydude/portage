@@ -256,6 +256,7 @@ export class EtsyAdapter implements MarketplaceAdapter {
         name: string;
         grandtotal: { amount: number; divisor: number; currency_code: string };
         total_shipping_cost: { amount: number; divisor: number };
+        transactions?: Array<{ listing_id: number }>;
         first_line: string;
         second_line?: string;
         city: string;
@@ -267,6 +268,9 @@ export class EtsyAdapter implements MarketplaceAdapter {
 
     return (data.results ?? []).map((receipt) => ({
       marketplaceOrderId: String(receipt.receipt_id),
+      marketplaceListingId: receipt.transactions?.[0]?.listing_id != null
+        ? String(receipt.transactions[0].listing_id)
+        : null,
       buyerUsername: receipt.name,
       salePrice: receipt.grandtotal.amount / receipt.grandtotal.divisor,
       shippingCost: receipt.total_shipping_cost.amount / receipt.total_shipping_cost.divisor,
