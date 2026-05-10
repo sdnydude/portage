@@ -1,11 +1,13 @@
 "use client";
 
+import type { ComponentType, ReactNode } from "react";
 import type { PricingStrategy } from "@portage/shared";
 
-const strategyLabels: Record<string, string> = {
+const strategyLabels: Record<PricingStrategy, string> = {
   fast: "Sell Fast",
   market: "Market",
   max: "Max",
+  custom: "Custom",
 };
 
 const STRATEGIES = ["fast", "market", "max"] as const satisfies readonly PricingStrategy[];
@@ -13,8 +15,8 @@ const STRATEGIES = ["fast", "market", "max"] as const satisfies readonly Pricing
 interface PricingStrategyPickerProps {
   active: PricingStrategy | null;
   onSelect: (strategy: PricingStrategy) => void;
-  Pill: React.ComponentType<{
-    children: React.ReactNode;
+  Pill: ComponentType<{
+    children: ReactNode;
     small?: boolean;
     active?: boolean;
     onClick?: () => void;

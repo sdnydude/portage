@@ -956,6 +956,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
           onShippingMethodChange={(m) => setField("shippingMethod", m)}
           Pill={Pill}
           tokens={{ text: TEXT, secondary: SECONDARY, cardBg: CARD_BG, cardBorder: CARD_BORDER }}
+          labelStyleOverride={labelStyle}
         />
       </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties, ComponentType, ReactNode } from "react";
 import type { PackageSize, ShippingMethod } from "@portage/shared";
 
 interface ShippingConfigCardProps {
@@ -9,8 +10,8 @@ interface ShippingConfigCardProps {
   onPackageSizeChange: (size: PackageSize) => void;
   onWeightChange: (weight: number | null) => void;
   onShippingMethodChange: (method: ShippingMethod) => void;
-  Pill: React.ComponentType<{
-    children: React.ReactNode;
+  Pill: ComponentType<{
+    children: ReactNode;
     small?: boolean;
     active?: boolean;
     onClick?: () => void;
@@ -21,9 +22,10 @@ interface ShippingConfigCardProps {
     cardBg: string;
     cardBorder: string;
   };
+  labelStyleOverride?: CSSProperties;
 }
 
-const PACKAGE_SIZES: PackageSize[] = ["small", "medium", "large"];
+const PACKAGE_SIZES = ["small", "medium", "large"] as const satisfies readonly PackageSize[];
 const SHIPPING_METHODS: ShippingMethod[] = ["calculated", "flat", "free"];
 
 const methodLabels: Record<ShippingMethod, string> = {
@@ -35,9 +37,9 @@ const methodLabels: Record<ShippingMethod, string> = {
 export function ShippingConfigCard({
   packageSize, weight, shippingMethod,
   onPackageSizeChange, onWeightChange, onShippingMethodChange,
-  Pill, tokens,
+  Pill, tokens, labelStyleOverride,
 }: ShippingConfigCardProps) {
-  const labelStyle: React.CSSProperties = {
+  const labelStyle: CSSProperties = labelStyleOverride ?? {
     fontSize: 11,
     fontWeight: 600,
     color: tokens.secondary,
@@ -46,7 +48,7 @@ export function ShippingConfigCard({
     letterSpacing: "0.05em",
   };
 
-  const inputStyle: React.CSSProperties = {
+  const inputStyle: CSSProperties = {
     width: "100%",
     fontSize: 14,
     color: tokens.text,
@@ -77,7 +79,10 @@ export function ShippingConfigCard({
           min={0}
           step={0.1}
           value={weight ?? ""}
-          onChange={(e) => onWeightChange(parseFloat(e.target.value) || null)}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            onWeightChange(isNaN(v) ? null : v);
+          }}
           placeholder="0.0"
           style={inputStyle}
         />
