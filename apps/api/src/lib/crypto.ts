@@ -7,7 +7,7 @@ const KEY_LENGTH = 32;
 const SALT = 'portage-token-encryption';
 
 function deriveKey(): Buffer {
-  return scryptSync(env().JWT_SECRET, SALT, KEY_LENGTH);
+  return scryptSync(env().ENCRYPTION_KEY ?? env().JWT_SECRET, SALT, KEY_LENGTH);
 }
 
 export function encrypt(plaintext: string): string {
