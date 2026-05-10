@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { api, API_BASE } from "@/lib/api";
 import { CameraCapture } from "./camera-capture";
@@ -60,6 +60,12 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [editModel, setEditModel] = useState("");
 
   const fileRef = useRef<File | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   const handleScan = useCallback(
     async (file: File) => {
@@ -193,11 +199,12 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   ]);
 
   const handleRetry = useCallback(() => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
     setScanResponse(null);
     setError(null);
     setState("capture");
-  }, []);
+  }, [previewUrl]);
 
   // Camera view
   if (showCamera) {
