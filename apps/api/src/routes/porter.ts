@@ -210,21 +210,19 @@ porterRouter.get('/conversations/:id', async (req, res, next) => {
 porterRouter.post('/message', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
-    const tier = req.user!.tier;
     const { message, conversationId } = messageSchema.parse(req.body);
 
-    if (tier === 'free') {
-      const [user] = await db.select({
-        porterMessagesToday: sql<number>`
-          (select count(*) from ${conversations}
-           where user_id = ${userId}
-           and updated_at > now() - interval '1 day')
-        `,
-      }).from(users).where(eq(users.id, userId)).limit(1);
+    const [porterUser] = await db.select({
+      subscriptionTier: users.subscriptionTier,
+      porterMessagesToday: sql<number>`
+        (select count(*) from ${conversations}
+         where user_id = ${userId}
+         and updated_at > now() - interval '1 day')
+      `,
+    }).from(users).where(eq(users.id, userId)).limit(1);
 
-      if (user && Number(user.porterMessagesToday) >= FREE_TIER_LIMITS.porterMessagesPerDay) {
-        throw new AppError(429, 'PORTER_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.porterMessagesPerDay} Porter messages per day.`);
-      }
+    if (porterUser && porterUser.subscriptionTier === 'free' && Number(porterUser.porterMessagesToday) >= FREE_TIER_LIMITS.porterMessagesPerDay) {
+      throw new AppError(429, 'PORTER_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.porterMessagesPerDay} Porter messages per day.`);
     }
 
     let conv: { id: string; messages: unknown[] } | undefined;

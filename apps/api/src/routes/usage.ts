@@ -41,9 +41,11 @@ usageRouter.get('/', async (req, res, next) => {
 usageRouter.post('/bg-removal', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
-    const tier = req.user!.tier;
 
-    if (tier === 'free') {
+    const [bgUser] = await db.select({ subscriptionTier: users.subscriptionTier })
+      .from(users).where(eq(users.id, userId)).limit(1);
+
+    if (bgUser?.subscriptionTier === 'free') {
       const result = await db.update(users)
         .set({ bgRemovalsThisMonth: sql`${users.bgRemovalsThisMonth} + 1` })
         .where(and(

@@ -39,15 +39,27 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
     }
 
     const userId = req.user!.sub;
-    const tier = req.user!.tier;
 
-    if (tier === 'free') {
-      const [user] = await db.select({ aiScansThisMonth: users.aiScansThisMonth })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
+    const [user] = await db.select({
+      subscriptionTier: users.subscriptionTier,
+      aiScansThisMonth: users.aiScansThisMonth,
+      scanCountResetAt: users.scanCountResetAt,
+    })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
 
-      if (user && user.aiScansThisMonth >= FREE_TIER_LIMITS.aiScansPerMonth) {
+    if (user) {
+      const resetDate = new Date(user.scanCountResetAt);
+      const now = new Date();
+      if (resetDate.getUTCMonth() !== now.getUTCMonth() || resetDate.getUTCFullYear() !== now.getUTCFullYear()) {
+        await db.update(users)
+          .set({ aiScansThisMonth: 0, scanCountResetAt: now })
+          .where(eq(users.id, userId));
+        user.aiScansThisMonth = 0;
+      }
+
+      if (user.subscriptionTier === 'free' && user.aiScansThisMonth >= FREE_TIER_LIMITS.aiScansPerMonth) {
         throw new AppError(429, 'SCAN_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.aiScansPerMonth} AI scans per month. Upgrade to Pro for unlimited.`);
       }
     }
