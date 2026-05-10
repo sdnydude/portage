@@ -1,8 +1,9 @@
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import { pinoHttp } from 'pino-http';
 import { rootLogger } from './lib/logger.js';
 import { env } from './lib/env.js';
+import { httpRequestDuration, httpRequestTotal, metricsRegistry } from './lib/metrics.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
@@ -38,6 +39,29 @@ export function createApp() {
 
   app.use(express.json({ limit: '10mb' }));
   app.use(pinoHttp({ logger: rootLogger }));
+
+  // Prometheus metrics middleware
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const route = req.route?.path ?? req.path;
+      const labels = {
+        method: req.method,
+        route,
+        status_code: String(res.statusCode),
+      };
+      const durationSeconds = (Date.now() - start) / 1000;
+      httpRequestDuration.observe(labels, durationSeconds);
+      httpRequestTotal.inc(labels);
+    });
+    next();
+  });
+
+  // Metrics endpoint — no auth required for Prometheus scraping
+  app.get('/metrics', async (_req: Request, res: Response) => {
+    res.set('Content-Type', metricsRegistry.contentType);
+    res.end(await metricsRegistry.metrics());
+  });
 
   app.use('/health', healthRouter);
   app.use('/auth', authRouter);
