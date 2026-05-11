@@ -7,47 +7,51 @@ on:
       - 'website/**'
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 concurrency:
-  group: pages
+  group: docs-deploy
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-and-deploy:
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: website/package-lock.json
+      - name: Copy docs to AI Factory docs-site
+        run: |
+          DOCS_SITE="/home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site"
+          rm -rf "$DOCS_SITE/projects/portage"
+          cp -r website/docs "$DOCS_SITE/projects/portage"
+          # Fix cross-references from /docs/ to /portage/
+          find "$DOCS_SITE/projects/portage" -name "*.md" -exec sed -i 's|](/docs/|](/portage/|g' {} \;
 
-      - name: Install dependencies
-        run: npm ci
-        working-directory: website
+      - name: Build Docusaurus
+        run: |
+          cd /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site
+          npm ci
+          npm run build
 
-      - name: Build site
-        run: npm run build
-        working-directory: website
+      - name: Restart docs container
+        run: |
+          docker restart dhg-docs || docker run -d \
+            --name dhg-docs \
+            --restart unless-stopped \
+            -p 8017:80 \
+            -v /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site/build:/usr/share/nginx/html:ro \
+            -v /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site/nginx.conf:/etc/nginx/conf.d/default.conf:ro \
+            nginx:alpine
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: website/build
+      - name: Ingest docs into registry
+        run: |
+          cd /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/registry
+          python3 doc_ingest.py \
+            --project portage \
+            --docs-dir /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site/projects/portage \
+            --sweep
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Verify deployment
+        run: |
+          curl -sf http://localhost:8017/portage/getting-started/ > /dev/null
+          echo "Docs site: OK (port 8017)"
+          TOTAL=$(curl -s http://localhost:8011/api/doc-pages?project_name=portage\&limit=1 | python3 -c "import sys,json; print(json.load(sys.stdin)['total'])")
+          echo "Registry: $TOTAL chunks indexed"

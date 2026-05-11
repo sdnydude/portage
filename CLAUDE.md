@@ -59,6 +59,13 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 - **Auto-enhance:** Server-side Sharp pipeline
 - **Prepare listing:** AI field generation (title, description, pricing from comps) via `apps/api/src/routes/prepare-listing.ts`
 
+### Documentation & CI/CD
+
+- **Docs site:** Docusaurus 3.10.1 served by nginx (dhg-docs container, port 8017) at `10.0.0.251:8017`
+- **Registry search:** 319 doc chunks indexed in DHG Registry `doc_pages` table with pgvector embeddings + FTS, hybrid RRF search via `POST /api/doc-pages/search`
+- **CI/CD:** GitHub Actions self-hosted runner on g700data1. Push to `website/**` triggers: copy docs → build Docusaurus → restart nginx → ingest to registry → verify
+- **Workflow:** `.github/workflows/deploy-docs.yml`
+
 ---
 
 ## Key File Locations
@@ -90,6 +97,8 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Shared types | packages/shared/src/types.ts |
 | Docker config | docker-compose.yml + docker-compose.override.yml |
 | Environment template | .env.example |
+| Docs CI/CD workflow | .github/workflows/deploy-docs.yml |
+| Docs source | website/docs/ |
 
 ---
 
