@@ -51,6 +51,41 @@ except Exception:
   fi
 ) || true
 
+# --- Section 1b: Recent Ship Sessions from registry API ---
+(
+  SHIP_URL="http://10.0.0.251:8011/api/ship-sessions?project_name=portage&limit=5"
+  RAW=$(curl -s --connect-timeout 3 --max-time 5 "$SHIP_URL" 2>/dev/null)
+
+  if [ -z "$RAW" ]; then
+    exit 0
+  fi
+
+  if command -v jq &>/dev/null; then
+    OUTPUT=$(printf '%s' "$RAW" \
+      | jq -r '.ship_sessions[] | "\(.status) | \(.feature[:80]) | PR: \(.pr_url // "none") | deferred: \((.deferred // []) | length)"' 2>/dev/null)
+  else
+    OUTPUT=$(printf '%s' "$RAW" | python3 -c '
+import sys, json
+try:
+    data = json.loads(sys.stdin.read())
+    for s in data.get("ship_sessions", []):
+        status = s.get("status", "?")
+        feature = (s.get("feature") or "?")[:80]
+        pr = s.get("pr_url") or "none"
+        deferred = len(s.get("deferred") or [])
+        print(f"{status} | {feature} | PR: {pr} | deferred: {deferred}")
+except Exception:
+    pass
+' 2>/dev/null)
+  fi
+
+  if [ -n "$OUTPUT" ]; then
+    echo "--- Recent Ship Sessions ---"
+    echo "$OUTPUT"
+    echo ""
+  fi
+) || true
+
 # --- Section 2: Recent Activity (7-day rolling) ---
 (
   RECENT_FILE="$PROJECT_DIR/.remember/recent.md"
