@@ -180,4 +180,38 @@ except Exception:
   fi
 ) || true
 
+# --- Section 8: Recent Corrections (Loop 4 self-training) ---
+(
+  CORR_URL="http://10.0.0.251:8011/api/corrections/stats?project_name=portage&since_days=7"
+  RAW=$(curl -s --connect-timeout 3 --max-time 5 "$CORR_URL" 2>/dev/null)
+
+  if [ -z "$RAW" ]; then
+    exit 0
+  fi
+
+  if command -v jq &>/dev/null; then
+    TOTAL=$(printf '%s' "$RAW" | jq -r '.total // 0' 2>/dev/null)
+    if [ "${TOTAL:-0}" -gt 0 ] 2>/dev/null; then
+      echo "--- Recent Corrections (7-day) ---"
+      echo "Total: $TOTAL"
+      printf '%s' "$RAW" | jq -r '.by_category[] | "  \(.category): \(.count)"' 2>/dev/null
+      echo ""
+    fi
+  else
+    printf '%s' "$RAW" | python3 -c '
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    if d.get("total", 0) > 0:
+        print("--- Recent Corrections (7-day) ---")
+        print(f"Total: {d[\"total\"]}")
+        for c in d.get("by_category", []):
+            print(f"  {c[\"category\"]}: {c[\"count\"]}")
+        print()
+except Exception:
+    pass
+' 2>/dev/null
+  fi
+) || true
+
 echo "=== END BRIEFING ==="
