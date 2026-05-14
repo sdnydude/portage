@@ -157,7 +157,7 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
     const imgBuffer = Buffer.from(imgArrayBuffer);
 
     const srcType = imgResponse.headers.get('content-type') || 'image/jpeg';
-    const ext = srcType.includes('png') ? 'image.png' : srcType.includes('jpeg') ? 'image.jpg' : 'image.jpg';
+    const ext = srcType.includes('png') ? 'image.png' : srcType.includes('webp') ? 'image.webp' : 'image.jpg';
     const formData = new FormData();
     formData.append('file', new Blob([imgBuffer]), ext);
     formData.append('model', 'isnet-general-use');
