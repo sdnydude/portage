@@ -149,7 +149,7 @@ describe('identifyItem', () => {
       outputTokens: 50,
     });
 
-    const result = await identifyItem('base64data', 'image/webp');
+    const result = await identifyItem('base64data', 'image/jpeg');
     expect(result.suggestedTags).toEqual([]);
   });
 });
@@ -204,8 +204,8 @@ describe('identifyItemDetailed', () => {
 
 describe('identifyItemsMulti', () => {
   const mockImages = [
-    { base64: 'img1base64', mediaType: 'image/webp' },
-    { base64: 'img2base64', mediaType: 'image/webp' },
+    { base64: 'img1base64', mediaType: 'image/jpeg' },
+    { base64: 'img2base64', mediaType: 'image/jpeg' },
   ];
 
   it('returns DetailedVisionResult from multi-image call', async () => {

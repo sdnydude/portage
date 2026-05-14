@@ -21,7 +21,7 @@ export async function processImage(input: Buffer): Promise<ProcessedImage> {
   const image = sharp(input)
     .rotate()
     .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: QUALITY });
+    .jpeg({ quality: QUALITY });
 
   const buffer = await image.toBuffer();
   const outputMeta = await sharp(buffer).metadata();
@@ -37,7 +37,7 @@ export async function processImage(input: Buffer): Promise<ProcessedImage> {
     buffer,
     width: outputMeta.width!,
     height: outputMeta.height!,
-    format: 'webp',
+    format: 'jpeg',
     size: buffer.length,
   };
 }
@@ -52,7 +52,7 @@ export async function enhanceImage(input: Buffer): Promise<ProcessedImage> {
     .sharpen({ sigma: 1.2, m1: 1.0, m2: 0.5 })
     .modulate({ brightness: 1.02, saturation: 1.08 })
     .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 90 });
+    .jpeg({ quality: 90 });
 
   const buffer = await image.toBuffer();
   const outputMeta = await sharp(buffer).metadata();
@@ -68,7 +68,7 @@ export async function enhanceImage(input: Buffer): Promise<ProcessedImage> {
     buffer,
     width: outputMeta.width!,
     height: outputMeta.height!,
-    format: 'webp',
+    format: 'jpeg',
     size: buffer.length,
   };
 }
@@ -77,12 +77,12 @@ export async function generateThumbnail(input: Buffer, size: number = 400): Prom
   return sharp(input)
     .rotate()
     .resize(size, size, { fit: 'cover' })
-    .webp({ quality: 75 })
+    .jpeg({ quality: 75 })
     .toBuffer();
 }
 
 export async function rotateImage(input: Buffer, degrees: 90 | 180 | 270): Promise<ProcessedImage> {
-  const image = sharp(input).rotate(degrees).webp({ quality: QUALITY });
+  const image = sharp(input).rotate(degrees).jpeg({ quality: QUALITY });
   const buffer = await image.toBuffer();
   const meta = await sharp(buffer).metadata();
 
@@ -90,7 +90,7 @@ export async function rotateImage(input: Buffer, degrees: 90 | 180 | 270): Promi
     buffer,
     width: meta.width!,
     height: meta.height!,
-    format: 'webp',
+    format: 'jpeg',
     size: buffer.length,
   };
 }
@@ -101,7 +101,7 @@ export async function cropImage(
 ): Promise<ProcessedImage> {
   const image = sharp(input)
     .extract({ left: Math.round(crop.x), top: Math.round(crop.y), width: Math.round(crop.width), height: Math.round(crop.height) })
-    .webp({ quality: QUALITY });
+    .jpeg({ quality: QUALITY });
 
   const buffer = await image.toBuffer();
   const meta = await sharp(buffer).metadata();
@@ -110,7 +110,7 @@ export async function cropImage(
     buffer,
     width: meta.width!,
     height: meta.height!,
-    format: 'webp',
+    format: 'jpeg',
     size: buffer.length,
   };
 }

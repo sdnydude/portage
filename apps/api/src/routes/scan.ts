@@ -89,10 +89,10 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
     let detailedResult;
 
     if (detail === 'full') {
-      detailedResult = await identifyItemDetailed(imageBase64, 'image/webp');
+      detailedResult = await identifyItemDetailed(imageBase64, 'image/jpeg');
       identification = detailedResult.candidates[0];
     } else {
-      identification = await identifyItem(imageBase64, 'image/webp');
+      identification = await identifyItem(imageBase64, 'image/jpeg');
     }
 
     let mainImage: { key: string; url: string } | null = null;
@@ -103,8 +103,8 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
       const thumbBuf = await generateThumbnail(req.file.buffer);
 
       [mainImage, thumbnailResult] = await Promise.all([
-        uploadImage(userId, processed.buffer, 'image/webp', '.webp'),
-        uploadImage(userId, thumbBuf, 'image/webp', '_thumb.webp'),
+        uploadImage(userId, processed.buffer, 'image/jpeg', '.jpg'),
+        uploadImage(userId, thumbBuf, 'image/jpeg', '_thumb.jpg'),
       ]);
     } catch (err) {
       logger.warn({ err: (err as Error).message }, 'R2 upload failed — returning identification without storage');
