@@ -50,8 +50,8 @@ imagesRouter.post('/', upload.single('image'), async (req, res, next) => {
     const thumbnail = await generateThumbnail(req.file.buffer);
 
     const [main, thumb] = await Promise.all([
-      uploadImage(userId, processed.buffer, 'image/webp', '.webp'),
-      uploadImage(userId, thumbnail, 'image/webp', '_thumb.webp'),
+      uploadImage(userId, processed.buffer, 'image/jpeg', '.jpg'),
+      uploadImage(userId, thumbnail, 'image/jpeg', '_thumb.jpg'),
     ]);
 
     logger.info({ userId, mainKey: main.key, thumbKey: thumb.key }, 'Upload complete');
@@ -107,7 +107,7 @@ imagesRouter.post('/enhance', async (req, res, next) => {
 
     const enhanced = await enhanceImage(inputBuffer);
 
-    const uploaded = await uploadImage(userId, enhanced.buffer, 'image/webp', '_enhanced.webp');
+    const uploaded = await uploadImage(userId, enhanced.buffer, 'image/jpeg', '_enhanced.jpg');
 
     logger.info({ userId, key: uploaded.key }, 'Enhance complete');
 
@@ -156,8 +156,8 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
     }
     const imgBuffer = Buffer.from(imgArrayBuffer);
 
-    const srcType = imgResponse.headers.get('content-type') || 'image/webp';
-    const ext = srcType.includes('png') ? 'image.png' : srcType.includes('jpeg') ? 'image.jpg' : 'image.webp';
+    const srcType = imgResponse.headers.get('content-type') || 'image/jpeg';
+    const ext = srcType.includes('png') ? 'image.png' : srcType.includes('webp') ? 'image.webp' : 'image.jpg';
     const formData = new FormData();
     formData.append('file', new Blob([imgBuffer]), ext);
     formData.append('model', 'isnet-general-use');
@@ -221,7 +221,7 @@ imagesRouter.post('/rotate', async (req, res, next) => {
     const inputBuffer = Buffer.from(arrayBuffer);
 
     const rotated = await rotateImage(inputBuffer, degrees);
-    const uploaded = await uploadImage(userId, rotated.buffer, 'image/webp', '_rotated.webp');
+    const uploaded = await uploadImage(userId, rotated.buffer, 'image/jpeg', '_rotated.jpg');
 
     logger.info({ userId, key: uploaded.key, degrees }, 'Image rotated');
 
@@ -275,7 +275,7 @@ imagesRouter.post('/crop', async (req, res, next) => {
     const inputBuffer = Buffer.from(arrayBuffer);
 
     const cropped = await cropImage(inputBuffer, crop);
-    const uploaded = await uploadImage(userId, cropped.buffer, 'image/webp', '_cropped.webp');
+    const uploaded = await uploadImage(userId, cropped.buffer, 'image/jpeg', '_cropped.jpg');
 
     logger.info({ userId, key: uploaded.key }, 'Image cropped');
 

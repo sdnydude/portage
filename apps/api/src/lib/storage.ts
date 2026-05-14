@@ -60,7 +60,7 @@ export async function getImage(key: string): Promise<{ body: import('node:stream
   const body = result.Body instanceof Readable
     ? result.Body
     : Readable.fromWeb(result.Body as import('stream/web').ReadableStream);
-  return { body, contentType: result.ContentType || 'image/webp' };
+  return { body, contentType: result.ContentType || 'image/jpeg' };
 }
 
 export async function deleteImage(key: string): Promise<void> {

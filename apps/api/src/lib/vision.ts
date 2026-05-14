@@ -349,7 +349,7 @@ export async function fetchPhotosAsBase64(urls: string[], limit: number): Promis
         logger.warn({ url, status: res.status }, 'Photo fetch returned non-OK status — skipping');
         continue;
       }
-      const rawType = res.headers.get('content-type') || 'image/webp';
+      const rawType = res.headers.get('content-type') || 'image/jpeg';
       const mediaType = rawType.split(';')[0].trim();
       if (!SUPPORTED_TYPES.has(mediaType)) {
         logger.warn({ url, mediaType }, 'Unsupported content-type for vision — skipping');

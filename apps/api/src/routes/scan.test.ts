@@ -61,8 +61,8 @@ beforeEach(() => {
 describe('POST /scan/refine', () => {
   const validBody = {
     imageUrls: [
-      `${R2_PUBLIC_URL}/user-1/photo1.webp`,
-      `${R2_PUBLIC_URL}/user-1/photo2.webp`,
+      `${R2_PUBLIC_URL}/user-1/photo1.jpg`,
+      `${R2_PUBLIC_URL}/user-1/photo2.jpg`,
     ],
   };
 
@@ -71,8 +71,8 @@ describe('POST /scan/refine', () => {
     mockUpdateReturns();
 
     vi.mocked(fetchPhotosAsBase64).mockResolvedValue([
-      { base64: 'img1', mediaType: 'image/webp' },
-      { base64: 'img2', mediaType: 'image/webp' },
+      { base64: 'img1', mediaType: 'image/jpeg' },
+      { base64: 'img2', mediaType: 'image/jpeg' },
     ]);
 
     const mockResult = {
@@ -131,10 +131,10 @@ describe('POST /scan/refine', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         imageUrls: [
-          `${R2_PUBLIC_URL}/a.webp`,
-          `${R2_PUBLIC_URL}/b.webp`,
-          `${R2_PUBLIC_URL}/c.webp`,
-          `${R2_PUBLIC_URL}/d.webp`,
+          `${R2_PUBLIC_URL}/a.jpg`,
+          `${R2_PUBLIC_URL}/b.jpg`,
+          `${R2_PUBLIC_URL}/c.jpg`,
+          `${R2_PUBLIC_URL}/d.jpg`,
         ],
       });
 

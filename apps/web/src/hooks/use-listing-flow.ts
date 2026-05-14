@@ -95,7 +95,7 @@ export function useListingFlow() {
       if (photoUrl) {
         const response = await fetch(photoUrl);
         const blob = await response.blob();
-        formData.append('image', blob, 'photo.webp');
+        formData.append('image', blob, 'photo.jpg');
       }
 
       const result = await fetch(`${API_BASE}/scan?detail=full`, {
