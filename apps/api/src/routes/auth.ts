@@ -42,9 +42,7 @@ const refreshSchema = z.object({
 
 export const authRouter = Router();
 
-authRouter.use(authLimiter);
-
-authRouter.post('/register', async (req, res, next) => {
+authRouter.post('/register', authLimiter, async (req, res, next) => {
   try {
     const body = registerSchema.parse(req.body);
 
@@ -98,7 +96,7 @@ authRouter.post('/register', async (req, res, next) => {
   }
 });
 
-authRouter.post('/login', async (req, res, next) => {
+authRouter.post('/login', authLimiter, async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body);
 
@@ -154,7 +152,7 @@ authRouter.post('/login', async (req, res, next) => {
   }
 });
 
-authRouter.post('/refresh', async (req, res, next) => {
+authRouter.post('/refresh', authLimiter, async (req, res, next) => {
   try {
     const body = refreshSchema.parse(req.body);
 
