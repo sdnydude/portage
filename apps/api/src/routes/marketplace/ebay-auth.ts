@@ -14,6 +14,13 @@ const logger = createLogger('ebay-auth');
 
 const stateStore = new Map<string, { userId: string; expiresAt: number }>();
 
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of stateStore) {
+    if (val.expiresAt < now) stateStore.delete(key);
+  }
+}, 60_000).unref();
+
 export const ebayAuthRouter = Router();
 
 ebayAuthRouter.use(requireAuth);

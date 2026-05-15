@@ -17,6 +17,13 @@ const ETSY_AUTH_URL = 'https://www.etsy.com/oauth/connect';
 
 const pkceStore = new Map<string, { verifier: string; state: string; expiresAt: number }>();
 
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of pkceStore) {
+    if (val.expiresAt < now) pkceStore.delete(key);
+  }
+}, 60_000).unref();
+
 export const etsyAuthRouter = Router();
 
 etsyAuthRouter.use(requireAuth);
