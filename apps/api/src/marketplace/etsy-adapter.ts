@@ -25,9 +25,11 @@ const CONDITION_MAP: Record<string, string> = {
   poor: 'is_used',
 };
 
+const shopIdCache = new Map<string, { shopId: string; cachedAt: number }>();
+const SHOP_ID_TTL = 60 * 60 * 1000;
+
 export class EtsyAdapter implements MarketplaceAdapter {
   readonly marketplace = 'etsy' as const;
-  private shopId: string | null = null;
 
   constructor(private readonly userId: string) {}
 
@@ -117,7 +119,8 @@ export class EtsyAdapter implements MarketplaceAdapter {
   }
 
   private async getShopId(): Promise<string> {
-    if (this.shopId) return this.shopId;
+    const cached = shopIdCache.get(this.userId);
+    if (cached && Date.now() - cached.cachedAt < SHOP_ID_TTL) return cached.shopId;
 
     const data = await this.request<{ user_id: number; shop_id: number }>(
       '/application/users/me',
@@ -127,8 +130,9 @@ export class EtsyAdapter implements MarketplaceAdapter {
       `/application/users/${data.user_id}/shops`,
     );
 
-    this.shopId = String(shopData.shop_id);
-    return this.shopId;
+    const shopId = String(shopData.shop_id);
+    shopIdCache.set(this.userId, { shopId, cachedAt: Date.now() });
+    return shopId;
   }
 
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
@@ -158,6 +162,7 @@ export class EtsyAdapter implements MarketplaceAdapter {
       },
     );
 
+    let photosFailed = 0;
     for (const photo of input.photos) {
       try {
         const imageResponse = await fetch(photo.url);
@@ -167,7 +172,7 @@ export class EtsyAdapter implements MarketplaceAdapter {
         formData.append('image', imageBlob, 'photo.jpg');
 
         const token = await this.getAccessToken();
-        await fetch(`${ETSY_BASE}/application/shops/${shopId}/listings/${data.listing_id}/images`, {
+        const uploadRes = await fetch(`${ETSY_BASE}/application/shops/${shopId}/listings/${data.listing_id}/images`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -175,17 +180,24 @@ export class EtsyAdapter implements MarketplaceAdapter {
           },
           body: formData,
         });
+        if (!uploadRes.ok) {
+          const body = await uploadRes.text().catch(() => '');
+          logger.warn({ listingId: data.listing_id, photoUrl: photo.url, status: uploadRes.status, body }, 'Etsy photo upload HTTP error');
+          photosFailed++;
+        }
       } catch (err) {
         logger.warn({ listingId: data.listing_id, photoUrl: photo.url, err: (err as Error).message }, 'Failed to upload photo to Etsy');
+        photosFailed++;
       }
     }
 
-    logger.info({ userId: this.userId, listingId: data.listing_id }, 'Etsy listing created');
+    logger.info({ userId: this.userId, listingId: data.listing_id, photosFailed }, 'Etsy listing created');
 
     return {
       marketplaceListingId: String(data.listing_id),
       marketplaceUrl: data.url,
       status: data.state === 'active' ? 'active' : 'draft',
+      ...(photosFailed > 0 ? { warning: `${photosFailed} of ${input.photos.length} photos failed to upload` } : {}),
     };
   }
 
@@ -290,17 +302,10 @@ export class EtsyAdapter implements MarketplaceAdapter {
   }
 
   async searchCategories(query: string): Promise<MarketplaceCategoryResult[]> {
-    const data = await this.request<{
-      results?: Array<{
-        id: number;
-        name: string;
-        full_path_taxonomy_ids: number[];
-        parent_id: number | null;
-      }>;
-    }>(`/application/seller-taxonomy/nodes`);
+    const nodes = await EtsyAdapter.getTaxonomyNodes();
 
     const queryLower = query.toLowerCase();
-    const matches = (data.results ?? [])
+    const matches = nodes
       .filter((cat) => cat.name.toLowerCase().includes(queryLower))
       .slice(0, 20);
 
@@ -310,5 +315,23 @@ export class EtsyAdapter implements MarketplaceAdapter {
       path: [cat.name],
       isLeaf: true,
     }));
+  }
+
+  private static taxonomyCache: Array<{ id: number; name: string }> | null = null;
+  private static taxonomyCachedAt = 0;
+
+  private static async getTaxonomyNodes(): Promise<Array<{ id: number; name: string }>> {
+    const ONE_HOUR = 60 * 60 * 1000;
+    if (EtsyAdapter.taxonomyCache && Date.now() - EtsyAdapter.taxonomyCachedAt < ONE_HOUR) {
+      return EtsyAdapter.taxonomyCache;
+    }
+    const response = await fetch(`${ETSY_BASE}/application/seller-taxonomy/nodes`, {
+      headers: { 'x-api-key': env().ETSY_API_KEY! },
+    });
+    if (!response.ok) throw new Error(`Etsy taxonomy fetch failed: ${response.status}`);
+    const data = await response.json() as { results?: Array<{ id: number; name: string }> };
+    EtsyAdapter.taxonomyCache = data.results ?? [];
+    EtsyAdapter.taxonomyCachedAt = Date.now();
+    return EtsyAdapter.taxonomyCache;
   }
 }

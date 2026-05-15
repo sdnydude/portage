@@ -225,6 +225,10 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
     const targetId = req.params.id;
     const { role, subscriptionTier, disabled, disabledReason } = req.body;
 
+    if (targetId === adminUser.sub) {
+      throw new AppError(400, 'SELF_MODIFY', 'Cannot modify your own admin account');
+    }
+
     const [target] = await db.select({ id: users.id, email: users.email, role: users.role, subscriptionTier: users.subscriptionTier })
       .from(users).where(eq(users.id, targetId)).limit(1);
 
@@ -458,16 +462,12 @@ adminRouter.get('/orders/revenue', async (_req, res, next) => {
 
 adminRouter.get('/porter/stats', async (_req, res, next) => {
   try {
-    const [stats] = await db.select({ total: count() }).from(conversations);
-
-    const allConvos = await db.select({
-      messages: conversations.messages,
+    const [stats] = await db.select({
+      total: count(),
+      totalMessages: sql<number>`coalesce(sum(jsonb_array_length(messages)) filter (where jsonb_typeof(messages) = 'array'), 0)`,
     }).from(conversations);
 
-    let totalMessages = 0;
-    for (const c of allConvos) {
-      totalMessages += Array.isArray(c.messages) ? c.messages.length : 0;
-    }
+    const totalMessages = Number(stats.totalMessages);
 
     res.json({
       totalConversations: stats.total,
@@ -572,6 +572,8 @@ adminRouter.get('/settings', async (_req, res, next) => {
   }
 });
 
+const ALLOWED_SETTINGS_KEYS = ['maintenance_mode'] as const;
+
 adminRouter.patch('/settings/:key', async (req, res, next) => {
   try {
     const adminUser = req.user!;
@@ -579,6 +581,9 @@ adminRouter.patch('/settings/:key', async (req, res, next) => {
     const { value } = req.body;
 
     if (value === undefined) throw new AppError(400, 'MISSING_VALUE', 'value is required');
+    if (!ALLOWED_SETTINGS_KEYS.includes(key as typeof ALLOWED_SETTINGS_KEYS[number])) {
+      throw new AppError(400, 'INVALID_KEY', `Setting key '${key}' is not allowed`);
+    }
 
     const [existing] = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
 

@@ -23,6 +23,8 @@ const CONDITION_MAP: Record<string, string> = {
 };
 
 let cachedConditions: Array<{ uuid: string; displayName: string }> | null = null;
+let conditionsCachedAt = 0;
+const CONDITIONS_TTL = 24 * 60 * 60 * 1000;
 
 export class ReverbAdapter implements MarketplaceAdapter {
   readonly marketplace = 'reverb' as const;
@@ -188,7 +190,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
   }
 
   static async getConditions(): Promise<Array<{ uuid: string; displayName: string }>> {
-    if (cachedConditions) return cachedConditions;
+    if (cachedConditions && Date.now() - conditionsCachedAt < CONDITIONS_TTL) return cachedConditions;
 
     const response = await fetch(`${REVERB_BASE}/listing_conditions`, {
       headers: { 'Accept': 'application/hal+json', 'Accept-Version': '3.0' },
@@ -206,6 +208,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
       uuid: c.uuid,
       displayName: c.display_name,
     }));
+    conditionsCachedAt = Date.now();
 
     return cachedConditions;
   }
