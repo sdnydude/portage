@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
@@ -12,6 +12,8 @@ import { requireAuth } from '../middleware/auth.js';
 
 const logger = createLogger('auth');
 
+const DUMMY_HASH = '$2b$12$LJ3m4ys3Lk0TSwMBEW/yWeGHnFnCMXhPsPryBa8KiRFqLFBdujGXS';
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60_000,
   limit: 10,
@@ -21,12 +23,16 @@ const authLimiter = rateLimit({
 });
 
 const registerSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  email: z.string().email('Invalid email address').transform(e => e.toLowerCase().trim()),
+  password: z.string()
+    .min(12, 'Password must be at least 12 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().transform(e => e.toLowerCase().trim()),
   password: z.string(),
 });
 
@@ -44,7 +50,7 @@ authRouter.post('/register', async (req, res, next) => {
 
     const existing = await db.select({ id: users.id })
       .from(users)
-      .where(eq(users.email, body.email))
+      .where(sql`lower(email) = ${body.email}`)
       .limit(1);
 
     if (existing.length > 0) {
@@ -98,22 +104,24 @@ authRouter.post('/login', async (req, res, next) => {
 
     const [user] = await db.select()
       .from(users)
-      .where(eq(users.email, body.email))
+      .where(sql`lower(email) = ${body.email}`)
       .limit(1);
 
     if (!user) {
+      await verifyPassword(body.password, DUMMY_HASH);
       logger.warn({ email: body.email }, 'Login attempt for non-existent email');
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
+    }
+
+    if (user.disabledAt) {
+      await verifyPassword(body.password, user.passwordHash);
+      throw new AppError(403, 'ACCOUNT_DISABLED', 'This account has been disabled');
     }
 
     const valid = await verifyPassword(body.password, user.passwordHash);
     if (!valid) {
       logger.warn({ userId: user.id }, 'Login attempt with wrong password');
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
-    }
-
-    if (user.disabledAt) {
-      throw new AppError(403, 'ACCOUNT_DISABLED', 'This account has been disabled');
     }
 
     const jwtPayload = { sub: user.id, email: user.email, tier: user.subscriptionTier, role: user.role };

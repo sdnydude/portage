@@ -48,6 +48,7 @@ const envSchema = z.object({
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_EMAIL: z.string().optional(),
   REMBG_URL: z.string().default('http://localhost:7000'),
+  METRICS_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

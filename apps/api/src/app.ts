@@ -1,4 +1,5 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
+import helmet from 'helmet';
 import cors from 'cors';
 import { pinoHttp } from 'pino-http';
 import { rootLogger } from './lib/logger.js';
@@ -30,6 +31,8 @@ export function createApp() {
   const config = env();
   const app = express();
 
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
   app.use(cors({
     origin: config.NODE_ENV === 'production'
       ? ['https://portage.digitalharmonyai.com']
@@ -57,8 +60,15 @@ export function createApp() {
     next();
   });
 
-  // Metrics endpoint — no auth required for Prometheus scraping
-  app.get('/metrics', async (_req: Request, res: Response) => {
+  app.get('/metrics', async (req: Request, res: Response) => {
+    const secret = config.METRICS_SECRET;
+    if (secret) {
+      const auth = req.headers.authorization;
+      if (!auth || auth !== `Bearer ${secret}`) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+    }
     res.set('Content-Type', metricsRegistry.contentType);
     res.end(await metricsRegistry.metrics());
   });
