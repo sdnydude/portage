@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
+import { AppError } from '../middleware/error.js';
 
 const updatePrefsSchema = z.object({
   listingInterface: z.enum(['conversational', 'swipe', 'hybrid']).optional(),
@@ -25,6 +26,7 @@ preferencesRouter.get('/', async (req, res, next) => {
       listingCompactMode: users.listingCompactMode,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
+    if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
     res.json(user);
   } catch (err) {
     next(err);
