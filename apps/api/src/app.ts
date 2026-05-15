@@ -60,17 +60,21 @@ export function createApp() {
     next();
   });
 
-  app.get('/metrics', async (req: Request, res: Response) => {
-    const secret = config.METRICS_SECRET;
-    if (secret) {
-      const auth = req.headers.authorization;
-      if (!auth || auth !== `Bearer ${secret}`) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+  app.get('/metrics', async (req: Request, res: Response, next) => {
+    try {
+      const secret = config.METRICS_SECRET;
+      if (secret) {
+        const auth = req.headers.authorization;
+        if (!auth || auth !== `Bearer ${secret}`) {
+          res.status(401).json({ error: 'Unauthorized' });
+          return;
+        }
       }
+      res.set('Content-Type', metricsRegistry.contentType);
+      res.end(await metricsRegistry.metrics());
+    } catch (err) {
+      next(err);
     }
-    res.set('Content-Type', metricsRegistry.contentType);
-    res.end(await metricsRegistry.metrics());
   });
 
   app.use('/health', healthRouter);

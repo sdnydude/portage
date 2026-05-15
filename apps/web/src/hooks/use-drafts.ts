@@ -81,7 +81,9 @@ export function useDrafts() {
     try {
       await api(`/drafts/${draftId}`, { method: 'DELETE', token });
       setDrafts(prev => prev.filter(d => d.id !== draftId));
-    } catch { /* ignore */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete draft');
+    }
   }, [token]);
 
   return { drafts, isLoading, error, fetchDrafts, getDraft, saveDraft, debouncedSave, deleteDraft };

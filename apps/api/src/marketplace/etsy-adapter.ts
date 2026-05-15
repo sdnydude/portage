@@ -321,8 +321,7 @@ export class EtsyAdapter implements MarketplaceAdapter {
   private static taxonomyCachedAt = 0;
 
   private static async getTaxonomyNodes(): Promise<Array<{ id: number; name: string }>> {
-    const ONE_HOUR = 60 * 60 * 1000;
-    if (EtsyAdapter.taxonomyCache && Date.now() - EtsyAdapter.taxonomyCachedAt < ONE_HOUR) {
+    if (EtsyAdapter.taxonomyCache && Date.now() - EtsyAdapter.taxonomyCachedAt < SHOP_ID_TTL) {
       return EtsyAdapter.taxonomyCache;
     }
     const response = await fetch(`${ETSY_BASE}/application/seller-taxonomy/nodes`, {
