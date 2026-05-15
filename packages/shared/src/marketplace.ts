@@ -18,8 +18,9 @@ export interface MarketplaceListingInput {
 
 export interface MarketplaceListingResult {
   marketplaceListingId: string;
-  marketplaceUrl: string;
+  marketplaceUrl?: string;
   status: 'active' | 'draft' | 'pending';
+  warning?: string;
 }
 
 export interface MarketplaceOrderResult {

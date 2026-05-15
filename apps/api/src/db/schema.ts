@@ -128,7 +128,9 @@ export const marketplaceAccounts = pgTable('marketplace_accounts', {
   tokenExpiresAt: timestamp('token_expires_at').notNull(),
   marketplaceUserId: varchar('marketplace_user_id', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  uniqueIndex('uq_marketplace_accounts_user_mkt').on(t.userId, t.marketplace),
+]);
 
 export const adminAuditLog = pgTable('admin_audit_log', {
   id: uuid('id').defaultRandom().primaryKey(),

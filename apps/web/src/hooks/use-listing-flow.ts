@@ -300,6 +300,7 @@ export function useListingFlow() {
           token,
         });
         itemId = item.id;
+        setState(prev => ({ ...prev, inventoryItemId: itemId }));
       }
 
       const listing = await api<{ id: string; status: string }>('/listings', {

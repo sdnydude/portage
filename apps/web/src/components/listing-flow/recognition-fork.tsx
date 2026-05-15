@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 
 interface RecognitionForkProps {
@@ -10,14 +11,17 @@ interface RecognitionForkProps {
 export function RecognitionFork({ onListForSale, onSaveToInventory }: RecognitionForkProps) {
   const { forkPref, forkCount, updatePrefs } = useUserPreferences();
 
-  if (forkPref === 'list' || forkCount >= 5) {
-    onListForSale();
-    return null;
-  }
-  if (forkPref === 'inventory') {
-    onSaveToInventory();
-    return null;
-  }
+  const shouldAutoRoute = forkPref === 'list' || forkCount >= 5 || forkPref === 'inventory';
+
+  useEffect(() => {
+    if (forkPref === 'list' || forkCount >= 5) {
+      onListForSale();
+    } else if (forkPref === 'inventory') {
+      onSaveToInventory();
+    }
+  }, [forkPref, forkCount, onListForSale, onSaveToInventory]);
+
+  if (shouldAutoRoute) return null;
 
   const handleList = () => {
     updatePrefs({});

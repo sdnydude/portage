@@ -153,7 +153,12 @@ listingsRouter.post('/', async (req, res, next) => {
 
     logger.info({ userId, listingId: listing.id, marketplace: body.marketplace, status }, 'Listing created');
 
-    res.status(201).json(listing);
+    const response: Record<string, unknown> = { ...listing };
+    if (body.publishImmediately && status === 'draft') {
+      response.warning = 'Listing was created but could not be published. It has been saved as a draft.';
+    }
+
+    res.status(201).json(response);
   } catch (err) {
     next(err);
   }

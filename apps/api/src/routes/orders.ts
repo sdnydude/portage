@@ -83,9 +83,13 @@ ordersRouter.patch('/:id', async (req, res, next) => {
     if (body.status === 'shipped') updates.shippedAt = new Date();
     if (body.status === 'delivered') updates.deliveredAt = new Date();
 
+    if (Object.keys(updates).length === 0) {
+      throw new AppError(400, 'NO_CHANGES', 'No valid fields to update');
+    }
+
     const [updated] = await db.update(orders)
       .set(updates)
-      .where(eq(orders.id, req.params.id))
+      .where(and(eq(orders.id, req.params.id), eq(orders.userId, userId)))
       .returning();
 
     logger.info({ userId, orderId: updated.id, status: body.status }, 'Order updated');

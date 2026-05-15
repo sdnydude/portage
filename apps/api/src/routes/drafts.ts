@@ -73,7 +73,7 @@ draftsRouter.post('/', async (req, res, next) => {
             flowState: body.flowState,
             updatedAt: new Date(),
           })
-          .where(eq(listingDrafts.id, body.id))
+          .where(and(eq(listingDrafts.id, body.id), eq(listingDrafts.userId, userId)))
           .returning();
 
         logger.debug({ userId, draftId: updated.id }, 'Draft updated');

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
@@ -7,8 +8,17 @@ import { users } from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken } from '../lib/jwt.js';
 import { AppError } from '../middleware/error.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const logger = createLogger('auth');
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts, please try again later', code: 'RATE_LIMITED' },
+});
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -25,6 +35,8 @@ const refreshSchema = z.object({
 });
 
 export const authRouter = Router();
+
+authRouter.use(authLimiter);
 
 authRouter.post('/register', async (req, res, next) => {
   try {
@@ -189,6 +201,22 @@ authRouter.post('/refresh', async (req, res, next) => {
         createdAt: user.createdAt,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.post('/logout', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    await db.update(users)
+      .set({ refreshTokenHash: null })
+      .where(eq(users.id, userId));
+
+    logger.info({ userId }, 'User logged out — refresh token revoked');
+
+    res.json({ loggedOut: true });
   } catch (err) {
     next(err);
   }

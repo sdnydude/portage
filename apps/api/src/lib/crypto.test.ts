@@ -19,7 +19,7 @@ describe('crypto', () => {
     const ciphertext = encrypt('test');
     const parts = ciphertext.split(':');
     expect(parts).toHaveLength(3);
-    expect(parts[0]).toMatch(/^[0-9a-f]{32}$/); // 16-byte IV in hex
+    expect(parts[0]).toMatch(/^[0-9a-f]{24}$/); // 12-byte IV in hex (NIST GCM recommended)
     expect(parts[1]).toMatch(/^[0-9a-f]{32}$/); // 16-byte auth tag in hex
     expect(parts[2].length).toBeGreaterThan(0);
   });

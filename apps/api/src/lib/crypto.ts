@@ -2,12 +2,16 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:
 import { env } from './env.js';
 
 const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
+const IV_LENGTH = 12;
 const KEY_LENGTH = 32;
 const SALT = 'portage-token-encryption';
 
+let _cachedKey: Buffer | null = null;
+
 function deriveKey(): Buffer {
-  return scryptSync(env().ENCRYPTION_KEY ?? env().JWT_SECRET, SALT, KEY_LENGTH);
+  if (_cachedKey) return _cachedKey;
+  _cachedKey = scryptSync(env().ENCRYPTION_KEY, SALT, KEY_LENGTH);
+  return _cachedKey;
 }
 
 export function encrypt(plaintext: string): string {

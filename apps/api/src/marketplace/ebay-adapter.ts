@@ -152,6 +152,9 @@ export class EbayAdapter implements MarketplaceAdapter {
     let listingId: string;
     let status: 'active' | 'draft' | 'pending' = 'draft';
 
+    let marketplaceUrl: string | undefined;
+    let warning: string | undefined;
+
     try {
       const publishResult = await this.request<{ listingId: string }>(
         `/sell/inventory/v1/offer/${offerData.offerId}/publish`,
@@ -159,17 +162,20 @@ export class EbayAdapter implements MarketplaceAdapter {
       );
       listingId = publishResult.listingId;
       status = 'active';
+      marketplaceUrl = `https://www.ebay.com/itm/${listingId}`;
       logger.info({ userId: this.userId, listingId }, 'eBay listing published');
-    } catch {
+    } catch (err) {
       listingId = offerData.offerId;
       status = 'draft';
-      logger.warn({ userId: this.userId, offerId: offerData.offerId }, 'eBay listing created as draft — publish failed');
+      warning = 'Listing created as draft — publish to eBay failed. You can publish manually from your eBay seller hub.';
+      logger.warn({ userId: this.userId, offerId: offerData.offerId, err: (err as Error).message }, 'eBay listing created as draft — publish failed');
     }
 
     return {
       marketplaceListingId: listingId,
-      marketplaceUrl: `https://www.ebay.com/itm/${listingId}`,
+      marketplaceUrl,
       status,
+      warning,
     };
   }
 

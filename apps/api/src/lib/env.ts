@@ -7,7 +7,7 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().default(8016),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(32),
-  ENCRYPTION_KEY: z.string().min(64).optional(),
+  ENCRYPTION_KEY: z.string().min(64),
   ANTHROPIC_API_KEY: z.string().optional(),
   VISION_PROVIDERS: z.string().default('anthropic'),
   CHAT_PROVIDERS: z.string().default('anthropic'),
