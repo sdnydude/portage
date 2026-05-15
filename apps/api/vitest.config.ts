@@ -5,5 +5,15 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/test/**', 'src/**/*.test.ts', 'src/db/schema.ts', 'src/scripts/**'],
+      thresholds: {
+        lines: 30,
+        functions: 30,
+        branches: 25,
+      },
+    },
   },
 });

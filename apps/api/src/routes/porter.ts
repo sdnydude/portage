@@ -215,9 +215,10 @@ porterRouter.post('/message', async (req, res, next) => {
     const [porterUser] = await db.select({
       subscriptionTier: users.subscriptionTier,
       porterMessagesToday: sql<number>`
-        (select count(*) from ${conversations}
+        (select coalesce(sum(jsonb_array_length(messages)), 0) from ${conversations}
          where user_id = ${userId}
-         and updated_at > now() - interval '1 day')
+         and updated_at > now() - interval '1 day'
+         and jsonb_typeof(messages) = 'array')
       `,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
