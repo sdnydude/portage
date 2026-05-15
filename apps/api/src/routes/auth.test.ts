@@ -90,6 +90,24 @@ describe('POST /auth/register', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });
+
+  it('rejects password without uppercase letter', async () => {
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ email: 'test@example.com', password: 'alllowercase123' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects password shorter than 12 characters', async () => {
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ email: 'test@example.com', password: 'Short1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
 });
 
 describe('POST /auth/login', () => {
