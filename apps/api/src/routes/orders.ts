@@ -18,22 +18,33 @@ export const ordersRouter = Router();
 
 ordersRouter.use(requireAuth);
 
+const validStatuses = ['payment_received', 'label_purchased', 'shipped', 'delivered'] as const;
+type OrderStatus = typeof validStatuses[number];
+
 ordersRouter.get('/', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
-    const status = req.query.status as string | undefined;
+    const statusParam = req.query.status as string | undefined;
+    const status: OrderStatus | undefined = statusParam && validStatuses.includes(statusParam as OrderStatus)
+      ? statusParam as OrderStatus
+      : undefined;
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
 
     const conditions = [eq(orders.userId, userId)];
     if (status) {
-      conditions.push(eq(orders.status, status as 'payment_received' | 'label_purchased' | 'shipped' | 'delivered'));
+      conditions.push(eq(orders.status, status));
     }
 
     const results = await db.select()
       .from(orders)
       .where(and(...conditions))
-      .orderBy(desc(orders.soldAt));
+      .orderBy(desc(orders.soldAt))
+      .limit(limit)
+      .offset(offset);
 
-    res.json({ orders: results });
+    res.json({ orders: results, pagination: { limit, offset } });
   } catch (err) {
     next(err);
   }
