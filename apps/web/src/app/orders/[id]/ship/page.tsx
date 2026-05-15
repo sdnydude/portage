@@ -6,6 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { useShippingPresets, useShippingRates, useShippingLabel } from "@/hooks/use-shipping";
 import type { ShippingRate, ShippingPreset } from "@/hooks/use-shipping";
+import type { Address } from "@portage/shared";
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -14,15 +15,7 @@ interface OrderDetail {
   marketplace: "ebay" | "etsy";
   marketplaceOrderId: string;
   buyerUsername: string;
-  buyerAddress?: {
-    name: string;
-    street1: string;
-    street2?: string;
-    city: string;
-    state: string;
-    zip: string;
-    country: string;
-  };
+  buyerAddress?: Address;
   salePrice: number;
   shippingCost: number;
   currency: string;
