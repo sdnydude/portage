@@ -121,6 +121,7 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
           accessTokenEncrypted: encrypt(tokenData.access_token),
           refreshTokenEncrypted: encrypt(tokenData.refresh_token),
           tokenExpiresAt: expiresAt,
+          updatedAt: new Date(),
         })
         .where(eq(marketplaceAccounts.id, existing[0].id));
     } else {

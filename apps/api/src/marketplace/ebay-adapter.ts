@@ -80,7 +80,7 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
-    const sku = `portage-${Date.now()}`;
+    const sku = `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const ebayCondition = CONDITION_MAP[input.condition] ?? 'GOOD';
     const specific = input.marketplaceSpecific ?? {};
 

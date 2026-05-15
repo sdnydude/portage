@@ -201,7 +201,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
     if (body.marketplaceSpecificFields !== undefined) updates.marketplaceSpecificFields = body.marketplaceSpecificFields;
 
     const [updated] = await db.update(listings)
-      .set(updates)
+      .set({ ...updates, updatedAt: new Date() })
       .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
       .returning();
 
@@ -277,6 +277,7 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
         marketplaceListingId: result.marketplaceListingId,
         status: result.status === 'active' ? 'active' : 'draft',
         publishedAt: result.status === 'active' ? new Date() : null,
+        updatedAt: new Date(),
       })
       .where(eq(listings.id, listing.id))
       .returning();

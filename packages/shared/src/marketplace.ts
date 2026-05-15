@@ -31,6 +31,7 @@ export interface MarketplaceOrderResult {
   shippingCost: number;
   marketplaceFees: number;
   currency: string;
+  soldAt?: Date;
   shippingAddress: {
     name: string;
     street1: string;

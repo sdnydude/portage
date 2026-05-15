@@ -84,6 +84,7 @@ export class EtsyAdapter implements MarketplaceAdapter {
         accessTokenEncrypted: encrypt(data.access_token),
         refreshTokenEncrypted: encrypt(data.refresh_token),
         tokenExpiresAt: newExpiresAt,
+        updatedAt: new Date(),
       })
       .where(eq(marketplaceAccounts.id, account.id));
 
