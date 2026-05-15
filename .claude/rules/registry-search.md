@@ -24,6 +24,7 @@ The endpoint searches all sources by default. Filter with a `"sources"` array wh
 | `insights` | AI-captured ★ Insight blocks from Claude sessions |
 | `decisions` | Architectural decision logs with alternatives and rationale |
 | `ship_sessions` | /ship workflow records: plans, decisions, deferred items |
+| `agent_sessions` | Claude Code session logs with summaries of engineering work (110 searchable of 515 total) |
 
 ## How to use results
 
