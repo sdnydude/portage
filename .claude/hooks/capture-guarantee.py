@@ -203,6 +203,7 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
                         post_correction_called = True
                     elif "post-bug-fixes.sh" in cmd:
                         post_bug_fix_called = True
+                    # Bare if — git commit never overlaps with post-*.sh patterns
                     if "git commit" in cmd and "fix:" in cmd:
                         fix_commits += 1
 
@@ -214,9 +215,9 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
                             ship_session_complete = True
                             ship_state_content = file_content
                     if DECISION_FILE.search(file_path):
-                        file_content = inp.get("content", "") or inp.get("new_string", "")
-                        if file_content:
-                            decisions_found.append({"content": file_content, "file_path": file_path})
+                        decision_content = inp.get("content", "") or inp.get("new_string", "")
+                        if decision_content:
+                            decisions_found.append({"content": decision_content, "file_path": file_path})
 
     with open(transcript, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -301,7 +302,7 @@ def build_ship_session_payload(ship_state_content: str) -> str:
     return json.dumps(payload)
 
 
-def parse_decision_content(content: str) -> dict:
+def parse_decision_content(content: str) -> dict[str, str]:
     """Parse a decision file's frontmatter and body into payload fields."""
     parts = content.split("---")
     frontmatter = ""
@@ -348,9 +349,12 @@ def parse_decision_content(content: str) -> dict:
     }
 
 
-def build_decision_payload(decision_data: dict) -> str:
-    """Construct JSON payload for post-decision-logs.sh."""
+def build_decision_payload(decision_data: dict) -> str | None:
+    """Construct JSON payload for post-decision-logs.sh. Returns None if unparseable."""
     parsed = parse_decision_content(decision_data["content"])
+    if parsed["title"] == "Untitled decision":
+        logging.warning(f"Decision file has no parseable title, skipping: {decision_data.get('file_path', 'unknown')}")
+        return None
     payload = {
         "title": parsed["title"],
         "choice": parsed["choice"],
@@ -391,13 +395,13 @@ def fire_capture(script_name: str, payload: str) -> None:
         return
 
     try:
-        log_fh = open(LOG_FILE, "a")
-        subprocess.Popen(
-            ["bash", str(script), payload],
-            start_new_session=True,
-            stdout=subprocess.DEVNULL,
-            stderr=log_fh,
-        )
+        with open(LOG_FILE, "a") as log_fh:
+            subprocess.Popen(
+                ["bash", str(script), payload],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=log_fh,
+            )
     except OSError as e:
         logging.error(f"Failed to fire {script_name}: {e}")
 
@@ -425,12 +429,22 @@ def main() -> None:
     decisions_found = result["decisions_found"]
     post_decision_count = result["post_decision_count"]
     missed_decision_count = len(decisions_found) - post_decision_count
+    if missed_decision_count < 0:
+        logging.warning(
+            f"post-decision-logs called {post_decision_count}x but only "
+            f"{len(decisions_found)} decision files detected — possible detection gap"
+        )
 
     deferred_items: list[str] = []
     if result["ship_state_content"]:
         deferred_items = extract_deferred_items(result["ship_state_content"])
     post_deferred_count = result["post_deferred_count"]
     missed_deferred_count = len(deferred_items) - post_deferred_count
+    if missed_deferred_count < 0:
+        logging.warning(
+            f"post-deferred-items called {post_deferred_count}x but only "
+            f"{len(deferred_items)} deferred items detected — possible detection gap"
+        )
 
     if (missed_insight_count <= 0 and not ship_missed
             and missed_decision_count <= 0 and missed_deferred_count <= 0):
@@ -470,11 +484,19 @@ def main() -> None:
             fire_capture("post-ship-session.sh", payload)
             posted_ship = 1
 
+    feature_name = ""
+    if result["ship_state_content"]:
+        fm = re.search(r"^feature:\s*(.+)$", result["ship_state_content"], re.MULTILINE)
+        if fm:
+            feature_name = fm.group(1).strip()
+
     posted_decisions = 0
     if missed_decision_count > 0:
         uncaptured = decisions_found[-missed_decision_count:]
         for decision in uncaptured:
             payload = build_decision_payload(decision)
+            if payload is None:
+                continue
             if DRY_RUN:
                 print(f"[DRY-RUN] post-decision-logs.sh: {payload[:200]}...")
             else:
@@ -483,11 +505,6 @@ def main() -> None:
 
     posted_deferred = 0
     if missed_deferred_count > 0:
-        feature_name = ""
-        if result["ship_state_content"]:
-            fm = re.search(r"^feature:\s*(.+)$", result["ship_state_content"], re.MULTILINE)
-            if fm:
-                feature_name = fm.group(1).strip()
         uncaptured = deferred_items[-missed_deferred_count:]
         for item in uncaptured:
             payload = build_deferred_payload(item, feature_name)
