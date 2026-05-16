@@ -24,6 +24,11 @@ The endpoint searches all sources by default. Filter with a `"sources"` array wh
 | `insights` | AI-captured ★ Insight blocks from Claude sessions |
 | `decisions` | Architectural decision logs with alternatives and rationale |
 | `ship_sessions` | /ship workflow records: plans, decisions, deferred items |
+| `corrections` | User corrections to Claude behavior with category and lesson |
+| `bug_fixes` | Root cause analyses: symptom, cause, fix, severity |
+| `deferred_items` | Work discovered but intentionally deferred for later |
+| `agent_sessions` | Claude Code session summaries and metadata |
+| `dev_changelog` | Development changelog entries by epic/category |
 
 ## How to use results
 

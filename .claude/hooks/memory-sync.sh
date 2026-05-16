@@ -26,4 +26,10 @@ if [ -f "$NOW_FILE" ] && [ -s "$NOW_FILE" ]; then
   echo "" > "$NOW_FILE"
 fi
 
+# Mark session manifest as clean shutdown
+MANIFEST="$PROJECT_DIR/.claude/session-manifest.json"
+if [ -f "$MANIFEST" ]; then
+  sed -i 's/"clean_shutdown": false/"clean_shutdown": true/' "$MANIFEST" 2>/dev/null || true
+fi
+
 exit 0
