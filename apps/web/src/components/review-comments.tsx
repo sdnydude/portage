@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { API_BASE } from "@/lib/api";
 
 interface Comment {
   id: string;
@@ -11,7 +12,7 @@ interface Comment {
   createdAt: string;
 }
 
-const API = "https://portage-api.digitalharmonyai.com/survey/comments";
+const API = `${API_BASE}/survey/comments`;
 
 export function ReviewComments({ direction, currentStep }: { direction: string; currentStep: number }) {
   const [open, setOpen] = useState(false);

@@ -69,3 +69,32 @@ describe('admin auth boundary', () => {
     }
   });
 });
+
+describe('admin functional guards', () => {
+  const adminId = 'admin-user-id';
+  let adminToken: string;
+
+  beforeAll(() => {
+    adminToken = createTestToken({ sub: adminId, role: 'admin' });
+  });
+
+  it('PATCH /admin/users/:id rejects self-modification', async () => {
+    const res = await request(app)
+      .patch(`/admin/users/${adminId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ role: 'user' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('SELF_MODIFY');
+  });
+
+  it('PATCH /admin/settings/:key rejects disallowed keys', async () => {
+    const res = await request(app)
+      .patch('/admin/settings/dangerous_key')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ value: 'anything' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_KEY');
+  });
+});
