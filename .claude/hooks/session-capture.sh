@@ -7,9 +7,9 @@ cd "$PROJECT_DIR" || exit 0
 
 REGISTRY_URL="http://10.0.0.251:8011/api/agent-sessions"
 
-SESSION_ID="${CLAUDE_SESSION_ID:-unknown-$(date +%s)}"
+SESSION_ID="${CLAUDE_CODE_SESSION_ID:-unknown-$(date +%s)}"
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-MODEL="${CLAUDE_MODEL:-unknown}"
+MODEL="${ANTHROPIC_MODEL:-unknown}"
 
 COMMITS=$(git log --since="12 hours ago" --format='"%H"' --no-merges 2>/dev/null | head -20 | paste -sd, - || echo "")
 COMMITS="[${COMMITS}]"
