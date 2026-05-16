@@ -64,11 +64,11 @@
 - [x] **Task 45:** Admin frontend: user management (list + detail with tabs)
 - [x] **Task 46:** Admin frontend: inventory/listings/orders/porter/marketplace/settings/audit pages
 
-## Phase 9: Repo Infrastructure (Tasks 47-49) — 2/3
+## Phase 9: Repo Infrastructure (Tasks 47-49) — 3/3 ✓
 
 - [x] **Task 47:** GitHub repo setup — README.md, CLAUDE.md, CI workflow (lint + typecheck + test + build), dependabot, PR/issue templates
 - [x] **Task 48:** ESLint fixes — disabled React 19 set-state-in-effect rule, fixed ref-during-render, CI green
-- [ ] **Task 49:** Branch protection — CI required on main, no force push *(configured via API, not yet verified with a test PR)*
+- [x] **Task 49:** Branch protection — CI required on main, no force push *(verified: PR #69 shows all 3 checks required and passing)*
 
 ---
 
