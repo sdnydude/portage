@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionStart hook: reset tool call counter + check for crashed previous session
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)" || PROJECT_DIR="/home/swebber64/DHG/portage"
-SESSION_ID="${CLAUDE_SESSION_ID:-default}"
+SESSION_ID="${CLAUDE_CODE_SESSION_ID:-default}"
 MANIFEST="$PROJECT_DIR/.claude/session-manifest.json"
 
 # Check for unclean previous session

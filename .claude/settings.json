@@ -7,6 +7,7 @@
       "Bash(~/.claude/scripts/post-correction.sh *)",
       "Bash(~/.claude/scripts/post-bug-fixes.sh *)",
       "Bash(~/.claude/scripts/post-deferred-items.sh *)",
+      "Bash(~/.claude/scripts/post-test-coverage.sh *)",
       "Bash(doppler secrets *)",
       "Bash(doppler projects *)",
       "Bash(docker logs *)",
@@ -54,6 +55,11 @@
           {
             "type": "command",
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/session-capture.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python3 /home/swebber64/DHG/portage/.claude/hooks/capture-guarantee.py",
             "timeout": 15
           }
         ]

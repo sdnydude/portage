@@ -1,35 +1,20 @@
 status: in_progress
-phase: 6
-feature: WebP → JPEG image format — fix marketplace compatibility
-approach: |
-  Switch all Sharp image processing from .webp() to .jpeg() in image.ts.
-  Update content-type and extension references in upload routes.
-  Background removal stays PNG (alpha transparency).
-  No schema changes, no adapter changes needed.
-complexity: simple
-tdd: no
-
-commits:
-  - "4c75edc — fix: switch image pipeline from WebP to JPEG for marketplace compatibility"
-
-review:
-  agents: 6 (silent-failure-hunter, type-design-analyzer, code-reviewer, comment-analyzer, pr-test-analyzer, code-simplifier)
-  critical_found: 0
-  important_found: 3
-  important_fixed: 3
-  fixes:
-    - "Restored WebP branch in remove-bg ternary for legacy R2 images"
-    - "Fixed 'photo.webp' → 'photo.jpg' in use-listing-flow.ts (missed reference)"
-    - "Collapsed redundant ternary (two identical branches)"
-  minor_deferred: 5
-
-verification:
-  typecheck: pass (all 3 workspaces)
-  tests: 93/93 pass (12 files)
-
-deferred:
-  - "image.test.ts — processImage/enhanceImage/rotateImage/cropImage/generateThumbnail have no direct tests"
-  - "ProcessedImage.format should be a literal union type, not string"
-  - "fetchPhotosAsBase64 silent content-type fallback (no log when header absent)"
-  - "scan.ts R2 upload catch block loses userId + conflates Sharp/R2 errors"
-  - "Suggested comments on ALLOWED_TYPES/SUPPORTED_TYPES for WebP input acceptance"
+phase: 4
+feature: Hook-driven capture — guaranteed registry ingest via session hooks instead of AI-discipline rules
+approach: Python Stop hook parses session JSONL, count-based gap detection for insights + binary check for ship sessions
+complexity: complex
+spec:
+  v1_scope: insights (count-based), ship_sessions (binary check)
+  skip_v1: decisions, bug_fixes, corrections, deferred_items
+  advisor_confirmed: true (3 rounds)
+plan:
+  task_1: Fix session ID bug in existing hooks (separate commit)
+  task_2: Core parser — streaming JSONL, format validation, fail-open
+  task_3: Insight detection + count-based gap + extraction
+  task_4: Ship session detection (binary check)
+  task_5: Parallel POST + log file + dry-run + wire settings.json
+  task_6: Gut rules to stubs, delete sweep rule, test fixtures
+known_limitations:
+  - Count-based misses insight #2 if #3 captured but #2 wasn't (edge case)
+  - Overcapture possible (harmless)
+  - Stop hook stdout goes to log file not Claude
