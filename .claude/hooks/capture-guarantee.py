@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Stop hook: guaranteed capture of missed insights and ship sessions.
+"""Stop hook: guaranteed capture of missed insights, ship sessions, decisions, and deferred items.
 
-Parses the session JSONL transcript, detects ★ Insight blocks and ship-session
-completions that weren't followed by matching POST script calls, and fires the
-capture scripts for any gaps.
+Parses the session JSONL transcript, detects capture-worthy events that weren't
+followed by matching POST script calls, and fires the capture scripts for any gaps.
+
+V2 adds: decision file detection, deferred-items extraction from ship-state,
+and advisory logging for corrections/bug-fixes (no auto-fire).
 
 Design principles:
 - Fail-open: never crash, never block, exit 0 always
 - Stream-parse: line-by-line, handles 50MB+ files in <200ms
 - Fire-and-forget: POSTs run in detached subprocesses
-- Count-based detection: compares insight count vs post-insight.sh call count
+- Count-based detection: compares event count vs script call count
 """
 
 import json
@@ -40,6 +42,11 @@ for i, arg in enumerate(sys.argv):
 
 INSIGHT_OPEN = re.compile(r"★ Insight[─`\s]*\n")
 INSIGHT_CLOSE = re.compile(r"^\s*`?─{10,}`?\s*$", re.MULTILINE)
+DECISION_FILE = re.compile(r"decision_[a-z]+_[a-z_]+\.md$")
+CORRECTION_SIGNALS = re.compile(
+    r"(don't do that|stop doing that|you're wrong|that's not right|that's wrong|stop that)",
+    re.IGNORECASE,
+)
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 
@@ -95,6 +102,25 @@ def extract_insights_from_text(text: str) -> list[str]:
     return insights
 
 
+def extract_deferred_items(ship_state_content: str) -> list[str]:
+    """Extract deferred item strings from ship-state.md content."""
+    items = []
+    in_deferred = False
+    for line in ship_state_content.split("\n"):
+        if line.startswith("deferred:"):
+            in_deferred = True
+            continue
+        if in_deferred:
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                item = stripped[2:].strip().strip('"')
+                if item:
+                    items.append(item)
+            elif stripped and not line.startswith(" ") and not line.startswith("\t"):
+                break
+    return items
+
+
 def parse_transcript(transcript: Path) -> dict[str, Any]:
     """Stream-parse the JSONL transcript and extract capture-relevant data."""
     insights_found: list[str] = []
@@ -102,6 +128,13 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
     ship_session_complete = False
     post_ship_session_called = False
     ship_state_content: str | None = None
+    decisions_found: list[dict] = []
+    post_decision_count = 0
+    post_deferred_count = 0
+    correction_signals = 0
+    post_correction_called = False
+    fix_commits = 0
+    post_bug_fix_called = False
 
     sample: list[dict] = []
     validated = False
@@ -112,8 +145,27 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
         """Extract capture-relevant data from a single JSONL entry."""
         nonlocal post_insight_count, post_ship_session_called
         nonlocal ship_session_complete, ship_state_content
+        nonlocal post_decision_count, post_deferred_count
+        nonlocal correction_signals, post_correction_called
+        nonlocal fix_commits, post_bug_fix_called
 
-        if entry.get("type") != "assistant":
+        entry_type = entry.get("type")
+
+        if entry_type == "human":
+            message = entry.get("message", {})
+            msg_content = message.get("content", "")
+            if isinstance(msg_content, str):
+                if CORRECTION_SIGNALS.search(msg_content):
+                    correction_signals += 1
+            elif isinstance(msg_content, list):
+                for block in msg_content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        if CORRECTION_SIGNALS.search(block.get("text", "")):
+                            correction_signals += 1
+                            break
+            return
+
+        if entry_type != "assistant":
             return
 
         message = entry.get("message", {})
@@ -143,6 +195,16 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
                         post_insight_count += 1
                     elif "post-ship-session.sh" in cmd:
                         post_ship_session_called = True
+                    elif "post-decision-logs.sh" in cmd:
+                        post_decision_count += 1
+                    elif "post-deferred-items.sh" in cmd:
+                        post_deferred_count += 1
+                    elif "post-correction.sh" in cmd:
+                        post_correction_called = True
+                    elif "post-bug-fixes.sh" in cmd:
+                        post_bug_fix_called = True
+                    if "git commit" in cmd and "fix:" in cmd:
+                        fix_commits += 1
 
                 elif name in ("Write", "Edit"):
                     file_path = inp.get("file_path", "")
@@ -151,6 +213,10 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
                         if "status: complete" in file_content:
                             ship_session_complete = True
                             ship_state_content = file_content
+                    if DECISION_FILE.search(file_path):
+                        file_content = inp.get("content", "") or inp.get("new_string", "")
+                        if file_content:
+                            decisions_found.append({"content": file_content, "file_path": file_path})
 
     with open(transcript, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -190,6 +256,13 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
         "ship_session_complete": ship_session_complete,
         "post_ship_session_called": post_ship_session_called,
         "ship_state_content": ship_state_content,
+        "decisions_found": decisions_found,
+        "post_decision_count": post_decision_count,
+        "post_deferred_count": post_deferred_count,
+        "correction_signals": correction_signals,
+        "post_correction_called": post_correction_called,
+        "fix_commits": fix_commits,
+        "post_bug_fix_called": post_bug_fix_called,
     }
 
 
@@ -223,6 +296,86 @@ def build_ship_session_payload(ship_state_content: str) -> str:
         "branch": os.environ.get("GIT_BRANCH", "unknown"),
         "tags": ["hook-guarantee"],
         "source": "hook-guarantee",
+        "model_name": os.environ.get("ANTHROPIC_MODEL", "unknown"),
+    }
+    return json.dumps(payload)
+
+
+def parse_decision_content(content: str) -> dict:
+    """Parse a decision file's frontmatter and body into payload fields."""
+    parts = content.split("---")
+    frontmatter = ""
+    body = content
+    if len(parts) >= 3:
+        frontmatter = parts[1]
+        body = "---".join(parts[2:]).strip()
+
+    def fm_field(field: str) -> str:
+        match = re.search(rf"^{field}:\s*(.+)$", frontmatter, re.MULTILINE)
+        return match.group(1).strip() if match else ""
+
+    title = fm_field("description") or fm_field("name")
+    domain = fm_field("domain") or "other"
+
+    choice = body
+    alternatives = ""
+    rationale = ""
+
+    over_match = re.search(r"\*\*Over:\*\*\s*", body)
+    because_match = re.search(r"\*\*Because:\*\*\s*", body)
+    context_match = re.search(r"\*\*Context:\*\*\s*", body)
+
+    if over_match:
+        choice = body[:over_match.start()].strip()
+        if because_match:
+            alternatives = body[over_match.end():because_match.start()].strip()
+            if context_match:
+                rationale = body[because_match.end():context_match.start()].strip()
+            else:
+                rationale = body[because_match.end():].strip()
+        else:
+            alternatives = body[over_match.end():].strip()
+    elif because_match:
+        choice = body[:because_match.start()].strip()
+        rationale = body[because_match.end():].strip()
+
+    return {
+        "title": title or "Untitled decision",
+        "choice": choice[:2000],
+        "alternatives_rejected": alternatives[:2000],
+        "rationale": rationale[:2000],
+        "domain": domain,
+    }
+
+
+def build_decision_payload(decision_data: dict) -> str:
+    """Construct JSON payload for post-decision-logs.sh."""
+    parsed = parse_decision_content(decision_data["content"])
+    payload = {
+        "title": parsed["title"],
+        "choice": parsed["choice"],
+        "alternatives_rejected": parsed["alternatives_rejected"],
+        "rationale": parsed["rationale"],
+        "domain": parsed["domain"],
+        "project_name": "portage",
+        "source_file": decision_data.get("file_path", ""),
+        "tags": ["hook-guarantee"],
+        "model_name": os.environ.get("ANTHROPIC_MODEL", "unknown"),
+    }
+    return json.dumps(payload)
+
+
+def build_deferred_payload(item_text: str, feature_name: str) -> str:
+    """Construct JSON payload for post-deferred-items.sh."""
+    payload = {
+        "title": item_text[:280],
+        "description": item_text,
+        "reason": "captured by hook-guarantee",
+        "category": "other",
+        "project_name": "portage",
+        "source_context": feature_name or "unknown feature",
+        "priority": "medium",
+        "tags": ["hook-guarantee"],
         "model_name": os.environ.get("ANTHROPIC_MODEL", "unknown"),
     }
     return json.dumps(payload)
@@ -269,11 +422,29 @@ def main() -> None:
 
     ship_missed = result["ship_session_complete"] and not result["post_ship_session_called"]
 
-    if missed_insight_count <= 0 and not ship_missed:
+    decisions_found = result["decisions_found"]
+    post_decision_count = result["post_decision_count"]
+    missed_decision_count = len(decisions_found) - post_decision_count
+
+    deferred_items: list[str] = []
+    if result["ship_state_content"]:
+        deferred_items = extract_deferred_items(result["ship_state_content"])
+    post_deferred_count = result["post_deferred_count"]
+    missed_deferred_count = len(deferred_items) - post_deferred_count
+
+    if (missed_insight_count <= 0 and not ship_missed
+            and missed_decision_count <= 0 and missed_deferred_count <= 0):
         logging.info(
             f"No missed captures (insights: {len(insights_found)} found, "
-            f"{post_insight_count} posted; ship: {'complete' if result['ship_session_complete'] else 'n/a'})"
+            f"{post_insight_count} posted; decisions: {len(decisions_found)} found, "
+            f"{post_decision_count} posted; deferred: {len(deferred_items)} found, "
+            f"{post_deferred_count} posted; ship: {'complete' if result['ship_session_complete'] else 'n/a'})"
         )
+        # Advisory logging even when no auto-fire needed
+        if result["correction_signals"] > 0 and not result["post_correction_called"]:
+            logging.info(f"ADVISORY: {result['correction_signals']} correction signal(s) detected, post-correction.sh not called")
+        if result["fix_commits"] > 0 and not result["post_bug_fix_called"]:
+            logging.info(f"ADVISORY: {result['fix_commits']} fix commit(s) detected, post-bug-fixes.sh not called")
         return
 
     # Fire missed captures — take the LAST N insights as uncaptured.
@@ -299,7 +470,42 @@ def main() -> None:
             fire_capture("post-ship-session.sh", payload)
             posted_ship = 1
 
-    summary = f"capture-guarantee: posted {posted_insights} insights, {posted_ship} ship sessions"
+    posted_decisions = 0
+    if missed_decision_count > 0:
+        uncaptured = decisions_found[-missed_decision_count:]
+        for decision in uncaptured:
+            payload = build_decision_payload(decision)
+            if DRY_RUN:
+                print(f"[DRY-RUN] post-decision-logs.sh: {payload[:200]}...")
+            else:
+                fire_capture("post-decision-logs.sh", payload)
+                posted_decisions += 1
+
+    posted_deferred = 0
+    if missed_deferred_count > 0:
+        feature_name = ""
+        if result["ship_state_content"]:
+            fm = re.search(r"^feature:\s*(.+)$", result["ship_state_content"], re.MULTILINE)
+            if fm:
+                feature_name = fm.group(1).strip()
+        uncaptured = deferred_items[-missed_deferred_count:]
+        for item in uncaptured:
+            payload = build_deferred_payload(item, feature_name)
+            if DRY_RUN:
+                print(f"[DRY-RUN] post-deferred-items.sh: {payload[:200]}...")
+            else:
+                fire_capture("post-deferred-items.sh", payload)
+                posted_deferred += 1
+
+    if result["correction_signals"] > 0 and not result["post_correction_called"]:
+        logging.info(f"ADVISORY: {result['correction_signals']} correction signal(s) detected, post-correction.sh not called")
+    if result["fix_commits"] > 0 and not result["post_bug_fix_called"]:
+        logging.info(f"ADVISORY: {result['fix_commits']} fix commit(s) detected, post-bug-fixes.sh not called")
+
+    summary = (
+        f"capture-guarantee: posted {posted_insights} insights, {posted_ship} ship sessions, "
+        f"{posted_decisions} decisions, {posted_deferred} deferred items"
+    )
     logging.info(summary)
     if DRY_RUN:
         print(summary)
