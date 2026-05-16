@@ -29,6 +29,9 @@ body=$(echo "$response" | head -n -1)
 if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
   id=$(echo "$body" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
   echo "ship-session captured: $id"
+  # Regenerate ship-log docs async — never blocks the session
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  ( "$SCRIPT_DIR/generate-ship-log.sh" >/dev/null 2>&1 & )
 else
   echo "ship-session-capture: HTTP $http_code" >&2
 fi
