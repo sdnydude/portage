@@ -32,15 +32,14 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%SZ",
 )
 
-REGISTRY_URL = os.environ.get("REGISTRY_URL", "http://10.0.0.251:8011")
 DRY_RUN = "--dry-run" in sys.argv
 SESSION_ID_OVERRIDE = None
 for i, arg in enumerate(sys.argv):
     if arg == "--session-id" and i + 1 < len(sys.argv):
         SESSION_ID_OVERRIDE = sys.argv[i + 1]
 
-INSIGHT_OPEN = re.compile(r"★ Insight")
-INSIGHT_CLOSE = re.compile(r"^`?─{10,}`?$", re.MULTILINE)
+INSIGHT_OPEN = re.compile(r"★ Insight[─`\s]*\n")
+INSIGHT_CLOSE = re.compile(r"^\s*`?─{10,}`?\s*$", re.MULTILINE)
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 
@@ -54,9 +53,7 @@ def find_transcript() -> Path | None:
 
     project_dir = Path(__file__).resolve().parent.parent.parent
     project_path = str(project_dir).replace("/", "-")
-    if project_path.startswith("-"):
-        pass
-    else:
+    if not project_path.startswith("-"):
         project_path = "-" + project_path
 
     transcript_dir = Path.home() / ".claude" / "projects" / project_path
@@ -108,9 +105,56 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
 
     sample: list[dict] = []
     validated = False
+    skipped_lines = 0
+    total_lines = 0
 
-    with open(transcript, "r") as f:
+    def process_entry(entry: dict) -> None:
+        """Extract capture-relevant data from a single JSONL entry."""
+        nonlocal post_insight_count, post_ship_session_called
+        nonlocal ship_session_complete, ship_state_content
+
+        if entry.get("type") != "assistant":
+            return
+
+        message = entry.get("message", {})
+        content = message.get("content", [])
+        if not isinstance(content, list):
+            return
+
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+
+            block_type = block.get("type")
+
+            if block_type == "text":
+                text = block.get("text", "")
+                if "★ Insight" in text:
+                    extracted = extract_insights_from_text(text)
+                    insights_found.extend(extracted)
+
+            elif block_type == "tool_use":
+                name = block.get("name", "")
+                inp = block.get("input", {})
+
+                if name == "Bash":
+                    cmd = inp.get("command", "")
+                    if "post-insight.sh" in cmd:
+                        post_insight_count += 1
+                    elif "post-ship-session.sh" in cmd:
+                        post_ship_session_called = True
+
+                elif name in ("Write", "Edit"):
+                    file_path = inp.get("file_path", "")
+                    if "ship-state.md" in file_path:
+                        file_content = inp.get("content", "") or inp.get("new_string", "")
+                        if "status: complete" in file_content:
+                            ship_session_complete = True
+                            ship_state_content = file_content
+
+    with open(transcript, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
+            total_lines += 1
             line = line.strip()
             if not line:
                 continue
@@ -118,6 +162,7 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
             try:
                 entry = json.loads(line)
             except (json.JSONDecodeError, ValueError):
+                skipped_lines += 1
                 continue
 
             if not validated:
@@ -127,45 +172,16 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
                         logging.warning("JSONL format validation failed — bailing")
                         return {"valid": False}
                     validated = True
-
-            if entry.get("type") != "assistant":
+                    for buffered in sample:
+                        process_entry(buffered)
                 continue
 
-            message = entry.get("message", {})
-            content = message.get("content", [])
-            if not isinstance(content, list):
-                continue
+            process_entry(entry)
 
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-
-                block_type = block.get("type")
-
-                if block_type == "text":
-                    text = block.get("text", "")
-                    if "★ Insight" in text:
-                        extracted = extract_insights_from_text(text)
-                        insights_found.extend(extracted)
-
-                elif block_type == "tool_use":
-                    name = block.get("name", "")
-                    inp = block.get("input", {})
-
-                    if name == "Bash":
-                        cmd = inp.get("command", "")
-                        if "post-insight.sh" in cmd:
-                            post_insight_count += 1
-                        elif "post-ship-session.sh" in cmd:
-                            post_ship_session_called = True
-
-                    elif name in ("Write", "Edit"):
-                        file_path = inp.get("file_path", "")
-                        if "ship-state.md" in file_path:
-                            file_content = inp.get("content", "") or inp.get("new_string", "")
-                            if "status: complete" in file_content:
-                                ship_session_complete = True
-                                ship_state_content = file_content
+    if skipped_lines > 0:
+        skip_rate = skipped_lines / max(total_lines, 1)
+        if skip_rate > 0.1:
+            logging.warning(f"High skip rate: {skipped_lines}/{total_lines} lines unparseable ({skip_rate:.0%})")
 
     return {
         "valid": True,
@@ -180,8 +196,6 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
 def build_insight_payload(insight_text: str) -> str:
     """Construct JSON payload for post-insight.sh."""
     tldr = insight_text[:277].split("\n")[0]
-    if len(tldr) > 277:
-        tldr = tldr[:277] + "..."
 
     payload = {
         "tldr": tldr,
@@ -215,7 +229,7 @@ def build_ship_session_payload(ship_state_content: str) -> str:
 
 
 def fire_capture(script_name: str, payload: str) -> None:
-    """Fire a capture script in a detached subprocess."""
+    """Fire a capture script in a detached subprocess. Stderr goes to log file."""
     script = SCRIPTS_DIR / script_name
     if not script.exists():
         script = Path.home() / ".claude" / "scripts" / script_name
@@ -224,11 +238,12 @@ def fire_capture(script_name: str, payload: str) -> None:
         return
 
     try:
+        log_fh = open(LOG_FILE, "a")
         subprocess.Popen(
             ["bash", str(script), payload],
             start_new_session=True,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=log_fh,
         )
     except OSError as e:
         logging.error(f"Failed to fire {script_name}: {e}")
@@ -261,7 +276,9 @@ def main() -> None:
         )
         return
 
-    # Fire missed captures
+    # Fire missed captures — take the LAST N insights as uncaptured.
+    # Known limitation: if AI skipped an earlier insight but captured a later one,
+    # this heuristic may re-post the later one. Overcapture is acceptable (harmless).
     posted_insights = 0
     if missed_insight_count > 0:
         uncaptured = insights_found[-missed_insight_count:]
@@ -291,6 +308,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+    except Exception:
+        logging.exception("Unexpected error in capture-guarantee hook")
     sys.exit(0)
