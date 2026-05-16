@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
 import { useAuth } from "@/hooks/use-auth";
@@ -114,12 +114,11 @@ export default function ItemDetailPage() {
     [item, updateItem],
   );
 
-  if (!isAuthenticated) {
-    router.replace("/inventory");
-    return null;
-  }
+  useEffect(() => {
+    if (!isAuthenticated) router.replace("/inventory");
+  }, [isAuthenticated, router]);
 
-  if (isLoading) {
+  if (!isAuthenticated || isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />

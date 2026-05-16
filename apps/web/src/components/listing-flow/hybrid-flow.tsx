@@ -400,13 +400,16 @@ function ChatMode({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? []);
       if (!files.length) return;
+      state.photos.forEach((p) => {
+        if (p.url.startsWith("blob:")) URL.revokeObjectURL(p.url);
+      });
       const photos = files.map((f) => ({
         url: URL.createObjectURL(f),
         key: `local-${Date.now()}-${f.name}`,
       }));
       flow.startFromPhoto(photos);
     },
-    [flow]
+    [flow, state.photos]
   );
 
   const handlePublish = async () => {
@@ -766,13 +769,16 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? []);
       if (!files.length) return;
+      state.photos.forEach((p) => {
+        if (p.url.startsWith("blob:")) URL.revokeObjectURL(p.url);
+      });
       const photos = files.map((f) => ({
         url: URL.createObjectURL(f),
         key: `local-${Date.now()}-${f.name}`,
       }));
       flow.startFromPhoto(photos);
     },
-    [flow]
+    [flow, state.photos]
   );
 
   const handlePublish = async () => {

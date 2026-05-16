@@ -7,6 +7,14 @@ import type { RecognitionCandidate } from '@portage/shared';
 
 const logger = createLogger('vision');
 
+function safeParseJSON(text: string): unknown {
+  try {
+    return JSON.parse(extractJSON(text));
+  } catch {
+    throw new AppError(502, 'AI_RESPONSE_INVALID', 'AI returned unparseable response');
+  }
+}
+
 const CONDITION_NORMALIZE: Record<string, string> = {
   new: 'new', mint: 'new', sealed: 'new',
   excellent: 'like_new', like_new: 'like_new',
@@ -158,7 +166,7 @@ export async function identifyItem(imageBase64: string, mediaType: string): Prom
     { temperature: 0, maxTokens: 2048 },
   );
 
-  const parsed = JSON.parse(extractJSON(text));
+  const parsed = safeParseJSON(text);
   const result = VisionResultSchema.safeParse(parsed);
   if (!result.success) {
     throw new AppError(502, 'AI_RESPONSE_INVALID', `AI scan returned invalid response: ${result.error.message}`);
@@ -194,7 +202,7 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     { temperature: 0, maxTokens: 2048 },
   );
 
-  const parsed = JSON.parse(extractJSON(text));
+  const parsed = safeParseJSON(text);
 
   const detailed = DetailedVisionResultSchema.safeParse(parsed);
   if (detailed.success) return detailed.data;
@@ -313,7 +321,7 @@ export async function identifyItemsMulti(
 
   const { text } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, { temperature: 0, maxTokens: 2048 });
 
-  const parsed = JSON.parse(extractJSON(text));
+  const parsed = safeParseJSON(text);
 
   const detailed = DetailedVisionResultSchema.safeParse(parsed);
   if (detailed.success) return detailed.data;
@@ -395,7 +403,7 @@ Generate all listing fields as JSON.`;
     text = result.text;
   }
 
-  const parsed = JSON.parse(extractJSON(text));
+  const parsed = safeParseJSON(text);
   const validated = ListingFieldsOutputSchema.safeParse(parsed);
   if (!validated.success) {
     throw new AppError(502, 'AI_RESPONSE_INVALID', `AI listing fields returned invalid response: ${validated.error.message}`);

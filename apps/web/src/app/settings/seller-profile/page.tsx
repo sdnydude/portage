@@ -10,13 +10,14 @@ export default function SellerProfilePage() {
   const [profile, setProfile] = useState<SellerProfile | null>(null);
   const [policies, setPolicies] = useState<EbayPoliciesResponse | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
     api<{ profile: SellerProfile }>("/seller-profile", { token })
       .then(data => setProfile(data.profile))
-      .catch(() => {});
+      .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load profile"));
 
     api<EbayPoliciesResponse>("/seller-profile/ebay-policies", { token })
       .then(data => setPolicies(data))
@@ -42,6 +43,17 @@ export default function SellerProfilePage() {
       setSaving(false);
     }
   }, [token]);
+
+  if (loadError) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold mb-4">Seller Profile</h1>
+        <div className="text-sm py-2 px-3 rounded-lg" style={{ background: "rgba(204,51,51,0.1)", color: "#CC3333" }}>
+          {loadError}
+        </div>
+      </div>
+    );
+  }
 
   if (!profile) {
     return (

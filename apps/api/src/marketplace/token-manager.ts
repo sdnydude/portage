@@ -72,6 +72,7 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
     .set({
       accessTokenEncrypted: encrypt(data.access_token),
       tokenExpiresAt: newExpiresAt,
+      updatedAt: new Date(),
     })
     .where(eq(marketplaceAccounts.id, account.id));
 

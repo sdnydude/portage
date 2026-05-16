@@ -9,15 +9,19 @@ export function useDrafts() {
   const { token } = useAuth();
   const [drafts, setDrafts] = useState<ListingDraft[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchDrafts = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
+    setError(null);
     try {
       const data = await api<{ drafts: ListingDraft[] }>('/drafts', { token });
       setDrafts(data.drafts);
-    } catch { /* offline */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load drafts');
+    }
     setIsLoading(false);
   }, [token]);
 
@@ -77,8 +81,10 @@ export function useDrafts() {
     try {
       await api(`/drafts/${draftId}`, { method: 'DELETE', token });
       setDrafts(prev => prev.filter(d => d.id !== draftId));
-    } catch { /* ignore */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete draft');
+    }
   }, [token]);
 
-  return { drafts, isLoading, fetchDrafts, getDraft, saveDraft, debouncedSave, deleteDraft };
+  return { drafts, isLoading, error, fetchDrafts, getDraft, saveDraft, debouncedSave, deleteDraft };
 }

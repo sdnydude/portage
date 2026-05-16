@@ -9,7 +9,7 @@ export interface JwtPayload {
   role: 'user' | 'admin';
 }
 
-const ACCESS_TOKEN_EXPIRY = '24h';
+const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '30d';
 
 export function signAccessToken(payload: JwtPayload): string {

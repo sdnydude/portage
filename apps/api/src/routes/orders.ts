@@ -18,22 +18,33 @@ export const ordersRouter = Router();
 
 ordersRouter.use(requireAuth);
 
+const validStatuses = ['payment_received', 'label_purchased', 'shipped', 'delivered'] as const;
+type OrderStatus = typeof validStatuses[number];
+
 ordersRouter.get('/', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
-    const status = req.query.status as string | undefined;
+    const statusParam = req.query.status as string | undefined;
+    const status: OrderStatus | undefined = statusParam && validStatuses.includes(statusParam as OrderStatus)
+      ? statusParam as OrderStatus
+      : undefined;
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
 
     const conditions = [eq(orders.userId, userId)];
     if (status) {
-      conditions.push(eq(orders.status, status as 'payment_received' | 'label_purchased' | 'shipped' | 'delivered'));
+      conditions.push(eq(orders.status, status));
     }
 
     const results = await db.select()
       .from(orders)
       .where(and(...conditions))
-      .orderBy(desc(orders.soldAt));
+      .orderBy(desc(orders.soldAt))
+      .limit(limit)
+      .offset(offset);
 
-    res.json({ orders: results });
+    res.json({ orders: results, pagination: { limit, offset } });
   } catch (err) {
     next(err);
   }
@@ -83,9 +94,13 @@ ordersRouter.patch('/:id', async (req, res, next) => {
     if (body.status === 'shipped') updates.shippedAt = new Date();
     if (body.status === 'delivered') updates.deliveredAt = new Date();
 
+    if (Object.keys(updates).length === 0) {
+      throw new AppError(400, 'NO_CHANGES', 'No valid fields to update');
+    }
+
     const [updated] = await db.update(orders)
       .set(updates)
-      .where(eq(orders.id, req.params.id))
+      .where(and(eq(orders.id, req.params.id), eq(orders.userId, userId)))
       .returning();
 
     logger.info({ userId, orderId: updated.id, status: body.status }, 'Order updated');
@@ -185,11 +200,12 @@ ordersRouter.post('/sync', async (req, res, next) => {
             marketplaceFees: mOrder.marketplaceFees,
             currency: mOrder.currency,
             shippingAddress: mOrder.shippingAddress,
+            soldAt: mOrder.soldAt ?? new Date(),
             status: 'payment_received',
           }).returning();
 
           await db.update(listings)
-            .set({ status: 'sold', soldAt: new Date() })
+            .set({ status: 'sold', soldAt: new Date(), updatedAt: new Date() })
             .where(eq(listings.id, matchedListing.id));
 
           newOrderIds.push(newOrder.id);

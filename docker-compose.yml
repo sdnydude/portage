@@ -3,10 +3,10 @@ services:
     image: postgres:15-alpine
     container_name: portage-db
     ports:
-      - "5436:5432"
+      - "127.0.0.1:5436:5432"
     environment:
       POSTGRES_USER: portage
-      POSTGRES_PASSWORD: portage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portage}
       POSTGRES_DB: portage
     volumes:
       - portage-pgdata:/var/lib/postgresql/data
@@ -29,7 +29,7 @@ services:
     environment:
       NODE_ENV: production
       API_PORT: "8016"
-      DATABASE_URL: postgresql://portage:portage@portage-db:5432/portage
+      DATABASE_URL: postgresql://portage:${POSTGRES_PASSWORD:-portage}@portage-db:5432/portage
       REMBG_URL: http://portage-rembg:7000
     env_file:
       - .env

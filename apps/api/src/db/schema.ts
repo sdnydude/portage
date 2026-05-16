@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, jsonb, pgEnum, unique, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, doublePrecision, jsonb, pgEnum, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
@@ -54,13 +54,15 @@ export const items = pgTable('items', {
   brand: varchar('brand', { length: 255 }).notNull().default(''),
   model: varchar('model', { length: 255 }).notNull().default(''),
   features: jsonb('features').notNull().default([]),
-  estimatedValueMin: real('estimated_value_min'),
-  estimatedValueMax: real('estimated_value_max'),
-  estimatedValueRecommended: real('estimated_value_recommended'),
+  estimatedValueMin: doublePrecision('estimated_value_min'),
+  estimatedValueMax: doublePrecision('estimated_value_max'),
+  estimatedValueRecommended: doublePrecision('estimated_value_recommended'),
   aiConfidenceScore: real('ai_confidence_score').notNull().default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_items_user_id').on(t.userId),
+]);
 
 export const listings = pgTable('listings', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -70,34 +72,43 @@ export const listings = pgTable('listings', {
   marketplaceListingId: varchar('marketplace_listing_id', { length: 255 }),
   marketplaceSpecificFields: jsonb('marketplace_specific_fields'),
   status: listingStatusEnum('status').notNull().default('draft'),
-  price: real('price').notNull(),
+  price: doublePrecision('price').notNull(),
   currency: varchar('currency', { length: 3 }).notNull().default('USD'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
   publishedAt: timestamp('published_at'),
   soldAt: timestamp('sold_at'),
-});
+}, (t) => [
+  index('idx_listings_user_id').on(t.userId),
+  index('idx_listings_item_id').on(t.itemId),
+  index('idx_listings_marketplace_listing_id').on(t.marketplaceListingId),
+]);
 
 export const orders = pgTable('orders', {
   id: uuid('id').defaultRandom().primaryKey(),
-  listingId: uuid('listing_id').notNull().references(() => listings.id),
-  itemId: uuid('item_id').notNull().references(() => items.id),
+  listingId: uuid('listing_id').notNull().references(() => listings.id, { onDelete: 'restrict' }),
+  itemId: uuid('item_id').notNull().references(() => items.id, { onDelete: 'restrict' }),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   marketplace: marketplaceEnum('marketplace').notNull(),
   marketplaceOrderId: varchar('marketplace_order_id', { length: 255 }).notNull(),
   buyerUsername: varchar('buyer_username', { length: 255 }).notNull(),
-  salePrice: real('sale_price').notNull(),
-  shippingCost: real('shipping_cost').notNull().default(0),
-  marketplaceFees: real('marketplace_fees').notNull().default(0),
+  salePrice: doublePrecision('sale_price').notNull(),
+  shippingCost: doublePrecision('shipping_cost').notNull().default(0),
+  marketplaceFees: doublePrecision('marketplace_fees').notNull().default(0),
   currency: varchar('currency', { length: 3 }).notNull().default('USD'),
   status: orderStatusEnum('status').notNull().default('payment_received'),
   trackingNumber: varchar('tracking_number', { length: 255 }),
   carrier: varchar('carrier', { length: 100 }),
   shippingLabelUrl: text('shipping_label_url'),
   shippingAddress: jsonb('shipping_address'),
-  soldAt: timestamp('sold_at').notNull().defaultNow(),
+  soldAt: timestamp('sold_at').notNull(),
   shippedAt: timestamp('shipped_at'),
   deliveredAt: timestamp('delivered_at'),
-});
+}, (t) => [
+  index('idx_orders_user_id').on(t.userId),
+  index('idx_orders_listing_id').on(t.listingId),
+  index('idx_orders_marketplace_order_id').on(t.marketplaceOrderId),
+]);
 
 export const conversations = pgTable('conversations', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -105,7 +116,9 @@ export const conversations = pgTable('conversations', {
   messages: jsonb('messages').notNull().default([]),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_conversations_user_id').on(t.userId),
+]);
 
 export const notifications = pgTable('notifications', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -117,7 +130,9 @@ export const notifications = pgTable('notifications', {
   referenceId: uuid('reference_id'),
   read: boolean('read').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_notifications_user_id').on(t.userId),
+]);
 
 export const marketplaceAccounts = pgTable('marketplace_accounts', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -128,7 +143,10 @@ export const marketplaceAccounts = pgTable('marketplace_accounts', {
   tokenExpiresAt: timestamp('token_expires_at').notNull(),
   marketplaceUserId: varchar('marketplace_user_id', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_marketplace_accounts_user_mkt').on(t.userId, t.marketplace),
+]);
 
 export const adminAuditLog = pgTable('admin_audit_log', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -218,14 +236,19 @@ export const listingDrafts = pgTable('listing_drafts', {
   itemId: uuid('item_id').references(() => items.id, { onDelete: 'cascade' }),
   marketplace: marketplaceEnum('marketplace').notNull(),
   title: varchar('title', { length: 500 }),
-  price: real('price'),
+  price: doublePrecision('price'),
   status: text('status').notNull().default('draft'),
   lastStepCompleted: text('last_step_completed'),
   flowState: jsonb('flow_state').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
-  unique('uq_drafts_user_item_mkt').on(t.userId, t.itemId, t.marketplace),
+  uniqueIndex('uq_drafts_user_item_mkt')
+    .on(t.userId, t.itemId, t.marketplace)
+    .where(sql`item_id IS NOT NULL`),
+  uniqueIndex('uq_drafts_user_null_item_mkt')
+    .on(t.userId, t.marketplace)
+    .where(sql`item_id IS NULL`),
 ]);
 
 export const sellerProfiles = pgTable('seller_profiles', {

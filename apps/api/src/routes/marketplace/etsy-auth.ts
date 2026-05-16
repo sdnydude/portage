@@ -15,7 +15,7 @@ const logger = createLogger('etsy-auth');
 const ETSY_BASE = 'https://api.etsy.com/v3';
 const ETSY_AUTH_URL = 'https://www.etsy.com/oauth/connect';
 
-const pkceStore = new Map<string, string>();
+const pkceStore = new Map<string, { verifier: string; state: string; expiresAt: number }>();
 
 export const etsyAuthRouter = Router();
 
@@ -31,7 +31,8 @@ etsyAuthRouter.get('/connect', (req, res) => {
   const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
 
   const userId = req.user!.sub;
-  pkceStore.set(userId, codeVerifier);
+  const state = randomBytes(16).toString('hex');
+  pkceStore.set(userId, { verifier: codeVerifier, state, expiresAt: Date.now() + 10 * 60_000 });
 
   const scopes = [
     'listings_r',
@@ -47,7 +48,7 @@ etsyAuthRouter.get('/connect', (req, res) => {
   authUrl.searchParams.set('client_id', config.ETSY_API_KEY);
   authUrl.searchParams.set('redirect_uri', config.ETSY_REDIRECT_URI);
   authUrl.searchParams.set('scope', scopes);
-  authUrl.searchParams.set('state', userId);
+  authUrl.searchParams.set('state', state);
   authUrl.searchParams.set('code_challenge', codeChallenge);
   authUrl.searchParams.set('code_challenge_method', 'S256');
 
@@ -56,6 +57,7 @@ etsyAuthRouter.get('/connect', (req, res) => {
 
 const callbackSchema = z.object({
   code: z.string().min(1),
+  state: z.string().min(1),
 });
 
 etsyAuthRouter.post('/callback', async (req, res, next) => {
@@ -65,13 +67,15 @@ etsyAuthRouter.post('/callback', async (req, res, next) => {
       throw new AppError(503, 'ETSY_NOT_CONFIGURED', 'Etsy integration is not configured');
     }
 
-    const { code } = callbackSchema.parse(req.body);
+    const { code, state } = callbackSchema.parse(req.body);
     const userId = req.user!.sub;
 
-    const codeVerifier = pkceStore.get(userId);
-    if (!codeVerifier) {
-      throw new AppError(400, 'PKCE_MISSING', 'No PKCE verifier found. Please restart the connection flow.');
+    const stored = pkceStore.get(userId);
+    if (!stored || stored.state !== state || stored.expiresAt < Date.now()) {
+      pkceStore.delete(userId);
+      throw new AppError(400, 'CSRF_MISMATCH', 'Invalid or expired OAuth state parameter');
     }
+    const codeVerifier = stored.verifier;
     pkceStore.delete(userId);
 
     const tokenResponse = await fetch(`${ETSY_BASE}/public/oauth/token`, {
@@ -114,6 +118,7 @@ etsyAuthRouter.post('/callback', async (req, res, next) => {
           accessTokenEncrypted: encrypt(tokenData.access_token),
           refreshTokenEncrypted: encrypt(tokenData.refresh_token),
           tokenExpiresAt: expiresAt,
+          updatedAt: new Date(),
         })
         .where(eq(marketplaceAccounts.id, existing[0].id));
     } else {

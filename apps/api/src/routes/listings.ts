@@ -153,7 +153,12 @@ listingsRouter.post('/', async (req, res, next) => {
 
     logger.info({ userId, listingId: listing.id, marketplace: body.marketplace, status }, 'Listing created');
 
-    res.status(201).json(listing);
+    const response: Record<string, unknown> = { ...listing };
+    if (body.publishImmediately && status === 'draft') {
+      response.warning = 'Listing was created but could not be published. It has been saved as a draft.';
+    }
+
+    res.status(201).json(response);
   } catch (err) {
     next(err);
   }
@@ -196,7 +201,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
     if (body.marketplaceSpecificFields !== undefined) updates.marketplaceSpecificFields = body.marketplaceSpecificFields;
 
     const [updated] = await db.update(listings)
-      .set(updates)
+      .set({ ...updates, updatedAt: new Date() })
       .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
       .returning();
 
@@ -272,6 +277,7 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
         marketplaceListingId: result.marketplaceListingId,
         status: result.status === 'active' ? 'active' : 'draft',
         publishedAt: result.status === 'active' ? new Date() : null,
+        updatedAt: new Date(),
       })
       .where(eq(listings.id, listing.id))
       .returning();

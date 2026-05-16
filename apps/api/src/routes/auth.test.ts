@@ -62,7 +62,7 @@ describe('POST /auth/register', () => {
 
     const res = await request(app)
       .post('/auth/register')
-      .send({ email: 'new@example.com', password: 'securepassword123' });
+      .send({ email: 'new@example.com', password: 'SecurePassword123' });
 
     expect(res.status).toBe(201);
     expect(res.body.token).toBeDefined();
@@ -76,7 +76,7 @@ describe('POST /auth/register', () => {
 
     const res = await request(app)
       .post('/auth/register')
-      .send({ email: 'taken@example.com', password: 'securepassword123' });
+      .send({ email: 'taken@example.com', password: 'SecurePassword123' });
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('EMAIL_EXISTS');
@@ -93,7 +93,7 @@ describe('POST /auth/register', () => {
 });
 
 describe('POST /auth/login', () => {
-  const password = 'correct-password-123';
+  const password = 'Correct-Password-123';
   let passwordHash: string;
 
   beforeAll(async () => {

@@ -57,6 +57,7 @@ export function useListingFlow() {
   const { debouncedSave, saveDraft, deleteDraft, getDraft } = useDrafts();
   const [state, setState] = useState<ListingFlowState>(INITIAL_STATE);
   const [lastStep, setLastStep] = useState<string>('idle');
+  const [error, setError] = useState<string | null>(null);
   const [saveWarning, setSaveWarning] = useState(false);
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -81,6 +82,7 @@ export function useListingFlow() {
 
   const startFromPhoto = useCallback(async (photos: ListingFlowState['photos']) => {
     if (!token) return;
+    setError(null);
     const newState: ListingFlowState = {
       ...INITIAL_STATE,
       photos,
@@ -135,7 +137,9 @@ export function useListingFlow() {
         };
       });
       setLastStep('recognition');
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Recognition failed';
+      setError(msg);
       setState(prev => ({
         ...prev,
         recognition: { ...prev.recognition, status: 'failed' },
@@ -146,6 +150,7 @@ export function useListingFlow() {
 
   const startFromItem = useCallback(async (itemId: string) => {
     if (!token) return;
+    setError(null);
     try {
       const item = await api<{
         id: string; title: string; description: string; category: string;
@@ -175,7 +180,8 @@ export function useListingFlow() {
         },
       });
       setLastStep('details');
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load item');
       setState(INITIAL_STATE);
     }
   }, [token]);
@@ -236,7 +242,8 @@ export function useListingFlow() {
         );
       }
       setState(prev => ({ ...prev, comps, compsStatus: 'loaded' }));
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch comparables');
       setState(prev => ({ ...prev, compsStatus: 'failed' }));
     }
   }, [token]);
@@ -300,6 +307,7 @@ export function useListingFlow() {
           token,
         });
         itemId = item.id;
+        setState(prev => ({ ...prev, inventoryItemId: itemId }));
       }
 
       const listing = await api<{ id: string; status: string }>('/listings', {
@@ -361,9 +369,13 @@ export function useListingFlow() {
     setSaveWarning(false);
   }, []);
 
+  const clearError = useCallback(() => setError(null), []);
+
   return {
     state,
     lastStep,
+    error,
+    clearError,
     saveWarning,
     setField,
     startFromPhoto,

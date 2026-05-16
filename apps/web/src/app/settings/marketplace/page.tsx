@@ -39,7 +39,7 @@ export default function MarketplacePage() {
     if (!info?.connectPath || !token) return;
     try {
       const data = await api<{ authUrl: string }>(info.connectPath, { token });
-      window.location.href = data.authUrl;
+      window.location.assign(data.authUrl);
     } catch {
       alert(`Failed to start ${info.name} connection`);
     }

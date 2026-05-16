@@ -189,12 +189,14 @@ export default function ShipPage({ params }: { params: Promise<{ id: string }> }
   };
 
   // ── Handle mark shipped ──
+  const [markShippedError, setMarkShippedError] = useState<string | null>(null);
   const handleMarkShipped = async () => {
+    setMarkShippedError(null);
     try {
       await markShipped(orderId);
       setIsMarkedShipped(true);
-    } catch {
-      // Error handled by hook
+    } catch (err) {
+      setMarkShippedError(err instanceof Error ? err.message : "Failed to mark as shipped");
     }
   };
 
@@ -330,6 +332,12 @@ export default function ShipPage({ params }: { params: Promise<{ id: string }> }
             ) : labelResult.message ? (
               <p className="text-center text-sm text-text-secondary py-3">{labelResult.message}</p>
             ) : null}
+
+            {markShippedError && (
+              <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl p-3 text-sm text-red-700 dark:text-red-300">
+                {markShippedError}
+              </div>
+            )}
 
             {!isMarkedShipped ? (
               <button

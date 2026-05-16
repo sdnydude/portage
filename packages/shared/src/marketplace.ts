@@ -18,8 +18,9 @@ export interface MarketplaceListingInput {
 
 export interface MarketplaceListingResult {
   marketplaceListingId: string;
-  marketplaceUrl: string;
+  marketplaceUrl?: string;
   status: 'active' | 'draft' | 'pending';
+  warning?: string;
 }
 
 export interface MarketplaceOrderResult {
@@ -30,6 +31,7 @@ export interface MarketplaceOrderResult {
   shippingCost: number;
   marketplaceFees: number;
   currency: string;
+  soldAt?: Date;
   shippingAddress: {
     name: string;
     street1: string;
