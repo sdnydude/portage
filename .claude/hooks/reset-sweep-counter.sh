@@ -30,7 +30,8 @@ EOF
 fi
 
 # Reset counter for new session
-rm -f "/tmp/claude-toolcalls-${SESSION_ID}" "/tmp/claude-sweep-fired-${SESSION_ID}" 2>/dev/null
+RUN_DIR="$HOME/.claude/run"
+rm -f "$RUN_DIR/toolcalls-${SESSION_ID}" "$RUN_DIR/sweep-fired-${SESSION_ID}" 2>/dev/null
 
 # Clear old manifest — this session will create its own
 rm -f "$MANIFEST" 2>/dev/null

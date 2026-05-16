@@ -11,7 +11,8 @@ set -euo pipefail
 REGISTRY_URL="${REGISTRY_URL:-http://10.0.0.251:8011}"
 ENDPOINT="${REGISTRY_URL}/api/bug-fixes"
 
-payload="$1"
+payload="${1:-}"
+[ -z "$payload" ] && exit 0
 
 response=$(curl -s -w "\n%{http_code}" -X POST "$ENDPOINT" \
   -H "Content-Type: application/json" \

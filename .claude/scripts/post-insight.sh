@@ -11,7 +11,8 @@ set -euo pipefail
 REGISTRY_URL="${REGISTRY_URL:-http://10.0.0.251:8011}"
 ENDPOINT="${REGISTRY_URL}/api/insights"
 
-payload="$1"
+payload="${1:-}"
+[ -z "$payload" ] && exit 0
 
 # Fire-and-forget POST — don't block the session on failure
 response=$(curl -s -w "\n%{http_code}" -X POST "$ENDPOINT" \

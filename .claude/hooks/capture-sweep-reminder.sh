@@ -6,8 +6,10 @@
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)" || PROJECT_DIR="/home/swebber64/DHG/portage"
 MANIFEST_DIR="$PROJECT_DIR/.claude"
 SESSION_ID="${CLAUDE_SESSION_ID:-default}"
-COUNTER_FILE="/tmp/claude-toolcalls-${SESSION_ID}"
-FIRED_FILE="/tmp/claude-sweep-fired-${SESSION_ID}"
+RUN_DIR="$HOME/.claude/run"
+mkdir -p "$RUN_DIR"
+COUNTER_FILE="$RUN_DIR/toolcalls-${SESSION_ID}"
+FIRED_FILE="$RUN_DIR/sweep-fired-${SESSION_ID}"
 MANIFEST="$MANIFEST_DIR/session-manifest.json"
 THRESHOLD=${CLAUDE_SWEEP_THRESHOLD:-100}
 
