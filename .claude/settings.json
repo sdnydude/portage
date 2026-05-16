@@ -3,6 +3,10 @@
     "allow": [
       "Bash(~/.claude/scripts/post-insight.sh *)",
       "Bash(~/.claude/scripts/post-decision-logs.sh *)",
+      "Bash(~/.claude/scripts/post-ship-session.sh *)",
+      "Bash(~/.claude/scripts/post-correction.sh *)",
+      "Bash(~/.claude/scripts/post-bug-fixes.sh *)",
+      "Bash(~/.claude/scripts/post-deferred-items.sh *)",
       "Bash(doppler secrets *)",
       "Bash(doppler projects *)",
       "Bash(docker logs *)",
@@ -30,6 +34,11 @@
             "type": "command",
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/session-briefing.sh",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/reset-sweep-counter.sh",
+            "timeout": 3
           }
         ]
       }
@@ -59,6 +68,15 @@
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/commit-log.sh",
             "timeout": 5,
             "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/capture-sweep-reminder.sh",
+            "timeout": 3
           }
         ]
       }

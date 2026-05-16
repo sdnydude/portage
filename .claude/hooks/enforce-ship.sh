@@ -16,6 +16,11 @@ if [[ "$FILE" == *".claude/"* ]]; then
   exit 0
 fi
 
+# Allow documentation, style guides, and static assets (not code)
+if [[ "$FILE" == *"website/docs/"* || "$FILE" == *"website/static/"* || "$FILE" == *".remember/"* ]]; then
+  exit 0
+fi
+
 # /ship has not been started — block
 if [[ ! -f "$SHIP_STATE" ]]; then
   echo "BLOCKED: Run /ship before writing any code."

@@ -1,0 +1,5 @@
+# Runtime artifacts — not config
+ship-state.md
+ship-state_v*.md
+session-manifest.json
+scheduled_tasks.lock
