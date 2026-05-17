@@ -44,6 +44,16 @@ def make_assistant_tool_use(name: str, input_data: dict) -> str:
     return json.dumps(entry)
 
 
+def make_human_text(text: str) -> str:
+    """Create a JSONL line for a human message with text content."""
+    entry = {
+        "type": "human",
+        "message": {"role": "user", "content": text},
+        "timestamp": "2026-05-16T12:00:00.000Z",
+    }
+    return json.dumps(entry)
+
+
 def make_metadata() -> list[str]:
     """Create initial JSONL metadata lines."""
     return [
@@ -175,16 +185,49 @@ def fixture_deferred_missed() -> str:
     return "\n".join(lines) + "\n"
 
 
-def fixture_advisory_signals() -> str:
-    """Correction signals + fix commits but no capture calls. Advisory only — no output."""
+def fixture_corrections_missed() -> str:
+    """Correction signal with context window — no post-correction.sh call."""
     lines = make_metadata()
-    lines.append(json.dumps({
-        "type": "human",
-        "message": {"role": "user", "content": "you're wrong, that's not how it works"},
-        "timestamp": "2026-05-16T12:00:00.000Z",
+    lines.append(make_assistant_text("I'll refactor the auth module to use classes instead of functions."))
+    lines.append(make_human_text("you're wrong, that's not how it works"))
+    lines.append(make_assistant_text("You're right, I apologize. I'll keep the functional approach."))
+    return "\n".join(lines) + "\n"
+
+
+def fixture_corrections_captured() -> str:
+    """Correction signal with matching post-correction.sh call — zero output expected."""
+    lines = make_metadata()
+    lines.append(make_assistant_text("I'll refactor the auth module to use classes."))
+    lines.append(make_human_text("you're wrong, that's not how it works"))
+    lines.append(make_assistant_text("You're right, I'll keep functional style."))
+    lines.append(make_assistant_tool_use("Bash", {
+        "command": "~/.claude/scripts/post-correction.sh '{\"category\":\"wrong-assumption\"}'"
     }))
+    return "\n".join(lines) + "\n"
+
+
+def fixture_bug_fixes_missed() -> str:
+    """Fix commit with diagnostic text — no post-bug-fixes.sh call."""
+    lines = make_metadata()
+    lines.append(make_assistant_text(
+        "After investigating, the root cause was a stale closure in the useEffect hook "
+        "that captured the old token value. The fix is to add the token to the dependency array."
+    ))
     lines.append(make_assistant_tool_use("Bash", {
         "command": "git commit -m \"fix: resolve null pointer in auth middleware\""
+    }))
+    return "\n".join(lines) + "\n"
+
+
+def fixture_bug_fixes_captured() -> str:
+    """Fix commit with matching post-bug-fixes.sh call — zero output expected."""
+    lines = make_metadata()
+    lines.append(make_assistant_text("The root cause was a missing null check."))
+    lines.append(make_assistant_tool_use("Bash", {
+        "command": "git commit -m \"fix: add null guard to auth flow\""
+    }))
+    lines.append(make_assistant_tool_use("Bash", {
+        "command": "~/.claude/scripts/post-bug-fixes.sh '{\"tldr\":\"null guard\"}'"
     }))
     return "\n".join(lines) + "\n"
 
@@ -272,11 +315,30 @@ def test_deferred_missed():
     print("  PASS: deferred_missed — 2 deferred items detected (3 found, 1 already posted)")
 
 
-def test_advisory_no_fire():
-    output = run_dry_run(fixture_advisory_signals())
-    assert "post-correction.sh" not in output, f"Advisory should not fire: {output}"
-    assert "post-bug-fixes.sh" not in output, f"Advisory should not fire: {output}"
-    print("  PASS: advisory_no_fire — correction/bug-fix signals logged, not fired")
+def test_corrections_missed():
+    output = run_dry_run(fixture_corrections_missed())
+    assert "[DRY-RUN] post-correction.sh" in output, f"Expected correction fire, got: {output}"
+    assert "you're wrong" in output or "you\\u0027re wrong" in output, f"Expected user_message in payload: {output}"
+    print("  PASS: corrections_missed — correction auto-fired with context window")
+
+
+def test_corrections_captured():
+    output = run_dry_run(fixture_corrections_captured())
+    assert "post-correction.sh" not in output, f"Expected no correction fire, got: {output}"
+    print("  PASS: corrections_captured — no false positives")
+
+
+def test_bug_fixes_missed():
+    output = run_dry_run(fixture_bug_fixes_missed())
+    assert "[DRY-RUN] post-bug-fixes.sh" in output, f"Expected bug-fix fire, got: {output}"
+    assert "null pointer" in output, f"Expected commit message in payload: {output}"
+    print("  PASS: bug_fixes_missed — bug-fix auto-fired with diagnostic extraction")
+
+
+def test_bug_fixes_captured():
+    output = run_dry_run(fixture_bug_fixes_captured())
+    assert "post-bug-fixes.sh" not in output, f"Expected no bug-fix fire, got: {output}"
+    print("  PASS: bug_fixes_captured — no false positives")
 
 
 def test_v2_all_captured():
@@ -292,6 +354,9 @@ if __name__ == "__main__":
     test_partial()
     test_decisions_missed()
     test_deferred_missed()
-    test_advisory_no_fire()
+    test_corrections_missed()
+    test_corrections_captured()
+    test_bug_fixes_missed()
+    test_bug_fixes_captured()
     test_v2_all_captured()
     print("\nAll tests passed.")
