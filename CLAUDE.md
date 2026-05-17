@@ -30,11 +30,11 @@ npm workspaces monorepo with three packages:
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 18 tables:
+Drizzle ORM, schema-push workflow (no migration files). 17 tables:
 
 users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, shipping_presets, shipping_providers, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events
 
-Notable JSONB columns: `items.photos`, `items.shippingAddress`, `items.marketplaceData` (eBay category/title cache).
+Notable JSONB columns: `items.photos`, `items.marketplaceData` (eBay category/title cache), `orders.shippingAddress`.
 
 ### Auth
 

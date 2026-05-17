@@ -122,7 +122,6 @@ React Context only — no Zustand/Jotai/Redux. `AuthContext` is the only provide
 - **HTTPS required for camera:** `getUserMedia` needs secure context. Dev server runs with `--experimental-https` and certs from `../../certs/`
 - **Photos in memory:** Captured as `File` objects, previewed via `URL.createObjectURL()`. Large files = memory pressure. No cleanup of object URLs in some flows.
 - **Modal z-index:** ScanFlow renders at `z-[60]`. Photo editor overlays inside it.
-- **No pagination:** Listing/item hooks load all records at once.
 - **Polling HMR:** `WATCHPACK_POLLING=true` required for reliable hot reload over network.
 - **iOS aspect-ratio collapse:** Never use `aspect-ratio` (Tailwind `aspect-square`) inside flex + overflow-hidden containers — iOS WebKit collapses to 0px. Use `paddingBottom: "100%"` percentage trick instead (see `BeforeAfterSlider`).
 - **Docker no hot-reload:** Production containers don't reflect code changes without `docker compose up -d --build portage-app`.

@@ -4,12 +4,14 @@ Express 5 backend. See root CLAUDE.md for architecture overview.
 
 ## Middleware Chain (order matters)
 
-1. CORS — prod restricts to `portage.digitalharmonyai.com`; dev allows `10.0.0.251` variants
-2. `express.json({ limit: '10mb' })`
-3. `pinoHttp()` — debug in dev, info in prod
-4. Route handlers (19 routers)
-5. `notFoundHandler`
-6. `errorHandler` (must be last)
+1. `helmet()`
+2. CORS — prod restricts to `portage.digitalharmonyai.com`; dev allows `10.0.0.251` variants
+3. Billing webhook router (mounted **before** JSON parse — Stripe needs raw body)
+4. `express.json({ limit: '10mb' })`
+5. `pinoHttp()` — debug in dev, info in prod
+6. Route handlers (21 routers)
+7. `notFoundHandler`
+8. `errorHandler` (must be last)
 
 ## Route Pattern
 
@@ -99,4 +101,4 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 
 ## Testing
 
-Vitest. Run `npm test` (once) or `npm run test:watch`. 141 tests across 14 files covering crypto, JWT, auth, admin, routes, vision, scan, billing, and eBay CSV export.
+Vitest. Run `npm test` (once) or `npm run test:watch`. ~200 tests across 20 files covering crypto, JWT, auth, admin, routes, vision, scan, billing, and eBay CSV export.

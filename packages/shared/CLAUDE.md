@@ -61,7 +61,7 @@ interface MarketplaceAdapter {
 ## Constants
 
 ```typescript
-FREE_TIER_LIMITS = { aiScansPerMonth: 25, bgRemovalsPerMonth: 5, porterMessagesPerDay: 20, marketplaces: 1 }
+FREE_TIER_LIMITS = { aiScansPerMonth: 25, aiListingsPerMonth: 10, bgRemovalsPerMonth: 5, porterMessagesPerDay: 20, porterExchangesPerDay: 5, marketplaces: 1 }
 MARKETPLACE_TYPES = ['ebay', 'etsy', 'reverb']
 CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor']
 LISTING_STATUSES = ['draft', 'active', 'sold', 'archived']
