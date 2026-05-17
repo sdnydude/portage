@@ -5,7 +5,8 @@ import { AppError } from '../middleware/error.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
-import { FREE_TIER_LIMITS } from '@portage/shared';
+import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
+import { computeEffectiveTier } from '../lib/billing-utils.js';
 
 const logger = createLogger('usage');
 
@@ -18,20 +19,25 @@ usageRouter.get('/', async (req, res, next) => {
     const userId = req.user!.sub;
     const [user] = await db.select({
       aiScansThisMonth: users.aiScansThisMonth,
+      aiListingsThisMonth: users.aiListingsThisMonth,
+      aiListingCredits: users.aiListingCredits,
       bgRemovalsThisMonth: users.bgRemovalsThisMonth,
       subscriptionTier: users.subscriptionTier,
+      trialEndsAt: users.trialEndsAt,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (!user) {
       throw new AppError(404, 'NOT_FOUND', 'User not found');
     }
 
-    const isPro = user.subscriptionTier === 'pro';
+    const effectiveTier = computeEffectiveTier(user.subscriptionTier, user.trialEndsAt);
+    const isPro = effectiveTier === 'pro';
 
     res.json({
       aiScans: { used: user.aiScansThisMonth, limit: isPro ? null : FREE_TIER_LIMITS.aiScansPerMonth },
-      bgRemovals: { used: user.bgRemovalsThisMonth, limit: isPro ? null : FREE_TIER_LIMITS.bgRemovalsPerMonth },
-      tier: user.subscriptionTier,
+      aiListings: { used: user.aiListingsThisMonth, limit: isPro ? PRO_TIER_LIMITS.aiListingsPerMonth : FREE_TIER_LIMITS.aiListingsPerMonth, credits: user.aiListingCredits },
+      bgRemovals: { used: user.bgRemovalsThisMonth, limit: isPro ? PRO_TIER_LIMITS.bgRemovalsPerMonth : FREE_TIER_LIMITS.bgRemovalsPerMonth },
+      tier: effectiveTier,
     });
   } catch (err) {
     next(err);
@@ -42,10 +48,14 @@ usageRouter.post('/bg-removal', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
 
-    const [bgUser] = await db.select({ subscriptionTier: users.subscriptionTier })
-      .from(users).where(eq(users.id, userId)).limit(1);
+    const [bgUser] = await db.select({
+      subscriptionTier: users.subscriptionTier,
+      trialEndsAt: users.trialEndsAt,
+    }).from(users).where(eq(users.id, userId)).limit(1);
 
-    if (bgUser?.subscriptionTier === 'free') {
+    const tier = bgUser ? computeEffectiveTier(bgUser.subscriptionTier, bgUser.trialEndsAt) : 'free';
+
+    if (tier === 'free') {
       const result = await db.update(users)
         .set({ bgRemovalsThisMonth: sql`${users.bgRemovalsThisMonth} + 1` })
         .where(and(

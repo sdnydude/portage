@@ -7,6 +7,8 @@ import { users, stripeEvents } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { createLogger } from '../lib/logger.js';
+import { computeEffectiveTier } from '../lib/billing-utils.js';
+import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
 
 const logger = createLogger('billing');
 
@@ -190,6 +192,69 @@ billingRouter.post('/buy-credits', requireAuth, async (req: Request, res: Respon
     });
 
     res.json({ url: session.url });
+  } catch (err) {
+    next(err);
+  }
+});
+
+billingRouter.get('/status', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.sub;
+    const [user] = await db.select({
+      subscriptionTier: users.subscriptionTier,
+      trialEndsAt: users.trialEndsAt,
+      stripeSubscriptionId: users.stripeSubscriptionId,
+      stripePriceId: users.stripePriceId,
+      aiScansThisMonth: users.aiScansThisMonth,
+      aiListingsThisMonth: users.aiListingsThisMonth,
+      aiListingCredits: users.aiListingCredits,
+      bgRemovalsThisMonth: users.bgRemovalsThisMonth,
+    }).from(users).where(eq(users.id, userId)).limit(1);
+
+    if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+
+    const effectiveTier = computeEffectiveTier(user.subscriptionTier, user.trialEndsAt);
+    const isPro = effectiveTier === 'pro';
+
+    const priceMonthly = process.env.STRIPE_PRICE_MONTHLY;
+    const priceAnnual = process.env.STRIPE_PRICE_ANNUAL;
+    let plan: 'monthly' | 'annual' | null = null;
+    if (user.stripePriceId === priceAnnual) plan = 'annual';
+    else if (user.stripePriceId === priceMonthly) plan = 'monthly';
+    else if (user.stripeSubscriptionId) plan = 'monthly';
+
+    let trial: { active: boolean; endsAt: string } | null = null;
+    if (user.trialEndsAt) {
+      trial = {
+        active: user.trialEndsAt.getTime() > Date.now(),
+        endsAt: user.trialEndsAt.toISOString(),
+      };
+    }
+
+    res.json({
+      effectiveTier,
+      trial,
+      subscription: user.stripeSubscriptionId
+        ? { id: user.stripeSubscriptionId, plan }
+        : null,
+      usage: {
+        aiListings: {
+          used: user.aiListingsThisMonth,
+          limit: isPro ? PRO_TIER_LIMITS.aiListingsPerMonth : FREE_TIER_LIMITS.aiListingsPerMonth,
+          credits: user.aiListingCredits,
+        },
+        bgRemovals: {
+          used: user.bgRemovalsThisMonth,
+          limit: isPro ? PRO_TIER_LIMITS.bgRemovalsPerMonth : FREE_TIER_LIMITS.bgRemovalsPerMonth,
+        },
+        porterExchanges: {
+          limit: isPro ? PRO_TIER_LIMITS.porterExchangesPerDay : FREE_TIER_LIMITS.porterExchangesPerDay,
+        },
+        marketplaces: {
+          limit: isPro ? PRO_TIER_LIMITS.marketplaces : FREE_TIER_LIMITS.marketplaces,
+        },
+      },
+    });
   } catch (err) {
     next(err);
   }
