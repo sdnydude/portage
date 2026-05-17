@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Stop hook: guaranteed capture of missed insights, ship sessions, decisions, and deferred items.
+"""Stop hook: guaranteed capture of missed insights, ship sessions, decisions,
+deferred items, corrections, and bug-fixes.
 
 Parses the session JSONL transcript, detects capture-worthy events that weren't
 followed by matching POST script calls, and fires the capture scripts for any gaps.
 
-V2 adds: decision file detection, deferred-items extraction from ship-state,
-and advisory logging for corrections/bug-fixes (no auto-fire).
+V3 adds: auto-fire for corrections (context-window extraction with deferred
+resolution) and bug-fixes (commit message + diagnostic pattern scanning).
 
 Design principles:
 - Fail-open: never crash, never block, exit 0 always
@@ -48,7 +49,7 @@ CORRECTION_SIGNALS = re.compile(
     re.IGNORECASE,
 )
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+SCRIPTS_DIR = Path.home() / ".claude" / "scripts"
 
 
 def find_transcript() -> Path | None:
@@ -131,10 +132,12 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
     decisions_found: list[dict] = []
     post_decision_count = 0
     post_deferred_count = 0
-    correction_signals = 0
-    post_correction_called = False
-    fix_commits = 0
-    post_bug_fix_called = False
+    corrections_found: list[dict] = []
+    pending_corrections: list[dict] = []
+    post_correction_count = 0
+    bug_fixes_found: list[dict] = []
+    post_bug_fix_count = 0
+    last_assistant_text = ""
 
     sample: list[dict] = []
     validated = False
@@ -146,23 +149,27 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
         nonlocal post_insight_count, post_ship_session_called
         nonlocal ship_session_complete, ship_state_content
         nonlocal post_decision_count, post_deferred_count
-        nonlocal correction_signals, post_correction_called
-        nonlocal fix_commits, post_bug_fix_called
+        nonlocal post_correction_count, post_bug_fix_count
+        nonlocal last_assistant_text
 
         entry_type = entry.get("type")
 
         if entry_type == "human":
             message = entry.get("message", {})
             msg_content = message.get("content", "")
+            msg_text = ""
             if isinstance(msg_content, str):
-                if CORRECTION_SIGNALS.search(msg_content):
-                    correction_signals += 1
+                msg_text = msg_content
             elif isinstance(msg_content, list):
                 for block in msg_content:
                     if isinstance(block, dict) and block.get("type") == "text":
-                        if CORRECTION_SIGNALS.search(block.get("text", "")):
-                            correction_signals += 1
-                            break
+                        msg_text = block.get("text", "")
+                        break
+            if msg_text and CORRECTION_SIGNALS.search(msg_text):
+                pending_corrections.append({
+                    "user_message": msg_text[:500],
+                    "context": last_assistant_text[-500:],
+                })
             return
 
         if entry_type != "assistant":
@@ -173,51 +180,71 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
         if not isinstance(content, list):
             return
 
+        # Two-pass: collect text first, then process tool_use blocks.
+        # Ensures last_assistant_text is current before diagnostic scans.
+        current_text = ""
+        text_blocks: list[str] = []
+        tool_use_blocks: list[dict] = []
+
         for block in content:
             if not isinstance(block, dict):
                 continue
+            if block.get("type") == "text":
+                text_blocks.append(block.get("text", ""))
+            elif block.get("type") == "tool_use":
+                tool_use_blocks.append(block)
 
-            block_type = block.get("type")
+        # Process text blocks: resolve pending corrections, extract insights
+        for text in text_blocks:
+            current_text += text
+            if pending_corrections:
+                for pending in pending_corrections:
+                    pending["claude_action"] = text[:500]
+                    corrections_found.append(pending)
+                pending_corrections.clear()
+            if "★ Insight" in text:
+                extracted = extract_insights_from_text(text)
+                insights_found.extend(extracted)
 
-            if block_type == "text":
-                text = block.get("text", "")
-                if "★ Insight" in text:
-                    extracted = extract_insights_from_text(text)
-                    insights_found.extend(extracted)
+        if current_text:
+            last_assistant_text = current_text
 
-            elif block_type == "tool_use":
-                name = block.get("name", "")
-                inp = block.get("input", {})
+        # Process tool_use blocks
+        for block in tool_use_blocks:
+            name = block.get("name", "")
+            inp = block.get("input", {})
 
-                if name == "Bash":
-                    cmd = inp.get("command", "")
-                    if "post-insight.sh" in cmd:
-                        post_insight_count += 1
-                    elif "post-ship-session.sh" in cmd:
-                        post_ship_session_called = True
-                    elif "post-decision-logs.sh" in cmd:
-                        post_decision_count += 1
-                    elif "post-deferred-items.sh" in cmd:
-                        post_deferred_count += 1
-                    elif "post-correction.sh" in cmd:
-                        post_correction_called = True
-                    elif "post-bug-fixes.sh" in cmd:
-                        post_bug_fix_called = True
-                    # Bare if — git commit never overlaps with post-*.sh patterns
-                    if "git commit" in cmd and "fix:" in cmd:
-                        fix_commits += 1
+            if name == "Bash":
+                cmd = inp.get("command", "")
+                if "post-insight.sh" in cmd:
+                    post_insight_count += 1
+                elif "post-ship-session.sh" in cmd:
+                    post_ship_session_called = True
+                elif "post-decision-logs.sh" in cmd:
+                    post_decision_count += 1
+                elif "post-deferred-items.sh" in cmd:
+                    post_deferred_count += 1
+                elif "post-correction.sh" in cmd:
+                    post_correction_count += 1
+                elif "post-bug-fixes.sh" in cmd:
+                    post_bug_fix_count += 1
+                if re.search(r"\bgit\s+commit\b", cmd) and "fix:" in cmd and "-m" in cmd:
+                    bug_fixes_found.append({
+                        "commit_cmd": cmd,
+                        "diagnostic_text": last_assistant_text,
+                    })
 
-                elif name in ("Write", "Edit"):
-                    file_path = inp.get("file_path", "")
-                    if "ship-state.md" in file_path:
-                        file_content = inp.get("content", "") or inp.get("new_string", "")
-                        if "status: complete" in file_content:
-                            ship_session_complete = True
-                            ship_state_content = file_content
-                    if DECISION_FILE.search(file_path):
-                        decision_content = inp.get("content", "") or inp.get("new_string", "")
-                        if decision_content:
-                            decisions_found.append({"content": decision_content, "file_path": file_path})
+            elif name in ("Write", "Edit"):
+                file_path = inp.get("file_path", "")
+                if "ship-state.md" in file_path:
+                    file_content = inp.get("content", "") or inp.get("new_string", "")
+                    if "status: complete" in file_content:
+                        ship_session_complete = True
+                        ship_state_content = file_content
+                if DECISION_FILE.search(file_path):
+                    decision_content = inp.get("content", "") or inp.get("new_string", "")
+                    if decision_content:
+                        decisions_found.append({"content": decision_content, "file_path": file_path})
 
     with open(transcript, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -245,10 +272,21 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
 
             process_entry(entry)
 
+    # Process any entries buffered but not yet processed (short transcripts < 5 lines)
+    if not validated and sample:
+        for buffered in sample:
+            process_entry(buffered)
+
     if skipped_lines > 0:
         skip_rate = skipped_lines / max(total_lines, 1)
         if skip_rate > 0.1:
             logging.warning(f"High skip rate: {skipped_lines}/{total_lines} lines unparseable ({skip_rate:.0%})")
+
+    # Flush unresolved pending corrections (last-turn corrections with no follow-up)
+    for pending in pending_corrections:
+        pending["claude_action"] = ""
+        corrections_found.append(pending)
+    pending_corrections.clear()
 
     return {
         "valid": True,
@@ -260,10 +298,10 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
         "decisions_found": decisions_found,
         "post_decision_count": post_decision_count,
         "post_deferred_count": post_deferred_count,
-        "correction_signals": correction_signals,
-        "post_correction_called": post_correction_called,
-        "fix_commits": fix_commits,
-        "post_bug_fix_called": post_bug_fix_called,
+        "corrections_found": corrections_found,
+        "post_correction_count": post_correction_count,
+        "bug_fixes_found": bug_fixes_found,
+        "post_bug_fix_count": post_bug_fix_count,
     }
 
 
@@ -385,11 +423,58 @@ def build_deferred_payload(item_text: str, feature_name: str) -> str:
     return json.dumps(payload)
 
 
+DIAGNOSTIC_PATTERNS = re.compile(
+    r"(root cause|the bug was|the issue was|the problem was|caused by)[:\s]+(.{10,300})",
+    re.IGNORECASE,
+)
+
+
+def build_correction_payload(correction: dict) -> str:
+    """Construct JSON payload for post-correction.sh from a context window."""
+    payload = {
+        "project_name": "portage",
+        "category": "other",
+        "user_message": correction.get("user_message", "")[:500],
+        "context": correction.get("context", "")[:500],
+        "claude_action": correction.get("claude_action", "")[:500],
+        "tags": ["hook-guarantee"],
+        "model_name": os.environ.get("ANTHROPIC_MODEL", "unknown"),
+    }
+    return json.dumps(payload)
+
+
+def build_bug_fix_payload(bug_fix: dict) -> str:
+    """Construct JSON payload for post-bug-fixes.sh from commit + diagnostic text."""
+    cmd = bug_fix.get("commit_cmd", "")
+    # HEREDOC pattern: git commit -m "$(cat <<'EOF'\nfix: message\n..."
+    msg_match = re.search(r"<<'?EOF'?\s*\n(fix:[^\n]+)", cmd)
+    if not msg_match:
+        msg_match = re.search(r'(?:-m|--message)[= ]\s*["\'](.+?)["\']', cmd)
+    if not msg_match:
+        msg_match = re.search(r"(?:-m|--message)[= ]\s*(\S+)", cmd)
+    commit_msg = msg_match.group(1) if msg_match else cmd[:280]
+
+    diagnostic = bug_fix.get("diagnostic_text", "")
+    diag_match = DIAGNOSTIC_PATTERNS.search(diagnostic)
+    root_cause = diag_match.group(2).strip() if diag_match else ""
+
+    payload = {
+        "tldr": commit_msg[:280],
+        "symptom": "",
+        "root_cause": root_cause[:500],
+        "fix_applied": commit_msg[:500],
+        "severity": "medium",
+        "category": "other",
+        "project_name": "portage",
+        "tags": ["hook-guarantee"],
+        "model_name": os.environ.get("ANTHROPIC_MODEL", "unknown"),
+    }
+    return json.dumps(payload)
+
+
 def fire_capture(script_name: str, payload: str) -> None:
     """Fire a capture script in a detached subprocess. Stderr goes to log file."""
     script = SCRIPTS_DIR / script_name
-    if not script.exists():
-        script = Path.home() / ".claude" / "scripts" / script_name
     if not script.exists():
         logging.error(f"Script not found: {script_name}")
         return
@@ -446,19 +531,35 @@ def main() -> None:
             f"{len(deferred_items)} deferred items detected — possible detection gap"
         )
 
-    if (missed_insight_count <= 0 and not ship_missed
-            and missed_decision_count <= 0 and missed_deferred_count <= 0):
-        logging.info(
-            f"No missed captures (insights: {len(insights_found)} found, "
-            f"{post_insight_count} posted; decisions: {len(decisions_found)} found, "
-            f"{post_decision_count} posted; deferred: {len(deferred_items)} found, "
-            f"{post_deferred_count} posted; ship: {'complete' if result['ship_session_complete'] else 'n/a'})"
+    corrections_found = result["corrections_found"]
+    post_correction_count = result["post_correction_count"]
+    missed_correction_count = len(corrections_found) - post_correction_count
+    if missed_correction_count < 0:
+        logging.warning(
+            f"post-correction called {post_correction_count}x but only "
+            f"{len(corrections_found)} corrections detected — possible detection gap"
         )
-        # Advisory logging even when no auto-fire needed
-        if result["correction_signals"] > 0 and not result["post_correction_called"]:
-            logging.info(f"ADVISORY: {result['correction_signals']} correction signal(s) detected, post-correction.sh not called")
-        if result["fix_commits"] > 0 and not result["post_bug_fix_called"]:
-            logging.info(f"ADVISORY: {result['fix_commits']} fix commit(s) detected, post-bug-fixes.sh not called")
+
+    bug_fixes_found = result["bug_fixes_found"]
+    post_bug_fix_count = result["post_bug_fix_count"]
+    missed_bug_fix_count = len(bug_fixes_found) - post_bug_fix_count
+    if missed_bug_fix_count < 0:
+        logging.warning(
+            f"post-bug-fixes called {post_bug_fix_count}x but only "
+            f"{len(bug_fixes_found)} bug-fixes detected — possible detection gap"
+        )
+
+    if (missed_insight_count <= 0 and not ship_missed
+            and missed_decision_count <= 0 and missed_deferred_count <= 0
+            and missed_correction_count <= 0 and missed_bug_fix_count <= 0):
+        logging.info(
+            f"No missed captures (insights: {len(insights_found)}/{post_insight_count}; "
+            f"decisions: {len(decisions_found)}/{post_decision_count}; "
+            f"deferred: {len(deferred_items)}/{post_deferred_count}; "
+            f"corrections: {len(corrections_found)}/{post_correction_count}; "
+            f"bug-fixes: {len(bug_fixes_found)}/{post_bug_fix_count}; "
+            f"ship: {'complete' if result['ship_session_complete'] else 'n/a'})"
+        )
         return
 
     # Fire missed captures — take the LAST N insights as uncaptured.
@@ -514,14 +615,32 @@ def main() -> None:
                 fire_capture("post-deferred-items.sh", payload)
                 posted_deferred += 1
 
-    if result["correction_signals"] > 0 and not result["post_correction_called"]:
-        logging.info(f"ADVISORY: {result['correction_signals']} correction signal(s) detected, post-correction.sh not called")
-    if result["fix_commits"] > 0 and not result["post_bug_fix_called"]:
-        logging.info(f"ADVISORY: {result['fix_commits']} fix commit(s) detected, post-bug-fixes.sh not called")
+    posted_corrections = 0
+    if missed_correction_count > 0:
+        uncaptured = corrections_found[-missed_correction_count:]
+        for corr in uncaptured:
+            payload = build_correction_payload(corr)
+            if DRY_RUN:
+                print(f"[DRY-RUN] post-correction.sh: {payload[:200]}...")
+            else:
+                fire_capture("post-correction.sh", payload)
+                posted_corrections += 1
+
+    posted_bug_fixes = 0
+    if missed_bug_fix_count > 0:
+        uncaptured = bug_fixes_found[-missed_bug_fix_count:]
+        for fix in uncaptured:
+            payload = build_bug_fix_payload(fix)
+            if DRY_RUN:
+                print(f"[DRY-RUN] post-bug-fixes.sh: {payload[:200]}...")
+            else:
+                fire_capture("post-bug-fixes.sh", payload)
+                posted_bug_fixes += 1
 
     summary = (
         f"capture-guarantee: posted {posted_insights} insights, {posted_ship} ship sessions, "
-        f"{posted_decisions} decisions, {posted_deferred} deferred items"
+        f"{posted_decisions} decisions, {posted_deferred} deferred, "
+        f"{posted_corrections} corrections, {posted_bug_fixes} bug-fixes"
     )
     logging.info(summary)
     if DRY_RUN:
