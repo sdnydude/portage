@@ -2,6 +2,7 @@
 title: "Deferred items from code health review"
 sidebar_label: "Deferred items from code health review"
 sidebar_position: 23
+slug: 023-deferred-items-from-code-health-review
 ---
 
 # Deferred items from code health review

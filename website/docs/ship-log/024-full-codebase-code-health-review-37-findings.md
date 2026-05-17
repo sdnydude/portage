@@ -2,6 +2,7 @@
 title: "Full codebase code health review — 37 findings"
 sidebar_label: "Full codebase code health review — 37 findings"
 sidebar_position: 24
+slug: 024-full-codebase-code-health-review-37-findings
 ---
 
 # Full codebase code health review — 37 findings

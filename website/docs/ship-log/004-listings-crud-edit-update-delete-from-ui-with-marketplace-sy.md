@@ -2,6 +2,7 @@
 title: "Listings CRUD — edit/update/delete from UI with marketplace sync"
 sidebar_label: "Listings CRUD — edit/update/delete from UI with ma"
 sidebar_position: 4
+slug: 004-listings-crud-edit-update-delete-from-ui-with-marketplace-sy
 ---
 
 # Listings CRUD — edit/update/delete from UI with marketplace sync

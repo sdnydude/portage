@@ -2,6 +2,7 @@
 title: "JWT auto-refresh — intercept 401, auto-refresh with stored refresh token, retry, dedup concurrent refreshes"
 sidebar_label: "JWT auto-refresh — intercept 401, auto-refresh wit"
 sidebar_position: 2
+slug: 002-jwt-auto-refresh-intercept-401-auto-refresh-with-stored-refr
 ---
 
 # JWT auto-refresh — intercept 401, auto-refresh with stored refresh token, retry, dedup concurrent refreshes
