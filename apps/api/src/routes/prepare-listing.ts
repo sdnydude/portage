@@ -1,14 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { items, sellerProfiles } from '../db/schema.js';
+import { items, sellerProfiles, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
+import { computeEffectiveTier } from '../lib/billing-utils.js';
+import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
 import type { PreparedListingData, PricingData, CompResult, ReverbCompResult } from '@portage/shared';
 
 const logger = createLogger('prepare-listing');
@@ -103,6 +105,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     const itemId = req.params.id;
     const { targetMarketplaces } = prepareSchema.parse(req.body);
 
+    // Validate item exists before billing gate — prevents credit leak on 404
     const [item] = await db.select().from(items).where(eq(items.id, itemId)).limit(1);
     if (!item || item.userId !== userId) {
       throw new AppError(404, 'NOT_FOUND', 'Item not found');
@@ -110,6 +113,64 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
 
     const [profile] = await db.select().from(sellerProfiles)
       .where(eq(sellerProfiles.userId, userId)).limit(1);
+
+    // --- Billing gate (C4: query DB directly, not JWT) ---
+    const [billingUser] = await db.select({
+      subscriptionTier: users.subscriptionTier,
+      trialEndsAt: users.trialEndsAt,
+      aiListingsThisMonth: users.aiListingsThisMonth,
+      aiListingCredits: users.aiListingCredits,
+      scanCountResetAt: users.scanCountResetAt,
+    }).from(users).where(eq(users.id, userId)).limit(1);
+
+    if (!billingUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
+
+    // C3: Monthly reset check
+    const now = new Date();
+    const resetAt = billingUser.scanCountResetAt;
+    if (resetAt.getUTCMonth() !== now.getUTCMonth() || resetAt.getUTCFullYear() !== now.getUTCFullYear()) {
+      await db.update(users)
+        .set({
+          aiListingsThisMonth: 0,
+          aiScansThisMonth: 0,
+          bgRemovalsThisMonth: 0,
+          scanCountResetAt: now,
+        })
+        .where(eq(users.id, userId));
+      billingUser.aiListingsThisMonth = 0;
+    }
+
+    const effectiveTier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
+    const limit = effectiveTier === 'pro'
+      ? PRO_TIER_LIMITS.aiListingsPerMonth
+      : FREE_TIER_LIMITS.aiListingsPerMonth;
+
+    // C2: Atomic reserve — try monthly allocation first
+    const reserved = await db.update(users)
+      .set({ aiListingsThisMonth: sql`${users.aiListingsThisMonth} + 1` })
+      .where(and(
+        eq(users.id, userId),
+        sql`${users.aiListingsThisMonth} < ${limit}`,
+      ))
+      .returning({ aiListingsThisMonth: users.aiListingsThisMonth });
+
+    let usedCredit = false;
+    if (reserved.length === 0) {
+      // Monthly limit hit — try credit path
+      const credited = await db.update(users)
+        .set({ aiListingCredits: sql`${users.aiListingCredits} - 1` })
+        .where(and(
+          eq(users.id, userId),
+          sql`${users.aiListingCredits} > 0`,
+        ))
+        .returning({ aiListingCredits: users.aiListingCredits });
+
+      if (credited.length === 0) {
+        throw new AppError(429, 'LIMIT_REACHED', `AI listing limit reached (${limit}/month). Upgrade or buy credits.`);
+      }
+      usedCredit = true;
+    }
+    // --- End billing gate ---
 
     const warnings: string[] = [];
     if (!profile) {
@@ -159,7 +220,9 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
 
     const currency = profile?.defaultCurrency ?? 'USD';
 
-    const aiFields = await generateListingFields({
+    let aiFields;
+    try {
+      aiFields = await generateListingFields({
       scanData: {
         brand: item.brand,
         model: item.model,
@@ -195,6 +258,19 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
         currency,
       },
     });
+    } catch (aiError) {
+      // I2: Rollback reservation on AI failure — user not charged for failed calls
+      if (usedCredit) {
+        await db.update(users)
+          .set({ aiListingCredits: sql`${users.aiListingCredits} + 1` })
+          .where(eq(users.id, userId));
+      } else {
+        await db.update(users)
+          .set({ aiListingsThisMonth: sql`${users.aiListingsThisMonth} - 1` })
+          .where(eq(users.id, userId));
+      }
+      throw aiError;
+    }
 
     const soldWithCondition = ebayComps.sold.map(s => ({
       price: s.price,

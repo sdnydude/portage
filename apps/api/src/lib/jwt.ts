@@ -7,6 +7,7 @@ export interface JwtPayload {
   email: string;
   tier: 'free' | 'pro';
   role: 'user' | 'admin';
+  trialEndsAt?: string;
 }
 
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -25,7 +26,7 @@ export function verifyAccessToken(token: string): JwtPayload {
   if (decoded.type === 'refresh') {
     throw new Error('Cannot use refresh token as access token');
   }
-  return { sub: decoded.sub, email: decoded.email, tier: decoded.tier, role: decoded.role || 'user' };
+  return { sub: decoded.sub, email: decoded.email, tier: decoded.tier, role: decoded.role || 'user', trialEndsAt: decoded.trialEndsAt };
 }
 
 export function verifyRefreshToken(token: string): JwtPayload {
@@ -33,7 +34,7 @@ export function verifyRefreshToken(token: string): JwtPayload {
   if (decoded.type !== 'refresh') {
     throw new Error('Invalid refresh token');
   }
-  return { sub: decoded.sub, email: decoded.email, tier: decoded.tier, role: decoded.role || 'user' };
+  return { sub: decoded.sub, email: decoded.email, tier: decoded.tier, role: decoded.role || 'user', trialEndsAt: decoded.trialEndsAt };
 }
 
 export function hashToken(token: string): string {

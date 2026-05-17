@@ -108,6 +108,31 @@ describe('POST /auth/register', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });
+
+  it('returns trialEndsAt in user response on registration', async () => {
+    const trialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    mockSelectReturns([]);
+    mockInsertReturns([{
+      id: 'user-trial',
+      email: 'trial@example.com',
+      subscriptionTier: 'free',
+      role: 'user',
+      onboardingCompleted: false,
+      trialEndsAt: trialEnd,
+      createdAt: new Date(),
+    }]);
+    mockUpdateReturns();
+
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ email: 'trial@example.com', password: 'SecurePassword123' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.trialEndsAt).toBeDefined();
+    const trialDate = new Date(res.body.user.trialEndsAt);
+    const sixDaysOut = Date.now() + 6 * 24 * 60 * 60 * 1000;
+    expect(trialDate.getTime()).toBeGreaterThan(sixDaysOut);
+  });
 });
 
 describe('POST /auth/login', () => {
@@ -128,7 +153,10 @@ describe('POST /auth/login', () => {
       role: 'user',
       onboardingCompleted: true,
       aiScansThisMonth: 5,
+      aiListingsThisMonth: 0,
+      aiListingCredits: 0,
       bgRemovalsThisMonth: 2,
+      trialEndsAt: null,
       createdAt: new Date('2026-01-01'),
       disabledAt: null,
       ...overrides,
@@ -148,6 +176,25 @@ describe('POST /auth/login', () => {
     expect(res.body.refreshToken).toBeDefined();
     expect(res.body.user.email).toBe('user@example.com');
     expect(res.body.user.subscriptionTier).toBe('pro');
+  });
+
+  it('returns billing fields in login response', async () => {
+    const trialEnd = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    mockSelectReturns([mockUserRow({
+      trialEndsAt: trialEnd,
+      aiListingsThisMonth: 3,
+      aiListingCredits: 7,
+    })]);
+    mockUpdateReturns();
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ email: 'user@example.com', password });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.trialEndsAt).toBeDefined();
+    expect(res.body.user.aiListingsThisMonth).toBe(3);
+    expect(res.body.user.aiListingCredits).toBe(7);
   });
 
   it('returns 401 for wrong password', async () => {
@@ -176,11 +223,13 @@ describe('POST /auth/login', () => {
     mockSelectReturns([mockUserRow({ disabledAt: new Date('2026-05-01') })]);
     mockUpdateReturns();
 
-    const res = await request(app)
+    const freshApp = createApp();
+    const res = await request(freshApp)
       .post('/auth/login')
       .send({ email: 'user@example.com', password });
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('ACCOUNT_DISABLED');
   });
+
 });

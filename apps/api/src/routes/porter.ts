@@ -7,7 +7,8 @@ import { conversations, items, listings, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { chat, type ToolDef } from '../lib/ai-client.js';
-import { FREE_TIER_LIMITS } from '@portage/shared';
+import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
+import { computeEffectiveTier } from '../lib/billing-utils.js';
 
 const logger = createLogger('porter');
 
@@ -214,6 +215,7 @@ porterRouter.post('/message', async (req, res, next) => {
 
     const [porterUser] = await db.select({
       subscriptionTier: users.subscriptionTier,
+      trialEndsAt: users.trialEndsAt,
       porterMessagesToday: sql<number>`
         (select coalesce(sum(jsonb_array_length(messages)), 0) from ${conversations}
          where user_id = ${userId}
@@ -222,8 +224,16 @@ porterRouter.post('/message', async (req, res, next) => {
       `,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
-    if (porterUser && porterUser.subscriptionTier === 'free' && Number(porterUser.porterMessagesToday) >= FREE_TIER_LIMITS.porterMessagesPerDay) {
-      throw new AppError(429, 'PORTER_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.porterMessagesPerDay} Porter messages per day.`);
+    if (!porterUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
+
+    const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
+    const exchangeLimit = tier === 'pro'
+      ? PRO_TIER_LIMITS.porterExchangesPerDay
+      : FREE_TIER_LIMITS.porterExchangesPerDay;
+    const messageThreshold = exchangeLimit * 2;
+
+    if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
+      throw new AppError(429, 'PORTER_LIMIT_REACHED', `Daily limit: ${exchangeLimit} Porter exchanges per day. ${tier === 'free' ? 'Upgrade to Pro for more.' : ''}`);
     }
 
     let conv: { id: string; messages: unknown[] } | undefined;

@@ -7,9 +7,24 @@ export const CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'] as const;
 
 export const FREE_TIER_LIMITS = {
   aiScansPerMonth: 25,
+  aiListingsPerMonth: 10,
   bgRemovalsPerMonth: 5,
   porterMessagesPerDay: 20,
+  porterExchangesPerDay: 5,
   marketplaces: 1,
+} as const;
+
+export const PRO_TIER_LIMITS = {
+  aiScansPerMonth: null,
+  aiListingsPerMonth: 75,
+  bgRemovalsPerMonth: null,
+  porterExchangesPerDay: 15,
+  marketplaces: null,
+} as const;
+
+export const CREDIT_PACK = {
+  priceUsd: 5,
+  aiListings: 10,
 } as const;
 
 export const PACKAGE_TYPES = ['box', 'envelope', 'poly_mailer'] as const;
