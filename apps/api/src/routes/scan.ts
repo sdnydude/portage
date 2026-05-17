@@ -10,7 +10,6 @@ import { AppError } from '../middleware/error.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq, sql } from 'drizzle-orm';
-import { FREE_TIER_LIMITS } from '@portage/shared';
 
 const logger = createLogger('scan');
 
@@ -56,10 +55,8 @@ async function checkScanLimit(userId: string): Promise<void> {
     user.aiScansThisMonth = 0;
   }
 
-  if (user.subscriptionTier === 'free' && user.aiScansThisMonth >= FREE_TIER_LIMITS.aiScansPerMonth) {
-    throw new AppError(429, 'SCAN_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.aiScansPerMonth} AI scans per month. Upgrade to Pro for unlimited.`);
-  }
 }
+
 
 async function incrementScanCount(userId: string): Promise<void> {
   await db.update(users)

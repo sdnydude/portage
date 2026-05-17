@@ -141,10 +141,19 @@ describe('POST /scan/refine', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns 429 when free tier scan limit reached', async () => {
+  it('allows scan regardless of count (billing gate moved to prepare-listing)', async () => {
     mockUserSelect({
       subscriptionTier: 'free',
       aiScansThisMonth: 999,
+    });
+    mockUpdateReturns();
+
+    vi.mocked(fetchPhotosAsBase64).mockResolvedValue([
+      { base64: 'img1', mediaType: 'image/jpeg' },
+    ]);
+    vi.mocked(identifyItemsMulti).mockResolvedValue({
+      candidates: [{ name: 'Test', description: '', category: 'other', condition: 'good' as const, conditionNotes: '', brand: '', model: '', features: [], estimatedValueLow: 0, estimatedValueHigh: 0, confidence: 0.5 }],
+      reasoning: [],
     });
 
     const res = await request(app)
@@ -152,8 +161,7 @@ describe('POST /scan/refine', () => {
       .set('Authorization', `Bearer ${token}`)
       .send(validBody);
 
-    expect(res.status).toBe(429);
-    expect(res.body.code).toBe('SCAN_LIMIT_REACHED');
+    expect(res.status).toBe(201);
   });
 
   it('requires auth', async () => {
