@@ -29,9 +29,12 @@ jobs:
           cp -r website/static/img/*.svg "$DOCS_SITE/static/portage/img/" 2>/dev/null || true
 
       - name: Build Docusaurus
+        timeout-minutes: 15
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: |
           cd /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site
-          npm ci
+          npm install
           npm run build
 
       - name: Restart docs container

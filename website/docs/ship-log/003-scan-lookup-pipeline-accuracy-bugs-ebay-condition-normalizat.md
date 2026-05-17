@@ -2,6 +2,7 @@
 title: "Scan/lookup pipeline accuracy bugs — eBay condition normalization, comps limit, temperature tuning, Zod validation, multi-image vision"
 sidebar_label: "Scan/lookup pipeline accuracy bugs — eBay conditio"
 sidebar_position: 3
+slug: 003-scan-lookup-pipeline-accuracy-bugs-ebay-condition-normalizat
 ---
 
 # Scan/lookup pipeline accuracy bugs — eBay condition normalization, comps limit, temperature tuning, Zod validation, multi-image vision

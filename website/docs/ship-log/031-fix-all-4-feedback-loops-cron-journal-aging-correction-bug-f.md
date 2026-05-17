@@ -2,6 +2,7 @@
 title: "Fix all 4 feedback loops — cron, journal aging, correction/bug-fix surfacing"
 sidebar_label: "Fix all 4 feedback loops — cron, journal aging, co"
 sidebar_position: 31
+slug: 031-fix-all-4-feedback-loops-cron-journal-aging-correction-bug-f
 ---
 
 # Fix all 4 feedback loops — cron, journal aging, correction/bug-fix surfacing

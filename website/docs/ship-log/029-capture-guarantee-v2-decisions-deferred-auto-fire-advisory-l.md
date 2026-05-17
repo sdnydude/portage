@@ -2,6 +2,7 @@
 title: "Capture-guarantee V2 — decisions + deferred auto-fire, advisory logging"
 sidebar_label: "Capture-guarantee V2 — decisions + deferred auto-f"
 sidebar_position: 29
+slug: 029-capture-guarantee-v2-decisions-deferred-auto-fire-advisory-l
 ---
 
 # Capture-guarantee V2 — decisions + deferred auto-fire, advisory logging

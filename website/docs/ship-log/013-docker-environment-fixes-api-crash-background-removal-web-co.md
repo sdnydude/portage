@@ -2,6 +2,7 @@
 title: "Docker environment fixes — API crash, background removal, web container, multi-photo"
 sidebar_label: "Docker environment fixes — API crash, background r"
 sidebar_position: 13
+slug: 013-docker-environment-fixes-api-crash-background-removal-web-co
 ---
 
 # Docker environment fixes — API crash, background removal, web container, multi-photo

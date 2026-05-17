@@ -2,6 +2,7 @@
 title: "Fix Dependabot vulnerabilities + clean up website/ tooling"
 sidebar_label: "Fix Dependabot vulnerabilities + clean up website/"
 sidebar_position: 15
+slug: 015-fix-dependabot-vulnerabilities-clean-up-website-tooling
 ---
 
 # Fix Dependabot vulnerabilities + clean up website/ tooling

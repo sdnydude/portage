@@ -2,6 +2,7 @@
 title: "Ship session intelligence pipeline + unified KB search"
 sidebar_label: "Ship session intelligence pipeline + unified KB se"
 sidebar_position: 16
+slug: 016-ship-session-intelligence-pipeline-unified-kb-search
 ---
 
 # Ship session intelligence pipeline + unified KB search

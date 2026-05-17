@@ -2,6 +2,7 @@
 title: "WebP to JPEG image format — fix marketplace compatibility"
 sidebar_label: "WebP to JPEG image format — fix marketplace compat"
 sidebar_position: 19
+slug: 019-webp-to-jpeg-image-format-fix-marketplace-compatibility
 ---
 
 # WebP to JPEG image format — fix marketplace compatibility

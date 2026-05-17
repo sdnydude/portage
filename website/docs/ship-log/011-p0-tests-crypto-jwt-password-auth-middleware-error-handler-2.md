@@ -2,6 +2,7 @@
 title: "P0 tests — crypto, jwt, password, auth middleware, error handler (27 unit tests)"
 sidebar_label: "P0 tests — crypto, jwt, password, auth middleware,"
 sidebar_position: 11
+slug: 011-p0-tests-crypto-jwt-password-auth-middleware-error-handler-2
 ---
 
 # P0 tests — crypto, jwt, password, auth middleware, error handler (27 unit tests)

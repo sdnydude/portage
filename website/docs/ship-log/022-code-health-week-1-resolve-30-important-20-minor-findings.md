@@ -2,6 +2,7 @@
 title: "Code health week 1 — resolve 30 Important + 20 Minor findings"
 sidebar_label: "Code health week 1 — resolve 30 Important + 20 Min"
 sidebar_position: 22
+slug: 022-code-health-week-1-resolve-30-important-20-minor-findings
 ---
 
 # Code health week 1 — resolve 30 Important + 20 Minor findings
