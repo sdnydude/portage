@@ -26,6 +26,7 @@ import { preferencesRouter } from './routes/preferences.js';
 import { sellerProfileRouter } from './routes/seller-profile.js';
 import { prepareListingRouter } from './routes/prepare-listing.js';
 import { usersRouter } from './routes/users.js';
+import { billingRouter, billingWebhookRouter } from './routes/billing.js';
 
 export function createApp() {
   const config = env();
@@ -40,6 +41,7 @@ export function createApp() {
     credentials: true,
   }));
 
+  app.use('/billing', billingWebhookRouter);
   app.use(express.json({ limit: '10mb' }));
   app.use(pinoHttp({ logger: rootLogger }));
 
@@ -97,6 +99,7 @@ export function createApp() {
   app.use('/users/me/preferences', preferencesRouter);
   app.use('/seller-profile', sellerProfileRouter);
   app.use('/items', prepareListingRouter);
+  app.use('/billing', billingRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
