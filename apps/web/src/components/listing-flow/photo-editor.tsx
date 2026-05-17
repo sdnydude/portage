@@ -6,6 +6,7 @@ import { useBgRemoval } from "@/hooks/use-bg-removal";
 import { useAuth } from "@/hooks/use-auth";
 import { api, ApiError } from "@/lib/api";
 import { CropTool } from "./crop-tool";
+import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -132,49 +133,60 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
   const [isRotating, setIsRotating] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<"enhance" | "bg" | null>(null);
 
   const isProcessing = isRotating || isCropping || isEnhancing || isRemovingBg;
 
-  // React to enhance result
-  useEffect(() => {
-    if (enhanceResult) {
-      setCurrentPhoto((prev) => ({
-        ...prev,
-        url: enhanceResult.image.url,
-        key: enhanceResult.image.key,
-        width: enhanceResult.image.width,
-        height: enhanceResult.image.height,
-      }));
-      resetEnhance();
-    }
-  }, [enhanceResult, resetEnhance]);
-
-  // React to enhance error
+  // Show enhance error
   useEffect(() => {
     if (enhanceError) {
       setError(enhanceError);
       resetEnhance();
+      setPreviewMode(null);
     }
   }, [enhanceError, resetEnhance]);
 
-  // React to bg removal result
-  useEffect(() => {
-    if (bgResultUrl) {
-      setCurrentPhoto((prev) => ({
-        ...prev,
-        url: bgResultUrl,
-      }));
-      resetBgRemoval();
-    }
-  }, [bgResultUrl, resetBgRemoval]);
-
-  // React to bg removal error
+  // Show bg removal error
   useEffect(() => {
     if (bgError) {
       setError(bgError);
       resetBgRemoval();
+      setPreviewMode(null);
     }
   }, [bgError, resetBgRemoval]);
+
+  const handleAcceptEnhance = useCallback(() => {
+    if (!enhanceResult) return;
+    setCurrentPhoto((prev) => ({
+      ...prev,
+      url: enhanceResult.image.url,
+      key: enhanceResult.image.key,
+      width: enhanceResult.image.width,
+      height: enhanceResult.image.height,
+    }));
+    resetEnhance();
+    setPreviewMode(null);
+  }, [enhanceResult, resetEnhance]);
+
+  const handleDiscardEnhance = useCallback(() => {
+    resetEnhance();
+    setPreviewMode(null);
+  }, [resetEnhance]);
+
+  const handleAcceptBg = useCallback(() => {
+    if (!bgResultUrl) return;
+    setCurrentPhoto((prev) => ({
+      ...prev,
+      url: bgResultUrl,
+    }));
+    resetBgRemoval();
+    setPreviewMode(null);
+  }, [bgResultUrl, resetBgRemoval]);
+
+  const handleDiscardBg = useCallback(() => {
+    resetBgRemoval();
+    setPreviewMode(null);
+  }, [resetBgRemoval]);
 
   // Inject spinner keyframe once
   useEffect(() => {
@@ -261,6 +273,7 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
   const handleEnhance = useCallback(() => {
     if (isProcessing) return;
     setError(null);
+    setPreviewMode("enhance");
     enhance(currentPhoto.url);
   }, [isProcessing, enhance, currentPhoto.url]);
 
@@ -269,6 +282,7 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
   const handleBgRemove = useCallback(() => {
     if (isProcessing) return;
     setError(null);
+    setPreviewMode("bg");
     removeBackground(currentPhoto.url);
   }, [isProcessing, removeBackground, currentPhoto.url]);
 
@@ -324,25 +338,45 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
       </div>
 
       {/* Image area */}
-      <div className="flex-1 relative overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={currentPhoto.url}
-          alt="Edit photo"
-          className="absolute inset-0 w-full h-full object-contain"
-        />
-
-        {/* Processing overlay */}
-        {isProcessing && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60">
-            <Spinner size={40} />
-            <p className="text-white text-sm mt-3 font-medium">
-              {isRotating && "Rotating..."}
-              {isCropping && "Cropping..."}
-              {isEnhancing && "Enhancing..."}
-              {isRemovingBg && "Removing background..."}
-            </p>
+      <div className="flex-1 relative overflow-hidden flex items-center justify-center px-4">
+        {previewMode === "enhance" && enhanceResult ? (
+          <div className="w-full max-w-md">
+            <BeforeAfterSlider
+              beforeUrl={currentPhoto.url}
+              afterUrl={enhanceResult.image.url}
+              alt="Enhanced preview"
+            />
           </div>
+        ) : previewMode === "bg" && bgResultUrl ? (
+          <div className="w-full max-w-md">
+            <BeforeAfterSlider
+              beforeUrl={currentPhoto.url}
+              afterUrl={bgResultUrl}
+              alt="Background removed preview"
+            />
+          </div>
+        ) : (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={currentPhoto.url}
+              alt="Edit photo"
+              className="absolute inset-0 w-full h-full object-contain"
+            />
+
+            {/* Processing overlay */}
+            {isProcessing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60">
+                <Spinner size={40} />
+                <p className="text-white text-sm mt-3 font-medium">
+                  {isRotating && "Rotating..."}
+                  {isCropping && "Cropping..."}
+                  {isEnhancing && "Enhancing..."}
+                  {isRemovingBg && "Removing background..."}
+                </p>
+              </div>
+            )}
+          </>
         )}
 
         {/* Error toast */}
@@ -358,41 +392,88 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
         )}
       </div>
 
-      {/* Toolbar */}
-      <div
-        className="px-4 pt-4 pb-6"
-        style={{
-          background: "rgba(0,0,0,0.85)",
-          paddingBottom: "calc(1.5rem + var(--safe-area-bottom, 0px))",
-        }}
-      >
-        <div className="flex items-center justify-around max-w-sm mx-auto">
-          <ToolButton
-            icon={<RotateIcon />}
-            label="Rotate"
-            onClick={handleRotate}
-            disabled={isProcessing}
-          />
-          <ToolButton
-            icon={<CropIcon />}
-            label="Crop"
-            onClick={handleOpenCrop}
-            disabled={isProcessing}
-          />
-          <ToolButton
-            icon={<EnhanceIcon />}
-            label="Enhance"
-            onClick={handleEnhance}
-            disabled={isProcessing}
-          />
-          <ToolButton
-            icon={<BgRemoveIcon />}
-            label="BG Remove"
-            onClick={handleBgRemove}
-            disabled={isProcessing}
-          />
+      {/* Preview accept/discard buttons */}
+      {previewMode === "enhance" && enhanceResult ? (
+        <div
+          className="px-6 pt-4 pb-6 flex gap-3"
+          style={{
+            background: "rgba(0,0,0,0.85)",
+            paddingBottom: "calc(1.5rem + var(--safe-area-bottom, 0px))",
+          }}
+        >
+          <button
+            onClick={handleDiscardEnhance}
+            className="flex-1 py-3 rounded-xl border border-white/30 text-white text-sm font-medium"
+          >
+            Discard
+          </button>
+          <button
+            onClick={handleAcceptEnhance}
+            className="flex-1 py-3 rounded-xl text-white text-sm font-semibold"
+            style={{ background: "var(--flow-accent, #2D5A27)" }}
+          >
+            Use this photo
+          </button>
         </div>
-      </div>
+      ) : previewMode === "bg" && bgResultUrl ? (
+        <div
+          className="px-6 pt-4 pb-6 flex gap-3"
+          style={{
+            background: "rgba(0,0,0,0.85)",
+            paddingBottom: "calc(1.5rem + var(--safe-area-bottom, 0px))",
+          }}
+        >
+          <button
+            onClick={handleDiscardBg}
+            className="flex-1 py-3 rounded-xl border border-white/30 text-white text-sm font-medium"
+          >
+            Discard
+          </button>
+          <button
+            onClick={handleAcceptBg}
+            className="flex-1 py-3 rounded-xl text-white text-sm font-semibold"
+            style={{ background: "var(--flow-accent, #2D5A27)" }}
+          >
+            Use this photo
+          </button>
+        </div>
+      ) : (
+        /* Toolbar */
+        <div
+          className="px-4 pt-4 pb-6"
+          style={{
+            background: "rgba(0,0,0,0.85)",
+            paddingBottom: "calc(1.5rem + var(--safe-area-bottom, 0px))",
+          }}
+        >
+          <div className="flex items-center justify-around max-w-sm mx-auto">
+            <ToolButton
+              icon={<RotateIcon />}
+              label="Rotate"
+              onClick={handleRotate}
+              disabled={isProcessing}
+            />
+            <ToolButton
+              icon={<CropIcon />}
+              label="Crop"
+              onClick={handleOpenCrop}
+              disabled={isProcessing}
+            />
+            <ToolButton
+              icon={<EnhanceIcon />}
+              label="Enhance"
+              onClick={handleEnhance}
+              disabled={isProcessing}
+            />
+            <ToolButton
+              icon={<BgRemoveIcon />}
+              label="BG Remove"
+              onClick={handleBgRemove}
+              disabled={isProcessing}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -33,11 +33,19 @@ export function CropTool({ imageUrl, imageWidth, imageHeight, onApply, onCancel 
   const [displayScale, setDisplayScale] = useState(1);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const scaleX = rect.width / imageWidth;
-    const scaleY = rect.height / imageHeight;
-    setDisplayScale(Math.min(scaleX, scaleY, 1));
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const scaleX = rect.width / imageWidth;
+      const scaleY = rect.height / imageHeight;
+      setDisplayScale(Math.min(scaleX, scaleY, 1));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [imageWidth, imageHeight]);
 
   const applyAspectConstraint = useCallback((region: CropRegion, ratio: AspectRatio): CropRegion => {
@@ -127,36 +135,38 @@ export function CropTool({ imageUrl, imageWidth, imageHeight, onApply, onCancel 
 
       <div
         ref={containerRef}
-        className="flex-1 relative overflow-hidden flex items-center justify-center"
+        className="flex-1 relative overflow-hidden flex items-center justify-center touch-none"
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl} alt="Crop" style={{ width: imageWidth * s, height: imageHeight * s }} className="select-none" draggable={false} />
+        <div className="relative" style={{ width: imageWidth * s, height: imageHeight * s }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imageUrl} alt="Crop" className="w-full h-full select-none" draggable={false} />
 
-        <div className="absolute inset-0 pointer-events-none" style={{ left: 0, top: 0 }}>
-          <div className="absolute bg-black/60" style={{ left: 0, top: 0, width: "100%", height: crop.y * s }} />
-          <div className="absolute bg-black/60" style={{ left: 0, top: (crop.y + crop.height) * s, width: "100%", bottom: 0 }} />
-          <div className="absolute bg-black/60" style={{ left: 0, top: crop.y * s, width: crop.x * s, height: crop.height * s }} />
-          <div className="absolute bg-black/60" style={{ left: (crop.x + crop.width) * s, top: crop.y * s, right: 0, height: crop.height * s }} />
-        </div>
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute bg-black/60" style={{ left: 0, top: 0, width: "100%", height: crop.y * s }} />
+            <div className="absolute bg-black/60" style={{ left: 0, top: (crop.y + crop.height) * s, width: "100%", bottom: 0 }} />
+            <div className="absolute bg-black/60" style={{ left: 0, top: crop.y * s, width: crop.x * s, height: crop.height * s }} />
+            <div className="absolute bg-black/60" style={{ left: (crop.x + crop.width) * s, top: crop.y * s, right: 0, height: crop.height * s }} />
+          </div>
 
-        <div
-          className="absolute border-2 border-white cursor-move"
-          style={{ left: crop.x * s, top: crop.y * s, width: crop.width * s, height: crop.height * s }}
-          onPointerDown={(e) => handlePointerDown(e, "move")}
-        >
-          {(["nw", "ne", "sw", "se"] as const).map(corner => (
-            <div
-              key={corner}
-              className="absolute w-5 h-5 bg-white rounded-full -translate-x-1/2 -translate-y-1/2 cursor-pointer"
-              style={{
-                left: corner.includes("e") ? "100%" : 0,
-                top: corner.includes("s") ? "100%" : 0,
-              }}
-              onPointerDown={(e) => handlePointerDown(e, corner)}
-            />
-          ))}
+          <div
+            className="absolute border-2 border-white cursor-move"
+            style={{ left: crop.x * s, top: crop.y * s, width: crop.width * s, height: crop.height * s }}
+            onPointerDown={(e) => handlePointerDown(e, "move")}
+          >
+            {(["nw", "ne", "sw", "se"] as const).map(corner => (
+              <div
+                key={corner}
+                className="absolute w-5 h-5 bg-white rounded-full -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+                style={{
+                  left: corner.includes("e") ? "100%" : 0,
+                  top: corner.includes("s") ? "100%" : 0,
+                }}
+                onPointerDown={(e) => handlePointerDown(e, corner)}
+              />
+            ))}
+          </div>
         </div>
       </div>
 

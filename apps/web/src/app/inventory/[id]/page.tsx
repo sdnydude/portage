@@ -89,6 +89,23 @@ export default function ItemDetailPage() {
     [token, item, updateItem],
   );
 
+  const handleSaveEditedPhoto = useCallback(
+    async (newUrl: string, newKey?: string) => {
+      if (!item) return;
+      const itemPhotos = item.photos ?? [];
+      if (!itemPhotos[photoIndex]) return;
+      const updatedPhotos = itemPhotos.map((p, i) =>
+        i === photoIndex
+          ? { ...p, url: newUrl, ...(newKey ? { key: newKey } : {}) }
+          : p
+      );
+      await updateItem({ photos: updatedPhotos });
+      resetEnhance();
+      setShowBgRemoval(false);
+    },
+    [item, photoIndex, updateItem, resetEnhance],
+  );
+
   const handleUseCompTitle = useCallback(
     async (comp: CompListing) => {
       if (!item) return;
@@ -293,6 +310,7 @@ export default function ItemDetailPage() {
               <BgRemovalPanel
                 imageUrl={currentPhoto.url}
                 alt={item.title}
+                onSave={(url) => handleSaveEditedPhoto(url)}
                 onClose={() => setShowBgRemoval(false)}
               />
             ) : enhanceResult ? (
@@ -308,6 +326,12 @@ export default function ItemDetailPage() {
                     className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-text-primary"
                   >
                     Discard
+                  </button>
+                  <button
+                    onClick={() => handleSaveEditedPhoto(enhanceResult.image.url, enhanceResult.image.key)}
+                    className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium"
+                  >
+                    Use this photo
                   </button>
                 </div>
               </div>
