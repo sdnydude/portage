@@ -1,4 +1,5 @@
 import { items } from '../db/schema.js';
+import type { MarketplaceData } from '@portage/shared';
 
 type Item = typeof items.$inferSelect;
 
@@ -90,12 +91,12 @@ export function itemsToEbayCsv(
   ];
 
   for (const item of items) {
-    const ebayCache = (item.marketplaceData as { ebay?: { categoryId?: string | null; title?: string | null } } | null)?.ebay;
+    const ebayCache = (item.marketplaceData as MarketplaceData | null)?.ebay;
 
     const categoryId = ebayCache?.categoryId ?? '';
     if (!categoryId) missingCategories++;
 
-    const title = ebayCache?.title ?? item.title.slice(0, 80);
+    const title = (ebayCache?.title ?? item.title).slice(0, 80);
     const conditionId = EBAY_CONDITION_MAP[item.condition ?? 'good'] ?? '4000';
 
     const price =

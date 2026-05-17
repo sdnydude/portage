@@ -120,7 +120,19 @@ describe('itemsToEbayCsv', () => {
       const { csv } = itemsToEbayCsv([item]);
       const dataRow = csv.split('\r\n')[1];
       const fields = parseCSVRow(dataRow);
-      expect(fields[3].length).toBeLessThanOrEqual(80);
+      expect(fields[3]).toHaveLength(80);
+    });
+
+    it('truncates cached eBay title to 80 chars when it exceeds limit', () => {
+      const item = makeItem({
+        marketplaceData: {
+          ebay: { categoryId: '33034', categoryName: 'Guitars', title: 'B'.repeat(95), cachedAt: '2026-01-15T00:00:00Z' },
+        },
+      });
+      const { csv } = itemsToEbayCsv([item]);
+      const dataRow = csv.split('\r\n')[1];
+      const fields = parseCSVRow(dataRow);
+      expect(fields[3]).toHaveLength(80);
     });
   });
 
@@ -168,6 +180,15 @@ describe('itemsToEbayCsv', () => {
 
     it('returns empty string when no photos', () => {
       const item = makeItem({ photos: [] });
+      const { csv } = itemsToEbayCsv([item]);
+      const dataRow = csv.split('\r\n')[1];
+      const fields = parseCSVRow(dataRow);
+      const picUrlField = fields[fields.length - 3];
+      expect(picUrlField).toBe('');
+    });
+
+    it('returns empty string when photos is null', () => {
+      const item = makeItem({ photos: null as unknown as Item['photos'] });
       const { csv } = itemsToEbayCsv([item]);
       const dataRow = csv.split('\r\n')[1];
       const fields = parseCSVRow(dataRow);
@@ -245,6 +266,13 @@ describe('itemsToEbayCsv', () => {
       const { csv } = itemsToEbayCsv([item]);
       const dataRow = csv.split('\r\n')[1];
       expect(dataRow).toContain('3000');
+    });
+
+    it('falls back to condition 4000 when condition is null', () => {
+      const item = makeItem({ condition: null as unknown as Item['condition'] });
+      const { csv } = itemsToEbayCsv([item]);
+      const dataRow = csv.split('\r\n')[1];
+      expect(dataRow).toContain('4000');
     });
 
     it('includes shipping and returns fields', () => {

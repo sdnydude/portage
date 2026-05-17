@@ -11,7 +11,7 @@ import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
 import { computeEffectiveTier } from '../lib/billing-utils.js';
 import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
-import type { PreparedListingData, PricingData, CompResult, ReverbCompResult } from '@portage/shared';
+import type { PreparedListingData, PricingData, CompResult, ReverbCompResult, MarketplaceCacheEntry } from '@portage/shared';
 
 const logger = createLogger('prepare-listing');
 
@@ -272,22 +272,23 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       throw aiError;
     }
 
+    const ebayEntry: MarketplaceCacheEntry = {
+      categoryId: categorySuggestion?.categoryId ?? aiFields.ebay?.categoryId ?? null,
+      categoryName: categorySuggestion?.categoryName ?? aiFields.ebay?.categoryName ?? null,
+      title: aiFields.ebay?.title ?? null,
+      cachedAt: new Date().toISOString(),
+    };
+
     try {
       await db.update(items)
         .set({
-          marketplaceData: sql`COALESCE(marketplace_data, '{}'::jsonb) || ${JSON.stringify({
-            ebay: {
-              categoryId: categorySuggestion?.categoryId ?? aiFields.ebay?.categoryId ?? null,
-              categoryName: categorySuggestion?.categoryName ?? aiFields.ebay?.categoryName ?? null,
-              title: aiFields.ebay?.title ?? null,
-              cachedAt: new Date().toISOString(),
-            },
-          })}::jsonb`,
+          marketplaceData: sql`COALESCE(marketplace_data, '{}'::jsonb) || ${JSON.stringify({ ebay: ebayEntry })}::jsonb`,
           updatedAt: new Date(),
         })
         .where(eq(items.id, itemId));
     } catch (cacheErr) {
-      logger.warn({ itemId, error: (cacheErr as Error).message }, 'Failed to cache marketplace data — non-blocking');
+      logger.warn({ itemId, error: (cacheErr as Error).message }, 'Failed to cache marketplace data');
+      warnings.push('eBay category data could not be saved — re-run prepare before exporting CSV');
     }
 
     const soldWithCondition = ebayComps.sold.map(s => ({
