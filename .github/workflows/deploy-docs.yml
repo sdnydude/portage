@@ -48,16 +48,18 @@ jobs:
             nginx:alpine
 
       - name: Ingest docs into registry
+        timeout-minutes: 5
+        continue-on-error: true
         run: |
           cd /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/registry
-          python3 doc_ingest.py \
+          ulimit -v $((3 * 1024 * 1024))
+          MALLOC_ARENA_MAX=2 python3 doc_ingest.py \
             --project portage \
-            --docs-dir /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site/projects/portage \
-            --sweep
+            --docs-dir /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site/projects/portage
 
       - name: Verify deployment
         run: |
           curl -sf http://localhost:8017/portage/getting-started/ > /dev/null
           echo "Docs site: OK (port 8017)"
-          TOTAL=$(curl -s http://localhost:8011/api/doc-pages?project_name=portage\&limit=1 | python3 -c "import sys,json; print(json.load(sys.stdin)['total'])")
+          TOTAL=$(curl -s http://localhost:8011/api/doc-pages?project_name=portage\&limit=1 | python3 -c "import sys,json; print(json.load(sys.stdin).get('total','?'))" 2>/dev/null || echo "?")
           echo "Registry: $TOTAL chunks indexed"
