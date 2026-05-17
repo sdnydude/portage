@@ -9,6 +9,7 @@ import { encrypt } from '../../lib/crypto.js';
 import { db } from '../../db/index.js';
 import { marketplaceAccounts } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
+import { checkMarketplaceLimit } from '../../lib/billing-utils.js';
 
 const logger = createLogger('ebay-auth');
 
@@ -37,10 +38,20 @@ function ebayAuthUrl(): string {
     : 'https://auth.ebay.com';
 }
 
-ebayAuthRouter.get('/connect', (req, res) => {
+ebayAuthRouter.get('/connect', async (req, res, next) => {
+  try {
   const config = env();
   if (!config.EBAY_CLIENT_ID || !config.EBAY_REDIRECT_URI) {
     throw new AppError(503, 'EBAY_NOT_CONFIGURED', 'eBay integration is not configured');
+  }
+
+  const userId = req.user!.sub;
+  const existing = await db.select({ id: marketplaceAccounts.id })
+    .from(marketplaceAccounts)
+    .where(and(eq(marketplaceAccounts.userId, userId), eq(marketplaceAccounts.marketplace, 'ebay')))
+    .limit(1);
+  if (existing.length === 0) {
+    await checkMarketplaceLimit(userId);
   }
 
   const scopes = [
@@ -62,6 +73,9 @@ ebayAuthRouter.get('/connect', (req, res) => {
   authUrl.searchParams.set('state', state);
 
   res.json({ authUrl: authUrl.toString() });
+  } catch (err) {
+    next(err);
+  }
 });
 
 const callbackSchema = z.object({
@@ -132,6 +146,7 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
         })
         .where(eq(marketplaceAccounts.id, existing[0].id));
     } else {
+      await checkMarketplaceLimit(userId);
       await db.insert(marketplaceAccounts).values({
         userId,
         marketplace: 'ebay',

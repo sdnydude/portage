@@ -1,14 +1,11 @@
 import { Router } from 'express';
-import { createLogger } from '../lib/logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
 import { computeEffectiveTier } from '../lib/billing-utils.js';
-
-const logger = createLogger('usage');
 
 export const usageRouter = Router();
 
@@ -51,33 +48,21 @@ usageRouter.post('/bg-removal', async (req, res, next) => {
     const [bgUser] = await db.select({
       subscriptionTier: users.subscriptionTier,
       trialEndsAt: users.trialEndsAt,
+      bgRemovalsThisMonth: users.bgRemovalsThisMonth,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
-    const tier = bgUser ? computeEffectiveTier(bgUser.subscriptionTier, bgUser.trialEndsAt) : 'free';
+    if (!bgUser) throw new AppError(404, 'NOT_FOUND', 'User not found');
 
-    if (tier === 'free') {
-      const result = await db.update(users)
-        .set({ bgRemovalsThisMonth: sql`${users.bgRemovalsThisMonth} + 1` })
-        .where(and(
-          eq(users.id, userId),
-          sql`${users.bgRemovalsThisMonth} < ${FREE_TIER_LIMITS.bgRemovalsPerMonth}`,
-        ))
-        .returning({ bgRemovalsThisMonth: users.bgRemovalsThisMonth });
+    const tier = computeEffectiveTier(bgUser.subscriptionTier, bgUser.trialEndsAt);
+    const limit = tier === 'pro' ? null : FREE_TIER_LIMITS.bgRemovalsPerMonth;
+    const allowed = limit === null || bgUser.bgRemovalsThisMonth < limit;
 
-      if (result.length === 0) {
-        throw new AppError(429, 'BG_REMOVAL_LIMIT_REACHED', `Free tier limit: ${FREE_TIER_LIMITS.bgRemovalsPerMonth} background removals per month. Upgrade to Pro for unlimited.`);
-      }
-
-      logger.info({ userId, used: result[0].bgRemovalsThisMonth }, 'Background removal credit consumed (free tier)');
-    } else {
-      await db.update(users)
-        .set({ bgRemovalsThisMonth: sql`${users.bgRemovalsThisMonth} + 1` })
-        .where(eq(users.id, userId));
-
-      logger.info({ userId }, 'Background removal credit consumed (pro)');
-    }
-
-    res.json({ allowed: true });
+    res.json({
+      allowed,
+      remaining: limit === null ? null : Math.max(0, limit - bgUser.bgRemovalsThisMonth),
+      limit,
+      used: bgUser.bgRemovalsThisMonth,
+    });
   } catch (err) {
     next(err);
   }
