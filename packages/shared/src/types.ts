@@ -43,6 +43,19 @@ export interface ItemPhoto {
   isPrimary?: boolean;
 }
 
+export interface MarketplaceCacheEntry {
+  categoryId: string | null;
+  categoryName: string | null;
+  title: string | null;
+  cachedAt: string;
+}
+
+export interface MarketplaceData {
+  ebay?: MarketplaceCacheEntry;
+  etsy?: MarketplaceCacheEntry;
+  reverb?: MarketplaceCacheEntry;
+}
+
 export interface Item {
   id: string;
   userId: string;
@@ -51,11 +64,15 @@ export interface Item {
   description: string;
   category: string;
   condition: 'new' | 'like_new' | 'good' | 'fair' | 'poor';
+  conditionNotes: string;
+  brand: string;
+  model: string;
   features: string[];
   estimatedValueMin?: number;
   estimatedValueMax?: number;
   estimatedValueRecommended?: number;
   aiConfidenceScore: number;
+  marketplaceData?: MarketplaceData;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -63,6 +63,7 @@ export const items = pgTable('items', {
   estimatedValueMax: doublePrecision('estimated_value_max'),
   estimatedValueRecommended: doublePrecision('estimated_value_recommended'),
   aiConfidenceScore: real('ai_confidence_score').notNull().default(0),
+  marketplaceData: jsonb('marketplace_data').$type<import('@portage/shared').MarketplaceData>(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [

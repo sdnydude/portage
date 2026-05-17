@@ -129,9 +129,13 @@ itemsRouter.get('/export', async (req, res, next) => {
 
     if (query.format === 'ebay_csv') {
       const date = new Date().toISOString().slice(0, 10);
-      const csv = itemsToEbayCsv(results);
+      const { csv, missingCategories, totalRows } = itemsToEbayCsv(results);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="portage-ebay-export-${date}.csv"`);
+      if (missingCategories > 0) {
+        res.setHeader('X-Portage-Missing-Categories', String(missingCategories));
+      }
+      res.setHeader('X-Portage-Total-Rows', String(totalRows));
       return res.send(csv);
     }
 

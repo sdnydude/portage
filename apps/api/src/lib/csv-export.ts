@@ -1,8 +1,8 @@
 import { items } from '../db/schema.js';
+import type { MarketplaceData } from '@portage/shared';
 
 type Item = typeof items.$inferSelect;
 
-// eBay File Exchange condition ID mapping
 const EBAY_CONDITION_MAP: Record<string, string> = {
   new: '1000',
   like_new: '3000',
@@ -11,13 +11,14 @@ const EBAY_CONDITION_MAP: Record<string, string> = {
   poor: '7000',
 };
 
-// eBay File Exchange column order (required header sequence)
 const EBAY_COLUMNS = [
-  'Action',
+  'Action(SiteID=US|Country=US|Currency=USD|Version=1193|CC=UTF-8)',
+  'Custom label (SKU)',
   'Category',
   'Title',
   'Description',
   'ConditionID',
+  'Condition description',
   'Price',
   'Quantity',
   'Format',
@@ -32,20 +33,22 @@ const EBAY_COLUMNS = [
   'Country',
   'Currency',
   'PicURL',
+  'C:Brand',
+  'C:Model',
 ] as const;
 
 export interface EbayCsvOptions {
-  action?: 'Add' | 'Revise' | 'Verify';
+  action?: 'Draft' | 'Add' | 'Revise' | 'Verify';
   location?: string;
   country?: string;
 }
 
-/**
- * Escape a field value for CSV output.
- * Per RFC 4180: wrap in double-quotes if the field contains
- * commas, double-quotes, or newlines; escape embedded double-quotes
- * by doubling them.
- */
+export interface EbayCsvResult {
+  csv: string;
+  missingCategories: number;
+  totalRows: number;
+}
+
 function escapeCsvField(value: string | number | null | undefined): string {
   if (value == null) return '';
   const str = String(value);
@@ -55,80 +58,87 @@ function escapeCsvField(value: string | number | null | undefined): string {
   return str;
 }
 
-/**
- * Build a single CSV row from an ordered array of field values.
- */
 function buildRow(fields: (string | number | null | undefined)[]): string {
   return fields.map(escapeCsvField).join(',');
 }
 
-/**
- * Extract the primary photo URL from an item's photos array.
- * Falls back to the first photo if no primary is marked.
- */
-function getPrimaryPhotoUrl(photos: unknown): string {
+function getAllPhotoUrls(photos: unknown): string {
   if (!Array.isArray(photos) || photos.length === 0) return '';
-  const primary = (photos as Array<{ url?: string; isPrimary?: boolean }>).find(p => p.isPrimary);
-  const photo = primary ?? photos[0];
-  return (photo as { url?: string }).url ?? '';
+  const urls = (photos as Array<{ url?: string; isPrimary?: boolean }>)
+    .slice(0, 12)
+    .map(p => p.url)
+    .filter(Boolean) as string[];
+  return urls.join('|');
 }
 
-/**
- * Convert Portage items to eBay File Exchange CSV format.
- *
- * @param items  - Array of Item rows from the database
- * @param options - Optional overrides for Action, Location, Country
- * @returns Full CSV string including header row, ready for file download
- */
+function wrapHtml(text: string): string {
+  if (!text) return '';
+  return `<p>${text}</p>`;
+}
+
 export function itemsToEbayCsv(
   items: Item[],
   options: EbayCsvOptions = {},
-): string {
-  const action = options.action ?? 'Add';
+): EbayCsvResult {
+  const action = options.action ?? 'Draft';
   const location = options.location ?? 'United States';
   const country = options.country ?? 'US';
 
+  let missingCategories = 0;
+
   const rows: string[] = [
-    // Header
     EBAY_COLUMNS.join(','),
   ];
 
   for (const item of items) {
+    const ebayCache = (item.marketplaceData as MarketplaceData | null)?.ebay;
+
+    const categoryId = ebayCache?.categoryId ?? '';
+    if (!categoryId) missingCategories++;
+
+    const title = (ebayCache?.title ?? item.title).slice(0, 80);
     const conditionId = EBAY_CONDITION_MAP[item.condition ?? 'good'] ?? '4000';
 
-    // Use recommended value; fall back to min, then max, then empty
     const price =
       item.estimatedValueRecommended ??
       item.estimatedValueMin ??
       item.estimatedValueMax ??
       null;
 
-    const picUrl = getPrimaryPhotoUrl(item.photos);
+    const picUrl = getAllPhotoUrls(item.photos);
 
     const row = buildRow([
-      action,                          // Action
-      item.category || '',             // Category
-      item.title,                      // Title
-      item.description || '',          // Description
-      conditionId,                     // ConditionID
-      price != null ? price.toFixed(2) : '', // Price
-      '1',                             // Quantity
-      'FixedPrice',                    // Format
-      'GTC',                           // Duration (Good Till Cancelled)
-      'Flat',                          // ShippingType
-      'USPSPriority',                  // ShippingService-1:Option
-      '0.00',                          // ShippingService-1:Cost (free shipping default)
-      '3',                             // DispatchTimeMax (business days)
-      'ReturnsAccepted',               // ReturnsAcceptedOption
-      'Days_30',                       // ReturnsWithinOption
-      location,                        // Location
-      country,                         // Country
-      'USD',                           // Currency
-      picUrl,                          // PicURL
+      action,
+      item.id,
+      categoryId,
+      title,
+      wrapHtml(item.description || ''),
+      conditionId,
+      item.conditionNotes || '',
+      price != null ? price.toFixed(2) : '',
+      '1',
+      'FixedPrice',
+      'GTC',
+      'Flat',
+      'USPSPriority',
+      '0.00',
+      '3',
+      'ReturnsAccepted',
+      'Days_30',
+      location,
+      country,
+      'USD',
+      picUrl,
+      item.brand || '',
+      item.model || '',
     ]);
 
     rows.push(row);
   }
 
-  return rows.join('\r\n');
+  return {
+    csv: rows.join('\r\n'),
+    missingCategories,
+    totalRows: items.length,
+  };
 }
