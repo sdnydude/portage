@@ -2,7 +2,6 @@
 title: "C2 — Fix XSS via dangerouslySetInnerHTML with unsanitized AI text"
 sidebar_label: "C2 — Fix XSS via dangerouslySetInnerHTML with unsa"
 sidebar_position: 6
-slug: 006-c2-fix-xss-via-dangerouslysetinnerhtml-with-unsanitized-ai-t
 ---
 
 # C2 — Fix XSS via dangerouslySetInnerHTML with unsanitized AI text

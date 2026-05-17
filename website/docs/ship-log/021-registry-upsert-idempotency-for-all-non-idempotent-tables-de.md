@@ -2,7 +2,6 @@
 title: "Registry upsert/idempotency for all non-idempotent tables + dev_changelog KB source"
 sidebar_label: "Registry upsert/idempotency for all non-idempotent"
 sidebar_position: 21
-slug: 021-registry-upsert-idempotency-for-all-non-idempotent-tables-de
 ---
 
 # Registry upsert/idempotency for all non-idempotent tables + dev_changelog KB source

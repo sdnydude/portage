@@ -7,7 +7,7 @@ sidebar_position: 0
 # Ship Log
 
 Structured records of every `/ship` workflow run for **portage**.
-Total: **31** sessions.
+Total: **36** sessions.
 
 | # | Feature | Status | PR | Deferred |
 |---|---------|--------|----|----------|
@@ -42,3 +42,8 @@ Total: **31** sessions.
 | 29 | [Capture-guarantee V2 — decisions + deferred auto-fire, advis](029-capture-guarantee-v2-decisions-deferred-auto-fire-advisory-l) | complete | [#69](https://github.com/sdnydude/portage/pull/69) | 3 |
 | 30 | [Capture-guarantee V3 — corrections + bug-fixes auto-fire wit](030-capture-guarantee-v3-corrections-bug-fixes-auto-fire-with-co) | complete | [#70](https://github.com/sdnydude/portage/pull/70) | 0 |
 | 31 | [Fix all 4 feedback loops — cron, journal aging, correction/b](031-fix-all-4-feedback-loops-cron-journal-aging-correction-bug-f) | complete | [#71](https://github.com/sdnydude/portage/pull/71) | 2 |
+| 32 | [Stripe subscription billing — Pro tier, trials, credit packs](032-stripe-subscription-billing-pro-tier-trials-credit-packs) | complete | [#73](https://github.com/sdnydude/portage/pull/73) | 4 |
+| 33 | [Billing enforcement gates — marketplace count + bg-removal](033-billing-enforcement-gates-marketplace-count-bg-removal) | complete | [#74](https://github.com/sdnydude/portage/pull/74) | 0 |
+| 34 | [Billing enforcement gaps — marketplace count limit + backgro](034-billing-enforcement-gaps-marketplace-count-limit-background-) | complete | [#74](https://github.com/sdnydude/portage/pull/74) | 0 |
+| 35 | [Reverb token-paste auth flow](035-reverb-token-paste-auth-flow) | complete | [#75](https://github.com/sdnydude/portage/pull/75) | 2 |
+| 36 | [eBay Seller Hub Reports CSV export with marketplace data cac](036-ebay-seller-hub-reports-csv-export-with-marketplace-data-cac) | complete | [#76](https://github.com/sdnydude/portage/pull/76) | 5 |

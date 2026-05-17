@@ -2,7 +2,6 @@
 title: "Loop 4 self-training (Minimal) — corrections capture + briefing surface"
 sidebar_label: "Loop 4 self-training (Minimal) — corrections captu"
 sidebar_position: 18
-slug: 018-loop-4-self-training-minimal-corrections-capture-briefing-su
 ---
 
 # Loop 4 self-training (Minimal) — corrections capture + briefing surface

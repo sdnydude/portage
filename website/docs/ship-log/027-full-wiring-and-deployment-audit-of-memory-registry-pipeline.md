@@ -2,7 +2,6 @@
 title: "Full wiring and deployment audit of memory/registry pipeline"
 sidebar_label: "Full wiring and deployment audit of memory/registr"
 sidebar_position: 27
-slug: 027-full-wiring-and-deployment-audit-of-memory-registry-pipeline
 ---
 
 # Full wiring and deployment audit of memory/registry pipeline

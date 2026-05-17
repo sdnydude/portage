@@ -2,7 +2,6 @@
 title: "P0 route tests — auth endpoints + computePricing via createApp factory + supertest"
 sidebar_label: "P0 route tests — auth endpoints + computePricing v"
 sidebar_position: 12
-slug: 012-p0-route-tests-auth-endpoints-computepricing-via-createapp-f
 ---
 
 # P0 route tests — auth endpoints + computePricing via createApp factory + supertest

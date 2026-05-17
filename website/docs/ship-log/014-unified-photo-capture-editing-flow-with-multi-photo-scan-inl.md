@@ -2,7 +2,6 @@
 title: "Unified photo capture + editing flow with multi-photo scan, inline toolbar, comp field copying"
 sidebar_label: "Unified photo capture + editing flow with multi-ph"
 sidebar_position: 14
-slug: 014-unified-photo-capture-editing-flow-with-multi-photo-scan-inl
 ---
 
 # Unified photo capture + editing flow with multi-photo scan, inline toolbar, comp field copying

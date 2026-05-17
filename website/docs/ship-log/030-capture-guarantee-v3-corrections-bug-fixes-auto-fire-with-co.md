@@ -2,7 +2,6 @@
 title: "Capture-guarantee V3 — corrections + bug-fixes auto-fire with context-window extraction"
 sidebar_label: "Capture-guarantee V3 — corrections + bug-fixes aut"
 sidebar_position: 30
-slug: 030-capture-guarantee-v3-corrections-bug-fixes-auto-fire-with-co
 ---
 
 # Capture-guarantee V3 — corrections + bug-fixes auto-fire with context-window extraction

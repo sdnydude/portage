@@ -2,7 +2,6 @@
 title: "Test infrastructure — vitest config, env setup, JWT helpers"
 sidebar_label: "Test infrastructure — vitest config, env setup, JW"
 sidebar_position: 10
-slug: 010-test-infrastructure-vitest-config-env-setup-jwt-helpers
 ---
 
 # Test infrastructure — vitest config, env setup, JWT helpers

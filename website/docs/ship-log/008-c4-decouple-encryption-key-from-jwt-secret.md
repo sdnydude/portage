@@ -2,7 +2,6 @@
 title: "C4 — Decouple encryption key from JWT_SECRET"
 sidebar_label: "C4 — Decouple encryption key from JWT_SECRET"
 sidebar_position: 8
-slug: 008-c4-decouple-encryption-key-from-jwt-secret
 ---
 
 # C4 — Decouple encryption key from JWT_SECRET

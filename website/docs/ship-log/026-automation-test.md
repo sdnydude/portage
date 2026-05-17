@@ -2,7 +2,6 @@
 title: "automation-test"
 sidebar_label: "automation-test"
 sidebar_position: 26
-slug: 026-automation-test
 ---
 
 # automation-test

@@ -1,7 +1,7 @@
 # Portage — Roadmap
 
-**Progress: 40/52 tasks complete · 3 partial · 9 remaining · 16 TODO items (~75h est)**
-**Last updated:** 2026-05-09
+**Progress: 41/52 tasks complete · 3 partial · 8 remaining · 15 TODO items (~74h est)**
+**Last updated:** 2026-05-17
 
 ---
 
@@ -34,7 +34,7 @@
 - [x] **Task 16:** eBay adapter — Inventory API (SKU → offer → publish), Fulfillment API (orders), Taxonomy API (categories)
 - [x] **Task 17:** Etsy PKCE OAuth2 — code_verifier/challenge, connect/callback/status/disconnect routes
 - [x] **Task 18:** Etsy adapter — Listings API (create with photo upload), receipts (orders), taxonomy (categories)
-- [~] **Task 19:** Listings UI — status filter pills, listing cards, create listing sheet (from item detail). **GAP: No edit, update, or delete listing from UI (detail page exists).**
+- [x] **Task 19:** Listings UI — status filter pills, listing cards, create listing sheet, detail page with edit/update/delete + marketplace sync (PR #27)
 - [x] **Task 20:** Orders UI — order list with status filters, sync from marketplaces, tracking/carrier updates
 
 ## Phase 5: AI Assistant (Tasks 24-25) — 2/2
@@ -85,7 +85,7 @@
 ### Shipping & Payments
 
 - [~] **Task 21:** Shipping system — presets CRUD, provider config, rate quotes, label purchase, ship flow, shipping settings page (638-line API, 822-line ship page). **GAP: Rates and labels return hardcoded stub data. No actual EasyPost/Shippo/Pirate Ship API calls — provider config validated but external APIs never invoked. Stub label purchase no longer mutates order state (fixed 0567ab8).**
-- [ ] **Task 23:** Stripe subscription — Free/Pro tier billing, usage limits enforcement
+- [x] **Task 23:** Stripe subscription — Free/Pro tier billing ($39/mo, $390/yr), 7-day trial, credit packs, usage limits enforcement (marketplace count, bg-removal, AI listings, Porter exchanges). PRs #73, #74.
 
 ### Settings
 
@@ -112,19 +112,19 @@ All critical items resolved (2026-05-09):
 
 | # | Task | Scope | Est |
 |---|------|-------|-----|
-| 4 | **Listings edit/update/delete** (Task 19 gap) | Detail page exists but no CRUD actions on listings from UI | 4h |
+| 4 | ~~Listings edit/update/delete~~ (Task 19 gap) | ✅ Done (PR #27) | — |
 | 5 | **Carrier API integration** (Task 21 gap) | Shipping rates + labels are stubs — need EasyPost/Shippo/Pirate Ship | 8h |
-| 6 | **Stripe subscription** (Task 23) | Free/Pro tier billing, usage limit enforcement | 8h |
-| 7 | **PWA icons + service worker** (Task 29 gap) | Manifest exists but icons missing, no offline support | 4h |
+| 6 | ~~Stripe subscription~~ (Task 23) | ✅ Done (PRs #73, #74) | — |
+| 7 | ~~PWA icons + service worker~~ (Task 29 gap) | ✅ Done (PR #46) | — |
 
 ### Medium Priority (feature completeness)
 
 | # | Task | Scope | Est |
 |---|------|-------|-----|
 | 8 | **Notification system** (Task 26) | Push notifications + in-app center | 8h |
-| 9 | **Onboarding flow** (Task 28) | First-launch guided tour | 6h |
+| 9 | ~~Onboarding flow~~ (Task 28) | ✅ Done (PR #50) | — |
 | 10 | **Dashboard trends + insights** (Task 52) | Sparkline charts, AI selling tips, category breakdown | 6h |
-| 11 | **Bulk operations** (Task 30) | Multi-select, bulk list/edit/archive | 6h |
+| 11 | ~~Bulk operations~~ (Task 30) | ✅ Done (PR #48) | — |
 | 12 | **Buyer messaging** (Task 31) | View messages, Porter-drafted replies | 8h |
 | 13 | **Reverb OAuth** | Adapter works for comps but OAuth not connected for selling | 4h |
 
@@ -132,8 +132,8 @@ All critical items resolved (2026-05-09):
 
 | # | Task | Scope | Est |
 |---|------|-------|-----|
-| 14 | **Branch protection** (Task 49) | CI required on main, no force push | 1h |
-| 15 | **Integration testing** (Task 35) | Most routes lack test coverage | 16h |
+| 14 | ~~Branch protection~~ (Task 49) | ✅ Done (PR #69) | — |
+| 15 | **Integration testing** (Task 35) | 178 tests exist but many routes still uncovered | 12h |
 | 16 | **Version tunnel config** (Task 34 gap) | Tunnel works but config isn't in the repo | 2h |
 | 17 | **Enhanced photo persistence** (Task 13 gap) | Before/after shown but no "Replace Photo" action | 2h |
 
@@ -143,8 +143,8 @@ All critical items resolved (2026-05-09):
 |---|-------|----------|-----|
 | 18 | `CORS` in production restricts to single origin — blocks API access from non-tunnel paths | Low | 1h |
 | 19 | No pagination on listing/item hooks — will degrade with scale | Medium | 4h |
-| 20 | Object URL memory leaks in photo capture flows | Low | 2h |
-| 21 | No automatic JWT refresh — silent auth expiry | Medium | 3h |
+| 20 | ~~Object URL memory leaks in photo capture flows~~ | ✅ Fixed | — |
+| 21 | ~~No automatic JWT refresh — silent auth expiry~~ | ✅ Fixed (auto-refresh on 401) | — |
 | 22 | Enhanced photo can't be saved (before/after preview only) | Low | 2h |
 
 ---
@@ -248,15 +248,15 @@ All critical items resolved (2026-05-09):
 
 | Category | Count |
 |----------|-------|
-| Completed (all time) | 40 roadmap tasks + 66 subtasks (May 7-9) |
-| Partial | 3 (listings CRUD, shipping stubs, CF tunnel config) |
+| Completed (all time) | 47 roadmap tasks + 66 subtasks |
+| Partial | 2 (shipping stubs, CF tunnel config) |
 | TODO — Critical | 0 (all resolved) |
-| TODO — High Priority | 4 |
-| TODO — Medium Priority | 6 |
-| TODO — Infrastructure | 4 |
-| TODO — Known Bugs | 5 |
-| **Total remaining items** | **19** |
-| **Estimated remaining effort** | **~82 hours** |
+| TODO — High Priority | 1 (carrier API) |
+| TODO — Medium Priority | 4 (notifications, dashboard trends, buyer messaging, Reverb OAuth) |
+| TODO — Infrastructure | 3 (integration testing, tunnel config, photo persistence) |
+| TODO — Known Bugs | 3 (CORS, pagination, photo save) |
+| **Total remaining items** | **11** |
+| **Estimated remaining effort** | **~52 hours** |
 
 ---
 

@@ -2,7 +2,6 @@
 title: "Critical code health fixes — ILIKE escape, AI tool loop cap, stub shipping guard"
 sidebar_label: "Critical code health fixes — ILIKE escape, AI tool"
 sidebar_position: 1
-slug: 001-critical-code-health-fixes-ilike-escape-ai-tool-loop-cap-stu
 ---
 
 # Critical code health fixes — ILIKE escape, AI tool loop cap, stub shipping guard
