@@ -60,7 +60,7 @@ await db.select().from(items).where(eq(items.userId, userId));
 
 ## Marketplace Token Encryption
 
-OAuth refresh tokens stored AES-256-GCM encrypted. Key derived from `JWT_SECRET` via scrypt. Token format: `${iv}:${authTag}:${encrypted}` (hex). Decryption handled in `src/marketplace/token-manager.ts`.
+OAuth refresh tokens stored AES-256-GCM encrypted. Key derived from `ENCRYPTION_KEY` (decoupled from JWT_SECRET). Token format: `${iv}:${authTag}:${encrypted}` (hex). Decryption handled in `src/marketplace/token-manager.ts`.
 
 Access tokens refreshed **5 minutes before expiry** to avoid race conditions. eBay app tokens cached in-memory with pending-request dedup.
 
@@ -91,10 +91,12 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 | Preferences | `/users/me/preferences` | requireAuth |
 | Usage | `/usage` | requireAuth |
 | Survey | `/survey` | None |
+| Billing | `/billing` | requireAuth |
 | Admin | `/admin/*` | requireAdmin |
 | Marketplace OAuth | `/marketplace/{ebay,etsy}` | requireAuth |
+| Reverb Auth | `/marketplace/reverb` | requireAuth |
 | Dashboard | `/dashboard` | requireAuth |
 
 ## Testing
 
-Vitest. Run `npm test` (once) or `npm run test:watch`. Tests are sparse — most routes lack coverage.
+Vitest. Run `npm test` (once) or `npm run test:watch`. 141 tests across 14 files covering crypto, JWT, auth, admin, routes, vision, scan, billing, and eBay CSV export.
