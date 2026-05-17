@@ -159,7 +159,7 @@ GET /items/export?format=<format>
 |-------|------|---------|
 | `format` | string | `ebay-csv`, `json` |
 
-Returns a downloadable file. The eBay CSV format follows eBay's File Exchange specification.
+Returns a downloadable file. The eBay CSV format follows eBay's **Seller Hub Reports draft-import** specification, with `Action(SiteID=US|Country=US|Currency=USD|Version=1193|CC=UTF-8)` header metadata. Includes Category ID, eBay-optimized title, pipe-delimited PicURLs, Custom Label (SKU), Brand/Model columns, and condition description.
 
 ### Prepare Listing
 

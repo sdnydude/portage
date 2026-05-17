@@ -26,7 +26,7 @@ The database has 16 tables:
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
 | `users` | User accounts | `id`, `email`, `displayName`, `role` (`user`\|`admin`), `onboardingCompleted` |
-| `items` | Inventory items | `id`, `userId`, `name`, `category`, `condition`, `brand`, `model`, `photos` (JSONB), `valueLow`/`valueHigh`/`valueMedian`, `aiConfidence` |
+| `items` | Inventory items | `id`, `userId`, `name`, `category`, `condition`, `brand`, `model`, `photos` (JSONB), `marketplaceData` (JSONB), `valueLow`/`valueHigh`/`valueMedian`, `aiConfidence` |
 | `listings` | Marketplace listings | `id`, `itemId`, `userId`, `marketplace`, `marketplaceListingId`, `status`, `price`, `title`, `description` |
 | `orders` | Sales orders | `id`, `listingId`, `userId`, `marketplace`, `marketplaceOrderId`, `status`, `salePrice`, `shippingAddress` (JSONB) |
 
@@ -43,6 +43,7 @@ The database has 16 tables:
 | `shipping_providers` | Carrier API keys (EasyPost/Shippo) |
 | `admin_audit_log` | Admin action audit trail |
 | `app_settings` | System-level configuration |
+| `stripe_events` | Idempotent Stripe webhook event log |
 | `design_survey_responses` | Design preference survey data |
 | `design_review_comments` | Design review feedback |
 | `disclaimer_acceptances` | Legal disclaimer tracking |
@@ -73,6 +74,9 @@ photos: jsonb('photos').$type<ItemPhoto[]>()
 
 // Order shipping address
 shippingAddress: jsonb('shipping_address')
+
+// eBay category/title cache (from prepare-listing)
+marketplaceData: jsonb('marketplace_data').$type<MarketplaceData>()
 ```
 
 ### Encrypted Tokens

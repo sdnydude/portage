@@ -61,8 +61,18 @@ All secrets are managed through **Doppler** and synced to `.env` automatically. 
 
 | Variable | Description |
 |----------|-------------|
-| `REVERB_CLIENT_ID` | Reverb app client ID |
-| `REVERB_CLIENT_SECRET` | Reverb app client secret |
+| `REVERB_CLIENT_ID` | Reverb app client ID (legacy — unused by token-paste auth) |
+| `REVERB_CLIENT_SECRET` | Reverb app client secret (legacy — unused by token-paste auth) |
+
+### Stripe (Billing)
+
+| Variable | Description |
+|----------|-------------|
+| `STRIPE_SECRET_KEY` | Stripe API secret key |
+| `STRIPE_WEBHOOK_SECRET` | Webhook endpoint signing secret |
+| `STRIPE_PRICE_MONTHLY` | Pro monthly plan price ID |
+| `STRIPE_PRICE_ANNUAL` | Pro annual plan price ID |
+| `STRIPE_PRICE_CREDITS` | Credit pack price ID |
 
 ## Optional Variables
 

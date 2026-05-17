@@ -105,7 +105,9 @@ PKCE OAuth2 flow:
 
 ### Reverb
 
-OAuth2 flow — adapter implemented but OAuth connection not yet configured in production.
+Token-paste authentication using Personal Access Tokens (PATs). Users generate a token in their Reverb account settings and paste it into Portage. The token is validated against the live Reverb API (`GET /my/account`) before being stored.
+
+Endpoints: `POST /marketplace/reverb/connect`, `GET /marketplace/reverb/status`, `DELETE /marketplace/reverb/disconnect`.
 
 ## Token Storage
 

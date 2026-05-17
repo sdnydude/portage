@@ -85,6 +85,80 @@ Background removal is handled **client-side** via `@imgly/background-removal` WA
 }
 ```
 
+### Rotate Image
+
+```
+POST /images/rotate
+```
+
+**Auth:** Required
+
+Rotates an image by the specified degrees (90, 180, 270).
+
+**Body:**
+
+```json
+{
+  "imageUrl": "https://images.portage.app/items/uuid/photo-1.jpg",
+  "degrees": 90
+}
+```
+
+**Response** `200`:
+
+```json
+{
+  "image": {
+    "key": "items/uuid/photo-1-rotated.jpg",
+    "url": "https://images.portage.app/items/uuid/photo-1-rotated.jpg",
+    "width": 2048,
+    "height": 2048
+  }
+}
+```
+
+### Crop Image
+
+```
+POST /images/crop
+```
+
+**Auth:** Required
+
+Crops an image to the specified rectangle (pixel coordinates).
+
+**Body:**
+
+```json
+{
+  "imageUrl": "https://images.portage.app/items/uuid/photo-1.jpg",
+  "crop": { "x": 100, "y": 50, "width": 800, "height": 800 }
+}
+```
+
+**Response** `200`:
+
+```json
+{
+  "image": {
+    "key": "items/uuid/photo-1-cropped.jpg",
+    "url": "https://images.portage.app/items/uuid/photo-1-cropped.jpg",
+    "width": 800,
+    "height": 800
+  }
+}
+```
+
+## Billing Gates
+
+Enhance and background removal are gated by the user's subscription tier:
+
+- **Free tier:** Limited monthly uses (resets on billing cycle)
+- **Pro tier:** Unlimited uses
+- **Credit packs:** Additional uses beyond free tier limit
+
+The API returns `403` with `code: "BILLING_LIMIT_REACHED"` when the limit is exceeded.
+
 ## Storage
 
 Images are stored in **Cloudflare R2** (S3-compatible object storage):

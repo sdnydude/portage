@@ -44,7 +44,7 @@ interface MarketplaceAdapter {
 | Comps | Browse API (production — `$178` median verified) |
 | Categories | Taxonomy API with suggested categories |
 | Token storage | AES-256-GCM encrypted at rest |
-| Export | File Exchange CSV format |
+| Export | Seller Hub Reports draft-import CSV |
 
 **Note:** Browse/Taxonomy APIs are hardcoded to production. Selling APIs use sandbox when `EBAY_SANDBOX=true`.
 
@@ -71,13 +71,14 @@ Returns sold and active listing stats (average, median, count) plus individual c
 
 ## Reverb
 
-**Status:** Adapter implemented (264 lines), comps search working, OAuth pending
+**Status:** Adapter implemented (269 lines), comps search working, token-paste auth shipped
 
 | Feature | Implementation |
 |---------|---------------|
-| Auth | OAuth (not yet connected) |
+| Auth | Personal Access Token (validated against `GET /my/account`) |
 | Listings | Adapter ready, untested |
 | Comps | Search working via Reverb API |
+| Endpoints | `POST /marketplace/reverb/connect`, `GET .../status`, `DELETE .../disconnect` |
 
 ## Token Management
 

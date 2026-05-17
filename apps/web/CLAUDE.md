@@ -17,9 +17,14 @@ src/app/
 ├── inventory/[id]/  # Item detail + edit
 ├── listings/[id]/   # Listing detail
 ├── list/            # Create listing entry
+├── inventory/[id]/  # Item detail + edit
+├── listings/[id]/   # Listing detail
+├── list/            # Create listing entry
+├── orders/[id]/     # Order detail
+├── orders/[id]/ship/# Ship order flow
+├── settings/        # 8 settings pages (profile, marketplace, seller-profile, shipping, billing, notifications, help, admin)
 ├── login/           # Auth
-├── register/        # Auth
-└── mockups/         # Dev-only UI previews
+└── register/        # Auth
 ```
 
 The `(tabs)/layout.tsx` wraps children with bottom padding (`pb-20`) and the `TabBar` component. Routes outside `(tabs)/` don't get the tab bar.
@@ -30,12 +35,14 @@ Directories mirror feature areas, not component types:
 
 | Directory | Contents |
 |-----------|----------|
-| `capture/` | ScanFlow, ScanFab, CameraCapture, ImagePicker |
-| `listing-flow/` | HybridFlow, ConversationalFlow, SwipeFlow, PhotoCaptureFlow, PhotoEditor |
-| `listing/` | ListingPreviewCard, CompsPricingWidget, CreateListingSheet |
-| `inventory/` | ItemCard, SearchBar, ViewControls |
+| `capture/` | ScanFlow, ScanFab, CameraCapture, CaptureSheet, ImagePicker |
+| `listing-flow/` | HybridFlow, ConversationalFlow, SwipeFlow, PhotoCaptureFlow, PhotoEditor, CropTool, PhotoGrid, PricingStrategyPicker |
+| `listing/` | ListingPreviewCard, CompsPricingWidget, CreateListingSheet, BulkListingBar |
+| `inventory/` | ItemCard, SearchBar, ViewControls, BulkActionBar |
 | `layout/` | PageHeader (sticky top), TabBar (bottom nav + scan FAB) |
 | `image/` | BeforeAfterSlider, BgRemovalPanel |
+| `onboarding/` | OnboardingFlow (5-step first-run carousel) |
+| `celebration/` | SoldCelebration |
 | `auth/` | AuthProvider |
 
 All components are `"use client"`.
@@ -66,13 +73,23 @@ All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. K
 
 | Hook | Purpose |
 |------|---------|
+| `useAuth` | Auth state, token, login/logout |
 | `useListingFlow` | Shared state across all three listing modes |
 | `useUserPreferences` | Listing UI mode preference (conversational/swipe/hybrid) |
 | `useComps` | Comparable listings for pricing |
 | `usePrepareListing` | AI field generation |
 | `useDrafts` | Draft persistence |
 | `useShipping` | Presets, rates, label purchase |
+| `useShippingProvider` | Carrier config and connection test |
 | `useBgRemoval` | @imgly background removal (in-browser) |
+| `useEnhance` | AI photo enhancement (server-side Sharp) |
+| `useItems` | Item list with pagination |
+| `useItem` | Single item fetch/update/delete |
+| `useListings` | Listing list + CRUD (create, update, publish, delete) |
+| `useOrders` | Orders list + sync |
+| `useOnboarding` | Onboarding completion state |
+| `useExport` | Data export (CSV download) |
+| `useBulkSelect` | Multi-select state for bulk actions |
 
 ## Listing Flow Modes
 
@@ -91,7 +108,7 @@ Tailwind v4 via CSS `@theme` in `globals.css` (not a config file). Key patterns:
 - **Glass morphism:** `.glass-thick`, `.glass-regular`, `.glass-thin` (backdrop-filter + rgba bg)
 - **Dark mode:** CSS `prefers-color-scheme` media query on `:root` variables
 - **Safe area:** `env(safe-area-inset-bottom)` on tab bar and modals (notch devices)
-- **Animations:** `slide-up`, `spring-in`, `shimmer`, `confetti-fall`, `check-draw`
+- **Animations:** `slide-up`, `slide-up-full`, `spring-in`, `shimmer`, `confetti-fall`, `check-draw`, `fade-in`
 - **Fonts:** `--font-instrument` (display), `--font-plus-jakarta` (body), `--font-jetbrains` (mono)
 
 Glass morphism has `@supports` fallback for browsers without `backdrop-filter`.
@@ -107,3 +124,5 @@ React Context only — no Zustand/Jotai/Redux. `AuthContext` is the only provide
 - **Modal z-index:** ScanFlow renders at `z-[60]`. Photo editor overlays inside it.
 - **No pagination:** Listing/item hooks load all records at once.
 - **Polling HMR:** `WATCHPACK_POLLING=true` required for reliable hot reload over network.
+- **iOS aspect-ratio collapse:** Never use `aspect-ratio` (Tailwind `aspect-square`) inside flex + overflow-hidden containers — iOS WebKit collapses to 0px. Use `paddingBottom: "100%"` percentage trick instead (see `BeforeAfterSlider`).
+- **Docker no hot-reload:** Production containers don't reflect code changes without `docker compose up -d --build portage-app`.

@@ -30,9 +30,11 @@ npm workspaces monorepo with three packages:
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 17 tables:
+Drizzle ORM, schema-push workflow (no migration files). 18 tables:
 
-users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, shipping_presets, shipping_providers, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles
+users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, shipping_presets, shipping_providers, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events
+
+Notable JSONB columns: `items.photos`, `items.shippingAddress`, `items.marketplaceData` (eBay category/title cache).
 
 ### Auth
 
@@ -43,7 +45,7 @@ JWT access + refresh tokens. bcrypt password hashing. Role column on users (`use
 Shared TypeScript interface in `packages/shared/src/marketplace.ts`. Three adapters:
 - **eBay:** OAuth2 auth code grant, Inventory API (SKU/offer/publish), Fulfillment API, Taxonomy API
 - **Etsy:** PKCE OAuth2, Listings API with photo upload, Receipts API, Taxonomy API
-- **Reverb:** Adapter implemented (264 lines), comps search working, OAuth pending
+- **Reverb:** Adapter implemented (269 lines), comps search working, token-paste auth shipped (Personal Access Token validated against live API)
 
 Marketplace tokens encrypted at rest with AES-256-GCM.
 
@@ -55,8 +57,9 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 
 - **Item scanning:** Claude Vision API via `apps/api/src/lib/vision.ts`
 - **Porter assistant:** Claude Sonnet tool_use loop with 3 tools (search_inventory, get_inventory_stats, suggest_listing)
-- **Background removal:** Client-side WASM (@imgly/background-removal)
-- **Auto-enhance:** Server-side Sharp pipeline
+- **Background removal:** Client-side WASM (@imgly/background-removal), billing-gated per tier
+- **Auto-enhance:** Server-side Sharp pipeline, billing-gated per tier
+- **Photo tools:** Rotate, crop, enhance, BG-remove with before/after preview slider
 - **Prepare listing:** AI field generation (title, description, pricing from comps) via `apps/api/src/routes/prepare-listing.ts`
 
 ### Documentation & CI/CD
@@ -93,7 +96,11 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Ship order page | apps/web/src/app/orders/[id]/ship/page.tsx |
 | Seller profile settings | apps/web/src/app/settings/seller-profile/page.tsx |
 | Shipping settings | apps/web/src/app/settings/shipping/page.tsx |
+| Billing settings | apps/web/src/app/settings/billing/page.tsx |
+| Billing routes | apps/api/src/routes/billing.ts |
 | Reverb adapter | apps/api/src/marketplace/reverb-adapter.ts |
+| Reverb auth | apps/api/src/routes/marketplace/reverb-auth.ts |
+| Scan flow | apps/web/src/components/capture/scan-flow.tsx |
 | Shared types | packages/shared/src/types.ts |
 | Docker config | docker-compose.yml + docker-compose.override.yml |
 | Environment template | .env.example |
@@ -180,12 +187,12 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-39/45 tasks complete, 3 partial, 3 remaining. See `docs/TODO.md` for full roadmap.
+41/52 tasks complete, 3 partial, 8 remaining. See `docs/TODO.md` for full roadmap.
 
-**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (7 pages: profile, marketplace, seller profile, shipping, notifications, help, admin), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling), JWT auto-refresh, object URL leak fixes, test infra + 81 tests (P0+P1), auth middleware next(err), TOCTOU race fix, shared logger (28 files), AI SDK singletons, shippingAddress column, pagination, shared format helpers, listing flow component extraction, PWA (icons + favicon + service worker), admin observability (Prometheus + Grafana), bulk operations (select/delete/archive/activate/export), eBay CSV data export, onboarding flow (5-step carousel).
+**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (8 pages: profile, marketplace, seller profile, shipping, notifications, help, admin, billing), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling), JWT auto-refresh, object URL leak fixes, test infra + 141 tests, auth middleware next(err), TOCTOU race fix, shared logger (28 files), AI SDK singletons, shippingAddress column, pagination, shared format helpers, listing flow component extraction, PWA (icons + favicon + service worker), admin observability (Prometheus + Grafana), bulk operations (select/delete/archive/activate/export), eBay CSV export (Seller Hub Reports draft format), onboarding flow (5-step carousel), Stripe billing (subscriptions + credits + enforcement gates), Reverb token-paste auth, photo tools UX (crop/rotate/enhance/BG-remove with before-after preview).
 
 **Partial:** Shipping (full UI + 16-endpoint API built, rates/labels stubbed — no real carrier API calls).
 
-**Remaining:** Payments (Stripe), buyer messaging, carrier API integration (EasyPost/Shippo), Reverb OAuth.
+**Remaining:** Buyer messaging, carrier API integration (EasyPost/Shippo), Reverb OAuth code-grant (token-paste auth is shipped).
 
 **Demo account:** demo@portage.app / demo1234demo1234

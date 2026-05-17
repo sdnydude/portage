@@ -95,13 +95,51 @@ Shipped 25 PRs (#28-52) in a single day:
 | Scan routes | 12 | scan.routes.test.ts |
 | Misc | 5 | various |
 
+### 2026-05-14 — Registry & Code Health
+
+- DHG Registry KB expanded to 835+ records across 9 sources
+- Code health assessment: 62 findings fixed, 44 tests added (93→137→141)
+- Memory infrastructure audit (6 files repaired, 4 pattern libraries)
+- WebP→JPEG marketplace compatibility (PR #63)
+- Feedback loops (cron, journal aging, corrections/bug-fix surfacing)
+
+### 2026-05-17 — Billing & Marketplace Polish
+
+| PR | Type | Description |
+|----|------|-------------|
+| #73 | feat | Stripe billing (subscriptions + credits + webhooks + `stripe_events` table) |
+| #74 | feat | Billing enforcement gates (scan/enhance/BG-removal usage limits per tier) |
+| #75 | feat | Reverb token-paste auth (PAT validated against live API) |
+| #76 | feat | eBay CSV export rewrite (Seller Hub Reports draft format + `marketplaceData` JSONB) |
+| #77 | fix | Photo tools UX (iOS aspect-ratio bug, before/after slider, error handling) |
+
+## Test Coverage
+
+141 tests across 14 files:
+
+| Area | Tests | Files |
+|------|-------|-------|
+| Crypto | 5 | crypto.test.ts |
+| JWT | 6 | jwt.test.ts |
+| Password | 4 | password.test.ts |
+| Auth middleware | 6 | auth.test.ts |
+| Error handler | 6 | error-handler.test.ts |
+| Auth routes | 7 | auth.routes.test.ts |
+| Pricing functions | 8 | prepare-listing.test.ts |
+| Vision | 10 | vision.test.ts |
+| Token manager | 8 | token-manager.test.ts |
+| Items routes | 16 | items.routes.test.ts |
+| Scan routes | 12 | scan.routes.test.ts |
+| Billing | 12 | billing.test.ts |
+| eBay CSV | 20 | ebay-csv.test.ts |
+| Admin & misc | 21 | various |
+
 ## Current Status
 
-**50/52 tasks complete**, 1 partial, 4 remaining.
+**41/52 tasks complete**, 3 partial, 8 remaining.
 
 ### Remaining
 
-- Payments (Stripe subscription)
 - Buyer messaging
 - Carrier API integration (EasyPost/Shippo for real rates/labels)
-- Reverb OAuth connection
+- Reverb OAuth code-grant (token-paste auth is shipped)

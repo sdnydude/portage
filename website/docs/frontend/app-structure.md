@@ -53,6 +53,7 @@ The main app shell uses a 5-tab bottom navigation with a center camera FAB:
 | `/settings/marketplace` | eBay/Etsy/Reverb connection management |
 | `/settings/seller-profile` | Return policy, shipping terms |
 | `/settings/shipping` | Ship-from address, presets, carrier API keys |
+| `/settings/billing` | Subscription tier, usage, credits, upgrade |
 | `/settings/notifications` | Sale alerts, shipping reminders |
 | `/settings/help` | FAQ and support |
 
