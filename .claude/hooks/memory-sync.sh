@@ -23,7 +23,7 @@ if [ -f "$NOW_FILE" ] && [ -s "$NOW_FILE" ]; then
   else
     cp "$NOW_FILE" "$DAILY_FILE"
   fi
-  echo "" > "$NOW_FILE"
+  > "$NOW_FILE"
 fi
 
 # Mark session manifest as clean shutdown
