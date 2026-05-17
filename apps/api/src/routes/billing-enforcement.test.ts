@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app.js';
 import { createTestToken } from '../test/helpers.js';
+import { resetEnv, loadEnv } from '../lib/env.js';
 import { db } from '../db/index.js';
 
 vi.mock('../db/index.js', () => ({
@@ -41,6 +42,8 @@ beforeAll(() => {
   process.env.EBAY_CLIENT_ID = 'test_ebay_client_id';
   process.env.EBAY_CLIENT_SECRET = 'test_ebay_secret';
   process.env.EBAY_REDIRECT_URI = 'http://localhost:3002/marketplace/ebay/callback';
+  resetEnv();
+  loadEnv();
   app = createApp();
   freeToken = createTestToken({ tier: 'free' });
   proToken = createTestToken({ tier: 'pro' });
