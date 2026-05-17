@@ -7,7 +7,7 @@ sidebar_position: 0
 # Ship Log
 
 Structured records of every `/ship` workflow run for **portage**.
-Total: **15** sessions.
+Total: **31** sessions.
 
 | # | Feature | Status | PR | Deferred |
 |---|---------|--------|----|----------|
@@ -26,3 +26,19 @@ Total: **15** sessions.
 | 13 | [Docker environment fixes — API crash, background removal, we](013-docker-environment-fixes-api-crash-background-removal-web-co) | complete | [#51](https://github.com/sdnydude/portage/pull/51) | 0 |
 | 14 | [Unified photo capture + editing flow with multi-photo scan, ](014-unified-photo-capture-editing-flow-with-multi-photo-scan-inl) | complete | [#52](https://github.com/sdnydude/portage/pull/52) | 3 |
 | 15 | [Fix Dependabot vulnerabilities + clean up website/ tooling](015-fix-dependabot-vulnerabilities-clean-up-website-tooling) | complete | — | 0 |
+| 16 | [Ship session intelligence pipeline + unified KB search](016-ship-session-intelligence-pipeline-unified-kb-search) | complete | — | 5 |
+| 17 | [Memory intelligence Loops 2+3 activated end-to-end](017-memory-intelligence-loops-2-3-activated-end-to-end) | complete | — | 5 |
+| 18 | [Loop 4 self-training (Minimal) — corrections capture + brief](018-loop-4-self-training-minimal-corrections-capture-briefing-su) | complete | — | 6 |
+| 19 | [WebP to JPEG image format — fix marketplace compatibility](019-webp-to-jpeg-image-format-fix-marketplace-compatibility) | complete | [#63](https://github.com/sdnydude/portage/pull/63) | 5 |
+| 20 | [Registry KB acceleration — bulk ingest memory + CLAUDE.md fi](020-registry-kb-acceleration-bulk-ingest-memory-claude-md-files) | complete | [#64](https://github.com/sdnydude/portage/pull/64) | 4 |
+| 21 | [Registry upsert/idempotency for all non-idempotent tables + ](021-registry-upsert-idempotency-for-all-non-idempotent-tables-de) | complete | [#18](https://github.com/sdnydude/dhgaifactory3.5/pull/18) | 4 |
+| 22 | [Code health week 1 — resolve 30 Important + 20 Minor finding](022-code-health-week-1-resolve-30-important-20-minor-findings) | complete | [#65](https://github.com/sdnydude/portage/pull/65) | 5 |
+| 23 | [Deferred items from code health review](023-deferred-items-from-code-health-review) | complete | [#66](https://github.com/sdnydude/portage/pull/66) | 0 |
+| 24 | [Full codebase code health review — 37 findings](024-full-codebase-code-health-review-37-findings) | complete | [#65](https://github.com/sdnydude/portage/pull/65) | 4 |
+| 25 | [audit-test](025-audit-test) | complete | — | 0 |
+| 26 | [automation-test](026-automation-test) | complete | — | 0 |
+| 27 | [Full wiring and deployment audit of memory/registry pipeline](027-full-wiring-and-deployment-audit-of-memory-registry-pipeline) | complete | [#67](https://github.com/sdnydude/portage/pull/67) | 3 |
+| 28 | [Hook-driven capture — guaranteed registry ingest via session](028-hook-driven-capture-guaranteed-registry-ingest-via-session-h) | complete | [#68](https://github.com/sdnydude/portage/pull/68) | 3 |
+| 29 | [Capture-guarantee V2 — decisions + deferred auto-fire, advis](029-capture-guarantee-v2-decisions-deferred-auto-fire-advisory-l) | complete | [#69](https://github.com/sdnydude/portage/pull/69) | 3 |
+| 30 | [Capture-guarantee V3 — corrections + bug-fixes auto-fire wit](030-capture-guarantee-v3-corrections-bug-fixes-auto-fire-with-co) | complete | [#70](https://github.com/sdnydude/portage/pull/70) | 0 |
+| 31 | [Fix all 4 feedback loops — cron, journal aging, correction/b](031-fix-all-4-feedback-loops-cron-journal-aging-correction-bug-f) | complete | [#71](https://github.com/sdnydude/portage/pull/71) | 2 |

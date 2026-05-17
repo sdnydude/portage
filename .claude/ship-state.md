@@ -1,20 +1,21 @@
-status: in_progress
-phase: 4
-feature: Hook-driven capture — guaranteed registry ingest via session hooks instead of AI-discipline rules
-approach: Python Stop hook parses session JSONL, count-based gap detection for insights + binary check for ship sessions
-complexity: complex
+status: complete
+phase: 7
+pr: https://github.com/sdnydude/portage/pull/71
+completed_at: 2026-05-17T01:05:00Z
+feature: Fix all 4 feedback loops — cron broken, Loops 2/3 dead, Loop 4 stub
+approach: Bash cron replacement + correction/bug-fix lesson surfacing in session briefing
+complexity: simple
 spec:
-  v1_scope: insights (count-based), ship_sessions (binary check)
-  skip_v1: decisions, bug_fixes, corrections, deferred_items
-  advisor_confirmed: true (3 rounds)
-plan:
-  task_1: Fix session ID bug in existing hooks (separate commit)
-  task_2: Core parser — streaming JSONL, format validation, fail-open
-  task_3: Insight detection + count-based gap + extraction
-  task_4: Ship session detection (binary check)
-  task_5: Parallel POST + log file + dry-run + wire settings.json
-  task_6: Gut rules to stubs, delete sweep rule, test fixtures
-known_limitations:
-  - Count-based misses insight #2 if #3 captured but #2 wasn't (edge case)
-  - Overcapture possible (harmless)
-  - Stop hook stdout goes to log file not Claude
+  loop1: Already working (feedback_*.md loaded via MEMORY.md)
+  loop2_3: Replace broken Claude-spawning cron with bash-only journal-age.sh
+  loop4: Surface specific correction lessons + bug-fix root causes in session briefing
+build:
+  commits:
+    - b4a6e6d feat: fix all 4 feedback loops — cron, journal aging, correction/bug-fix surfacing
+    - cca6ac7 fix: address review findings in journal-age.sh
+  tasks: 4/4 complete
+  tests: 141/141 passing
+  review: 4 findings (1 false positive, 3 fixed)
+  deferred:
+    - Loop 4 mid-session reinforcement (corrections only surface at start)
+    - Content-level dedup in recent.md
