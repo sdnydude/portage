@@ -16,7 +16,7 @@ const DUMMY_HASH = '$2b$12$LJ3m4ys3Lk0TSwMBEW/yWeGHnFnCMXhPsPryBa8KiRFqLFBdujGXS
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60_000,
-  limit: 10,
+  limit: process.env.NODE_ENV === 'test' ? 100 : 10,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { error: 'Too many authentication attempts, please try again later', code: 'RATE_LIMITED' },
@@ -56,20 +56,29 @@ authRouter.post('/register', authLimiter, async (req, res, next) => {
     }
 
     const passwordHash = await hashPassword(body.password);
+    const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const [user] = await db.insert(users).values({
       email: body.email,
       passwordHash,
+      trialEndsAt,
     }).returning({
       id: users.id,
       email: users.email,
       subscriptionTier: users.subscriptionTier,
       role: users.role,
       onboardingCompleted: users.onboardingCompleted,
+      trialEndsAt: users.trialEndsAt,
       createdAt: users.createdAt,
     });
 
-    const jwtPayload = { sub: user.id, email: user.email, tier: user.subscriptionTier, role: user.role };
+    const jwtPayload = {
+      sub: user.id,
+      email: user.email,
+      tier: user.subscriptionTier,
+      role: user.role,
+      trialEndsAt: user.trialEndsAt?.toISOString(),
+    };
     const accessToken = signAccessToken(jwtPayload);
     const refreshToken = signRefreshToken(jwtPayload);
 
@@ -88,6 +97,7 @@ authRouter.post('/register', authLimiter, async (req, res, next) => {
         subscriptionTier: user.subscriptionTier,
         role: user.role,
         onboardingCompleted: user.onboardingCompleted,
+        trialEndsAt: user.trialEndsAt,
         createdAt: user.createdAt,
       },
     });
@@ -122,7 +132,13 @@ authRouter.post('/login', authLimiter, async (req, res, next) => {
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
     }
 
-    const jwtPayload = { sub: user.id, email: user.email, tier: user.subscriptionTier, role: user.role };
+    const jwtPayload = {
+      sub: user.id,
+      email: user.email,
+      tier: user.subscriptionTier,
+      role: user.role,
+      trialEndsAt: user.trialEndsAt?.toISOString(),
+    };
     const accessToken = signAccessToken(jwtPayload);
     const refreshToken = signRefreshToken(jwtPayload);
 
@@ -142,7 +158,10 @@ authRouter.post('/login', authLimiter, async (req, res, next) => {
         subscriptionTier: user.subscriptionTier,
         role: user.role,
         onboardingCompleted: user.onboardingCompleted,
+        trialEndsAt: user.trialEndsAt,
         aiScansThisMonth: user.aiScansThisMonth,
+        aiListingsThisMonth: user.aiListingsThisMonth,
+        aiListingCredits: user.aiListingCredits,
         bgRemovalsThisMonth: user.bgRemovalsThisMonth,
         createdAt: user.createdAt,
       },
@@ -182,7 +201,13 @@ authRouter.post('/refresh', authLimiter, async (req, res, next) => {
       throw new AppError(403, 'ACCOUNT_DISABLED', 'This account has been disabled');
     }
 
-    const jwtPayload = { sub: user.id, email: user.email, tier: user.subscriptionTier, role: user.role };
+    const jwtPayload = {
+      sub: user.id,
+      email: user.email,
+      tier: user.subscriptionTier,
+      role: user.role,
+      trialEndsAt: user.trialEndsAt?.toISOString(),
+    };
     const accessToken = signAccessToken(jwtPayload);
     const newRefreshToken = signRefreshToken(jwtPayload);
 
@@ -202,7 +227,10 @@ authRouter.post('/refresh', authLimiter, async (req, res, next) => {
         subscriptionTier: user.subscriptionTier,
         role: user.role,
         onboardingCompleted: user.onboardingCompleted,
+        trialEndsAt: user.trialEndsAt,
         aiScansThisMonth: user.aiScansThisMonth,
+        aiListingsThisMonth: user.aiListingsThisMonth,
+        aiListingCredits: user.aiListingCredits,
         bgRemovalsThisMonth: user.bgRemovalsThisMonth,
         createdAt: user.createdAt,
       },
