@@ -228,7 +228,7 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
                     post_correction_count += 1
                 elif "post-bug-fixes.sh" in cmd:
                     post_bug_fix_count += 1
-                if "git commit" in cmd and "fix:" in cmd:
+                if "git commit" in cmd and "fix:" in cmd and not cmd.lstrip().startswith(("python", "node", "echo", "cat ")):
                     bug_fixes_found.append({
                         "commit_cmd": cmd,
                         "diagnostic_text": last_assistant_text,
