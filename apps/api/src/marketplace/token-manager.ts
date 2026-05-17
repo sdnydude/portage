@@ -81,6 +81,22 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
   return data.access_token;
 }
 
+export async function getReverbAccessToken(userId: string): Promise<string> {
+  const [account] = await db.select()
+    .from(marketplaceAccounts)
+    .where(and(
+      eq(marketplaceAccounts.userId, userId),
+      eq(marketplaceAccounts.marketplace, 'reverb'),
+    ))
+    .limit(1);
+
+  if (!account) {
+    throw new Error('No Reverb account connected');
+  }
+
+  return decrypt(account.accessTokenEncrypted);
+}
+
 let cachedAppToken: { token: string; expiresAt: number } | null = null;
 let pendingAppTokenRequest: Promise<string> | null = null;
 let cachedProdAppToken: { token: string; expiresAt: number } | null = null;
