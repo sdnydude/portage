@@ -64,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(USER_KEY);
+    window.location.href = "/login";
   }, []);
 
   const setOnboardingCompleted = useCallback(() => {
