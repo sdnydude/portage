@@ -15,6 +15,7 @@ export const FREE_TIER_LIMITS = {
 } as const;
 
 export const PRO_TIER_LIMITS = {
+  aiScansPerMonth: null,
   aiListingsPerMonth: 75,
   bgRemovalsPerMonth: null,
   porterExchangesPerDay: 15,

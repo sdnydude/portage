@@ -89,6 +89,8 @@ function mockDbSequence(results: unknown[][], updateResult: unknown[] = [{ aiLis
   } as any);
 }
 
+const { generateListingFields } = await import('../lib/vision.js');
+
 describe('Billing gate in prepare-listing', () => {
   const baseUser = {
     id: 'test-user-id',
@@ -115,8 +117,8 @@ describe('Billing gate in prepare-listing', () => {
   };
 
   it('allows request when under free tier limit', async () => {
-    // Sequence: 1) user lookup for billing, 2) item lookup, 3) seller profile
-    mockDbSequence([[baseUser], [baseItem], []]);
+    // Sequence: 1) item lookup, 2) seller profile, 3) billing user
+    mockDbSequence([[baseItem], [], [baseUser]]);
 
     const res = await request(app)
       .post('/items/item-1/prepare-listing')
@@ -126,10 +128,21 @@ describe('Billing gate in prepare-listing', () => {
     expect(res.status).toBe(200);
   });
 
+  it('returns 404 for missing item WITHOUT consuming a credit', async () => {
+    mockDbSequence([[], [], [baseUser]]);
+
+    const res = await request(app)
+      .post('/items/item-1/prepare-listing')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetMarketplaces: ['ebay'] });
+
+    expect(res.status).toBe(404);
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it('returns 429 when free tier limit reached and no credits', async () => {
-    // Atomic update returns empty (limit reached), credit update also empty
     mockDbSequence(
-      [[{ ...baseUser, aiListingsThisMonth: 10 }]],
+      [[baseItem], [], [{ ...baseUser, aiListingsThisMonth: 10 }]],
       [],
     );
 
@@ -143,7 +156,6 @@ describe('Billing gate in prepare-listing', () => {
   });
 
   it('allows request using credits when over monthly limit', async () => {
-    // First update (monthly) returns empty (limit hit), second update (credits) succeeds
     let updateCallCount = 0;
     vi.mocked(db.update).mockImplementation(() => ({
       set: vi.fn().mockReturnValue({
@@ -156,7 +168,7 @@ describe('Billing gate in prepare-listing', () => {
         }),
       }),
     } as any));
-    mockDbSequence([[{ ...baseUser, aiListingsThisMonth: 10, aiListingCredits: 5 }], [baseItem], []]);
+    mockDbSequence([[baseItem], [], [{ ...baseUser, aiListingsThisMonth: 10, aiListingCredits: 5 }]]);
 
     const res = await request(app)
       .post('/items/item-1/prepare-listing')
@@ -168,7 +180,7 @@ describe('Billing gate in prepare-listing', () => {
 
   it('allows request for pro tier with higher limit', async () => {
     const proToken = createTestToken({ tier: 'pro' });
-    mockDbSequence([[{ ...baseUser, subscriptionTier: 'pro', aiListingsThisMonth: 50 }], [baseItem], []]);
+    mockDbSequence([[baseItem], [], [{ ...baseUser, subscriptionTier: 'pro', aiListingsThisMonth: 50 }]]);
 
     const res = await request(app)
       .post('/items/item-1/prepare-listing')
@@ -180,7 +192,7 @@ describe('Billing gate in prepare-listing', () => {
 
   it('allows request during active trial (uses pro limits)', async () => {
     const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    mockDbSequence([[{ ...baseUser, trialEndsAt: futureDate, aiListingsThisMonth: 50 }], [baseItem], []]);
+    mockDbSequence([[baseItem], [], [{ ...baseUser, trialEndsAt: futureDate, aiListingsThisMonth: 50 }]]);
 
     const res = await request(app)
       .post('/items/item-1/prepare-listing')
@@ -188,5 +200,18 @@ describe('Billing gate in prepare-listing', () => {
       .send({ targetMarketplaces: ['ebay'] });
 
     expect(res.status).toBe(200);
+  });
+
+  it('rolls back credit on AI failure', async () => {
+    vi.mocked(generateListingFields).mockRejectedValueOnce(new Error('AI service unavailable'));
+    mockDbSequence([[baseItem], [], [baseUser]]);
+
+    const res = await request(app)
+      .post('/items/item-1/prepare-listing')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetMarketplaces: ['ebay'] });
+
+    expect(res.status).toBe(500);
+    expect(db.update).toHaveBeenCalledTimes(2);
   });
 });

@@ -148,4 +148,28 @@ describe('POST /billing/webhook', () => {
       .send('{"type":"test"}');
     expect(res.status).toBe(400);
   });
+
+  it('returns duplicate:true for already-processed event', async () => {
+    mockStripeInstance.webhooks.constructEvent.mockReturnValueOnce({
+      id: 'evt_already_processed',
+      type: 'invoice.payment_failed',
+      data: { object: { customer: 'cus_test' } },
+    });
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ eventId: 'evt_already_processed' }]),
+        }),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .post('/billing/webhook')
+      .set('stripe-signature', 'valid_sig')
+      .set('content-type', 'application/json')
+      .send(Buffer.from('{"type":"invoice.payment_failed"}'));
+    expect(res.status).toBe(200);
+    expect(res.body.duplicate).toBe(true);
+  });
 });

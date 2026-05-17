@@ -224,16 +224,16 @@ porterRouter.post('/message', async (req, res, next) => {
       `,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
-    if (porterUser) {
-      const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
-      const exchangeLimit = tier === 'pro'
-        ? PRO_TIER_LIMITS.porterExchangesPerDay
-        : FREE_TIER_LIMITS.porterExchangesPerDay;
-      const messageThreshold = exchangeLimit * 2;
+    if (!porterUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
 
-      if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
-        throw new AppError(429, 'PORTER_LIMIT_REACHED', `Daily limit: ${exchangeLimit} Porter exchanges per day. ${tier === 'free' ? 'Upgrade to Pro for more.' : ''}`);
-      }
+    const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
+    const exchangeLimit = tier === 'pro'
+      ? PRO_TIER_LIMITS.porterExchangesPerDay
+      : FREE_TIER_LIMITS.porterExchangesPerDay;
+    const messageThreshold = exchangeLimit * 2;
+
+    if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
+      throw new AppError(429, 'PORTER_LIMIT_REACHED', `Daily limit: ${exchangeLimit} Porter exchanges per day. ${tier === 'free' ? 'Upgrade to Pro for more.' : ''}`);
     }
 
     let conv: { id: string; messages: unknown[] } | undefined;

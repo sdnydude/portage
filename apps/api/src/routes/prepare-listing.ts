@@ -105,6 +105,15 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     const itemId = req.params.id;
     const { targetMarketplaces } = prepareSchema.parse(req.body);
 
+    // Validate item exists before billing gate — prevents credit leak on 404
+    const [item] = await db.select().from(items).where(eq(items.id, itemId)).limit(1);
+    if (!item || item.userId !== userId) {
+      throw new AppError(404, 'NOT_FOUND', 'Item not found');
+    }
+
+    const [profile] = await db.select().from(sellerProfiles)
+      .where(eq(sellerProfiles.userId, userId)).limit(1);
+
     // --- Billing gate (C4: query DB directly, not JWT) ---
     const [billingUser] = await db.select({
       subscriptionTier: users.subscriptionTier,
@@ -162,14 +171,6 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       usedCredit = true;
     }
     // --- End billing gate ---
-
-    const [item] = await db.select().from(items).where(eq(items.id, itemId)).limit(1);
-    if (!item || item.userId !== userId) {
-      throw new AppError(404, 'NOT_FOUND', 'Item not found');
-    }
-
-    const [profile] = await db.select().from(sellerProfiles)
-      .where(eq(sellerProfiles.userId, userId)).limit(1);
 
     const warnings: string[] = [];
     if (!profile) {
