@@ -19,7 +19,12 @@ export const users = pgTable('users', {
   displayName: varchar('display_name', { length: 255 }),
   subscriptionTier: subscriptionTierEnum('subscription_tier').notNull().default('free'),
   stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
+  stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }),
+  stripePriceId: varchar('stripe_price_id', { length: 255 }),
+  trialEndsAt: timestamp('trial_ends_at'),
   aiScansThisMonth: integer('ai_scans_this_month').notNull().default(0),
+  aiListingsThisMonth: integer('ai_listings_this_month').notNull().default(0),
+  aiListingCredits: integer('ai_listing_credits').notNull().default(0),
   bgRemovalsThisMonth: integer('bg_removals_this_month').notNull().default(0),
   scanCountResetAt: timestamp('scan_count_reset_at').notNull().defaultNow(),
   onboardingCompleted: boolean('onboarding_completed').notNull().default(false),
@@ -250,6 +255,12 @@ export const listingDrafts = pgTable('listing_drafts', {
     .on(t.userId, t.marketplace)
     .where(sql`item_id IS NULL`),
 ]);
+
+export const stripeEvents = pgTable('stripe_events', {
+  eventId: varchar('event_id', { length: 255 }).primaryKey(),
+  type: varchar('type', { length: 100 }).notNull(),
+  processedAt: timestamp('processed_at').notNull().defaultNow(),
+});
 
 export const sellerProfiles = pgTable('seller_profiles', {
   id: uuid('id').defaultRandom().primaryKey(),
