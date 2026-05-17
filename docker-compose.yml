@@ -2,6 +2,7 @@ services:
   portage-db:
     image: postgres:15-alpine
     container_name: portage-db
+    restart: unless-stopped
     ports:
       - "127.0.0.1:5436:5432"
     environment:
@@ -24,6 +25,7 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: portage-api
+    restart: unless-stopped
     ports:
       - "8016:8016"
     environment:
@@ -57,6 +59,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     container_name: portage-app
+    restart: unless-stopped
     ports:
       - "3002:3000"
     environment:
@@ -77,6 +80,7 @@ services:
   portage-rembg:
     image: danielgatis/rembg:latest
     container_name: portage-rembg
+    restart: unless-stopped
     command: s --port 7000 --no-ui
     ports:
       - "7000:7000"

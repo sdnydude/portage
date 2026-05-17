@@ -21,7 +21,10 @@ export function useEnhance() {
   const [error, setError] = useState<string | null>(null);
 
   const enhance = useCallback(async (imageUrl: string) => {
-    if (!token) return;
+    if (!token) {
+      setError("Not authenticated");
+      return;
+    }
     setIsProcessing(true);
     setError(null);
     setResult(null);

@@ -38,9 +38,11 @@ export function BeforeAfterSlider({ beforeUrl, afterUrl, alt }: BeforeAfterSlide
   }, []);
 
   return (
+    // padding-bottom hack: iOS WebKit collapses aspect-ratio to 0px inside flex+overflow containers
+    <div className="relative w-full" style={{ paddingBottom: "100%" }}>
     <div
       ref={containerRef}
-      className="relative aspect-square overflow-hidden select-none touch-none cursor-col-resize"
+      className="absolute inset-0 overflow-hidden select-none touch-none cursor-col-resize"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -83,6 +85,7 @@ export function BeforeAfterSlider({ beforeUrl, afterUrl, alt }: BeforeAfterSlide
       <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-medium bg-black/50 text-white backdrop-blur-sm">
         After
       </span>
+    </div>
     </div>
   );
 }
