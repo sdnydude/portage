@@ -156,13 +156,26 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
     const tier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
     const limit = tier === 'pro' ? null : FREE_TIER_LIMITS.bgRemovalsPerMonth;
 
+    let resetFired = false;
     if (limit !== null) {
       const now = new Date();
       const resetAt = billingUser.scanCountResetAt;
       if (resetAt.getUTCMonth() !== now.getUTCMonth() || resetAt.getUTCFullYear() !== now.getUTCFullYear()) {
-        await db.update(users)
+        // Idempotent reset — WHERE guard prevents concurrent double-reset
+        const resetResult = await db.update(users)
           .set({ bgRemovalsThisMonth: 0, aiScansThisMonth: 0, aiListingsThisMonth: 0, scanCountResetAt: now })
-          .where(eq(users.id, userId));
+          .where(and(
+            eq(users.id, userId),
+            sql`date_trunc('month', ${users.scanCountResetAt}) < date_trunc('month', now())`,
+          ))
+          .returning({ bgRemovalsThisMonth: users.bgRemovalsThisMonth });
+        resetFired = resetResult.length > 0;
+      }
+
+      // Pre-flight: reject before expensive rembg call if already at limit
+      if (!resetFired && billingUser.bgRemovalsThisMonth >= limit) {
+        throw new AppError(429, 'BG_REMOVAL_LIMIT_REACHED',
+          `Free tier limit: ${limit} background removals per month. Upgrade to Pro for unlimited.`);
       }
     }
 
