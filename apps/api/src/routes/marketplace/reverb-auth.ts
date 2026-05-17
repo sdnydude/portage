@@ -110,7 +110,7 @@ reverbAuthRouter.get('/status', async (req, res, next) => {
 
     res.json({
       connected: true,
-      expired: false,
+      expired: new Date(account.tokenExpiresAt) < new Date(),
       shopName: account.marketplaceUserId,
       connectedAt: account.createdAt,
     });
