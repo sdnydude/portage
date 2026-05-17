@@ -11,10 +11,13 @@ Portage helps you catalog what you own, get AI-powered valuations, and sell acro
 ## Features
 
 - **AI Item Scanning** — Claude Vision identifies items, estimates value, extracts metadata
-- **Photo Pipeline** — Camera capture, R2 cloud storage, auto-enhance, background removal (WASM)
-- **Multi-Marketplace** — eBay and Etsy adapters with OAuth2, listing CRUD, order sync
+- **Photo Pipeline** — Camera capture, R2 cloud storage, auto-enhance, background removal (WASM), crop, rotate, before/after preview
+- **Multi-Marketplace** — eBay, Etsy, and Reverb adapters with OAuth2/token auth, listing CRUD, order sync
+- **Listing Flow** — Three UX modes (Hybrid, Conversational, Swipe) with AI-generated titles, descriptions, and pricing from comps
 - **Porter AI Assistant** — Conversational AI that searches your inventory and suggests listings
-- **Admin Panel** — Dashboard, user management, settings, audit log
+- **Billing** — Stripe subscriptions (Free/Pro tiers), credit packs, usage-gated AI tools
+- **Bulk Operations** — Multi-select, bulk delete/archive/activate, eBay Seller Hub CSV export
+- **Admin Panel** — Dashboard, user management, settings, audit log, Prometheus observability
 - **Mobile-First PWA** — 5-tab navigation, designed for phone-in-hand workflows
 
 ## Tech Stack
@@ -29,8 +32,10 @@ Portage helps you catalog what you own, get AI-powered valuations, and sell acro
 | Images | Cloudflare R2, Sharp |
 | AI | Claude Sonnet (vision + tool_use) |
 | BG Removal | @imgly/background-removal (WASM) |
-| Marketplaces | eBay (REST), Etsy (REST + PKCE) |
+| Billing | Stripe (subscriptions, webhooks, credits) |
+| Marketplaces | eBay (REST), Etsy (REST + PKCE), Reverb (PAT) |
 | Encryption | AES-256-GCM (marketplace tokens) |
+| Docs | Docusaurus 3.10, nginx, GitHub Actions CI/CD |
 
 ## Quick Start (Docker)
 
@@ -91,6 +96,7 @@ portage/
 │       └── Dockerfile
 ├── packages/
 │   └── shared/       # Types, constants, marketplace interfaces
+├── website/          # Docusaurus docs site (deployed via CI)
 ├── docs/             # TODO roadmap, admin plan
 ├── docker-compose.yml
 └── docker-compose.override.yml  # Dev volume mounts
