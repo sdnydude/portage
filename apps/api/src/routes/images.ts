@@ -5,8 +5,13 @@ import { requireAuth } from '../middleware/auth.js';
 import { processImage, generateThumbnail, enhanceImage, rotateImage, cropImage } from '../lib/image.js';
 import { uploadImage, deleteImage, getImage } from '../lib/storage.js';
 import { z } from 'zod';
+import { eq, and, sql } from 'drizzle-orm';
 import { AppError } from '../middleware/error.js';
 import { env } from '../lib/env.js';
+import { db } from '../db/index.js';
+import { users } from '../db/schema.js';
+import { computeEffectiveTier } from '../lib/billing-utils.js';
+import { FREE_TIER_LIMITS } from '@portage/shared';
 
 const logger = createLogger('images');
 
@@ -138,6 +143,29 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
       throw new AppError(400, 'INVALID_ORIGIN', 'Image URL must be from Portage storage');
     }
 
+    // --- Billing gate: check tier and limit before processing ---
+    const [billingUser] = await db.select({
+      subscriptionTier: users.subscriptionTier,
+      trialEndsAt: users.trialEndsAt,
+      bgRemovalsThisMonth: users.bgRemovalsThisMonth,
+      scanCountResetAt: users.scanCountResetAt,
+    }).from(users).where(eq(users.id, userId)).limit(1);
+
+    if (!billingUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
+
+    const tier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
+    const limit = tier === 'pro' ? null : FREE_TIER_LIMITS.bgRemovalsPerMonth;
+
+    if (limit !== null) {
+      const now = new Date();
+      const resetAt = billingUser.scanCountResetAt;
+      if (resetAt.getUTCMonth() !== now.getUTCMonth() || resetAt.getUTCFullYear() !== now.getUTCFullYear()) {
+        await db.update(users)
+          .set({ bgRemovalsThisMonth: 0, aiScansThisMonth: 0, aiListingsThisMonth: 0, scanCountResetAt: now })
+          .where(eq(users.id, userId));
+      }
+    }
+
     logger.info({ userId, imageUrl }, 'Background removal started');
 
     const imgResponse = await fetch(imageUrl);
@@ -175,6 +203,24 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
 
     const resultBuffer = Buffer.from(await rembgResponse.arrayBuffer());
     const uploaded = await uploadImage(userId, resultBuffer, 'image/png', '_nobg.png');
+
+    // --- Billing: deduct AFTER successful removal (no credit loss on service failure) ---
+    if (limit !== null) {
+      const reserved = await db.update(users)
+        .set({ bgRemovalsThisMonth: sql`${users.bgRemovalsThisMonth} + 1` })
+        .where(and(
+          eq(users.id, userId),
+          sql`${users.bgRemovalsThisMonth} < ${limit}`,
+        ))
+        .returning({ bgRemovalsThisMonth: users.bgRemovalsThisMonth });
+
+      if (reserved.length === 0) {
+        throw new AppError(429, 'BG_REMOVAL_LIMIT_REACHED',
+          `Free tier limit: ${limit} background removals per month. Upgrade to Pro for unlimited.`);
+      }
+
+      logger.info({ userId, used: reserved[0].bgRemovalsThisMonth, limit }, 'Bg removal credit consumed');
+    }
 
     logger.info({ userId, key: uploaded.key, size: resultBuffer.length }, 'Background removal complete');
 
