@@ -156,10 +156,10 @@ describe('POST /billing/webhook', () => {
       data: { object: { customer: 'cus_test' } },
     });
 
-    vi.mocked(db.select).mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([{ eventId: 'evt_already_processed' }]),
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([]),
         }),
       }),
     } as any);

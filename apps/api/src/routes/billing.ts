@@ -56,8 +56,13 @@ billingWebhookRouter.post(
     }
 
     try {
-      const existing = await db.select().from(stripeEvents).where(eq(stripeEvents.eventId, event.id)).limit(1);
-      if (existing.length > 0) {
+      // Atomic idempotency: INSERT first, use PK constraint as the lock
+      const [claimed] = await db.insert(stripeEvents)
+        .values({ eventId: event.id, type: event.type })
+        .onConflictDoNothing()
+        .returning({ eventId: stripeEvents.eventId });
+
+      if (!claimed) {
         res.json({ received: true, duplicate: true });
         return;
       }
@@ -133,7 +138,6 @@ billingWebhookRouter.post(
           logger.info({ type: event.type }, 'Unhandled webhook event type');
       }
 
-      await db.insert(stripeEvents).values({ eventId: event.id, type: event.type });
       res.json({ received: true });
     } catch (err) {
       next(err);

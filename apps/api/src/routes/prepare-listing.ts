@@ -128,7 +128,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     // C3: Monthly reset check
     const now = new Date();
     const resetAt = billingUser.scanCountResetAt;
-    if (resetAt.getMonth() !== now.getMonth() || resetAt.getFullYear() !== now.getFullYear()) {
+    if (resetAt.getUTCMonth() !== now.getUTCMonth() || resetAt.getUTCFullYear() !== now.getUTCFullYear()) {
       await db.update(users)
         .set({
           aiListingsThisMonth: 0,
