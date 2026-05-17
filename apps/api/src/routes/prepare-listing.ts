@@ -272,6 +272,24 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       throw aiError;
     }
 
+    try {
+      await db.update(items)
+        .set({
+          marketplaceData: sql`COALESCE(marketplace_data, '{}'::jsonb) || ${JSON.stringify({
+            ebay: {
+              categoryId: categorySuggestion?.categoryId ?? aiFields.ebay?.categoryId ?? null,
+              categoryName: categorySuggestion?.categoryName ?? aiFields.ebay?.categoryName ?? null,
+              title: aiFields.ebay?.title ?? null,
+              cachedAt: new Date().toISOString(),
+            },
+          })}::jsonb`,
+          updatedAt: new Date(),
+        })
+        .where(eq(items.id, itemId));
+    } catch (cacheErr) {
+      logger.warn({ itemId, error: (cacheErr as Error).message }, 'Failed to cache marketplace data — non-blocking');
+    }
+
     const soldWithCondition = ebayComps.sold.map(s => ({
       price: s.price,
       condition: s.condition,
