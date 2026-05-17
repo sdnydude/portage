@@ -26,13 +26,13 @@ CUTOFF=$(date -d "7 days ago" +%Y-%m-%d)
 
 for f in "$REMEMBER_DIR"/today-????-??-??.done.md; do
   [ -f "$f" ] || continue
-  [ -s "$f" ] || { rm "$f"; continue; }
+  [ -s "$f" ] || { rm -f "$f"; continue; }
   DAY=$(basename "$f" .done.md | sed 's/today-//')
   if [[ "$DAY" < "$CUTOFF" ]]; then
     echo "" >> "$RECENT"
     echo "## $DAY" >> "$RECENT"
     cat "$f" >> "$RECENT"
-    rm "$f"
+    rm -f "$f"
   fi
 done
 
@@ -41,20 +41,25 @@ ARCHIVE="$REMEMBER_DIR/archive.md"
 RECENT_SIZE=$(stat -c%s "$RECENT" 2>/dev/null || echo 0)
 if [ "$RECENT_SIZE" -gt 51200 ]; then
   [ -f "$ARCHIVE" ] || echo "# Archive" > "$ARCHIVE"
-  ARCHIVE_CUTOFF=$(date -d "30 days ago" +%Y-%m-%d)
-  python3 -c "
-import re, sys
+  ARCHIVE_CUTOFF=$(date -d "30 days ago" +%Y-%m-%d) \
+  RECENT_PATH="$RECENT" \
+  ARCHIVE_PATH="$ARCHIVE" \
+  python3 -c '
+import os, re, sys
 
-cutoff = '$ARCHIVE_CUTOFF'
-recent = open('$RECENT').read()
-sections = re.split(r'(## \d{4}-\d{2}-\d{2})', recent)
+cutoff = os.environ["ARCHIVE_CUTOFF"]
+recent_path = os.environ["RECENT_PATH"]
+archive_path = os.environ["ARCHIVE_PATH"]
 
-keep, archive = ['# Recent\n'], []
+recent = open(recent_path).read()
+sections = re.split(r"(## \d{4}-\d{2}-\d{2})", recent)
+
+keep, archive = ["# Recent\n"], []
 i = 1
 while i < len(sections) - 1:
     header = sections[i]
-    body = sections[i+1] if i+1 < len(sections) else ''
-    day = header.replace('## ', '').strip()
+    body = sections[i+1] if i+1 < len(sections) else ""
+    day = header.replace("## ", "").strip()
     if day >= cutoff:
         keep.append(header + body)
     else:
@@ -62,11 +67,11 @@ while i < len(sections) - 1:
     i += 2
 
 if archive:
-    with open('$ARCHIVE', 'a') as f:
-        f.write('\n'.join(archive))
-    with open('$RECENT', 'w') as f:
-        f.write('\n'.join(keep))
-" 2>/dev/null || true
+    with open(archive_path, "a") as f:
+        f.write("\n".join(archive))
+    with open(recent_path, "w") as f:
+        f.write("\n".join(keep))
+' 2>/dev/null || true
 fi
 
 # 4. Update last-full-sync timestamp
