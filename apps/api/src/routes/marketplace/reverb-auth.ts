@@ -53,7 +53,7 @@ reverbAuthRouter.post('/connect', async (req, res, next) => {
       throw new AppError(502, 'REVERB_VALIDATION_FAILED', 'Could not validate Reverb token');
     }
 
-    const accountData = await accountResponse.json() as { shop_name?: string; email?: string };
+    const accountData = await accountResponse.json() as { shop?: { name?: string }; email?: string };
 
     const farFuture = new Date('2099-12-31T23:59:59Z');
 
@@ -63,7 +63,7 @@ reverbAuthRouter.post('/connect', async (req, res, next) => {
           accessTokenEncrypted: encrypt(token),
           refreshTokenEncrypted: encrypt('none'),
           tokenExpiresAt: farFuture,
-          marketplaceUserId: accountData.shop_name || null,
+          marketplaceUserId: accountData.shop?.name || null,
           updatedAt: new Date(),
         })
         .where(eq(marketplaceAccounts.id, existing[0].id));
@@ -74,13 +74,13 @@ reverbAuthRouter.post('/connect', async (req, res, next) => {
         accessTokenEncrypted: encrypt(token),
         refreshTokenEncrypted: encrypt('none'),
         tokenExpiresAt: farFuture,
-        marketplaceUserId: accountData.shop_name || null,
+        marketplaceUserId: accountData.shop?.name || null,
       });
     }
 
-    logger.info({ userId, shopName: accountData.shop_name }, 'Reverb account connected');
+    logger.info({ userId, shopName: accountData.shop?.name }, 'Reverb account connected');
 
-    res.json({ connected: true, shopName: accountData.shop_name || null });
+    res.json({ connected: true, shopName: accountData.shop?.name || null });
   } catch (err) {
     next(err);
   }
