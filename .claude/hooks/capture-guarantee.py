@@ -49,7 +49,7 @@ CORRECTION_SIGNALS = re.compile(
     re.IGNORECASE,
 )
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+SCRIPTS_DIR = Path.home() / ".claude" / "scripts"
 
 
 def find_transcript() -> Path | None:
@@ -228,7 +228,7 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
                     post_correction_count += 1
                 elif "post-bug-fixes.sh" in cmd:
                     post_bug_fix_count += 1
-                if "git commit" in cmd and "fix:" in cmd and not cmd.lstrip().startswith(("python", "node", "echo", "cat ")):
+                if re.search(r"\bgit\s+commit\b", cmd) and "fix:" in cmd and "-m" in cmd:
                     bug_fixes_found.append({
                         "commit_cmd": cmd,
                         "diagnostic_text": last_assistant_text,
@@ -271,6 +271,11 @@ def parse_transcript(transcript: Path) -> dict[str, Any]:
                 continue
 
             process_entry(entry)
+
+    # Process any entries buffered but not yet processed (short transcripts < 5 lines)
+    if not validated and sample:
+        for buffered in sample:
+            process_entry(buffered)
 
     if skipped_lines > 0:
         skip_rate = skipped_lines / max(total_lines, 1)
@@ -438,7 +443,7 @@ def build_correction_payload(correction: dict) -> str:
     return json.dumps(payload)
 
 
-def build_bug_fix_payload(bug_fix: dict) -> str | None:
+def build_bug_fix_payload(bug_fix: dict) -> str:
     """Construct JSON payload for post-bug-fixes.sh from commit + diagnostic text."""
     cmd = bug_fix.get("commit_cmd", "")
     # HEREDOC pattern: git commit -m "$(cat <<'EOF'\nfix: message\n..."
@@ -470,8 +475,6 @@ def build_bug_fix_payload(bug_fix: dict) -> str | None:
 def fire_capture(script_name: str, payload: str) -> None:
     """Fire a capture script in a detached subprocess. Stderr goes to log file."""
     script = SCRIPTS_DIR / script_name
-    if not script.exists():
-        script = Path.home() / ".claude" / "scripts" / script_name
     if not script.exists():
         logging.error(f"Script not found: {script_name}")
         return
@@ -628,8 +631,6 @@ def main() -> None:
         uncaptured = bug_fixes_found[-missed_bug_fix_count:]
         for fix in uncaptured:
             payload = build_bug_fix_payload(fix)
-            if payload is None:
-                continue
             if DRY_RUN:
                 print(f"[DRY-RUN] post-bug-fixes.sh: {payload[:200]}...")
             else:
