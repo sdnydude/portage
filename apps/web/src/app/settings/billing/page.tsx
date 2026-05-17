@@ -48,7 +48,7 @@ function UsageBar({ used, limit, label }: { used: number; limit: number | null; 
 }
 
 function TrialBanner({ endsAt }: { endsAt: string }) {
-  const daysLeft = Math.max(0, Math.ceil((new Date(endsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  const [daysLeft] = useState(() => Math.max(0, Math.ceil((new Date(endsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))));
 
   return (
     <div className="rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 p-4 mb-6">
