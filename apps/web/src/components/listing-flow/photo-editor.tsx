@@ -133,25 +133,20 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
   const [isRotating, setIsRotating] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previewMode, setPreviewMode] = useState<"enhance" | "bg" | null>(null);
 
   const isProcessing = isRotating || isCropping || isEnhancing || isRemovingBg;
 
-  // Show enhance error
   useEffect(() => {
     if (enhanceError) {
       setError(enhanceError);
       resetEnhance();
-      setPreviewMode(null);
     }
   }, [enhanceError, resetEnhance]);
 
-  // Show bg removal error
   useEffect(() => {
     if (bgError) {
       setError(bgError);
       resetBgRemoval();
-      setPreviewMode(null);
     }
   }, [bgError, resetBgRemoval]);
 
@@ -165,12 +160,10 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
       height: enhanceResult.image.height,
     }));
     resetEnhance();
-    setPreviewMode(null);
   }, [enhanceResult, resetEnhance]);
 
   const handleDiscardEnhance = useCallback(() => {
     resetEnhance();
-    setPreviewMode(null);
   }, [resetEnhance]);
 
   const handleAcceptBg = useCallback(() => {
@@ -180,12 +173,10 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
       url: bgResultUrl,
     }));
     resetBgRemoval();
-    setPreviewMode(null);
   }, [bgResultUrl, resetBgRemoval]);
 
   const handleDiscardBg = useCallback(() => {
     resetBgRemoval();
-    setPreviewMode(null);
   }, [resetBgRemoval]);
 
   // Inject spinner keyframe once
@@ -273,7 +264,6 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
   const handleEnhance = useCallback(() => {
     if (isProcessing) return;
     setError(null);
-    setPreviewMode("enhance");
     enhance(currentPhoto.url);
   }, [isProcessing, enhance, currentPhoto.url]);
 
@@ -282,7 +272,6 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
   const handleBgRemove = useCallback(() => {
     if (isProcessing) return;
     setError(null);
-    setPreviewMode("bg");
     removeBackground(currentPhoto.url);
   }, [isProcessing, removeBackground, currentPhoto.url]);
 
@@ -339,7 +328,7 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
 
       {/* Image area */}
       <div className="flex-1 relative overflow-hidden flex items-center justify-center px-4">
-        {previewMode === "enhance" && enhanceResult ? (
+        {enhanceResult ? (
           <div className="w-full max-w-md">
             <BeforeAfterSlider
               beforeUrl={currentPhoto.url}
@@ -347,7 +336,7 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
               alt="Enhanced preview"
             />
           </div>
-        ) : previewMode === "bg" && bgResultUrl ? (
+        ) : bgResultUrl ? (
           <div className="w-full max-w-md">
             <BeforeAfterSlider
               beforeUrl={currentPhoto.url}
@@ -393,7 +382,7 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
       </div>
 
       {/* Preview accept/discard buttons */}
-      {previewMode === "enhance" && enhanceResult ? (
+      {enhanceResult ? (
         <div
           className="px-6 pt-4 pb-6 flex gap-3"
           style={{
@@ -415,7 +404,7 @@ export function PhotoEditor({ photo, onSave, onCancel }: PhotoEditorProps) {
             Use this photo
           </button>
         </div>
-      ) : previewMode === "bg" && bgResultUrl ? (
+      ) : bgResultUrl ? (
         <div
           className="px-6 pt-4 pb-6 flex gap-3"
           style={{

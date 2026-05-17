@@ -8,6 +8,7 @@ import { ImagePicker } from "./image-picker";
 import { useEnhance } from "@/hooks/use-enhance";
 import { useBgRemoval } from "@/hooks/use-bg-removal";
 import { CropTool } from "@/components/listing-flow/crop-tool";
+import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 import type { RecognitionCandidate } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -137,43 +138,47 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     resetBgRemoval();
   }, [selectedPhotoIndex, resetEnhance, resetBgRemoval]);
 
-  // React to enhance result
-  useEffect(() => {
-    if (enhanceResult) {
-      setPhotos((prev) =>
-        prev.map((p, i) =>
-          i === selectedPhotoIndex
-            ? { ...p, url: enhanceResult.image.url, key: enhanceResult.image.key, width: enhanceResult.image.width, height: enhanceResult.image.height }
-            : p,
-        ),
-      );
-      resetEnhance();
-    }
+  // Accept/discard handlers for enhance preview
+  const handleAcceptEnhance = useCallback(() => {
+    if (!enhanceResult) return;
+    setPhotos((prev) =>
+      prev.map((p, i) =>
+        i === selectedPhotoIndex
+          ? { ...p, url: enhanceResult.image.url, key: enhanceResult.image.key, width: enhanceResult.image.width, height: enhanceResult.image.height }
+          : p,
+      ),
+    );
+    resetEnhance();
   }, [enhanceResult, selectedPhotoIndex, resetEnhance]);
+
+  const handleDiscardEnhance = useCallback(() => {
+    resetEnhance();
+  }, [resetEnhance]);
 
   useEffect(() => {
     if (enhanceError) {
       setError(enhanceError);
-      resetEnhance();
     }
-  }, [enhanceError, resetEnhance]);
+  }, [enhanceError]);
 
-  // React to bg removal result
-  useEffect(() => {
-    if (bgResultUrl) {
-      setPhotos((prev) =>
-        prev.map((p, i) => (i === selectedPhotoIndex ? { ...p, url: bgResultUrl } : p)),
-      );
-      resetBgRemoval();
-    }
+  // Accept/discard handlers for bg removal preview
+  const handleAcceptBg = useCallback(() => {
+    if (!bgResultUrl) return;
+    setPhotos((prev) =>
+      prev.map((p, i) => (i === selectedPhotoIndex ? { ...p, url: bgResultUrl } : p)),
+    );
+    resetBgRemoval();
   }, [bgResultUrl, selectedPhotoIndex, resetBgRemoval]);
+
+  const handleDiscardBg = useCallback(() => {
+    resetBgRemoval();
+  }, [resetBgRemoval]);
 
   useEffect(() => {
     if (bgError) {
       setError(bgError);
-      resetBgRemoval();
     }
-  }, [bgError, resetBgRemoval]);
+  }, [bgError]);
 
   // ─── Upload a file immediately to R2 ────────────────────────────────────────
 
@@ -683,33 +688,89 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Photo hero with editing toolbar */}
           <div className="relative bg-black flex-shrink-0">
-            {/* Main photo */}
+            {/* Main photo or Before/After preview */}
             <div className="h-56 flex items-center justify-center overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={photos[selectedPhotoIndex]?.url}
-                alt={editName}
-                className="max-w-full max-h-full object-contain"
-              />
-              {isToolProcessing && (
-                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
-                  <div className="w-10 h-10 border-3 border-white border-t-transparent rounded-full animate-spin" />
-                  <p className="text-white text-sm mt-3 font-medium">
-                    {isRotating && "Rotating..."}
-                    {isEnhancing && "Enhancing..."}
-                    {isRemovingBg && "Removing background..."}
-                  </p>
+              {enhanceResult ? (
+                <div className="w-full h-full flex items-center justify-center px-2">
+                  <div className="w-56 max-w-full">
+                    <BeforeAfterSlider
+                      beforeUrl={photos[selectedPhotoIndex]?.url}
+                      afterUrl={enhanceResult.image.url}
+                      alt="Enhanced preview"
+                    />
+                  </div>
                 </div>
+              ) : bgResultUrl ? (
+                <div className="w-full h-full flex items-center justify-center px-2">
+                  <div className="w-56 max-w-full">
+                    <BeforeAfterSlider
+                      beforeUrl={photos[selectedPhotoIndex]?.url}
+                      afterUrl={bgResultUrl}
+                      alt="Background removed preview"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photos[selectedPhotoIndex]?.url}
+                    alt={editName}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                  {isToolProcessing && (
+                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
+                      <div className="w-10 h-10 border-3 border-white border-t-transparent rounded-full animate-spin" />
+                      <p className="text-white text-sm mt-3 font-medium">
+                        {isRotating && "Rotating..."}
+                        {isEnhancing && "Enhancing..."}
+                        {isRemovingBg && "Removing background..."}
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
-            {/* Inline editing toolbar */}
-            <div className="flex items-center justify-around px-4 py-2 bg-black/80">
-              <ToolButton icon={<RotateIcon />} label="Rotate" onClick={handleRotate} disabled={isToolProcessing} />
-              <ToolButton icon={<CropIcon />} label="Crop" onClick={() => !isToolProcessing && setActiveTool("crop")} disabled={isToolProcessing} />
-              <ToolButton icon={<EnhanceIcon />} label="Enhance" onClick={handleEnhance} disabled={isToolProcessing} />
-              <ToolButton icon={<BgRemoveIcon />} label="BG Remove" onClick={handleBgRemove} disabled={isToolProcessing} />
-            </div>
+            {/* Accept/discard buttons or editing toolbar */}
+            {enhanceResult ? (
+              <div className="flex gap-3 px-4 py-2 bg-black/80">
+                <button
+                  onClick={handleDiscardEnhance}
+                  className="flex-1 py-2 rounded-xl border border-white/30 text-white text-sm font-medium"
+                >
+                  Discard
+                </button>
+                <button
+                  onClick={handleAcceptEnhance}
+                  className="flex-1 py-2 rounded-xl bg-forest-green text-white text-sm font-semibold"
+                >
+                  Use this photo
+                </button>
+              </div>
+            ) : bgResultUrl ? (
+              <div className="flex gap-3 px-4 py-2 bg-black/80">
+                <button
+                  onClick={handleDiscardBg}
+                  className="flex-1 py-2 rounded-xl border border-white/30 text-white text-sm font-medium"
+                >
+                  Discard
+                </button>
+                <button
+                  onClick={handleAcceptBg}
+                  className="flex-1 py-2 rounded-xl bg-forest-green text-white text-sm font-semibold"
+                >
+                  Use this photo
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-around px-4 py-2 bg-black/80">
+                <ToolButton icon={<RotateIcon />} label="Rotate" onClick={handleRotate} disabled={isToolProcessing} />
+                <ToolButton icon={<CropIcon />} label="Crop" onClick={() => !isToolProcessing && setActiveTool("crop")} disabled={isToolProcessing} />
+                <ToolButton icon={<EnhanceIcon />} label="Enhance" onClick={handleEnhance} disabled={isToolProcessing} />
+                <ToolButton icon={<BgRemoveIcon />} label="BG Remove" onClick={handleBgRemove} disabled={isToolProcessing} />
+              </div>
+            )}
 
             {/* Horizontal photo strip */}
             <div className="flex gap-2 px-3 py-2 bg-black/60 overflow-x-auto scrollbar-hide">
