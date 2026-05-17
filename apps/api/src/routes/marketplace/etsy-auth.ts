@@ -9,6 +9,7 @@ import { encrypt } from '../../lib/crypto.js';
 import { db } from '../../db/index.js';
 import { marketplaceAccounts } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
+import { checkMarketplaceLimit } from '../../lib/billing-utils.js';
 
 const logger = createLogger('etsy-auth');
 
@@ -28,16 +29,24 @@ export const etsyAuthRouter = Router();
 
 etsyAuthRouter.use(requireAuth);
 
-etsyAuthRouter.get('/connect', (req, res) => {
+etsyAuthRouter.get('/connect', async (req, res, next) => {
+  try {
   const config = env();
   if (!config.ETSY_API_KEY || !config.ETSY_REDIRECT_URI) {
     throw new AppError(503, 'ETSY_NOT_CONFIGURED', 'Etsy integration is not configured');
   }
 
+  const userId = req.user!.sub;
+  const existing = await db.select({ id: marketplaceAccounts.id })
+    .from(marketplaceAccounts)
+    .where(and(eq(marketplaceAccounts.userId, userId), eq(marketplaceAccounts.marketplace, 'etsy')))
+    .limit(1);
+  if (existing.length === 0) {
+    await checkMarketplaceLimit(userId);
+  }
+
   const codeVerifier = randomBytes(32).toString('base64url');
   const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
-
-  const userId = req.user!.sub;
   const state = randomBytes(16).toString('hex');
   pkceStore.set(userId, { verifier: codeVerifier, state, expiresAt: Date.now() + 10 * 60_000 });
 
@@ -60,6 +69,9 @@ etsyAuthRouter.get('/connect', (req, res) => {
   authUrl.searchParams.set('code_challenge_method', 'S256');
 
   res.json({ authUrl: authUrl.toString() });
+  } catch (err) {
+    next(err);
+  }
 });
 
 const callbackSchema = z.object({
@@ -129,6 +141,7 @@ etsyAuthRouter.post('/callback', async (req, res, next) => {
         })
         .where(eq(marketplaceAccounts.id, existing[0].id));
     } else {
+      await checkMarketplaceLimit(userId);
       await db.insert(marketplaceAccounts).values({
         userId,
         marketplace: 'etsy',
