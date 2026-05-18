@@ -28,6 +28,7 @@ import { sellerProfileRouter } from './routes/seller-profile.js';
 import { prepareListingRouter } from './routes/prepare-listing.js';
 import { usersRouter } from './routes/users.js';
 import { billingRouter, billingWebhookRouter } from './routes/billing.js';
+import { messagesRouter } from './routes/messages.js';
 
 export function createApp() {
   const config = env();
@@ -102,6 +103,7 @@ export function createApp() {
   app.use('/seller-profile', sellerProfileRouter);
   app.use('/items', prepareListingRouter);
   app.use('/billing', billingRouter);
+  app.use('/messages', messagesRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
