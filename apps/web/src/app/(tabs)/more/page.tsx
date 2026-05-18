@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
+import { useUnreadCount } from "@/hooks/use-messages";
 import { PageHeader } from "@/components/layout/page-header";
 
 interface SettingsLinkProps {
@@ -9,9 +10,10 @@ interface SettingsLinkProps {
   icon: React.ReactNode;
   title: string;
   description: string;
+  badge?: number;
 }
 
-function SettingsLink({ href, icon, title, description }: SettingsLinkProps) {
+function SettingsLink({ href, icon, title, description, badge }: SettingsLinkProps) {
   return (
     <Link
       href={href}
@@ -25,6 +27,11 @@ function SettingsLink({ href, icon, title, description }: SettingsLinkProps) {
         <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
         <p className="text-xs text-text-secondary mt-0.5">{description}</p>
       </div>
+      {badge != null && badge > 0 && (
+        <span className="w-5 h-5 rounded-full bg-forest-green flex items-center justify-center flex-shrink-0">
+          <span className="text-[10px] font-bold text-white">{badge > 9 ? "9+" : badge}</span>
+        </span>
+      )}
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-placeholder)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 18l6-6-6-6" />
       </svg>
@@ -34,6 +41,7 @@ function SettingsLink({ href, icon, title, description }: SettingsLinkProps) {
 
 export default function MorePage() {
   const { user, logout } = useAuth();
+  const { count: unreadCount } = useUnreadCount();
 
   return (
     <>
@@ -93,6 +101,18 @@ export default function MorePage() {
             }
             title="Marketplace Accounts"
             description="eBay, Etsy, and Reverb connections"
+          />
+
+          <SettingsLink
+            href="/messages"
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+              </svg>
+            }
+            title="Messages"
+            description="Buyer conversations"
+            badge={unreadCount}
           />
 
           <SettingsLink
