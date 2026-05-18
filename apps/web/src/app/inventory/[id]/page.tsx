@@ -9,6 +9,7 @@ import { useEnhance } from "@/hooks/use-enhance";
 import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { useComps } from "@/hooks/use-comps";
+import { useListings } from "@/hooks/use-listings";
 import { ImagePicker } from "@/components/capture/image-picker";
 import { API_BASE } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
@@ -36,7 +37,9 @@ export default function ItemDetailPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
+  const [isListing, setIsListing] = useState(false);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(params.id);
+  const { createListing } = useListings();
 
   const handleAddPhotos = useCallback(
     async (files: File[]) => {
@@ -482,10 +485,18 @@ export default function ItemDetailPage() {
             List on Marketplace
           </button>
           <button
-            onClick={() => router.push(`/list?itemId=${item.id}`)}
-            className="w-full py-3 rounded-xl border-2 border-forest-green text-forest-green text-sm font-semibold hover:bg-forest-green-50 transition-colors"
+            onClick={async () => {
+              if (!item || isListing) return;
+              setIsListing(true);
+              const price = comps?.stats.soldMedian ?? comps?.stats.activeMedian ?? item.estimatedValueRecommended ?? item.estimatedValueMin ?? 0;
+              await createListing({ itemId: item.id, marketplace: "ebay", price, publishImmediately: false });
+              setIsListing(false);
+              router.push("/listings");
+            }}
+            disabled={isListing}
+            className="w-full py-3 rounded-xl border-2 border-forest-green text-forest-green text-sm font-semibold hover:bg-forest-green-50 transition-colors disabled:opacity-50"
           >
-            List for Sale
+            {isListing ? "Creating..." : "List for Sale"}
           </button>
 
           {/* Comparable Listings */}

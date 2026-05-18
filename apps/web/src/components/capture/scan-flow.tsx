@@ -9,7 +9,7 @@ import { useEnhance } from "@/hooks/use-enhance";
 import { useBgRemoval } from "@/hooks/use-bg-removal";
 import { CropTool } from "@/components/listing-flow/crop-tool";
 import { BeforeAfterSlider } from "@/components/image/before-after-slider";
-import type { RecognitionCandidate } from "@portage/shared";
+import type { RecognitionCandidate, CompResult } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -35,6 +35,16 @@ interface ScanFlowProps {
 }
 
 const MAX_PHOTOS = 12;
+
+function mapEbayCondition(ebayCondition: string): "new" | "like_new" | "good" | "fair" | "poor" {
+  const lower = ebayCondition.toLowerCase();
+  if (lower.includes("new") && !lower.includes("pre") && !lower.includes("open")) return "new";
+  if (lower.includes("like new") || lower.includes("open box") || lower.includes("refurbished")) return "like_new";
+  if (lower.includes("very good") || lower.includes("good") || lower.includes("pre-owned")) return "good";
+  if (lower.includes("acceptable") || lower.includes("fair")) return "fair";
+  if (lower.includes("parts") || lower.includes("poor")) return "poor";
+  return "good";
+}
 
 const conditionOptions = [
   { value: "new", label: "New" },
@@ -127,6 +137,10 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     reset: resetBgRemoval,
   } = useBgRemoval();
   const [isRotating, setIsRotating] = useState(false);
+  const [comps, setComps] = useState<CompResult | null>(null);
+  const [compsLoading, setCompsLoading] = useState(false);
+  const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
+  const [isListingForSale, setIsListingForSale] = useState(false);
   const [activeTool, setActiveTool] = useState<"none" | "crop">("none");
   const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
 
@@ -303,6 +317,12 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       setSelectedCandidateIndex(0);
       populateFields(resultCandidates[0]);
       setState("review");
+
+      setCompsLoading(true);
+      api<CompResult>(`/items/comps/search?q=${encodeURIComponent(resultCandidates[0].name)}`, { token })
+        .then((c) => setComps(c))
+        .catch(() => {})
+        .finally(() => setCompsLoading(false));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
       setState(fallbackState);
@@ -896,6 +916,119 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 </div>
               </div>
 
+              {/* eBay Comp Price */}
+              {compsLoading ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface border border-border">
+                  <div className="w-4 h-4 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-text-secondary">Checking eBay comps...</span>
+                </div>
+              ) : comps && comps.stats.sampleSize > 0 ? (
+                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                  <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">eBay Comp Price</span>
+                  <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                    ${(comps.stats.soldMedian ?? comps.stats.activeMedian ?? 0).toFixed(0)}
+                    <span className="text-xs font-normal text-emerald-600 dark:text-emerald-500 ml-1">
+                      ({comps.stats.sampleSize} sold)
+                    </span>
+                  </span>
+                </div>
+              ) : null}
+
+              {/* Comp Cards */}
+              {comps && (comps.sold.length > 0 || comps.active.length > 0) && (
+                <div className="space-y-3">
+                  {comps.sold.length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-medium text-text-secondary mb-2">Sold ({comps.sold.length})</h3>
+                      <div className="space-y-2">
+                        {comps.sold.slice(0, 5).map((comp) => {
+                          const isExpanded = expandedCompUrl === comp.listingUrl;
+                          return (
+                            <div key={comp.listingUrl} className="bg-surface border border-border rounded-xl overflow-hidden">
+                              <button
+                                onClick={() => setExpandedCompUrl(isExpanded ? null : comp.listingUrl)}
+                                className="w-full flex items-center gap-3 p-2.5 text-left"
+                              >
+                                {comp.imageUrl ? (
+                                  <img src={comp.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-lg bg-muted flex-shrink-0" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-text-primary truncate">{comp.title}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-xs text-text-secondary">{comp.condition}</span>
+                                    {comp.soldDate && (
+                                      <span className="text-xs text-text-secondary">
+                                        {new Date(comp.soldDate).toLocaleDateString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <span className="text-sm font-semibold text-forest-green flex-shrink-0">${comp.price.toFixed(0)}</span>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`flex-shrink-0 text-text-secondary transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                                  <path d="M6 9l6 6 6-6" />
+                                </svg>
+                              </button>
+                              {isExpanded && (
+                                <div className="px-2.5 pb-2.5 space-y-2 border-t border-border pt-2">
+                                  <div className="flex gap-2">
+                                    <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium">Use Title</button>
+                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium">Use Condition</button>
+                                  </div>
+                                  <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="block text-center py-2 rounded-lg border border-border text-xs font-medium text-text-secondary">View on eBay</a>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {comps.active.length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-medium text-text-secondary mb-2">Active ({comps.active.length})</h3>
+                      <div className="space-y-2">
+                        {comps.active.slice(0, 3).map((comp) => {
+                          const isExpanded = expandedCompUrl === comp.listingUrl;
+                          return (
+                            <div key={comp.listingUrl} className="bg-surface border border-border rounded-xl overflow-hidden">
+                              <button
+                                onClick={() => setExpandedCompUrl(isExpanded ? null : comp.listingUrl)}
+                                className="w-full flex items-center gap-3 p-2.5 text-left"
+                              >
+                                {comp.imageUrl ? (
+                                  <img src={comp.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-lg bg-muted flex-shrink-0" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-text-primary truncate">{comp.title}</p>
+                                  <span className="text-xs text-text-secondary">{comp.condition}</span>
+                                </div>
+                                <span className="text-sm font-semibold text-forest-green flex-shrink-0">${comp.price.toFixed(0)}</span>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`flex-shrink-0 text-text-secondary transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                                  <path d="M6 9l6 6 6-6" />
+                                </svg>
+                              </button>
+                              {isExpanded && (
+                                <div className="px-2.5 pb-2.5 space-y-2 border-t border-border pt-2">
+                                  <div className="flex gap-2">
+                                    <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium">Use Title</button>
+                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium">Use Condition</button>
+                                  </div>
+                                  <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="block text-center py-2 rounded-lg border border-border text-xs font-medium text-text-secondary">View on eBay</a>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Condition */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Condition</label>
@@ -974,26 +1107,62 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             </div>
           </div>
 
-          {/* Fixed bottom: Rescan + Save */}
+          {/* Fixed bottom: Rescan + Save + List */}
           <div
             className="fixed bottom-0 left-0 right-0 z-[70] px-4 py-3 glass-thick glass-fallback border-t border-border"
             style={{ paddingBottom: "calc(0.75rem + var(--safe-area-bottom))" }}
           >
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button
                 onClick={handleRescan}
-                disabled={isSaving}
-                className="flex-shrink-0 px-4 py-3.5 rounded-2xl bg-muted text-text-primary font-semibold text-sm disabled:opacity-50 transition-opacity"
+                disabled={isSaving || isListingForSale}
+                className="flex-shrink-0 px-3 py-3.5 rounded-2xl bg-muted text-text-primary font-semibold text-sm disabled:opacity-50 transition-opacity"
               >
                 Rescan
               </button>
               <button
                 onClick={handleSave}
-                disabled={!editName.trim() || isSaving}
+                disabled={!editName.trim() || isSaving || isListingForSale}
                 className="flex-1 py-3.5 rounded-2xl bg-forest-green text-white font-semibold text-sm disabled:opacity-50 transition-opacity"
                 style={{ boxShadow: "var(--shadow-elevated)" }}
               >
-                {isSaving ? "Saving..." : "Save to Inventory"}
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={async () => {
+                  if (!token || photos.length === 0 || isListingForSale) return;
+                  setIsListingForSale(true);
+                  setState("saving");
+                  try {
+                    const valueLow = parseFloat(editValueLow) || 0;
+                    const valueHigh = parseFloat(editValueHigh) || 0;
+                    const valueRecommended = Math.round((valueLow + valueHigh) / 2);
+                    const itemPhotos = photos.map((p, i) => ({ url: p.url, key: p.key, width: p.width, height: p.height, isPrimary: i === 0 }));
+                    const selectedCandidate = candidates[selectedCandidateIndex];
+                    const newItem = await api<{ id: string }>("/items", {
+                      method: "POST", token,
+                      body: {
+                        title: editName, description: editDescription, category: editCategory,
+                        condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
+                        conditionNotes: editConditionNotes, brand: editBrand || undefined, model: editModel || undefined,
+                        features: selectedCandidate?.features ?? [],
+                        estimatedValueMin: valueLow, estimatedValueMax: valueHigh, estimatedValueRecommended: valueRecommended,
+                        aiConfidenceScore: selectedCandidate?.confidence ?? 0.85, photos: itemPhotos,
+                      },
+                    });
+                    const price = comps?.stats.soldMedian ?? comps?.stats.activeMedian ?? (valueRecommended || 0);
+                    await api("/listings", { method: "POST", token, body: { itemId: newItem.id, marketplace: "ebay", price, publishImmediately: false } });
+                    onClose();
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Failed to save");
+                    setState("review");
+                    setIsListingForSale(false);
+                  }
+                }}
+                disabled={!editName.trim() || isSaving || isListingForSale}
+                className="flex-1 py-3.5 rounded-2xl border-2 border-forest-green text-forest-green font-semibold text-sm disabled:opacity-50 transition-opacity"
+              >
+                {isListingForSale ? "Listing..." : "Save & List"}
               </button>
             </div>
           </div>
