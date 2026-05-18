@@ -25,6 +25,9 @@ export default function MarketplacePage() {
   const [accounts, setAccounts] = useState<MarketplaceAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reverbToken, setReverbToken] = useState("");
+  const [reverbConnecting, setReverbConnecting] = useState(false);
+  const [showReverbInput, setShowReverbInput] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -52,6 +55,22 @@ export default function MarketplacePage() {
       setAccounts((prev) => prev.filter((a) => a.marketplace !== marketplace));
     } catch {
       alert("Failed to disconnect");
+    }
+  };
+
+  const handleReverbConnect = async () => {
+    if (!token || !reverbToken.trim() || reverbConnecting) return;
+    setReverbConnecting(true);
+    try {
+      await api("/marketplace/reverb/connect", { method: "POST", token, body: { token: reverbToken.trim() } });
+      const data = await api<{ accounts: MarketplaceAccount[] }>("/users/me/marketplace-accounts", { token });
+      setAccounts(data.accounts);
+      setReverbToken("");
+      setShowReverbInput(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to connect Reverb");
+    } finally {
+      setReverbConnecting(false);
     }
   };
 
@@ -128,6 +147,13 @@ export default function MarketplacePage() {
                     >
                       Connect
                     </button>
+                  ) : marketplace === "reverb" ? (
+                    <button
+                      onClick={() => setShowReverbInput(!showReverbInput)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-forest-green text-white transition-opacity hover:opacity-90"
+                    >
+                      Connect
+                    </button>
                   ) : (
                     <span className="px-3 py-1.5 text-xs text-text-placeholder">Coming soon</span>
                   )}
@@ -137,6 +163,31 @@ export default function MarketplacePage() {
                   <p className="text-[11px] text-text-placeholder mt-2">
                     Connected {new Date(account.createdAt).toLocaleDateString()}
                   </p>
+                )}
+
+                {marketplace === "reverb" && !account && showReverbInput && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-text-secondary">
+                      Paste your Reverb Personal Access Token. Get one from{" "}
+                      <a href="https://reverb.com/my/api_settings" target="_blank" rel="noopener noreferrer" className="text-forest-green underline">
+                        reverb.com/my/api_settings
+                      </a>
+                    </p>
+                    <input
+                      type="password"
+                      value={reverbToken}
+                      onChange={(e) => setReverbToken(e.target.value)}
+                      placeholder="Paste token here..."
+                      className="w-full px-3 py-2 rounded-xl bg-background border border-border text-text-primary text-sm focus:border-border-focus focus:outline-none"
+                    />
+                    <button
+                      onClick={handleReverbConnect}
+                      disabled={!reverbToken.trim() || reverbConnecting}
+                      className="w-full py-2 rounded-xl bg-forest-green text-white text-sm font-medium disabled:opacity-50 transition-opacity"
+                    >
+                      {reverbConnecting ? "Validating..." : "Save Token"}
+                    </button>
+                  </div>
                 )}
               </div>
             );
