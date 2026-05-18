@@ -20,6 +20,8 @@ Portage helps you catalog what you own, get AI-powered valuations, and sell acro
 - **Admin Panel** — Dashboard, user management, settings, audit log, Prometheus observability
 - **Mobile-First PWA** — 5-tab navigation, designed for phone-in-hand workflows
 
+See the full [Features Reference](https://10.0.0.251:8017/docs/features) for detailed capabilities, unique differentiators, and competitive advantages.
+
 ## Tech Stack
 
 | Layer | Technology |
