@@ -28,8 +28,12 @@ function SettingsLink({ href, icon, title, description, badge }: SettingsLinkPro
         <p className="text-xs text-text-secondary mt-0.5">{description}</p>
       </div>
       {badge != null && badge > 0 && (
-        <span className="w-5 h-5 rounded-full bg-forest-green flex items-center justify-center flex-shrink-0">
-          <span className="text-[10px] font-bold text-white">{badge > 9 ? "9+" : badge}</span>
+        <span
+          className="w-5 h-5 rounded-full bg-forest-green flex items-center justify-center flex-shrink-0"
+          aria-label={`${badge} unread`}
+          role="status"
+        >
+          <span className="text-[10px] font-bold text-white" aria-hidden="true">{badge > 9 ? "9+" : badge}</span>
         </span>
       )}
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-placeholder)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

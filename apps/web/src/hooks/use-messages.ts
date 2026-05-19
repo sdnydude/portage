@@ -125,14 +125,17 @@ export function useUnreadCount() {
   const pathname = usePathname();
   const [count, setCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [prevPathname, setPrevPathname] = useState(pathname);
 
   const fetch = useCallback(async () => {
     if (!token) return;
     try {
       const data = await api<{ count: number }>("/messages/unread-count", { token });
       setCount(data.count);
-    } catch {
-      // Silent — badge is non-critical
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        console.error("Unread count auth error:", err.message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -140,7 +143,15 @@ export function useUnreadCount() {
 
   useEffect(() => {
     fetch();
-  }, [fetch, pathname]);
+  }, [fetch]);
+
+  // Re-fetch when navigating away from /messages so badge clears after reading
+  useEffect(() => {
+    if (prevPathname.startsWith("/messages") && !pathname.startsWith("/messages")) {
+      fetch();
+    }
+    setPrevPathname(pathname);
+  }, [pathname, prevPathname, fetch]);
 
   return { count, isLoading, refetch: fetch };
 }

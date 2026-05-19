@@ -165,8 +165,8 @@ export interface EbayConversation {
   buyerUsername: string;
   itemId: string;
   itemTitle?: string;
-  lastMessageBody: string;
-  lastMessageAt: Date;
+  lastMessageBody: string | null;
+  lastMessageAt: string;
   unreadCount: number;
   messageCount: number;
 }

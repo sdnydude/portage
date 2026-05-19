@@ -6,8 +6,10 @@ import { useConversations, useSync } from "@/hooks/use-messages";
 import { useAuth } from "@/hooks/use-auth";
 import { PageHeader } from "@/components/layout/page-header";
 
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return "";
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -21,7 +23,8 @@ function formatRelativeTime(dateStr: string): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function truncate(str: string, len: number): string {
+function truncate(str: string | null | undefined, len: number): string {
+  if (!str) return "";
   return str.length > len ? str.slice(0, len) + "…" : str;
 }
 
@@ -136,8 +139,12 @@ export default function MessagesPage() {
                   </p>
                 </div>
                 {conv.unreadCount > 0 && (
-                  <div className="w-5 h-5 rounded-full bg-forest-green flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-[10px] font-bold text-white">{conv.unreadCount > 9 ? "9+" : conv.unreadCount}</span>
+                  <div
+                    className="w-5 h-5 rounded-full bg-forest-green flex items-center justify-center flex-shrink-0 mt-1"
+                    aria-label={`${conv.unreadCount} unread message${conv.unreadCount === 1 ? "" : "s"}`}
+                    role="status"
+                  >
+                    <span className="text-[10px] font-bold text-white" aria-hidden="true">{conv.unreadCount > 9 ? "9+" : conv.unreadCount}</span>
                   </div>
                 )}
               </Link>

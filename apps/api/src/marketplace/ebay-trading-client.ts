@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import sanitizeHtml from 'sanitize-html';
+import type { MessageDirection, EbayMessageType } from '@portage/shared';
 import { env } from '../lib/env.js';
 import { createLogger } from '../lib/logger.js';
 
@@ -8,7 +9,7 @@ const logger = createLogger('ebay-trading');
 const SANDBOX_URL = 'https://api.sandbox.ebay.com/ws/api.dll';
 const PROD_URL = 'https://api.ebay.com/ws/api.dll';
 
-const parser = new XMLParser({ removeNSPrefix: true });
+const parser = new XMLParser({ removeNSPrefix: true, ignoreAttributes: false, attributeNamePrefix: '@_' });
 
 interface ParsedMessage {
   ebayMessageId: string;
@@ -17,8 +18,8 @@ interface ParsedMessage {
   itemTitle: string | null;
   subject: string;
   body: string;
-  direction: 'inbound' | 'outbound';
-  messageType: 'asq' | 'rtq' | 'aaq';
+  direction: MessageDirection;
+  messageType: EbayMessageType;
   ebayCreatedAt: string;
 }
 
@@ -39,6 +40,7 @@ function mapMessageType(ebayType: string): 'asq' | 'rtq' | 'aaq' {
   if (ebayType === 'ResponseToASQQuestion') return 'rtq';
   if (ebayType === 'AskSellerQuestion') return 'asq';
   if (ebayType === 'ContactEbayMember' || ebayType === 'ContactTransactionPartner') return 'aaq';
+  logger.warn({ ebayType }, 'Unknown eBay message type — defaulting to asq');
   return 'asq';
 }
 
@@ -79,6 +81,10 @@ export async function callTradingApi(
     throw new Error(shortMsg);
   }
 
+  if (responseObj?.Ack === 'Warning' || responseObj?.Ack === 'PartialFailure') {
+    logger.warn({ ack: responseObj.Ack, errors: responseObj.Errors }, 'Trading API returned warning');
+  }
+
   return parsed;
 }
 
@@ -107,6 +113,12 @@ export function parseGetMemberMessages(parsed: Record<string, unknown>): ParsedM
     const ebayType = (question.MessageType as string) ?? 'AskSellerQuestion';
     const isResponse = ebayType === 'ResponseToASQQuestion';
 
+    let createdAt = question.CreationDate as string | undefined;
+    if (!createdAt) {
+      logger.warn({ messageId }, 'Missing CreationDate — using current time');
+      createdAt = new Date().toISOString();
+    }
+
     results.push({
       ebayMessageId: messageId,
       buyerUsername: (question.SenderID as string) ?? '',
@@ -114,9 +126,9 @@ export function parseGetMemberMessages(parsed: Record<string, unknown>): ParsedM
       itemTitle: (item?.Title as string) ?? null,
       subject: (question.Subject as string) ?? '',
       body: stripHtml(String(question.Body ?? '')),
-      direction: isResponse ? 'inbound' : 'inbound',
+      direction: isResponse ? 'outbound' : 'inbound',
       messageType: mapMessageType(ebayType),
-      ebayCreatedAt: (question.CreationDate as string) ?? new Date().toISOString(),
+      ebayCreatedAt: createdAt,
     });
   }
 
@@ -136,6 +148,12 @@ export function parseGetMyMessages(parsed: Record<string, unknown>): ParsedMessa
     const messageId = msg.MessageID as string | undefined;
     if (!messageId) continue;
 
+    let receiveDate = msg.ReceiveDate as string | undefined;
+    if (!receiveDate) {
+      logger.warn({ messageId }, 'Missing ReceiveDate — using current time');
+      receiveDate = new Date().toISOString();
+    }
+
     results.push({
       ebayMessageId: messageId,
       buyerUsername: (msg.Sender as string) ?? '',
@@ -145,7 +163,7 @@ export function parseGetMyMessages(parsed: Record<string, unknown>): ParsedMessa
       body: stripHtml(String(msg.Text ?? msg.Body ?? '')),
       direction: (msg.Folder as string) === 'SentBox' ? 'outbound' : 'inbound',
       messageType: 'aaq',
-      ebayCreatedAt: (msg.ReceiveDate as string) ?? new Date().toISOString(),
+      ebayCreatedAt: receiveDate,
     });
   }
 

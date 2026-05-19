@@ -10,7 +10,7 @@ vi.mock('../lib/env.js', () => ({
   }),
 }));
 
-import { callTradingApi, parseGetMemberMessages, parseGetMyMessages, buildReplyXml } from './ebay-trading-client.js';
+import { callTradingApi, parseGetMemberMessages, buildReplyXml } from './ebay-trading-client.js';
 
 function xmlResponse(body: string, status = 200) {
   return Promise.resolve({
@@ -136,8 +136,10 @@ describe('ebay-trading-client', () => {
       const messages = parseGetMemberMessages(xml);
       expect(messages).toHaveLength(2);
       expect(messages[0].ebayMessageId).toBe('msg-1');
+      expect(messages[0].direction).toBe('inbound');
       expect(messages[1].ebayMessageId).toBe('msg-2');
       expect(messages[1].messageType).toBe('rtq');
+      expect(messages[1].direction).toBe('outbound');
     });
 
     it('returns empty array when no messages', () => {

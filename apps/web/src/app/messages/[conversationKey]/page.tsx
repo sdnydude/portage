@@ -4,8 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useConversationMessages, useReply } from "@/hooks/use-messages";
 
-function formatTime(dateStr: string): string {
+function formatTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return "";
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / 86400000);
@@ -58,7 +60,6 @@ export default function ConversationPage() {
 
   return (
     <div className="flex flex-col h-dvh bg-background">
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3 flex-shrink-0">
         <div className="flex items-center gap-3 max-w-lg mx-auto">
           <button onClick={() => router.back()} className="p-1 -ml-1" aria-label="Go back">
@@ -77,7 +78,6 @@ export default function ConversationPage() {
         </div>
       </header>
 
-      {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 max-w-lg mx-auto w-full">
         {isLoading ? (
           <div className="flex justify-center py-20">
@@ -124,7 +124,6 @@ export default function ConversationPage() {
         )}
       </div>
 
-      {/* Reply input */}
       <div className="flex-shrink-0 border-t border-border bg-background px-4 py-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
         <div className="flex items-end gap-2 max-w-lg mx-auto">
           <textarea
