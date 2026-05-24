@@ -32,7 +32,15 @@ export default function MessagesPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const { conversations, isLoading, error, refetch } = useConversations();
-  const { sync, isSyncing } = useSync();
+  const { sync, isSyncing, error: syncError } = useSync();
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/more");
+    }
+  };
 
   const handleSync = async () => {
     try {
@@ -60,7 +68,7 @@ export default function MessagesPage() {
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
         <div className="flex items-center gap-3 max-w-lg mx-auto">
-          <button onClick={() => router.back()} className="p-1 -ml-1" aria-label="Go back">
+          <button onClick={handleBack} className="p-1 -ml-1" aria-label="Go back">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
             </svg>
@@ -81,6 +89,11 @@ export default function MessagesPage() {
       </header>
 
       <div className="px-4 py-4 max-w-lg mx-auto">
+        {syncError && (
+          <div className="rounded-2xl border border-accent-error bg-red-50 dark:bg-red-950/30 p-4 text-sm text-accent-error mb-4">
+            Sync failed: {syncError}
+          </div>
+        )}
         {isLoading ? (
           <div className="flex justify-center py-20">
             <div className="w-8 h-8 rounded-full border-2 border-forest-green border-t-transparent animate-spin" />

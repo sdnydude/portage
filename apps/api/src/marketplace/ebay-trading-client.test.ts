@@ -63,6 +63,55 @@ describe('ebay-trading-client', () => {
       await expect(callTradingApi('GetMemberMessages', '<Req/>', 'token'))
         .rejects.toThrow();
     });
+
+    it('throws on non-XML response body', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('<html><body>Service Unavailable</body></html>'),
+      }));
+
+      await expect(callTradingApi('GetMemberMessages', '<Req/>', 'token'))
+        .rejects.toThrow('non-XML');
+    });
+
+    it('throws on plain text response body', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('Rate limit exceeded'),
+      }));
+
+      await expect(callTradingApi('GetMemberMessages', '<Req/>', 'token'))
+        .rejects.toThrow('non-XML');
+    });
+
+    it('extracts ShortMessage from Errors array', async () => {
+      mockFetch.mockReturnValue(xmlResponse(
+        '<GetMemberMessagesResponse><Ack>Failure</Ack><Errors><ShortMessage>First error</ShortMessage></Errors><Errors><ShortMessage>Second error</ShortMessage></Errors></GetMemberMessagesResponse>'
+      ));
+
+      await expect(callTradingApi('GetMemberMessages', '<Req/>', 'token'))
+        .rejects.toThrow('First error');
+    });
+
+    it('throws on PartialFailure when throwOnPartialFailure is true', async () => {
+      mockFetch.mockReturnValue(xmlResponse(
+        '<AddMemberMessageRTQResponse><Ack>PartialFailure</Ack><Errors><ShortMessage>Partial error</ShortMessage></Errors></AddMemberMessageRTQResponse>'
+      ));
+
+      await expect(callTradingApi('AddMemberMessageRTQ', '<Req/>', 'token', { throwOnPartialFailure: true }))
+        .rejects.toThrow('Partial error');
+    });
+
+    it('does not throw on PartialFailure by default', async () => {
+      mockFetch.mockReturnValue(xmlResponse(
+        '<GetMemberMessagesResponse><Ack>PartialFailure</Ack><Errors><ShortMessage>Partial error</ShortMessage></Errors><MemberMessage /></GetMemberMessagesResponse>'
+      ));
+
+      const result = await callTradingApi('GetMemberMessages', '<Req/>', 'token');
+      expect((result as Record<string, Record<string, unknown>>).GetMemberMessagesResponse.Ack).toBe('PartialFailure');
+    });
   });
 
   describe('parseGetMemberMessages', () => {

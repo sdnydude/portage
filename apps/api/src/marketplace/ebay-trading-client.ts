@@ -48,6 +48,7 @@ export async function callTradingApi(
   callName: string,
   xmlBody: string,
   accessToken: string,
+  options?: { throwOnPartialFailure?: boolean },
 ): Promise<Record<string, unknown>> {
   const baseUrl = env().EBAY_SANDBOX ? SANDBOX_URL : PROD_URL;
 
@@ -69,20 +70,41 @@ export async function callTradingApi(
     throw new Error(`Trading API HTTP ${response.status}`);
   }
 
+  if (!text.trimStart().startsWith('<')) {
+    logger.error({ body: text.slice(0, 500) }, 'Trading API returned non-XML response');
+    throw new Error('Trading API returned non-XML response');
+  }
+
   const parsed = parser.parse(text);
 
   const responseKey = Object.keys(parsed).find(k => k.endsWith('Response'));
-  const responseObj = responseKey ? parsed[responseKey] : parsed;
+  if (!responseKey) {
+    logger.error({ body: text.slice(0, 500), keys: Object.keys(parsed) }, 'Trading API returned unexpected XML structure');
+    throw new Error('Trading API returned non-XML response');
+  }
+  const responseObj = parsed[responseKey];
 
   if (responseObj?.Ack === 'Failure') {
     const errors = responseObj.Errors;
-    const shortMsg = errors?.ShortMessage ?? 'Unknown eBay error';
+    const firstError = Array.isArray(errors) ? errors[0] : errors;
+    const shortMsg = firstError?.ShortMessage ?? 'Unknown eBay error';
     logger.error({ errors }, 'Trading API returned Failure');
     throw new Error(shortMsg);
   }
 
-  if (responseObj?.Ack === 'Warning' || responseObj?.Ack === 'PartialFailure') {
-    logger.warn({ ack: responseObj.Ack, errors: responseObj.Errors }, 'Trading API returned warning');
+  if (responseObj?.Ack === 'PartialFailure') {
+    const errors = responseObj.Errors;
+    if (options?.throwOnPartialFailure) {
+      const firstError = Array.isArray(errors) ? errors[0] : errors;
+      const shortMsg = firstError?.ShortMessage ?? 'Partial failure';
+      logger.error({ errors }, 'Trading API returned PartialFailure');
+      throw new Error(shortMsg);
+    }
+    logger.warn({ errors }, 'Trading API returned PartialFailure — continuing with partial data');
+  }
+
+  if (responseObj?.Ack === 'Warning') {
+    logger.warn({ errors: responseObj.Errors }, 'Trading API returned warning');
   }
 
   return parsed;

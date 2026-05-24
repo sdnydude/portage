@@ -20,8 +20,11 @@ export function useConversations() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch = useCallback(async () => {
-    if (!token) return;
+  const load = useCallback(async () => {
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -35,10 +38,10 @@ export function useConversations() {
   }, [token]);
 
   useEffect(() => {
-    fetch();
-  }, [fetch]);
+    load();
+  }, [load]);
 
-  return { conversations, isLoading, error, refetch: fetch };
+  return { conversations, isLoading, error, refetch: load };
 }
 
 export function useConversationMessages(conversationKey: string) {
@@ -47,8 +50,11 @@ export function useConversationMessages(conversationKey: string) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch = useCallback(async () => {
-    if (!token || !conversationKey) return;
+  const load = useCallback(async () => {
+    if (!token || !conversationKey) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -62,10 +68,10 @@ export function useConversationMessages(conversationKey: string) {
   }, [token, conversationKey]);
 
   useEffect(() => {
-    fetch();
-  }, [fetch]);
+    load();
+  }, [load]);
 
-  return { messages, isLoading, error, refetch: fetch };
+  return { messages, isLoading, error, refetch: load };
 }
 
 export function useReply(conversationKey: string) {
@@ -127,14 +133,14 @@ export function useUnreadCount() {
   const [isLoading, setIsLoading] = useState(true);
   const [prevPathname, setPrevPathname] = useState(pathname);
 
-  const fetch = useCallback(async () => {
+  const load = useCallback(async () => {
     if (!token) return;
     try {
       const data = await api<{ count: number }>("/messages/unread-count", { token });
       setCount(data.count);
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-        console.error("Unread count auth error:", err.message);
+      if (err instanceof ApiError) {
+        console.error("Unread count error:", err.status, err.message);
       }
     } finally {
       setIsLoading(false);
@@ -142,16 +148,15 @@ export function useUnreadCount() {
   }, [token]);
 
   useEffect(() => {
-    fetch();
-  }, [fetch]);
+    load();
+  }, [load]);
 
-  // Re-fetch when navigating away from /messages so badge clears after reading
   useEffect(() => {
     if (prevPathname.startsWith("/messages") && !pathname.startsWith("/messages")) {
-      fetch();
+      load();
     }
     setPrevPathname(pathname);
-  }, [pathname, prevPathname, fetch]);
+  }, [pathname, prevPathname, load]);
 
-  return { count, isLoading, refetch: fetch };
+  return { count, isLoading, refetch: load };
 }

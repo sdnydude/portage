@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { sql, eq, and, isNull, count, desc, asc } from 'drizzle-orm';
+import { sql, eq, and, isNull, not, like, count, desc, asc } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
 import { db } from '../db/index.js';
 import { ebayMessages, users, notifications } from '../db/schema.js';
@@ -77,6 +77,10 @@ messagesRouter.get('/:conversationKey', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
     const { conversationKey } = req.params;
+    const keyResult = conversationKeySchema.safeParse(conversationKey);
+    if (!keyResult.success) {
+      throw new AppError(400, 'INVALID_INPUT', 'Invalid conversation key format');
+    }
 
     const messages = await db.select()
       .from(ebayMessages)
@@ -100,6 +104,8 @@ messagesRouter.get('/:conversationKey', async (req, res, next) => {
     next(err);
   }
 });
+
+const conversationKeySchema = z.string().regex(/^[a-zA-Z0-9._-]+:[0-9]+$/, 'Invalid conversation key format');
 
 const replySchema = z.object({
   body: z.string().min(1).max(2000),
@@ -142,36 +148,40 @@ messagesRouter.post('/sync', async (req, res, next) => {
     let synced = 0;
 
     for (const msg of parsed) {
-      const convKey = `${msg.buyerUsername}:${msg.itemId}`;
-      const [inserted] = await db.insert(ebayMessages).values({
-        userId,
-        ebayMessageId: msg.ebayMessageId,
-        conversationKey: convKey,
-        buyerUsername: msg.buyerUsername,
-        itemId: msg.itemId,
-        itemTitle: msg.itemTitle,
-        subject: msg.subject,
-        body: msg.body,
-        direction: msg.direction,
-        messageType: msg.messageType,
-        ebayCreatedAt: new Date(msg.ebayCreatedAt),
-      }).onConflictDoNothing({ target: ebayMessages.ebayMessageId }).returning();
+      try {
+        const convKey = `${msg.buyerUsername}:${msg.itemId}`;
+        const [inserted] = await db.insert(ebayMessages).values({
+          userId,
+          ebayMessageId: msg.ebayMessageId,
+          conversationKey: convKey,
+          buyerUsername: msg.buyerUsername,
+          itemId: msg.itemId,
+          itemTitle: msg.itemTitle,
+          subject: msg.subject,
+          body: msg.body,
+          direction: msg.direction,
+          messageType: msg.messageType,
+          ebayCreatedAt: new Date(msg.ebayCreatedAt),
+        }).onConflictDoNothing({ target: ebayMessages.ebayMessageId }).returning();
 
-      if (inserted && msg.direction === 'inbound') {
-        synced++;
+        if (inserted && msg.direction === 'inbound') {
+          synced++;
 
-        if (prefs?.buyer_message !== false) {
-          try {
-            await db.insert(notifications).values({
-              userId,
-              type: 'buyer_message',
-              title: `New message from ${msg.buyerUsername}`,
-              body: (msg.body ?? '').substring(0, 200),
-            });
-          } catch (notifErr) {
-            logger.error({ err: notifErr, messageId: msg.ebayMessageId }, 'Failed to insert notification — message still synced');
+          if (prefs?.buyer_message !== false) {
+            try {
+              await db.insert(notifications).values({
+                userId,
+                type: 'buyer_message',
+                title: `New message from ${msg.buyerUsername}`,
+                body: (msg.body ?? '').substring(0, 200),
+              });
+            } catch (notifErr) {
+              logger.error({ err: notifErr, messageId: msg.ebayMessageId }, 'Failed to insert notification — message still synced');
+            }
           }
         }
+      } catch (msgErr) {
+        logger.error({ err: msgErr, messageId: msg.ebayMessageId }, 'Failed to sync message — skipping');
       }
     }
 
@@ -186,25 +196,45 @@ messagesRouter.post('/:conversationKey/reply', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
     const { conversationKey } = req.params;
+    const keyResult = conversationKeySchema.safeParse(conversationKey);
+    if (!keyResult.success) {
+      throw new AppError(400, 'INVALID_INPUT', 'Invalid conversation key format');
+    }
     const parsed = replySchema.safeParse(req.body);
     if (!parsed.success) {
       throw new AppError(400, 'INVALID_INPUT', parsed.error.issues.map(i => i.message).join('; '));
     }
 
-    const [ref] = await db.select({
+    const refFields = {
       ebayMessageId: ebayMessages.ebayMessageId,
       itemId: ebayMessages.itemId,
       buyerUsername: ebayMessages.buyerUsername,
       itemTitle: ebayMessages.itemTitle,
       conversationKey: ebayMessages.conversationKey,
-    })
+      subject: ebayMessages.subject,
+    };
+
+    let [ref] = await db.select(refFields)
       .from(ebayMessages)
       .where(and(
         eq(ebayMessages.userId, userId),
         eq(ebayMessages.conversationKey, conversationKey),
+        eq(ebayMessages.direction, 'inbound'),
       ))
       .orderBy(desc(ebayMessages.ebayCreatedAt))
       .limit(1);
+
+    if (!ref) {
+      [ref] = await db.select(refFields)
+        .from(ebayMessages)
+        .where(and(
+          eq(ebayMessages.userId, userId),
+          eq(ebayMessages.conversationKey, conversationKey),
+          not(like(ebayMessages.ebayMessageId, 'reply-%')),
+        ))
+        .orderBy(desc(ebayMessages.ebayCreatedAt))
+        .limit(1);
+    }
 
     if (!ref) {
       throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
@@ -219,7 +249,7 @@ messagesRouter.post('/:conversationKey/reply', async (req, res, next) => {
     }
 
     const xmlBody = buildReplyXml(ref.itemId, ref.ebayMessageId, parsed.data.body, ref.buyerUsername);
-    await callTradingApi('AddMemberMessageRTQ', xmlBody, accessToken);
+    await callTradingApi('AddMemberMessageRTQ', xmlBody, accessToken, { throwOnPartialFailure: true });
 
     const replyId = `reply-${randomUUID()}`;
     const [saved] = await db.insert(ebayMessages).values({
@@ -229,7 +259,7 @@ messagesRouter.post('/:conversationKey/reply', async (req, res, next) => {
       buyerUsername: ref.buyerUsername,
       itemId: ref.itemId,
       itemTitle: ref.itemTitle,
-      subject: '',
+      subject: ref.subject ? `Re: ${ref.subject.replace(/^(Re:\s*)+/i, '')}` : '',
       body: parsed.data.body,
       direction: 'outbound',
       messageType: 'rtq',

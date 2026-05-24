@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useConversationMessages, useReply } from "@/hooks/use-messages";
+import { useAuth } from "@/hooks/use-auth";
 
 function formatTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -22,9 +23,10 @@ function formatTime(dateStr: string | null | undefined): string {
 export default function ConversationPage() {
   const params = useParams();
   const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const conversationKey = decodeURIComponent(params.conversationKey as string);
   const { messages, isLoading, error, refetch } = useConversationMessages(conversationKey);
-  const { sendReply, isSending } = useReply(conversationKey);
+  const { sendReply, isSending, error: replyError } = useReply(conversationKey);
   const [replyText, setReplyText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -33,11 +35,27 @@ export default function ConversationPage() {
   const buyerUsername = parts[0] ?? "Buyer";
   const itemTitle = messages.length > 0 ? messages[0].itemTitle : null;
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/messages");
+    }
+  };
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col h-dvh bg-background items-center justify-center">
+        <p className="text-text-secondary text-sm">Log in to view messages.</p>
+      </div>
+    );
+  }
 
   const handleSend = async () => {
     const text = replyText.trim();
@@ -62,7 +80,7 @@ export default function ConversationPage() {
     <div className="flex flex-col h-dvh bg-background">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3 flex-shrink-0">
         <div className="flex items-center gap-3 max-w-lg mx-auto">
-          <button onClick={() => router.back()} className="p-1 -ml-1" aria-label="Go back">
+          <button onClick={handleBack} className="p-1 -ml-1" aria-label="Go back">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
             </svg>
@@ -125,6 +143,11 @@ export default function ConversationPage() {
       </div>
 
       <div className="flex-shrink-0 border-t border-border bg-background px-4 py-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+        {replyError && (
+          <div className="rounded-xl border border-accent-error bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-accent-error mb-2 max-w-lg mx-auto">
+            {replyError}
+          </div>
+        )}
         <div className="flex items-end gap-2 max-w-lg mx-auto">
           <textarea
             ref={inputRef}
