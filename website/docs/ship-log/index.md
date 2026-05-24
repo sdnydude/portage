@@ -7,7 +7,7 @@ sidebar_position: 0
 # Ship Log
 
 Structured records of every `/ship` workflow run for **portage**.
-Total: **36** sessions.
+Total: **38** sessions.
 
 | # | Feature | Status | PR | Deferred |
 |---|---------|--------|----|----------|
@@ -47,3 +47,5 @@ Total: **36** sessions.
 | 34 | [Billing enforcement gaps — marketplace count limit + backgro](034-billing-enforcement-gaps-marketplace-count-limit-background-) | complete | [#74](https://github.com/sdnydude/portage/pull/74) | 0 |
 | 35 | [Reverb token-paste auth flow](035-reverb-token-paste-auth-flow) | complete | [#75](https://github.com/sdnydude/portage/pull/75) | 2 |
 | 36 | [eBay Seller Hub Reports CSV export with marketplace data cac](036-ebay-seller-hub-reports-csv-export-with-marketplace-data-cac) | complete | [#76](https://github.com/sdnydude/portage/pull/76) | 5 |
+| 37 | [scan comp cards + reverb UI + features doc + docs tunnel](037-scan-comp-cards-reverb-ui-features-doc-docs-tunnel) | complete | [#79](https://github.com/sdnydude/portage/pull/78, https://github.com/sdnydude/portage/pull/79) | 0 |
+| 38 | [eBay buyer messaging — read inbox + reply via Trading API](038-ebay-buyer-messaging-read-inbox-reply-via-trading-api) | complete | [#84](https://github.com/sdnydude/portage/pull/84) | 3 |
