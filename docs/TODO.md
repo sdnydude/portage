@@ -1,7 +1,7 @@
 # Portage — Roadmap
 
-**Progress: 41/52 tasks complete · 3 partial · 8 remaining · 15 TODO items (~74h est)**
-**Last updated:** 2026-05-17
+**Progress: 47/52 tasks complete · 2 partial · 3 remaining · 10 TODO items (~44h est)**
+**Last updated:** 2026-05-24
 
 ---
 
@@ -125,15 +125,15 @@ All critical items resolved (2026-05-09):
 | 9 | ~~Onboarding flow~~ (Task 28) | ✅ Done (PR #50) | — |
 | 10 | **Dashboard trends + insights** (Task 52) | Sparkline charts, AI selling tips, category breakdown | 6h |
 | 11 | ~~Bulk operations~~ (Task 30) | ✅ Done (PR #48) | — |
-| 12 | **Buyer messaging** (Task 31) | View messages, Porter-drafted replies | 8h |
-| 13 | **Reverb OAuth** | Adapter works for comps but OAuth not connected for selling | 4h |
+| 12 | ~~Buyer messaging~~ (Task 31) | ✅ Done (PR #84) | — |
+| 13 | **Reverb OAuth** | Token-paste auth shipped (PR #79); full OAuth code-grant still needed for selling | 4h |
 
 ### Infrastructure
 
 | # | Task | Scope | Est |
 |---|------|-------|-----|
 | 14 | ~~Branch protection~~ (Task 49) | ✅ Done (PR #69) | — |
-| 15 | **Integration testing** (Task 35) | 178 tests exist but many routes still uncovered | 12h |
+| 15 | **Integration testing** (Task 35) | 238 tests exist but many routes still uncovered | 12h |
 | 16 | **Version tunnel config** (Task 34 gap) | Tunnel works but config isn't in the repo | 2h |
 | 17 | **Enhanced photo persistence** (Task 13 gap) | Before/after shown but no "Replace Photo" action | 2h |
 
@@ -242,21 +242,30 @@ All critical items resolved (2026-05-09):
 | 65 | Fix toggle race condition in notification preferences | `922eabd` |
 | 66 | Fix Porter chat: Zod `.optional()` → `.nullish()` for null conversationId | `9f8db4e` |
 
+### F. eBay Buyer Messaging (PR #84 — 4 commits)
+
+| # | Task | Commit |
+|---|------|--------|
+| 67 | API: eBay Trading API client (XML), message sync, conversation grouping, reply endpoint, 20 tests | `911eb3b` |
+| 68 | Web: conversations list, thread view, reply composer, unread badge | `5534173` |
+| 69 | Fix: 18 advisor review findings (auth gates, error display, fetch rename, Re: dedup) | `3a60fdd` |
+| 70 | Fix: 11 PR findings + 5 wiring issues (non-XML guard, per-msg errors, conversationKey validation) | `fd8c825` |
+
 ---
 
 ## Summary
 
 | Category | Count |
 |----------|-------|
-| Completed (all time) | 47 roadmap tasks + 66 subtasks |
+| Completed (all time) | 47 roadmap tasks + 70 subtasks |
 | Partial | 2 (shipping stubs, CF tunnel config) |
 | TODO — Critical | 0 (all resolved) |
 | TODO — High Priority | 1 (carrier API) |
-| TODO — Medium Priority | 4 (notifications, dashboard trends, buyer messaging, Reverb OAuth) |
+| TODO — Medium Priority | 3 (notifications, dashboard trends, Reverb OAuth) |
 | TODO — Infrastructure | 3 (integration testing, tunnel config, photo persistence) |
 | TODO — Known Bugs | 3 (CORS, pagination, photo save) |
-| **Total remaining items** | **11** |
-| **Estimated remaining effort** | **~52 hours** |
+| **Total remaining items** | **10** |
+| **Estimated remaining effort** | **~44 hours** |
 
 ---
 

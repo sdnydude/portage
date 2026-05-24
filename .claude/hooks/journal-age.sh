@@ -26,13 +26,13 @@ CUTOFF=$(date -d "7 days ago" +%Y-%m-%d)
 
 for f in "$REMEMBER_DIR"/today-????-??-??.done.md; do
   [ -f "$f" ] || continue
-  [ -s "$f" ] || { rm -f "$f"; continue; }
+  [ -s "$f" ] || { rm "$f"; continue; }
   DAY=$(basename "$f" .done.md | sed 's/today-//')
   if [[ "$DAY" < "$CUTOFF" ]]; then
     echo "" >> "$RECENT"
     echo "## $DAY" >> "$RECENT"
     cat "$f" >> "$RECENT"
-    rm -f "$f"
+    rm "$f"
   fi
 done
 
