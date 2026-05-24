@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useCallback } from "react";
 import { ScanFlow } from "@/components/capture/scan-flow";
+import { useUnreadCount } from "@/hooks/use-messages";
 
 const tabs = [
   { name: "Home", href: "/home", icon: HomeIcon, position: "left" as const },
@@ -16,6 +17,7 @@ const tabs = [
 export function TabBar() {
   const pathname = usePathname();
   const [showScan, setShowScan] = useState(false);
+  const { count: unreadCount } = useUnreadCount();
 
   const handleScanOpen = useCallback(() => {
     setShowScan(true);
@@ -26,7 +28,7 @@ export function TabBar() {
   }, []);
 
   const leftTabs = tabs.filter((t) => t.position === "left");
-  const rightTabs = tabs.filter((t) => t.position === "right");
+  const rightTabs = tabs.filter((t) => t.position === "right" && t.name !== "More");
 
   return (
     <>
@@ -111,6 +113,35 @@ export function TabBar() {
               </Link>
             );
           })}
+
+          {/* More tab — rendered separately for unread dot */}
+          {(() => {
+            const isActive = pathname.startsWith("/more");
+            return (
+              <Link
+                href="/more"
+                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors relative ${
+                  isActive
+                    ? "text-forest-green"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                <div className="relative">
+                  <MoreIcon active={isActive} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full bg-forest-green border-2 border-[var(--background)]" />
+                  )}
+                </div>
+                <span
+                  className={`text-[10px] leading-tight ${
+                    isActive ? "font-semibold" : "font-normal"
+                  }`}
+                >
+                  More
+                </span>
+              </Link>
+            );
+          })()}
         </div>
       </nav>
 

@@ -11,6 +11,8 @@ export const notificationTypeEnum = pgEnum('notification_type', ['sale', 'buyer_
 export const referenceTypeEnum = pgEnum('reference_type', ['order', 'listing', 'item']);
 export const shippingProviderEnum = pgEnum('shipping_provider', ['shippo', 'easypost', 'pirate_ship']);
 export const packageTypeEnum = pgEnum('package_type', ['box', 'envelope', 'poly_mailer']);
+export const messageDirectionEnum = pgEnum('message_direction', ['inbound', 'outbound']);
+export const messageTypeEnum = pgEnum('message_type', ['asq', 'rtq', 'aaq']);
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -282,3 +284,25 @@ export const sellerProfiles = pgTable('seller_profiles', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
+export const ebayMessages = pgTable('ebay_messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  ebayMessageId: varchar('ebay_message_id', { length: 255 }).notNull().unique(),
+  conversationKey: varchar('conversation_key', { length: 600 }).notNull(),
+  buyerUsername: varchar('buyer_username', { length: 255 }).notNull(),
+  itemId: varchar('item_id', { length: 255 }).notNull(),
+  itemTitle: varchar('item_title', { length: 500 }),
+  subject: varchar('subject', { length: 500 }).notNull().default(''),
+  body: text('body').notNull().default(''),
+  direction: messageDirectionEnum('direction').notNull(),
+  messageType: messageTypeEnum('message_type').notNull().default('asq'),
+  readAt: timestamp('read_at'),
+  ebayCreatedAt: timestamp('ebay_created_at').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_ebay_messages_user_id').on(t.userId),
+  index('idx_ebay_messages_conversation_key').on(t.conversationKey),
+  index('idx_ebay_messages_user_unread').on(t.userId, t.direction, t.readAt),
+]);

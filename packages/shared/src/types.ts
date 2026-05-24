@@ -139,6 +139,38 @@ export interface ConversationMessage {
   actionsTaken?: string[];
 }
 
+export type MessageDirection = 'inbound' | 'outbound';
+export type EbayMessageType = 'asq' | 'rtq' | 'aaq';
+
+export interface EbayMessage {
+  id: string;
+  userId: string;
+  ebayMessageId: string;
+  conversationKey: string;
+  buyerUsername: string;
+  itemId: string;
+  itemTitle?: string;
+  subject: string;
+  body: string;
+  direction: MessageDirection;
+  messageType: EbayMessageType;
+  readAt?: Date;
+  ebayCreatedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface EbayConversation {
+  conversationKey: string;
+  buyerUsername: string;
+  itemId: string;
+  itemTitle?: string;
+  lastMessageBody: string | null;
+  lastMessageAt: string;
+  unreadCount: number;
+  messageCount: number;
+}
+
 export interface Notification {
   id: string;
   userId: string;
