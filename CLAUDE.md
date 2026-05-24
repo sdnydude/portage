@@ -30,9 +30,9 @@ npm workspaces monorepo with three packages:
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 17 tables:
+Drizzle ORM, schema-push workflow (no migration files). 18 tables:
 
-users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, shipping_presets, shipping_providers, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events
+users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, shipping_presets, shipping_providers, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages
 
 Notable JSONB columns: `items.photos`, `items.marketplaceData` (eBay category/title cache), `orders.shippingAddress`.
 
@@ -101,6 +101,11 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Reverb adapter | apps/api/src/marketplace/reverb-adapter.ts |
 | Reverb auth | apps/api/src/routes/marketplace/reverb-auth.ts |
 | Scan flow | apps/web/src/components/capture/scan-flow.tsx |
+| Messages routes | apps/api/src/routes/messages.ts |
+| Trading API client | apps/api/src/marketplace/ebay-trading-client.ts |
+| Messages hooks | apps/web/src/hooks/use-messages.ts |
+| Conversations list | apps/web/src/app/messages/page.tsx |
+| Conversation thread | apps/web/src/app/messages/[conversationKey]/page.tsx |
 | Shared types | packages/shared/src/types.ts |
 | Docker config | docker-compose.yml + docker-compose.override.yml |
 | Environment template | .env.example |
@@ -187,12 +192,12 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-41/52 tasks complete, 3 partial, 8 remaining. See `docs/TODO.md` for full roadmap.
+42/52 tasks complete, 3 partial, 7 remaining. See `docs/TODO.md` for full roadmap.
 
-**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (8 pages: profile, marketplace, seller profile, shipping, notifications, help, admin, billing), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling), JWT auto-refresh, object URL leak fixes, test infra + 141 tests, auth middleware next(err), TOCTOU race fix, shared logger (28 files), AI SDK singletons, shippingAddress column, pagination, shared format helpers, listing flow component extraction, PWA (icons + favicon + service worker), admin observability (Prometheus + Grafana), bulk operations (select/delete/archive/activate/export), eBay CSV export (Seller Hub Reports draft format), onboarding flow (5-step carousel), Stripe billing (subscriptions + credits + enforcement gates), Reverb token-paste auth, photo tools UX (crop/rotate/enhance/BG-remove with before-after preview).
+**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (8 pages: profile, marketplace, seller profile, shipping, notifications, help, admin, billing), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling), JWT auto-refresh, object URL leak fixes, test infra + 141 tests, auth middleware next(err), TOCTOU race fix, shared logger (28 files), AI SDK singletons, shippingAddress column, pagination, shared format helpers, listing flow component extraction, PWA (icons + favicon + service worker), admin observability (Prometheus + Grafana), bulk operations (select/delete/archive/activate/export), eBay CSV export (Seller Hub Reports draft format), onboarding flow (5-step carousel), Stripe billing (subscriptions + credits + enforcement gates), Reverb token-paste auth, photo tools UX (crop/rotate/enhance/BG-remove with before-after preview), eBay buyer messaging (inbox sync + conversation threads + reply via Trading API, 20 tests).
 
 **Partial:** Shipping (full UI + 16-endpoint API built, rates/labels stubbed — no real carrier API calls).
 
-**Remaining:** Buyer messaging, carrier API integration (EasyPost/Shippo), Reverb OAuth code-grant (token-paste auth is shipped).
+**Remaining:** Carrier API integration (EasyPost/Shippo), Reverb OAuth code-grant (token-paste auth is shipped).
 
 **Demo account:** demo@portage.app / demo1234demo1234

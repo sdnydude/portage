@@ -97,8 +97,9 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 | Admin | `/admin/*` | requireAdmin |
 | Marketplace OAuth | `/marketplace/{ebay,etsy}` | requireAuth |
 | Reverb Auth | `/marketplace/reverb` | requireAuth |
+| Messages | `/messages` | requireAuth |
 | Dashboard | `/dashboard` | requireAuth |
 
 ## Testing
 
-Vitest. Run `npm test` (once) or `npm run test:watch`. ~200 tests across 20 files covering crypto, JWT, auth, admin, routes, vision, scan, billing, and eBay CSV export.
+Vitest. Run `npm test` (once) or `npm run test:watch`. ~227 tests across 22 files covering crypto, JWT, auth, admin, routes, vision, scan, billing, eBay CSV export, and eBay messaging.

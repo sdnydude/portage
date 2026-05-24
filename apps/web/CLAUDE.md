@@ -22,6 +22,7 @@ src/app/
 ├── list/            # Create listing entry
 ├── orders/[id]/     # Order detail
 ├── orders/[id]/ship/# Ship order flow
+├── messages/        # eBay buyer messaging (conversations list + thread view)
 ├── settings/        # 8 settings pages (profile, marketplace, seller-profile, shipping, billing, notifications, help, admin)
 ├── login/           # Auth
 └── register/        # Auth
@@ -83,6 +84,11 @@ All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. K
 | `useShippingProvider` | Carrier config and connection test |
 | `useBgRemoval` | @imgly background removal (in-browser) |
 | `useEnhance` | AI photo enhancement (server-side Sharp) |
+| `useConversations` | eBay message conversation list |
+| `useConversationMessages` | Messages in a single thread |
+| `useReply` | Send reply to eBay buyer |
+| `useSync` | Trigger eBay message sync |
+| `useUnreadCount` | Unread message count for badges |
 | `useItems` | Item list with pagination |
 | `useItem` | Single item fetch/update/delete |
 | `useListings` | Listing list + CRUD (create, update, publish, delete) |
