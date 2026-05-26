@@ -202,9 +202,12 @@ export default function HomePage() {
 
       {/* Porter Chat Section */}
       <div className={`transition-all duration-300 ${isEngaged ? "mb-4" : "mb-3"}`}>
-        {/* Message history when engaged */}
-        {isEngaged && porter.messages.length > 0 && (
-          <div className="mb-3 max-h-64 overflow-y-auto space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3">
+        {/* Message history — animates open when engaged */}
+        <div
+          className="overflow-hidden transition-[max-height] duration-300 ease-out"
+          style={{ maxHeight: isEngaged ? "400px" : "0px" }}
+        >
+          <div className="mb-3 overflow-y-auto space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3" style={{ maxHeight: "392px" }}>
             {porter.messages.map((msg, i) => (
               <StreamingMessage
                 key={i}
@@ -222,7 +225,7 @@ export default function HomePage() {
             )}
             <div ref={chatEndRef} />
           </div>
-        )}
+        </div>
 
         {/* Action pills — default suggestions when idle */}
         {!isEngaged && data && (
@@ -246,7 +249,7 @@ export default function HomePage() {
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             placeholder="Ask Porter…"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted)]"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--text-placeholder)]"
           />
           <VoiceButton onTranscript={(text) => { setChatInput(text); setIsEngaged(true); porter.sendMessage(text); }} />
           <button
@@ -265,13 +268,13 @@ export default function HomePage() {
       </div>
 
       <div className="space-y-4 pb-6">
-        {/* Portfolio Value Card */}
+        {/* Portfolio Value Card — collapses when chat is engaged */}
         {hasItems ? (
           <div
-            className="rounded-2xl p-5 border border-forest-green-100"
+            className={`rounded-2xl border border-forest-green-100 overflow-hidden transition-all duration-300 ${isEngaged ? "max-h-0 opacity-0 p-0" : "p-5 max-h-[200px] opacity-100"}`}
             style={{
               background: "linear-gradient(135deg, var(--forest-green-50), var(--surface))",
-              boxShadow: "var(--shadow-medium)",
+              boxShadow: isEngaged ? "none" : "var(--shadow-medium)",
             }}
           >
             <p className="text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>
@@ -346,92 +349,109 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Pending Shipments */}
+        {/* Pending Shipments — full list when idle, compact badge when engaged */}
         {hasPendingShipments && (
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2
-                className="font-[family-name:var(--font-instrument)] font-semibold text-text-primary"
-                style={{ fontSize: "var(--text-headline)" }}
-              >
-                Needs Shipping
-              </h2>
+            {isEngaged ? (
               <Link
                 href="/orders"
-                className="text-forest-green font-medium"
-                style={{ fontSize: "var(--text-caption)" }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-400"
               >
-                View All
+                <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5 flex-shrink-0">
+                  <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 3a.5.5 0 01.5.5v3.793l2.354 2.353a.5.5 0 01-.708.708L7.5 8.707V4.5A.5.5 0 018 4z" />
+                </svg>
+                <span>{data.pendingShipments.length} order{data.pendingShipments.length !== 1 ? "s" : ""} need shipping</span>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5 ml-auto flex-shrink-0">
+                  <path strokeLinecap="round" d="M6 4l4 4-4 4" />
+                </svg>
               </Link>
-            </div>
-            <div className="space-y-2">
-              {data.pendingShipments.map((shipment) => (
-                <div
-                  key={shipment.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-surface border border-border"
-                  style={{ boxShadow: "var(--shadow-subtle)" }}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-text-primary truncate">
-                      {shipment.itemTitle}
-                    </p>
-                    <p className="text-text-secondary" style={{ fontSize: "var(--text-caption)" }}>
-                      {shipment.buyerUsername} &middot;{" "}
-                      {shipment.marketplace === "ebay" ? "eBay" : "Etsy"}
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0 ml-3">
-                    <p className="text-sm font-semibold text-forest-green">
-                      {formatCurrency(shipment.salePrice)}
-                    </p>
-                    <p className="text-text-secondary" style={{ fontSize: "var(--text-caption)" }}>
-                      {formatDate(shipment.soldAt)}
-                    </p>
-                  </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <h2
+                    className="font-[family-name:var(--font-instrument)] font-semibold text-text-primary"
+                    style={{ fontSize: "var(--text-headline)" }}
+                  >
+                    Needs Shipping
+                  </h2>
+                  <Link
+                    href="/orders"
+                    className="text-forest-green font-medium"
+                    style={{ fontSize: "var(--text-caption)" }}
+                  >
+                    View All
+                  </Link>
                 </div>
-              ))}
-            </div>
+                <div className="space-y-2">
+                  {data.pendingShipments.map((shipment) => (
+                    <div
+                      key={shipment.id}
+                      className="flex items-center justify-between p-3 rounded-xl bg-surface border border-border"
+                      style={{ boxShadow: "var(--shadow-subtle)" }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-text-primary truncate">
+                          {shipment.itemTitle}
+                        </p>
+                        <p className="text-text-secondary" style={{ fontSize: "var(--text-caption)" }}>
+                          {shipment.buyerUsername} &middot;{" "}
+                          {shipment.marketplace === "ebay" ? "eBay" : "Etsy"}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0 ml-3">
+                        <p className="text-sm font-semibold text-forest-green">
+                          {formatCurrency(shipment.salePrice)}
+                        </p>
+                        <p className="text-text-secondary" style={{ fontSize: "var(--text-caption)" }}>
+                          {formatDate(shipment.soldAt)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
-        {/* Recent Listings */}
+        {/* Recent Listings — full cards when idle, compact photo rail when engaged */}
         {hasListings && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <h2
                 className="font-[family-name:var(--font-instrument)] font-semibold text-text-primary"
-                style={{ fontSize: "var(--text-headline)" }}
+                style={{ fontSize: isEngaged ? "var(--text-caption)" : "var(--text-headline)" }}
               >
-                Recent Listings
+                {isEngaged ? "Recent Listings" : "Recent Listings"}
               </h2>
               <Link
                 href="/listings"
                 className="text-forest-green font-medium"
                 style={{ fontSize: "var(--text-caption)" }}
               >
-                View All
+                {isEngaged ? "See all →" : "View All"}
               </Link>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
               {data.recentListings.map((listing) => (
                 <Link
                   key={listing.id}
                   href={`/listings/${listing.id}`}
-                  className="flex-shrink-0 w-36 rounded-xl bg-surface border border-border overflow-hidden"
+                  className={`flex-shrink-0 rounded-xl bg-surface border border-border overflow-hidden transition-all duration-300 ${isEngaged ? "w-16" : "w-36"}`}
                   style={{ boxShadow: "var(--shadow-subtle)" }}
                 >
-                  <div className="aspect-square bg-muted overflow-hidden">
+                  <div className="relative overflow-hidden" style={{ paddingBottom: "100%" }}>
                     {listing.itemPhotoUrl ? (
                       <img
                         src={listing.itemPhotoUrl}
                         alt={listing.itemTitle}
-                        className="w-full h-full object-cover"
+                        className="absolute inset-0 w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-text-placeholder">
+                      <div className="absolute inset-0 bg-muted flex items-center justify-center text-text-placeholder">
                         <svg
-                          width="24"
-                          height="24"
+                          width="16"
+                          height="16"
                           viewBox="0 0 24 24"
                           fill="none"
                           stroke="currentColor"
@@ -444,39 +464,41 @@ export default function HomePage() {
                       </div>
                     )}
                   </div>
-                  <div className="p-2">
-                    <p className="text-xs font-medium text-text-primary truncate">
-                      {listing.itemTitle}
-                    </p>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-xs font-semibold text-forest-green">
-                        {formatCurrency(listing.price)}
-                      </span>
-                      <span
-                        className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium ${
-                          listing.status === "active"
-                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                  {!isEngaged && (
+                    <div className="p-2">
+                      <p className="text-xs font-medium text-text-primary truncate">
+                        {listing.itemTitle}
+                      </p>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-xs font-semibold text-forest-green">
+                          {formatCurrency(listing.price)}
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium ${
+                            listing.status === "active"
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                              : listing.status === "sold"
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                          }`}
+                        >
+                          {listing.status === "active"
+                            ? "Active"
                             : listing.status === "sold"
-                              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                              : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                        }`}
-                      >
-                        {listing.status === "active"
-                          ? "Active"
-                          : listing.status === "sold"
-                            ? "Sold"
-                            : "Draft"}
-                      </span>
+                              ? "Sold"
+                              : "Draft"}
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </Link>
               ))}
             </div>
           </div>
         )}
 
-        {/* Quick Stats */}
-        {data.stats.totalOrders > 0 && (
+        {/* Quick Stats — hidden when engaged */}
+        {!isEngaged && data.stats.totalOrders > 0 && (
           <div
             className="rounded-2xl p-4 border border-border"
             style={{ boxShadow: "var(--shadow-subtle)" }}
