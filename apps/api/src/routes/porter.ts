@@ -85,6 +85,7 @@ async function executeToolCall(userId: string, name: string, input: Record<strin
         estimatedValueMin: items.estimatedValueMin,
         estimatedValueMax: items.estimatedValueMax,
         estimatedValueRecommended: items.estimatedValueRecommended,
+        photos: items.photos,
       })
         .from(items)
         .where(and(...conditions))
