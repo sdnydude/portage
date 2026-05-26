@@ -112,10 +112,15 @@ export function usePorterStream(): PorterStreamState {
       reader?.cancel().catch(() => {});
       setError("Connection error");
     } finally {
-      // Commit accumulated streaming blocks as a finished assistant message
+      // Commit accumulated streaming blocks as a finished assistant message.
+      // Strip <actions> XML — the server parses it separately and emits action_pills.
       const finalBlocks: ContentBlock[] = streamingRef.current
         .filter((b) => b.type === "text" && b.text)
-        .map((b) => ({ type: "text", text: b.text! } as TextBlock));
+        .map((b) => ({
+          type: "text",
+          text: b.text!.replace(/<actions>[\s\S]*?<\/actions>/i, "").trim(),
+        } as TextBlock))
+        .filter((b) => b.text);
 
       if (finalBlocks.length > 0) {
         setMessages((prev) => [
@@ -130,6 +135,14 @@ export function usePorterStream(): PorterStreamState {
       setConversationId(finalConvId);
     }
 
+    function stripActions(blocks: StreamingBlock[]): StreamingBlock[] {
+      return blocks.map((b) =>
+        b.type === "text" && b.text
+          ? { ...b, text: b.text.replace(/<actions>[\s\S]*?<\/actions>/i, "").trimEnd() }
+          : b
+      );
+    }
+
     function handleEvent(event: StreamEvent) {
       if (event.type === "text_delta") {
         const last = streamingRef.current[streamingRef.current.length - 1];
@@ -138,7 +151,7 @@ export function usePorterStream(): PorterStreamState {
         } else {
           streamingRef.current.push({ type: "text", text: event.text });
         }
-        setStreamingBlocks([...streamingRef.current]);
+        setStreamingBlocks(stripActions([...streamingRef.current]));
       } else if (event.type === "tool_start") {
         streamingRef.current.push({
           type: "tool",
