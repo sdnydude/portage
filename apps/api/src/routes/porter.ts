@@ -178,6 +178,17 @@ const messageSchema = z.object({
   conversationId: z.string().uuid().nullish(),
 });
 
+type StoredMessage = { role: string; content?: string; blocks?: Array<{ type: string; text?: string }> };
+
+export function normalizeConversationMessages(
+  messages: unknown[]
+): Array<{ role: string; blocks: Array<{ type: string; text: string }> }> {
+  return (messages as StoredMessage[]).map((m) => {
+    if (m.blocks) return { role: m.role, blocks: m.blocks as Array<{ type: string; text: string }> };
+    return { role: m.role, blocks: [{ type: 'text', text: m.content ?? '' }] };
+  });
+}
+
 export function parseActionPills(text: string): { pills: Array<{ label: string; message: string }>; cleanText: string } {
   const match = text.match(/<actions>([\s\S]*?)<\/actions>/i);
   if (!match) return { pills: [], cleanText: text };
@@ -277,15 +288,17 @@ porterRouter.post('/stream', async (req, res) => {
     return;
   }
 
+  type NormalizedMessage = { role: string; blocks: Array<{ type: string; text: string }> };
   // Load or create conversation
-  let conv: { id: string; messages: Array<{ role: string; content: string }> } | undefined;
+  let conv: { id: string; messages: NormalizedMessage[] } | undefined;
   if (conversationId) {
     const [existing] = await db.select()
       .from(conversations)
       .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
       .limit(1);
     if (existing) {
-      conv = { id: existing.id, messages: (existing.messages as Array<{ role: string; content: string }>) ?? [] };
+      const normalized = normalizeConversationMessages((existing.messages as unknown[]) ?? []);
+      conv = { id: existing.id, messages: normalized };
     }
   }
   if (!conv) {
@@ -305,7 +318,10 @@ porterRouter.post('/stream', async (req, res) => {
   };
 
   const chatMessages = [
-    ...conv.messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    ...conv.messages.map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.blocks.filter(b => b.type === 'text').map(b => b.text).join(''),
+    })),
     { role: 'user' as const, content: message },
   ];
 
@@ -363,11 +379,11 @@ porterRouter.post('/stream', async (req, res) => {
     } catch { /* silently ignore TTS failures */ }
   }
 
-  // Persist conversation (user message + assistant reply)
-  const newMessages = [
+  // Persist conversation using new blocks format
+  const newMessages: NormalizedMessage[] = [
     ...conv.messages,
-    { role: 'user', content: message },
-    { role: 'assistant', content: spokenText },
+    { role: 'user', blocks: [{ type: 'text', text: message }] },
+    { role: 'assistant', blocks: [{ type: 'text', text: spokenText }] },
   ];
   await db.update(conversations)
     .set({ messages: newMessages, updatedAt: new Date() })
