@@ -6,7 +6,7 @@ import { db } from '../db/index.js';
 import { conversations, items, listings, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
-import { chat, type ToolDef } from '../lib/ai-client.js';
+import { chat, chatStream, type ToolDef, type StreamToolResult } from '../lib/ai-client.js';
 import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
 import { computeEffectiveTier } from '../lib/billing-utils.js';
 
@@ -205,6 +205,173 @@ porterRouter.get('/conversations/:id', async (req, res, next) => {
     res.json(conv);
   } catch (err) {
     next(err);
+  }
+});
+
+async function executeToolCallStructured(
+  userId: string,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<StreamToolResult> {
+  const text = await executeToolCall(userId, name, input);
+  let structured: unknown;
+  try { structured = JSON.parse(text); } catch { structured = undefined; }
+  return { text, structured };
+}
+
+porterRouter.post('/stream', async (req, res) => {
+  const userId = req.user!.sub;
+  const { message, conversationId } = messageSchema.parse(req.body);
+
+  // Load user + rate-limit count
+  const [porterUser] = await db.select({
+    subscriptionTier: users.subscriptionTier,
+    trialEndsAt: users.trialEndsAt,
+    porterMessagesToday: sql<number>`
+      (select coalesce(sum(jsonb_array_length(messages)), 0) from ${conversations}
+       where user_id = ${userId}
+       and updated_at > now() - interval '1 day'
+       and jsonb_typeof(messages) = 'array')
+    `,
+  }).from(users).where(eq(users.id, userId)).limit(1);
+
+  if (!porterUser) {
+    res.status(401).json({ error: 'User not found', code: 'UNAUTHORIZED' });
+    return;
+  }
+
+  const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
+  const exchangeLimit = tier === 'pro'
+    ? PRO_TIER_LIMITS.porterExchangesPerDay
+    : FREE_TIER_LIMITS.porterExchangesPerDay;
+  const messageThreshold = exchangeLimit * 2;
+
+  if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
+    res.status(429).json({
+      error: `Daily limit: ${exchangeLimit} Porter exchanges per day.${tier === 'free' ? ' Upgrade to Pro for more.' : ''}`,
+      code: 'PORTER_LIMIT_REACHED',
+    });
+    return;
+  }
+
+  // Load or create conversation
+  let conv: { id: string; messages: Array<{ role: string; content: string }> } | undefined;
+  if (conversationId) {
+    const [existing] = await db.select()
+      .from(conversations)
+      .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
+      .limit(1);
+    if (existing) {
+      conv = { id: existing.id, messages: (existing.messages as Array<{ role: string; content: string }>) ?? [] };
+    }
+  }
+  if (!conv) {
+    const [newConv] = await db.insert(conversations).values({ userId, messages: [] }).returning();
+    conv = { id: newConv.id, messages: [] };
+  }
+
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const writeSSE = (event: Record<string, unknown>) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  const chatMessages = [
+    ...conv.messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    { role: 'user' as const, content: message },
+  ];
+
+  let finalModel = '';
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let accumulatedText = '';
+
+  try {
+  await chatStream(
+    chatMessages,
+    PORTER_SYSTEM,
+    tools,
+    (name, input) => executeToolCallStructured(userId, name, input),
+    (event) => {
+      if (event.type === 'text_delta') {
+        accumulatedText += event.text;
+        writeSSE(event);
+      } else if (event.type === 'tool_start' || event.type === 'tool_result') {
+        writeSSE(event);
+      } else if (event.type === 'done') {
+        finalModel = event.model;
+        inputTokens = event.inputTokens;
+        outputTokens = event.outputTokens;
+      }
+    },
+  );
+
+  // Parse <actions> block from accumulated text and emit pills
+  const actionsMatch = accumulatedText.match(/<actions>([\s\S]*?)<\/actions>/i);
+  let spokenText = accumulatedText;
+  if (actionsMatch) {
+    spokenText = accumulatedText.replace(/<actions>[\s\S]*?<\/actions>/i, '').trim();
+    try {
+      const pills = JSON.parse(actionsMatch[1]);
+      if (Array.isArray(pills)) {
+        writeSSE({ type: 'action_pills', pills });
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Fire-and-forget TTS: emit audio_url on success, silently ignore on failure
+  const ttsBase = process.env.DHG_TTS_URL;
+  if (ttsBase && spokenText.trim()) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      try {
+        const ttsRes = await fetch(`${ttsBase}/audio/speech`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: spokenText, model: 'tts-1', voice: 'alloy' }),
+          signal: controller.signal,
+        });
+        if (ttsRes.ok) {
+          const data = (await ttsRes.json()) as { url?: string };
+          if (typeof data.url === 'string') {
+            writeSSE({ type: 'audio_url', url: data.url });
+          }
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch { /* silently ignore TTS failures */ }
+  }
+
+  // Persist conversation (user message + assistant reply)
+  const newMessages = [
+    ...conv.messages,
+    { role: 'user', content: message },
+    { role: 'assistant', content: spokenText },
+  ];
+  await db.update(conversations)
+    .set({ messages: newMessages, updatedAt: new Date() })
+    .where(eq(conversations.id, conv.id));
+
+  writeSSE({
+    type: 'done',
+    conversationId: conv.id,
+    model: finalModel,
+    inputTokens,
+    outputTokens,
+  });
+
+  res.end();
+  } catch (err) {
+    logger.error({ err, userId, conversationId: conv.id }, 'Porter stream failed');
+    writeSSE({ type: 'error', message: 'Internal error' });
+    res.end();
   }
 });
 
