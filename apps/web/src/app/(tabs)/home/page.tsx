@@ -9,6 +9,7 @@ import { usePorterAudio } from "@/hooks/use-porter-audio";
 import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
 import { VoiceButton } from "@/components/porter/voice-button";
+import { FullChat } from "@/components/porter/full-chat";
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
 import Link from "next/link";
 
@@ -46,6 +47,7 @@ export default function HomePage() {
   const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
   const [chatInput, setChatInput] = useState("");
   const [isEngaged, setIsEngaged] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const porter = usePorterStream();
   const audio = usePorterAudio();
@@ -239,6 +241,22 @@ export default function HomePage() {
             ]}
             onSelect={handlePillSelect}
           />
+        )}
+
+        {/* Expand to full-screen button — only visible when engaged */}
+        {isEngaged && (
+          <div className="flex justify-end mb-1">
+            <button
+              onClick={() => setIsFullScreen(true)}
+              className="flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--forest-green)] transition-colors"
+              aria-label="Expand chat"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5">
+                <path strokeLinecap="round" d="M10 2h4v4M6 14H2v-4M14 6l-5 5M2 10l5-5" />
+              </svg>
+              <span>Expand</span>
+            </button>
+          </div>
         )}
 
         {/* Chat input bar */}
@@ -550,6 +568,25 @@ export default function HomePage() {
           onComplete={completeOnboarding}
           onSkip={completeOnboarding}
           isCompleting={isCompleting}
+        />
+      )}
+
+      {/* Full-screen chat overlay — slide-up, preserves conversation state */}
+      {isFullScreen && (
+        <FullChat
+          messages={porter.messages}
+          streamingBlocks={porter.streamingBlocks}
+          isStreaming={porter.isStreaming}
+          pills={porter.pills}
+          audioUrl={porter.audioUrl}
+          error={porter.error}
+          chatInput={chatInput}
+          onChatInputChange={setChatInput}
+          onSend={handleSend}
+          onPillSelect={handlePillSelect}
+          onVoiceTranscript={(text) => { setChatInput(text); setIsEngaged(true); porter.sendMessage(text); }}
+          onNewChat={() => { porter.startNewChat(); setIsEngaged(false); setIsFullScreen(false); }}
+          onClose={() => setIsFullScreen(false)}
         />
       )}
     </div>
