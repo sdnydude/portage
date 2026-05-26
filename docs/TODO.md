@@ -1,7 +1,7 @@
 # Portage — Roadmap
 
-**Progress: 47/52 tasks complete · 2 partial · 3 remaining · 10 TODO items (~44h est)**
-**Last updated:** 2026-05-24
+**Progress: 48/52 tasks complete · 2 partial · 2 remaining · 18 TODO items (~56h est)**
+**Last updated:** 2026-05-26
 
 ---
 
@@ -41,6 +41,13 @@
 
 - [x] **Task 24:** Porter AI backend — Claude Sonnet tool_use loop, 3 tools (search_inventory, get_inventory_stats, suggest_listing), conversation history in JSONB, free tier 20 msg/day. Fixed Zod validation bug rejecting null conversationId (9f8db4e).
 - [x] **Task 25:** Porter chat UI — message bubbles, typing indicator, suggestion chips, new chat, keyboard enter-to-send
+
+## Phase 10: Voice Chat Interface (PR #87) — complete
+
+- [x] **Task 51:** Porter SSE streaming — `POST /porter/stream` using `client.messages.stream()`, live token streaming, tool transparency blocks, action pills, TTS fire-and-forget. JSONB upgraded to `blocks: ContentBlock[]` with lazy backward-compat migration.
+- [x] **Task 52:** Voice I/O — `POST /porter/transcribe` (Whisper via dhg-stt), `POST /porter/speak` (Chatterbox via dhg-tts), `useVoiceInput` hook (push-to-talk + silence detection), `usePorterAudio` hook.
+- [x] **Task 53:** Home screen redesign — Porter chat input, engaged-state expansion (chat grows, portfolio card/listings collapse), proactive greeting from dashboard data, full-screen chat overlay, PorterProvider React Context shared across tabs.
+- [x] **Task 54:** Voice UI components — VoiceButton, VoiceOverlay (3 states), AudioPlayback, FloatingMic FAB (non-home tabs), BottomSheet slide-up voice interface. Tab bar restructured to 4 tabs (Porter tab removed).
 
 ## Phase 6: Auth (Task 33) — 1/1
 
@@ -107,6 +114,24 @@ All critical items resolved (2026-05-09):
 - ~~Dashboard navigation dead end~~ — TabBar restructured to 5 tabs (84ba9ee)
 - ~~Settings pages 404~~ — 5 new pages + expanded More hub (ad03728→b5f0f33)
 - ~~Porter chat broken~~ — Fixed Zod null validation (9f8db4e)
+
+### Critical — Voice Chat Audit Fixes (PR #87 advisor findings)
+
+| # | Task | File | Est |
+|---|------|------|-----|
+| A1 | **`/transcribe` input validation** — add `req.file` presence check (400 if missing) + STT non-ok response guard (502) | `porter.ts:497` | 1h |
+| A2 | **`/speak` body validation** — add Zod schema `{ text: z.string().min(1).max(5000) }` before forwarding | `porter.ts:511` | 1h |
+
+### Important — Voice Chat Audit Fixes
+
+| # | Task | File | Est |
+|---|------|------|-----|
+| A3 | **rAF stale closure in useVoiceInput** — add `stoppedRef` flag; guard `checkSilence` entry to prevent `DOMException` on AudioContext after stop | `use-voice-input.ts:92` | 1h |
+| A4 | **AudioPlayback unmount leak** — add `useEffect(() => () => audioRef.current?.pause(), [])` cleanup; remove duplicate audio control in `StreamingMessage` | `audio-playback.tsx:14` | 1h |
+| A5 | **Conversation history text-only rebuild** — document that tool blocks are intentionally not persisted; add a comment at line 323 so a future dev doesn't silently break this | `porter.ts:323` | 0.5h |
+| A6 | **conversationId lost on network drop** — remove `finalConvId !== conversationId` guard in `finally`; always call `setConversationId(finalConvId)` | `use-porter-stream.ts:130` | 0.5h |
+| A7 | **parseActionPills structural validation** — validate each pill after JSON.parse: `label` string ≤50 chars, `message` string ≤500 chars; filter malformed entries | `porter.ts:192` | 1h |
+| A8 | **Amplitude loop GC pressure** — replace `Math.max(...buffer.map(Math.abs))` with a manual loop in `checkSilence` | `use-voice-input.ts:94` | 0.5h |
 
 ### High Priority (core product gaps)
 
@@ -242,6 +267,20 @@ All critical items resolved (2026-05-09):
 | 65 | Fix toggle race condition in notification preferences | `922eabd` |
 | 66 | Fix Porter chat: Zod `.optional()` → `.nullish()` for null conversationId | `9f8db4e` |
 
+### G. Voice Chat Interface (PR #87 — 14 commits)
+
+| # | Task | Commit |
+|---|------|--------|
+| 71 | API: `POST /porter/stream` SSE with `client.messages.stream()`, tool callbacks, TTS fire-and-forget | `cc8cdde` |
+| 72 | API: `search_inventory` photos field; `POST /porter/transcribe` STT proxy; `POST /porter/speak` TTS proxy | `cf65b3f`–`6d4528b` |
+| 73 | API: action pills system prompt + `parseActionPills()`; `chatStream()` in ai-client.ts | `50daddf`–`333d1c0` |
+| 74 | Web: `usePorterStream`, `useVoiceInput`, `usePorterAudio`, `usePorterContext` hooks | `022721d`–`569335d` |
+| 75 | Web: ToolBlock, InlineResultCard, CompTable, ActionPills, StreamingMessage, VoiceButton, AudioPlayback, VoiceOverlay, FloatingMic, BottomSheet, FullChat components | `022721d`–`44e0e57` |
+| 76 | Web: Home screen redesign — engaged state, proactive greeting, PorterProvider context in tabs layout, tab bar restructured to 4 tabs | `975a5e2`–`7aecbe9` |
+| 77 | API: JSONB migration to `blocks: ContentBlock[]` with `normalizeConversationMessages()` | `fe52da2` |
+| 78 | Fix: Phase 6 review — SSE error handling fork, reader.cancel(), audio onerror, render-phase side effects | `d8c946c` |
+| 79 | Infra: dhg-stt (Whisper large-v3-turbo, port 8018) + dhg-tts (Chatterbox Turbo, port 8019) in docker-compose | (docker-compose.yml) |
+
 ### F. eBay Buyer Messaging (PR #84 — 4 commits)
 
 | # | Task | Commit |
@@ -257,15 +296,16 @@ All critical items resolved (2026-05-09):
 
 | Category | Count |
 |----------|-------|
-| Completed (all time) | 47 roadmap tasks + 70 subtasks |
+| Completed (all time) | 48 roadmap tasks + 70 subtasks |
 | Partial | 2 (shipping stubs, CF tunnel config) |
-| TODO — Critical | 0 (all resolved) |
+| TODO — Voice chat audit (Critical) | 2 (transcribe validation, speak validation) |
+| TODO — Voice chat audit (Important) | 6 (rAF closure, audio unmount, conv history, convId drop, pill validation, GC) |
 | TODO — High Priority | 1 (carrier API) |
 | TODO — Medium Priority | 3 (notifications, dashboard trends, Reverb OAuth) |
 | TODO — Infrastructure | 3 (integration testing, tunnel config, photo persistence) |
 | TODO — Known Bugs | 3 (CORS, pagination, photo save) |
-| **Total remaining items** | **10** |
-| **Estimated remaining effort** | **~44 hours** |
+| **Total remaining items** | **18** |
+| **Estimated remaining effort** | **~56 hours** |
 
 ---
 
@@ -285,7 +325,9 @@ All critical items resolved (2026-05-09):
 | Database | PostgreSQL 15, Drizzle ORM |
 | Auth | JWT + refresh tokens, bcrypt |
 | Images | Cloudflare R2, Sharp |
-| AI | Claude Sonnet (vision + tool_use) |
+| AI | Claude Sonnet (vision + tool_use + SSE streaming via MessageStream) |
+| Voice STT | Whisper large-v3-turbo via dhg-stt container (OpenAI-compatible API) |
+| Voice TTS | Chatterbox Turbo via dhg-tts container (OpenAI-compatible API) |
 | BG Removal | @imgly/background-removal (WASM) |
 | Marketplaces | eBay (REST), Etsy (REST + PKCE), Reverb (REST, OAuth pending) |
 | Token encryption | AES-256-GCM |
@@ -297,6 +339,9 @@ All critical items resolved (2026-05-09):
 | portage-db | 5436 |
 | portage-api | 8016 |
 | portage-app | 3002 |
+| dhg-docs (nginx) | 8017 |
+| dhg-stt (Whisper large-v3-turbo) | 8018 |
+| dhg-tts (Chatterbox Turbo) | 8019 |
 
 ## Demo Account
 
