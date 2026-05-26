@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, desc, and, ilike, sql } from 'drizzle-orm';
+import multer from 'multer';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { conversations, items, listings, users } from '../db/schema.js';
@@ -452,6 +453,22 @@ porterRouter.post('/message', async (req, res, next) => {
       conversationId: conv.id,
       message: assistantMessage,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+porterRouter.post('/transcribe', upload.single('audio'), async (req, res, next) => {
+  try {
+    const sttBase = process.env.DHG_STT_URL ?? 'http://dhg-stt:8000';
+    const form = new FormData();
+    form.append('file', new Blob([req.file?.buffer ?? Buffer.alloc(0)], { type: req.file?.mimetype ?? 'audio/webm' }), req.file?.originalname ?? 'audio.webm');
+    form.append('model', 'whisper-1');
+    const response = await fetch(`${sttBase}/v1/audio/transcriptions`, { method: 'POST', body: form });
+    const data = await response.json() as { text: string; duration?: number };
+    res.json({ text: data.text, duration: data.duration });
   } catch (err) {
     next(err);
   }
