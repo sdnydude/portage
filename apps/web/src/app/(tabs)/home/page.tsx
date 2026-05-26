@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useOnboarding } from "@/hooks/use-onboarding";
-import { usePorterStream } from "@/hooks/use-porter-stream";
+import { usePorter } from "@/hooks/use-porter-context";
 import { usePorterAudio } from "@/hooks/use-porter-audio";
 import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
@@ -45,11 +45,10 @@ export default function HomePage() {
   const { isAuthenticated, token } = useAuth();
   const { data, isLoading, error } = useDashboard();
   const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
-  const [chatInput, setChatInput] = useState("");
-  const [isEngaged, setIsEngaged] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const porter = usePorterStream();
+  const porter = usePorter();
+  const { chatInput, setChatInput, isEngaged, setIsEngaged } = porter;
   const audio = usePorterAudio();
 
   // Scroll chat to bottom on new messages
