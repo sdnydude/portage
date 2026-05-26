@@ -108,6 +108,31 @@ describe('POST /porter/transcribe', () => {
     }
   });
 
+  it('returns 400 when no audio file is uploaded', async () => {
+    const res = await request(app)
+      .post('/porter/transcribe')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'No audio file uploaded' });
+  });
+
+  it('returns 502 when dhg-stt responds with error status', async () => {
+    process.env.DHG_STT_URL = 'http://dhg-stt:8000';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    try {
+      const res = await request(app)
+        .post('/porter/transcribe')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('audio', Buffer.from('audio'), { filename: 'rec.webm', contentType: 'audio/webm' });
+      expect(res.status).toBe(502);
+      expect(res.body).toMatchObject({ error: 'Transcription failed' });
+    } finally {
+      vi.unstubAllGlobals();
+      delete process.env.DHG_STT_URL;
+    }
+  });
+
   it('returns 500 when dhg-stt is unreachable', async () => {
     process.env.DHG_STT_URL = 'http://dhg-stt:8000';
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
@@ -123,22 +148,4 @@ describe('POST /porter/transcribe', () => {
     }
   });
 
-  it('returns 500 when dhg-stt responds with error status', async () => {
-    process.env.DHG_STT_URL = 'http://dhg-stt:8000';
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: vi.fn().mockRejectedValue(new Error('unexpected json')),
-    }));
-    try {
-      const res = await request(app)
-        .post('/porter/transcribe')
-        .set('Authorization', `Bearer ${token}`)
-        .attach('audio', Buffer.from('audio'), { filename: 'rec.webm', contentType: 'audio/webm' });
-      expect(res.status).toBe(500);
-    } finally {
-      vi.unstubAllGlobals();
-      delete process.env.DHG_STT_URL;
-    }
-  });
 });

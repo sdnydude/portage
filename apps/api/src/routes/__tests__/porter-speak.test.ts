@@ -37,6 +37,17 @@ function mockUserSelect() {
 }
 
 describe('POST /porter/speak', () => {
+  it('returns 400 when text is missing', async () => {
+    mockUserSelect();
+    const res = await request(app)
+      .post('/porter/speak')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+
+
   it('forwards text to dhg-tts and streams audio back', async () => {
     process.env.DHG_TTS_URL = 'http://dhg-tts:8000';
 

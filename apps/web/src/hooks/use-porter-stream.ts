@@ -127,7 +127,7 @@ export function usePorterStream(): PorterStreamState {
       setStreamingBlocks([]);
       streamingRef.current = [];
       setIsStreaming(false);
-      if (finalConvId !== conversationId) setConversationId(finalConvId);
+      setConversationId(finalConvId);
     }
 
     function handleEvent(event: StreamEvent) {

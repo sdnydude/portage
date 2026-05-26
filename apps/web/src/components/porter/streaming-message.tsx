@@ -4,6 +4,7 @@ import type { RichMessage, ActionPill } from "@portage/shared";
 import type { StreamingBlock } from "@/hooks/use-porter-stream";
 import { ToolBlock } from "./tool-block";
 import { ActionPills } from "./action-pills";
+import { AudioPlayback } from "./audio-playback";
 
 interface StreamingMessageProps {
   // Finished message (history)
@@ -56,12 +57,7 @@ export function StreamingMessage({
         {pills.length > 0 && onPillSelect && (
           <ActionPills pills={pills} onSelect={onPillSelect} />
         )}
-        {audioUrl && (
-          <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-            <span>🔊</span>
-            <audio src={audioUrl} controls className="h-7 w-40" />
-          </div>
-        )}
+        {audioUrl && <AudioPlayback audioUrl={audioUrl} />}
       </div>
     );
   }

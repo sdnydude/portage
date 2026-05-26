@@ -29,8 +29,10 @@ export function useVoiceInput(): VoiceInputState {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tokenRef = useRef<string>("");
+  const stoppedRef = useRef<boolean>(false);
 
   const stopTracks = useCallback(() => {
+    stoppedRef.current = true;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     audioCtxRef.current?.close();
@@ -89,9 +91,15 @@ export function useVoiceInput(): VoiceInputState {
     source.connect(analyser);
     const buffer = new Float32Array(analyser.fftSize);
 
+    stoppedRef.current = false;
     const checkSilence = () => {
+      if (stoppedRef.current) return;
       analyser.getFloatTimeDomainData(buffer);
-      const amplitude = Math.max(...buffer.map(Math.abs));
+      let amplitude = 0;
+      for (let j = 0; j < buffer.length; j++) {
+        const abs = Math.abs(buffer[j]);
+        if (abs > amplitude) amplitude = abs;
+      }
       if (amplitude < SILENCE_THRESHOLD) {
         if (!silenceTimerRef.current) {
           silenceTimerRef.current = setTimeout(() => {

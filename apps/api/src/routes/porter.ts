@@ -193,7 +193,15 @@ export function parseActionPills(text: string): { pills: Array<{ label: string; 
   const match = text.match(/<actions>([\s\S]*?)<\/actions>/i);
   if (!match) return { pills: [], cleanText: text };
   try {
-    const pills = JSON.parse(match[1]) as Array<{ label: string; message: string }>;
+    const raw = JSON.parse(match[1]) as unknown[];
+    const pills = (Array.isArray(raw) ? raw : []).filter(
+      (p): p is { label: string; message: string } =>
+        typeof p === 'object' && p !== null &&
+        typeof (p as Record<string, unknown>).label === 'string' &&
+        typeof (p as Record<string, unknown>).message === 'string' &&
+        ((p as { label: string }).label).length <= 50 &&
+        ((p as { message: string }).message).length <= 500,
+    );
     const cleanText = text.replace(/<actions>[\s\S]*?<\/actions>/i, '');
     return { pills, cleanText };
   } catch {
@@ -320,6 +328,8 @@ porterRouter.post('/stream', async (req, res, next) => {
     res.flushHeaders?.();
     sseStarted = true;
 
+    // Text-only rebuild is intentional: tool blocks are not persisted (only cleanText is saved).
+    // If tool blocks are ever persisted, update this to build a proper multi-block content array.
     const chatMessages = [
       ...conv.messages.map(m => ({
         role: m.role as 'user' | 'assistant',
@@ -496,11 +506,19 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 porterRouter.post('/transcribe', upload.single('audio'), async (req, res, next) => {
   try {
+    if (!req.file) {
+      res.status(400).json({ error: 'No audio file uploaded' });
+      return;
+    }
     const sttBase = process.env.DHG_STT_URL ?? 'http://dhg-stt:8000';
     const form = new FormData();
-    form.append('file', new Blob([req.file?.buffer ?? Buffer.alloc(0)], { type: req.file?.mimetype ?? 'audio/webm' }), req.file?.originalname ?? 'audio.webm');
+    form.append('file', new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname);
     form.append('model', 'whisper-1');
     const response = await fetch(`${sttBase}/v1/audio/transcriptions`, { method: 'POST', body: form });
+    if (!response.ok) {
+      res.status(502).json({ error: 'Transcription failed' });
+      return;
+    }
     const data = await response.json() as { text: string; duration?: number };
     res.json({ text: data.text, duration: data.duration });
   } catch (err) {
@@ -508,14 +526,21 @@ porterRouter.post('/transcribe', upload.single('audio'), async (req, res, next) 
   }
 });
 
+const speakSchema = z.object({ text: z.string().min(1).max(5000) });
+
 porterRouter.post('/speak', requireAuth, async (req, res) => {
+  const parsed = speakSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.errors });
+    return;
+  }
   const ttsBase = process.env.DHG_TTS_URL ?? 'http://dhg-tts:8000';
   let ttsRes: Response;
   try {
     ttsRes = await fetch(`${ttsBase}/audio/speech`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: (req.body as { text: string }).text, voice: 'alloy', model: 'tts-1' }),
+      body: JSON.stringify({ input: parsed.data.text, voice: 'alloy', model: 'tts-1' }),
     });
   } catch {
     res.status(503).json({ error: 'TTS unavailable' });

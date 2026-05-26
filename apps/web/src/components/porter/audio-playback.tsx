@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 interface AudioPlaybackProps {
   audioUrl: string;
@@ -10,6 +10,8 @@ interface AudioPlaybackProps {
 export function AudioPlayback({ audioUrl, duration }: AudioPlaybackProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => () => { audioRef.current?.pause(); }, []);
 
   const toggle = () => {
     if (!audioRef.current) {
