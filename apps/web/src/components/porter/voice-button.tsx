@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -20,11 +21,12 @@ export function VoiceButton({ onTranscript }: VoiceButtonProps) {
     }
   };
 
-  // When transcription completes, forward the result
-  if (state === "done" && transcript) {
-    onTranscript(transcript);
-    reset();
-  }
+  useEffect(() => {
+    if (state === "done" && transcript) {
+      onTranscript(transcript);
+      reset();
+    }
+  }, [state, transcript, onTranscript, reset]);
 
   const isListening = state === "listening";
   const isTranscribing = state === "transcribing";

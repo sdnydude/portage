@@ -253,155 +253,161 @@ async function executeToolCallStructured(
   return { text, structured };
 }
 
-porterRouter.post('/stream', async (req, res) => {
+porterRouter.post('/stream', async (req, res, next) => {
   const userId = req.user!.sub;
-  const { message, conversationId } = messageSchema.parse(req.body);
-
-  // Load user + rate-limit count
-  const [porterUser] = await db.select({
-    subscriptionTier: users.subscriptionTier,
-    trialEndsAt: users.trialEndsAt,
-    porterMessagesToday: sql<number>`
-      (select coalesce(sum(jsonb_array_length(messages)), 0) from ${conversations}
-       where user_id = ${userId}
-       and updated_at > now() - interval '1 day'
-       and jsonb_typeof(messages) = 'array')
-    `,
-  }).from(users).where(eq(users.id, userId)).limit(1);
-
-  if (!porterUser) {
-    res.status(401).json({ error: 'User not found', code: 'UNAUTHORIZED' });
-    return;
-  }
-
-  const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
-  const exchangeLimit = tier === 'pro'
-    ? PRO_TIER_LIMITS.porterExchangesPerDay
-    : FREE_TIER_LIMITS.porterExchangesPerDay;
-  const messageThreshold = exchangeLimit * 2;
-
-  if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
-    res.status(429).json({
-      error: `Daily limit: ${exchangeLimit} Porter exchanges per day.${tier === 'free' ? ' Upgrade to Pro for more.' : ''}`,
-      code: 'PORTER_LIMIT_REACHED',
-    });
-    return;
-  }
-
-  type NormalizedMessage = { role: string; blocks: Array<{ type: string; text: string }> };
-  // Load or create conversation
-  let conv: { id: string; messages: NormalizedMessage[] } | undefined;
-  if (conversationId) {
-    const [existing] = await db.select()
-      .from(conversations)
-      .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
-      .limit(1);
-    if (existing) {
-      const normalized = normalizeConversationMessages((existing.messages as unknown[]) ?? []);
-      conv = { id: existing.id, messages: normalized };
-    }
-  }
-  if (!conv) {
-    const [newConv] = await db.insert(conversations).values({ userId, messages: [] }).returning();
-    conv = { id: newConv.id, messages: [] };
-  }
-
-  res.status(200);
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders?.();
-
+  let sseStarted = false;
   const writeSSE = (event: Record<string, unknown>) => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
 
-  const chatMessages = [
-    ...conv.messages.map(m => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.blocks.filter(b => b.type === 'text').map(b => b.text).join(''),
-    })),
-    { role: 'user' as const, content: message },
-  ];
-
-  let finalModel = '';
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let accumulatedText = '';
-
   try {
-  await chatStream(
-    chatMessages,
-    PORTER_SYSTEM,
-    tools,
-    (name, input) => executeToolCallStructured(userId, name, input),
-    (event) => {
-      if (event.type === 'text_delta') {
-        accumulatedText += event.text;
-        writeSSE(event);
-      } else if (event.type === 'tool_start' || event.type === 'tool_result') {
-        writeSSE(event);
-      } else if (event.type === 'done') {
-        finalModel = event.model;
-        inputTokens = event.inputTokens;
-        outputTokens = event.outputTokens;
+    const { message, conversationId } = messageSchema.parse(req.body);
+
+    // Load user + rate-limit count
+    const [porterUser] = await db.select({
+      subscriptionTier: users.subscriptionTier,
+      trialEndsAt: users.trialEndsAt,
+      porterMessagesToday: sql<number>`
+        (select coalesce(sum(jsonb_array_length(messages)), 0) from ${conversations}
+         where user_id = ${userId}
+         and updated_at > now() - interval '1 day'
+         and jsonb_typeof(messages) = 'array')
+      `,
+    }).from(users).where(eq(users.id, userId)).limit(1);
+
+    if (!porterUser) {
+      res.status(401).json({ error: 'User not found', code: 'UNAUTHORIZED' });
+      return;
+    }
+
+    const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
+    const exchangeLimit = tier === 'pro'
+      ? PRO_TIER_LIMITS.porterExchangesPerDay
+      : FREE_TIER_LIMITS.porterExchangesPerDay;
+    const messageThreshold = exchangeLimit * 2;
+
+    if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
+      res.status(429).json({
+        error: `Daily limit: ${exchangeLimit} Porter exchanges per day.${tier === 'free' ? ' Upgrade to Pro for more.' : ''}`,
+        code: 'PORTER_LIMIT_REACHED',
+      });
+      return;
+    }
+
+    type NormalizedMessage = { role: string; blocks: Array<{ type: string; text: string }> };
+    // Load or create conversation
+    let conv: { id: string; messages: NormalizedMessage[] } | undefined;
+    if (conversationId) {
+      const [existing] = await db.select()
+        .from(conversations)
+        .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
+        .limit(1);
+      if (existing) {
+        const normalized = normalizeConversationMessages((existing.messages as unknown[]) ?? []);
+        conv = { id: existing.id, messages: normalized };
       }
-    },
-  );
+    }
+    if (!conv) {
+      const [newConv] = await db.insert(conversations).values({ userId, messages: [] }).returning();
+      conv = { id: newConv.id, messages: [] };
+    }
 
-  const { pills, cleanText } = parseActionPills(accumulatedText);
-  const spokenText = cleanText.trim();
-  if (pills.length > 0) writeSSE({ type: 'action_pills', pills });
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    sseStarted = true;
 
-  // Fire-and-forget TTS: emit audio_url on success, silently ignore on failure
-  const ttsBase = process.env.DHG_TTS_URL;
-  if (ttsBase && spokenText.trim()) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
-      try {
-        const ttsRes = await fetch(`${ttsBase}/audio/speech`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: spokenText, model: 'tts-1', voice: 'alloy' }),
-          signal: controller.signal,
-        });
-        if (ttsRes.ok) {
-          const data = (await ttsRes.json()) as { url?: string };
-          if (typeof data.url === 'string') {
-            writeSSE({ type: 'audio_url', url: data.url });
-          }
+    const chatMessages = [
+      ...conv.messages.map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.blocks.filter(b => b.type === 'text').map(b => b.text).join(''),
+      })),
+      { role: 'user' as const, content: message },
+    ];
+
+    let finalModel = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let accumulatedText = '';
+
+    await chatStream(
+      chatMessages,
+      PORTER_SYSTEM,
+      tools,
+      (name, input) => executeToolCallStructured(userId, name, input),
+      (event) => {
+        if (event.type === 'text_delta') {
+          accumulatedText += event.text;
+          writeSSE(event);
+        } else if (event.type === 'tool_start' || event.type === 'tool_result') {
+          writeSSE(event);
+        } else if (event.type === 'done') {
+          finalModel = event.model;
+          inputTokens = event.inputTokens;
+          outputTokens = event.outputTokens;
         }
-      } finally {
-        clearTimeout(timeout);
-      }
-    } catch { /* silently ignore TTS failures */ }
-  }
+      },
+    );
 
-  // Persist conversation using new blocks format
-  const newMessages: NormalizedMessage[] = [
-    ...conv.messages,
-    { role: 'user', blocks: [{ type: 'text', text: message }] },
-    { role: 'assistant', blocks: [{ type: 'text', text: spokenText }] },
-  ];
-  await db.update(conversations)
-    .set({ messages: newMessages, updatedAt: new Date() })
-    .where(eq(conversations.id, conv.id));
+    const { pills, cleanText } = parseActionPills(accumulatedText);
+    const spokenText = cleanText.trim();
+    if (pills.length > 0) writeSSE({ type: 'action_pills', pills });
 
-  writeSSE({
-    type: 'done',
-    conversationId: conv.id,
-    model: finalModel,
-    inputTokens,
-    outputTokens,
-  });
+    // Fire-and-forget TTS: emit audio_url on success, silently ignore on failure
+    const ttsBase = process.env.DHG_TTS_URL;
+    if (ttsBase && spokenText.trim()) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        try {
+          const ttsRes = await fetch(`${ttsBase}/audio/speech`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: spokenText, model: 'tts-1', voice: 'alloy' }),
+            signal: controller.signal,
+          });
+          if (ttsRes.ok) {
+            const data = (await ttsRes.json()) as { url?: string };
+            if (typeof data.url === 'string') {
+              writeSSE({ type: 'audio_url', url: data.url });
+            }
+          }
+        } finally {
+          clearTimeout(timeout);
+        }
+      } catch { /* silently ignore TTS failures */ }
+    }
 
-  res.end();
-  } catch (err) {
-    logger.error({ err, userId, conversationId: conv.id }, 'Porter stream failed');
-    writeSSE({ type: 'error', message: 'Internal error' });
+    // Persist conversation using new blocks format
+    const newMessages: NormalizedMessage[] = [
+      ...conv.messages,
+      { role: 'user', blocks: [{ type: 'text', text: message }] },
+      { role: 'assistant', blocks: [{ type: 'text', text: spokenText }] },
+    ];
+    await db.update(conversations)
+      .set({ messages: newMessages, updatedAt: new Date() })
+      .where(eq(conversations.id, conv.id));
+
+    writeSSE({
+      type: 'done',
+      conversationId: conv.id,
+      model: finalModel,
+      inputTokens,
+      outputTokens,
+    });
+
     res.end();
+  } catch (err) {
+    if (!sseStarted) {
+      next(err);
+    } else {
+      logger.error({ err, userId }, 'Porter stream failed');
+      writeSSE({ type: 'error', message: 'Internal error' });
+      res.end();
+    }
   }
 });
 
@@ -517,5 +523,11 @@ porterRouter.post('/speak', requireAuth, async (req, res) => {
   }
   if (!ttsRes.ok) { res.status(503).json({ error: 'TTS unavailable' }); return; }
   res.setHeader('Content-Type', ttsRes.headers.get('content-type') ?? 'audio/mpeg');
-  res.status(200).end();
+  res.status(200);
+  if (ttsRes.body) {
+    const { Writable } = await import('node:stream');
+    await ttsRes.body.pipeTo(Writable.toWeb(res) as WritableStream);
+  } else {
+    res.end();
+  }
 });

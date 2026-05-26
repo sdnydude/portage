@@ -73,6 +73,42 @@ describe('POST /porter/speak', () => {
     }
   });
 
+  it('streams audio bytes from dhg-tts response body', async () => {
+    process.env.DHG_TTS_URL = 'http://dhg-tts:8000';
+
+    const audioBytes = Buffer.from([0x49, 0x44, 0x33, 0x04]); // ID3 header bytes
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'audio/mpeg' }),
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(audioBytes));
+          controller.close();
+        },
+      }),
+    }));
+
+    try {
+      mockUserSelect();
+      const res = await request(app)
+        .post('/porter/speak')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ text: 'Hello' })
+        .buffer(true)
+        .parse((res, callback) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
+
+      expect(res.status).toBe(200);
+      expect((res.body as Buffer).length).toBeGreaterThan(0);
+    } finally {
+      vi.unstubAllGlobals();
+      delete process.env.DHG_TTS_URL;
+    }
+  });
+
   it('returns 503 when dhg-tts is unreachable', async () => {
     process.env.DHG_TTS_URL = 'http://dhg-tts:8000';
 

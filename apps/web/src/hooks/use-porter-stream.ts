@@ -63,6 +63,7 @@ export function usePorterStream(): PorterStreamState {
     streamingRef.current = [];
 
     let finalConvId = conversationId;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
     try {
       const res = await fetch(`${API_BASE}/porter/stream`, {
@@ -80,7 +81,7 @@ export function usePorterStream(): PorterStreamState {
         return;
       }
 
-      const reader = res.body.getReader();
+      reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
@@ -108,6 +109,7 @@ export function usePorterStream(): PorterStreamState {
         }
       }
     } catch {
+      reader?.cancel().catch(() => {});
       setError("Connection error");
     } finally {
       // Commit accumulated streaming blocks as a finished assistant message

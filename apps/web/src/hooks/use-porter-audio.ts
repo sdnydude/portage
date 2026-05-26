@@ -45,16 +45,23 @@ export function usePorterAudio(): PorterAudioState {
       objectUrlRef.current = url;
       const audio = new Audio(url);
       audioRef.current = audio;
-      audio.onended = () => {
+      const cleanup = () => {
         URL.revokeObjectURL(url);
         objectUrlRef.current = null;
         audioRef.current = null;
         setIsPlaying(false);
       };
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
       await audio.play();
       setIsPlaying(true);
     } catch {
       // Graceful fallback: ignore TTS failures, show text only
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+      audioRef.current = null;
       setIsPlaying(false);
     }
   }, [stop]);

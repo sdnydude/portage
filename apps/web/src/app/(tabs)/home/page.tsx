@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useOnboarding } from "@/hooks/use-onboarding";
 import { usePorter } from "@/hooks/use-porter-context";
-import { usePorterAudio } from "@/hooks/use-porter-audio";
 import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
 import { VoiceButton } from "@/components/porter/voice-button";
@@ -58,26 +57,17 @@ function formatDate(dateStr: string): string {
 }
 
 export default function HomePage() {
-  const { isAuthenticated, token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { data, isLoading, error } = useDashboard();
   const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
   const [isFullScreen, setIsFullScreen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const porter = usePorter();
   const { chatInput, setChatInput, isEngaged, setIsEngaged } = porter;
-  const audio = usePorterAudio();
-
   // Scroll chat to bottom on new messages
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [porter.messages, porter.streamingBlocks]);
-
-  // Auto-play TTS when audio URL arrives and autoPlay is on
-  useEffect(() => {
-    if (porter.audioUrl && audio.autoPlay && token) {
-      // audioUrl from stream is a URL — we'd play it directly; speak() is for text
-    }
-  }, [porter.audioUrl, audio.autoPlay, token]);
 
   const handleSend = () => {
     const text = chatInput.trim();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { VoiceOverlay } from "./voice-overlay";
 import { StreamingMessage } from "./streaming-message";
 import { ActionPills } from "./action-pills";
@@ -32,6 +32,18 @@ export function BottomSheet({ onClose }: BottomSheetProps) {
     voice.reset();
     setSheetState("idle");
   };
+
+  // Auto-send when voice auto-stops and transcript is ready
+  useEffect(() => {
+    if (sheetState === "voice" && voice.state === "done" && voice.transcript) {
+      const text = voice.transcript;
+      porter.setIsEngaged(true);
+      porter.sendMessage(text);
+      setSheetState("response");
+      voice.reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.state, voice.transcript]);
 
   const handleStartListening = async () => {
     if (token) {
@@ -144,7 +156,7 @@ export function BottomSheet({ onClose }: BottomSheetProps) {
               />
               <button
                 onClick={handleStartListening}
-                disabled={!!token === false}
+                disabled={!token}
                 className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--forest-green)] text-white hover:opacity-90 flex-shrink-0"
                 aria-label="Voice input"
               >
