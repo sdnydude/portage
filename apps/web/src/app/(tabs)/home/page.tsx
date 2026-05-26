@@ -20,6 +20,22 @@ function getGreeting(): string {
   return "Good evening";
 }
 
+function getContextLine(data: {
+  pendingShipments: { id: string }[];
+  stats: { activeListings: number };
+  portfolio: { totalItems: number };
+}): string | null {
+  if (data.pendingShipments.length > 0) {
+    const count = data.pendingShipments.length;
+    return `${count} order${count !== 1 ? "s" : ""} ready to ship`;
+  }
+  if (data.portfolio.totalItems === 0) return null;
+  if (data.stats.activeListings === 0) {
+    return "Nothing listed yet — want to sell something?";
+  }
+  return null;
+}
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -154,6 +170,11 @@ export default function HomePage() {
           >
             {data.displayName}
           </h1>
+          {getContextLine(data) && (
+            <p className="text-[var(--forest-green)] font-medium" style={{ fontSize: "var(--text-caption)" }}>
+              {getContextLine(data)}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Link
