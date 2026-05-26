@@ -1,8 +1,14 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useOnboarding } from "@/hooks/use-onboarding";
+import { usePorterStream } from "@/hooks/use-porter-stream";
+import { usePorterAudio } from "@/hooks/use-porter-audio";
+import { StreamingMessage } from "@/components/porter/streaming-message";
+import { ActionPills } from "@/components/porter/action-pills";
+import { VoiceButton } from "@/components/porter/voice-button";
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
 import Link from "next/link";
 
@@ -35,9 +41,39 @@ function formatDate(dateStr: string): string {
 }
 
 export default function HomePage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, token } = useAuth();
   const { data, isLoading, error } = useDashboard();
   const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
+  const [chatInput, setChatInput] = useState("");
+  const [isEngaged, setIsEngaged] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const porter = usePorterStream();
+  const audio = usePorterAudio();
+
+  // Scroll chat to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [porter.messages, porter.streamingBlocks]);
+
+  // Auto-play TTS when audio URL arrives and autoPlay is on
+  useEffect(() => {
+    if (porter.audioUrl && audio.autoPlay && token) {
+      // audioUrl from stream is a URL — we'd play it directly; speak() is for text
+    }
+  }, [porter.audioUrl, audio.autoPlay, token]);
+
+  const handleSend = () => {
+    const text = chatInput.trim();
+    if (!text || porter.isStreaming) return;
+    setChatInput("");
+    setIsEngaged(true);
+    porter.sendMessage(text);
+  };
+
+  const handlePillSelect = (message: string) => {
+    setIsEngaged(true);
+    porter.sendMessage(message);
+  };
 
   if (!isAuthenticated) {
     return (
@@ -163,6 +199,70 @@ export default function HomePage() {
           </Link>
         </div>
       </header>
+
+      {/* Porter Chat Section */}
+      <div className={`transition-all duration-300 ${isEngaged ? "mb-4" : "mb-3"}`}>
+        {/* Message history when engaged */}
+        {isEngaged && porter.messages.length > 0 && (
+          <div className="mb-3 max-h-64 overflow-y-auto space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3">
+            {porter.messages.map((msg, i) => (
+              <StreamingMessage
+                key={i}
+                message={msg}
+                pills={i === porter.messages.length - 1 ? porter.pills : []}
+                audioUrl={i === porter.messages.length - 1 ? porter.audioUrl : null}
+                onPillSelect={handlePillSelect}
+              />
+            ))}
+            {porter.isStreaming && (
+              <StreamingMessage
+                streamingBlocks={porter.streamingBlocks}
+                isStreaming={porter.isStreaming}
+              />
+            )}
+            <div ref={chatEndRef} />
+          </div>
+        )}
+
+        {/* Action pills — default suggestions when idle */}
+        {!isEngaged && data && (
+          <ActionPills
+            pills={[
+              ...(data.pendingShipments.length > 0
+                ? [{ label: "Ship orders", message: `I have ${data.pendingShipments.length} orders to ship` }]
+                : []),
+              { label: "Check values", message: "What are my most valuable items?" },
+              { label: "List an item", message: "Help me list something" },
+            ]}
+            onSelect={handlePillSelect}
+          />
+        )}
+
+        {/* Chat input bar */}
+        <div className="mt-2 flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+            placeholder="Ask Porter…"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted)]"
+          />
+          <VoiceButton onTranscript={(text) => { setChatInput(text); setIsEngaged(true); porter.sendMessage(text); }} />
+          <button
+            onClick={handleSend}
+            disabled={!chatInput.trim() || porter.isStreaming}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--forest-green)] text-white disabled:opacity-40"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+            </svg>
+          </button>
+        </div>
+        {porter.error && (
+          <p className="mt-1 text-xs text-red-500">{porter.error}</p>
+        )}
+      </div>
 
       <div className="space-y-4 pb-6">
         {/* Portfolio Value Card */}
