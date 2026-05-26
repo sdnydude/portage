@@ -5,6 +5,7 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
+    reporters: ['default', ['tdd-guard-vitest', { projectRoot: '../../' }]],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
