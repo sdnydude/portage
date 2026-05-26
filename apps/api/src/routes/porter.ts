@@ -473,3 +473,21 @@ porterRouter.post('/transcribe', upload.single('audio'), async (req, res, next) 
     next(err);
   }
 });
+
+porterRouter.post('/speak', requireAuth, async (req, res) => {
+  const ttsBase = process.env.DHG_TTS_URL ?? 'http://dhg-tts:8000';
+  let ttsRes: Response;
+  try {
+    ttsRes = await fetch(`${ttsBase}/audio/speech`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: (req.body as { text: string }).text, voice: 'alloy', model: 'tts-1' }),
+    });
+  } catch {
+    res.status(503).json({ error: 'TTS unavailable' });
+    return;
+  }
+  if (!ttsRes.ok) { res.status(503).json({ error: 'TTS unavailable' }); return; }
+  res.setHeader('Content-Type', ttsRes.headers.get('content-type') ?? 'audio/mpeg');
+  res.status(200).end();
+});
