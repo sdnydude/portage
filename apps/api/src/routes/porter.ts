@@ -13,7 +13,7 @@ import { computeEffectiveTier } from '../lib/billing-utils.js';
 
 const logger = createLogger('porter');
 
-const PORTER_SYSTEM = `You are Porter, an AI assistant for the Portage app — a personal effects inventory and marketplace seller tool.
+export const PORTER_SYSTEM = `You are Porter, an AI assistant for the Portage app — a personal effects inventory and marketplace seller tool.
 
 You help users:
 - Understand and manage their inventory
@@ -26,7 +26,16 @@ Personality: Friendly, knowledgeable about reselling and collectibles, concise. 
 
 When users ask about items, use the search_inventory tool. When they ask about values, use the get_value_estimate tool. When they want to list something, use the suggest_listing tool.
 
-Always be direct and actionable. If you don't know something, say so.`;
+Always be direct and actionable. If you don't know something, say so.
+
+## Action Pills
+
+At the end of your response, when there are 2-4 natural follow-up actions the user might want, append an <actions> block with a JSON array of pills. Each pill has a "label" (short button text) and a "message" (what to send when tapped).
+
+Examples:
+- After showing inventory: <actions>[{"label":"List an item","message":"help me list my Gibson Les Paul"},{"label":"Check values","message":"what are my most valuable items?"}]</actions>
+- After a sale: <actions>[{"label":"Print label","message":"print shipping label for order 1234"},{"label":"Mark shipped","message":"mark order 1234 as shipped"}]</actions>
+- When no clear next action, omit the <actions> block entirely.`;
 
 const tools: ToolDef[] = [
   {
@@ -168,6 +177,18 @@ const messageSchema = z.object({
   message: z.string().min(1).max(4000),
   conversationId: z.string().uuid().nullish(),
 });
+
+export function parseActionPills(text: string): { pills: Array<{ label: string; message: string }>; cleanText: string } {
+  const match = text.match(/<actions>([\s\S]*?)<\/actions>/i);
+  if (!match) return { pills: [], cleanText: text };
+  try {
+    const pills = JSON.parse(match[1]) as Array<{ label: string; message: string }>;
+    const cleanText = text.replace(/<actions>[\s\S]*?<\/actions>/i, '');
+    return { pills, cleanText };
+  } catch {
+    return { pills: [], cleanText: text };
+  }
+}
 
 export const porterRouter = Router();
 
@@ -313,18 +334,9 @@ porterRouter.post('/stream', async (req, res) => {
     },
   );
 
-  // Parse <actions> block from accumulated text and emit pills
-  const actionsMatch = accumulatedText.match(/<actions>([\s\S]*?)<\/actions>/i);
-  let spokenText = accumulatedText;
-  if (actionsMatch) {
-    spokenText = accumulatedText.replace(/<actions>[\s\S]*?<\/actions>/i, '').trim();
-    try {
-      const pills = JSON.parse(actionsMatch[1]);
-      if (Array.isArray(pills)) {
-        writeSSE({ type: 'action_pills', pills });
-      }
-    } catch { /* ignore */ }
-  }
+  const { pills, cleanText } = parseActionPills(accumulatedText);
+  const spokenText = cleanText.trim();
+  if (pills.length > 0) writeSSE({ type: 'action_pills', pills });
 
   // Fire-and-forget TTS: emit audio_url on success, silently ignore on failure
   const ttsBase = process.env.DHG_TTS_URL;
