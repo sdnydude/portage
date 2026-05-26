@@ -7,7 +7,7 @@ sidebar_position: 0
 # Ship Log
 
 Structured records of every `/ship` workflow run for **portage**.
-Total: **38** sessions.
+Total: **39** sessions.
 
 | # | Feature | Status | PR | Deferred |
 |---|---------|--------|----|----------|
@@ -49,3 +49,4 @@ Total: **38** sessions.
 | 36 | [eBay Seller Hub Reports CSV export with marketplace data cac](036-ebay-seller-hub-reports-csv-export-with-marketplace-data-cac) | complete | [#76](https://github.com/sdnydude/portage/pull/76) | 5 |
 | 37 | [scan comp cards + reverb UI + features doc + docs tunnel](037-scan-comp-cards-reverb-ui-features-doc-docs-tunnel) | complete | [#79](https://github.com/sdnydude/portage/pull/78, https://github.com/sdnydude/portage/pull/79) | 0 |
 | 38 | [eBay buyer messaging — read inbox + reply via Trading API](038-ebay-buyer-messaging-read-inbox-reply-via-trading-api) | complete | [#84](https://github.com/sdnydude/portage/pull/84) | 3 |
+| 39 | [Voice chat interface — Porter-powered home screen with streaming, voice input, and TTS](039-voice-chat-interface-porter-powered-home-screen) | complete | [#87](https://github.com/sdnydude/portage/pull/87) | 5 |

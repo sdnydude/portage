@@ -1,47 +1,54 @@
 status: complete
 phase: 7
-feature: Buyer messaging — eBay read + reply via Trading API
-approach: Trading API (XML) with OAuth2 tokens via X-EBAY-API-IAF-TOKEN header. GetMemberMessages for inbox, AddMemberMessageRTQ for replies. fast-xml-parser for XML handling.
+pr: https://github.com/sdnydude/portage/pull/87
+completed_at: 2026-05-26T21:00:00Z
+feature: Voice chat interface — Porter-powered home screen with rich chat UI, SSE streaming, push-to-talk voice via dhg-stt, and spoken responses via dhg-tts
+approach: Single ship with everything. Rich chat (tool blocks, inline cards, action pills) + home redesign + SSE streaming + voice input via dhg-stt (WhisperLive) + TTS via dhg-tts (Chatterbox Turbo). Both GPU services on RTX 5080. Prebuilt containers validated before build.
 complexity: complex
-tdd: true
-branch: feat/buyer-messaging
-pr: https://github.com/sdnydude/portage/pull/84
-completed_at: 2026-05-19T01:00:00Z
+tdd: backend_only
+branch: feat/voice-chat
 
-commits:
-  - 911eb3b feat: add eBay buyer messaging backend — Trading API client, routes, schema, 20 tests
-  - 5534173 feat: add buyer messaging frontend — conversations list, thread view, reply, unread badge
-  - 3a60fdd fix: address 18 advisor review findings across messaging feature
+advisor_audit:
+  - C1: Single SSE endpoint (not POST-then-GET race)
+  - C2: Structured tool results with photos (not plain text)
+  - C3: fetch() + ReadableStream for SSE auth (not EventSource)
+  - C4: SDK has both create({stream:true}) AND .stream() — using .stream() (MessageStream with .on('text'), .on('contentBlock'), .finalMessage())
+  - C5: Tool execution managed outside stream — detect tool_use blocks, execute, re-queue results in new stream
+  - C6: usePorterStream bypasses api() wrapper — raw fetch with Bearer header
+  - C7: Docker images validated in Task 0 before any build work
+  - C8: Env vars DHG_STT_URL/DHG_TTS_URL added to config after Task 0 validation
+  - I1: FAB collision resolved — Scan FAB on home only, FloatingMic on other tabs
+  - I2: Rate limit reuses existing porterMessagesToday counting logic
+  - I3: Auth token expiry mid-stream accepted risk (15min tokens, <60s streams)
+  - I4: pulse-ring + waveform keyframes added in Task 19
+  - I5: Audio MIME codec suffix handled — parse before semicolon
+  - I6: Action pills parsing in Task 6 stream handler, prompt in Task 10
+  - I7: Home page evolved (not replaced) — preserves useDashboard integration
+  - I8: Multer import explicitly added in Task 8
+  - I9: Per-task dependency annotations added
 
-verification:
-  typecheck: pass (all 3 workspaces clean)
-  tests: 227/227 pass (22 files, 20 new messaging tests)
-  lint: 0 errors, 22 pre-existing warnings (none from new code)
-  containers: all 4 healthy (portage-api, portage-app, portage-db, portage-rembg)
-  endpoints:
-    GET /messages: 200, ~5ms avg
-    GET /messages/unread-count: 200, ~4ms avg
-    GET /messages/nonexistent-key: 200 (empty array)
-    POST /messages/test-key/reply (empty body): 400 INVALID_INPUT
-    POST /messages/test-key/reply (>2000 chars): 400 INVALID_INPUT
-    No-auth on GET /messages: 401
-    No-auth on POST /messages/sync: 401
-  regression:
-    GET /health: 200 (3ms)
-    GET /items: 200 (12ms)
-    GET /listings: 200 (5ms)
-    GET /orders: 200 (5ms)
-    GET /seller-profile: 200 (5ms)
-    GET /billing/status: 200 (5ms)
-  schema: pushed, ebay_messages table confirmed
+model_assignments:
+  opus:
+    - Task 6 (POST /porter/stream) — SSE + rate limit + tool callbacks + TTS trigger + JSONB, all must compose correctly
+    - Task 11 (usePorterStream hook) — raw SSE parsing, manual auth, conversation state machine
+    - Task 22 (Evolve home page) — must preserve useDashboard() while grafting streaming chat
+    - Task 28 (JSONB backward compat) — old {role,content:string} → new {role,blocks:ContentBlock[]} migration
+  sonnet: all remaining tasks (5, 7-10, 12-21, 23-27, 29-30)
 
-review:
-  agents: silent-failure-hunter, type-design-analyzer, code-reviewer, comment-analyzer, pr-test-analyzer, code-simplifier
-  critical_found: 3 (C1 direction bug, C2 N+1 query, C3 notification abort)
-  important_found: 10 (all resolved)
-  minor_found: 8 (all resolved)
+plan: 31 tasks (0-30) across 8 chunks
+  chunk_0_validation: Task 0 (pull + validate Docker images)
+  chunk_1_infrastructure: Tasks 1-5 (dhg-stt, dhg-tts, VRAM test, chatStream, shared types)
+  chunk_2_api_routes: Tasks 6-10 (SSE endpoint, photos in tools, transcribe route, speak route, prompt)
+  chunk_3_rich_chat: Tasks 11-16 (usePorterStream, ToolBlock, ResultCard, CompTable, ActionPills, StreamingMessage)
+  chunk_4_voice_and_audio: Tasks 17-21 (useVoiceInput, usePorterAudio, VoiceButton+keyframes, AudioPlayback, VoiceOverlay)
+  chunk_5_home_redesign: Tasks 22-25 (home page evolution, engaged state, full-screen chat, tab bar+FAB)
+  chunk_6_floating_mic: Tasks 26-27 (FloatingMic FAB, BottomSheet)
+  chunk_7_integration: Tasks 28-30 (JSONB evolution, greeting logic, E2E test)
 
 deferred:
-  - Sync pagination beyond page 1 (eBay returns max 100 per call)
-  - parseGetMyMessages dead code cleanup
-  - Reverb/Etsy messaging adapters
+  - Real-time streaming transcription via WebSocket (dhg-stt supports it)
+  - Livestream captioning integration
+  - Video archive captioning
+  - Voice cloning / custom Porter voice
+  - Conversation search/history browser
+  - Watcher/price-change notification system
