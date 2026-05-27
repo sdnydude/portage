@@ -27,6 +27,9 @@ npm workspaces monorepo with three packages:
 | portage-db | 5436 | PostgreSQL 15 |
 | portage-api | 8016 | Express 5 + TypeScript + pino |
 | portage-app | 3002 | Next.js 16 (standalone mode) |
+| dhg-docs | 8017 | nginx serving Docusaurus build |
+| dhg-stt | 8018 | Whisper large-v3-turbo (OpenAI-compatible STT, RTX 5080) |
+| dhg-tts | 8019 | Chatterbox Turbo (OpenAI-compatible TTS, RTX 5080) |
 
 ### Database
 
@@ -56,7 +59,9 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 ### AI
 
 - **Item scanning:** Claude Vision API via `apps/api/src/lib/vision.ts`
-- **Porter assistant:** Claude Sonnet tool_use loop with 3 tools (search_inventory, get_inventory_stats, suggest_listing)
+- **Porter assistant:** Claude Sonnet SSE streaming via `client.messages.stream()`, 3 tools (search_inventory, get_inventory_stats, suggest_listing), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback), `POST /porter/transcribe` (STT proxy), `POST /porter/speak` (TTS proxy)
+- **Voice STT:** Whisper large-v3-turbo via dhg-stt container at `DHG_STT_URL`; `POST /porter/transcribe` → `GET /v1/audio/transcriptions`
+- **Voice TTS:** Chatterbox Turbo via dhg-tts container at `DHG_TTS_URL`; `POST /porter/speak` → `/audio/speech`; graceful fallback to text-only on 503
 - **Background removal:** Client-side WASM (@imgly/background-removal), billing-gated per tier
 - **Auto-enhance:** Server-side Sharp pipeline, billing-gated per tier
 - **Photo tools:** Rotate, crop, enhance, BG-remove with before/after preview slider

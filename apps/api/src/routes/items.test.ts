@@ -113,6 +113,21 @@ function mockDeleteReturns() {
   } as any);
 }
 
+// Resolves directly at .where() — for queries with no limit/orderBy
+function mockSelectWhere(rows: unknown[]) {
+  vi.mocked(db.select).mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(rows),
+    }),
+  } as any);
+}
+
+function mockInsertNoReturn() {
+  vi.mocked(db.insert).mockReturnValueOnce({
+    values: vi.fn().mockResolvedValue(undefined),
+  } as any);
+}
+
 let app: ReturnType<typeof createApp>;
 let authToken: string;
 
@@ -302,5 +317,113 @@ describe('GET /items/:id/comps', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('NOT_FOUND');
+  });
+});
+
+const ITEM_UUID_1 = '00000000-0000-0000-0000-000000000001';
+const ITEM_UUID_2 = '00000000-0000-0000-0000-000000000002';
+const MOCK_PHOTOS = [{ url: 'https://portage-images.digitalharmonyai.com/photo1.jpg', key: 'photo1.jpg' }];
+
+describe('POST /items/photos/export/prepare', () => {
+  it('returns 401 without auth', async () => {
+    const res = await request(app)
+      .post('/items/photos/export/prepare')
+      .send({ ids: [ITEM_UUID_1] });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 400 for invalid UUIDs', async () => {
+    const res = await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: ['not-a-uuid'] });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 403 when item does not belong to the user', async () => {
+    mockSelectWhere([{ id: ITEM_UUID_1, photos: MOCK_PHOTOS, title: 'Item 1' }]);
+
+    const res = await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: [ITEM_UUID_1, ITEM_UUID_2] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+
+  it('returns 422 when no items have photos', async () => {
+    mockSelectWhere([{ id: ITEM_UUID_1, photos: [], title: 'Empty Item' }]);
+
+    const res = await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: [ITEM_UUID_1] });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('NO_PHOTOS');
+  });
+
+  it('returns token and counts when items have photos', async () => {
+    mockSelectWhere([{ id: ITEM_UUID_1, photos: MOCK_PHOTOS, title: 'Test Item' }]);
+    mockInsertNoReturn();
+
+    const res = await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: [ITEM_UUID_1] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.token).toMatch(/^[0-9a-f]{64}$/);
+    expect(res.body.expiresAt).toBeTruthy();
+    expect(res.body.itemCount).toBe(1);
+    expect(res.body.photoCount).toBe(1);
+    expect(res.body.skippedCount).toBe(0);
+  });
+
+  it('deduplicates ids before ownership check', async () => {
+    mockSelectWhere([{ id: ITEM_UUID_1, photos: MOCK_PHOTOS, title: 'Test Item' }]);
+    mockInsertNoReturn();
+
+    const res = await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: [ITEM_UUID_1, ITEM_UUID_1] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.itemCount).toBe(1);
+  });
+
+  it('persists the token to the database', async () => {
+    mockSelectWhere([{ id: ITEM_UUID_1, photos: MOCK_PHOTOS, title: 'Test Item' }]);
+    mockInsertNoReturn();
+
+    await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: [ITEM_UUID_1] });
+
+    expect(vi.mocked(db.insert)).toHaveBeenCalledOnce();
+  });
+
+  it('skips items when cumulative photo count exceeds 60', async () => {
+    // Item 1 has 60 photos, item 2 has 1 photo — item 2 should be skipped
+    const manyPhotos = Array.from({ length: 60 }, (_, i) => ({
+      url: `https://portage-images.digitalharmonyai.com/photo${i}.jpg`,
+      key: `photo${i}.jpg`,
+    }));
+    mockSelectWhere([
+      { id: ITEM_UUID_1, photos: manyPhotos, title: 'Big Item' },
+      { id: ITEM_UUID_2, photos: MOCK_PHOTOS, title: 'Extra Item' },
+    ]);
+    mockInsertNoReturn();
+
+    const res = await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: [ITEM_UUID_1, ITEM_UUID_2] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.itemCount).toBe(1);
+    expect(res.body.photoCount).toBe(60);
+    expect(res.body.skippedCount).toBe(1);
   });
 });

@@ -1,13 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { randomBytes } from 'node:crypto';
 import { eq, desc, ilike, and, sql, inArray } from 'drizzle-orm';
+import { Zip, ZipDeflate } from 'fflate';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { items } from '../db/schema.js';
+import { items, exportTokens } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
+import { isAllowedImageOrigin } from './images.js';
 
 const logger = createLogger('items');
 
@@ -48,6 +51,66 @@ const listQuerySchema = z.object({
 });
 
 export const itemsRouter = Router();
+
+// GET /items/photos/export — token-auth (no requireAuth), defined before middleware
+itemsRouter.get('/photos/export', async (req, res, next) => {
+  try {
+    const token = req.query.token as string | undefined;
+    if (!token) throw new AppError(400, 'MISSING_TOKEN', 'token query parameter is required');
+
+    const [row] = await db.select().from(exportTokens)
+      .where(and(eq(exportTokens.token, token)));
+
+    if (!row || row.expiresAt < new Date() || row.useCount >= 3)
+      throw new AppError(401, 'INVALID_TOKEN', 'Token is invalid or expired');
+
+    await db.update(exportTokens)
+      .set({ useCount: row.useCount + 1 })
+      .where(eq(exportTokens.token, token));
+
+    const itemRows = await db.select({ id: items.id, title: items.title, photos: items.photos })
+      .from(items).where(inArray(items.id, row.itemIds));
+
+    const chunks: Buffer[] = [];
+    let totalPhotos = 0;
+    let fetchedCount = 0;
+    await new Promise<void>((resolve, reject) => {
+      const zip = new Zip((err, chunk, final) => {
+        if (err) { reject(err); return; }
+        chunks.push(Buffer.from(chunk));
+        if (final) resolve();
+      });
+
+      (async () => {
+        let photoIdx = 0;
+        for (const item of itemRows) {
+          for (const photo of (item.photos as any[]) ?? []) {
+            if (!isAllowedImageOrigin(photo.url)) continue;
+            totalPhotos++;
+            const r = await fetch(photo.url as string);
+            if (!r.ok) continue;
+            fetchedCount++;
+            const buf = new Uint8Array(await r.arrayBuffer());
+            const file = new ZipDeflate(`photo_${++photoIdx}.jpg`, { level: 0 });
+            zip.add(file);
+            file.push(buf, true);
+          }
+        }
+        zip.end();
+      })().catch(reject);
+    });
+
+    if (totalPhotos > 0 && fetchedCount === 0)
+      throw new AppError(502, 'PHOTO_FETCH_FAILED', 'Failed to fetch photos for export');
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="portage-photos-${date}.zip"`);
+    res.end(Buffer.concat(chunks));
+  } catch (err) {
+    next(err);
+  }
+});
 
 itemsRouter.use(requireAuth);
 
@@ -371,6 +434,52 @@ itemsRouter.post('/bulk/export', async (req, res, next) => {
 
     logger.info({ userId, count: results.length }, 'Bulk items exported');
     res.json({ items: results, count: results.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const preparePhotoExportSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(50),
+});
+
+itemsRouter.post('/photos/export/prepare', async (req, res, next) => {
+  try {
+    const { ids } = preparePhotoExportSchema.parse(req.body);
+    const userId = req.user!.sub;
+    const dedupedIds = [...new Set(ids)];
+
+    const rows = await db.select({ id: items.id, photos: items.photos, title: items.title })
+      .from(items).where(and(inArray(items.id, dedupedIds), eq(items.userId, userId)));
+
+    if (rows.length !== dedupedIds.length)
+      throw new AppError(403, 'FORBIDDEN', 'One or more items do not belong to you');
+
+    const hasAnyPhotos = rows.some(row => ((row.photos as any[]) ?? []).length > 0);
+    if (!hasAnyPhotos)
+      throw new AppError(422, 'NO_PHOTOS', 'No photos available within the 60-photo limit');
+
+    let photoCount = 0;
+    let skippedCount = 0;
+    const cappedRows: typeof rows = [];
+    for (const row of rows) {
+      const rowPhotos = ((row.photos as any[]) ?? []).length;
+      if (photoCount + rowPhotos > 60) { skippedCount++; continue; }
+      photoCount += rowPhotos;
+      cappedRows.push(row);
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await db.insert(exportTokens).values({
+      token,
+      userId,
+      itemIds: cappedRows.map(r => r.id),
+      expiresAt,
+    });
+
+    res.json({ token, expiresAt, itemCount: cappedRows.length, photoCount, skippedCount });
   } catch (err) {
     next(err);
   }

@@ -6,6 +6,7 @@ import { SearchBar } from "@/components/inventory/search-bar";
 import { ViewControls } from "@/components/inventory/view-controls";
 import { ItemCard } from "@/components/inventory/item-card";
 import { BulkActionBar } from "@/components/inventory/bulk-action-bar";
+import { ExportActionSheet } from "@/components/inventory/export-action-sheet";
 import { useItems } from "@/hooks/use-items";
 import { useAuth } from "@/hooks/use-auth";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
@@ -107,6 +108,7 @@ function ExportButton() {
 
 export default function InventoryPage() {
   const { isAuthenticated, token } = useAuth();
+  const { exportItems } = useExport();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -116,6 +118,9 @@ export default function InventoryPage() {
   // Category update modal state
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [pendingCategory, setPendingCategory] = useState("");
+
+  // Export action sheet state
+  const [showExportSheet, setShowExportSheet] = useState(false);
 
   const { items, total, isLoading, error, refetch } = useItems({ search, category });
   const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<typeof items[number]>();
@@ -142,34 +147,24 @@ export default function InventoryPage() {
     }
   }, [selectedIds, token, clearSelection, refetch]);
 
-  const handleBulkExport = useCallback(async () => {
-    if (selectedIds.size === 0 || !token) return;
+  const handleBulkExport = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    setShowExportSheet(true);
+  }, [selectedIds]);
 
+  const handleEbayCsvExport = useCallback(async () => {
+    if (!token) return;
     setBulkLoading(true);
     setBulkError(null);
     try {
-      const result = await api<{ items: unknown[]; count: number }>("/items/bulk/export", {
-        method: "POST",
-        body: { ids: Array.from(selectedIds) },
-        token,
-      });
-
-      // Trigger browser download
-      const json = JSON.stringify(result.items, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `portage-export-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await exportItems("ebay_csv", { ids: Array.from(selectedIds) });
       clearSelection();
     } catch (err) {
       setBulkError(err instanceof ApiError ? err.message : "Failed to export items");
     } finally {
       setBulkLoading(false);
     }
-  }, [selectedIds, token, clearSelection]);
+  }, [selectedIds, token, exportItems, clearSelection]);
 
   const handleBulkUpdateCategory = useCallback(async () => {
     if (!pendingCategory.trim() || selectedIds.size === 0 || !token) return;
@@ -344,6 +339,14 @@ export default function InventoryPage() {
           isLoading={bulkLoading}
         />
       )}
+
+      {/* Export action sheet */}
+      <ExportActionSheet
+        show={showExportSheet}
+        selectedIds={Array.from(selectedIds)}
+        onClose={() => setShowExportSheet(false)}
+        onEbayCsv={handleEbayCsvExport}
+      />
 
       {/* Category update modal */}
       {showCategoryModal && (

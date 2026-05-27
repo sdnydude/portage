@@ -372,6 +372,100 @@ async function visionMultiOpenAI(
   };
 }
 
+// ─── Streaming chat ───────────────────────────────────────
+
+export interface StreamToolResult {
+  text: string;
+  structured?: unknown;
+}
+
+export type PorterStreamEvent =
+  | { type: 'text_delta'; text: string }
+  | { type: 'tool_start'; toolId: string; toolName: string }
+  | { type: 'tool_result'; toolId: string; toolName: string; structured?: unknown }
+  | { type: 'done'; model: string; inputTokens: number; outputTokens: number };
+
+export async function chatStream(
+  messages: Anthropic.MessageParam[],
+  systemPrompt: string,
+  tools: ToolDef[],
+  executeTool: (name: string, input: Record<string, unknown>) => Promise<StreamToolResult>,
+  onEvent: (event: PorterStreamEvent) => void,
+  options?: AIOptions,
+): Promise<void> {
+  const c = env();
+  if (!c.ANTHROPIC_API_KEY) {
+    throw new AppError(503, 'AI_UNAVAILABLE', 'Streaming requires Anthropic API key');
+  }
+
+  const client = getAnthropicClient({
+    name: 'anthropic',
+    type: 'anthropic',
+    apiKey: c.ANTHROPIC_API_KEY,
+    visionModel: 'claude-sonnet-4-20250514',
+    chatModel: 'claude-sonnet-4-20250514',
+  });
+
+  const anthropicTools: Anthropic.Tool[] = tools.map(t => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.parameters as Anthropic.Tool.InputSchema,
+  }));
+
+  const currentMessages: Anthropic.MessageParam[] = [...messages];
+
+  for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+    const toolUseBlocks: Anthropic.ToolUseBlock[] = [];
+
+    const stream = client.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: options?.maxTokens ?? 4096,
+      ...(options?.temperature !== undefined && { temperature: options.temperature }),
+      system: systemPrompt,
+      tools: anthropicTools,
+      messages: currentMessages,
+    });
+
+    stream.on('text', (textDelta: string) => {
+      onEvent({ type: 'text_delta', text: textDelta });
+    });
+
+    stream.on('contentBlock', (block: Anthropic.ContentBlock) => {
+      if (block.type === 'tool_use') {
+        onEvent({ type: 'tool_start', toolId: block.id, toolName: block.name });
+        toolUseBlocks.push(block);
+      }
+    });
+
+    const message = await stream.finalMessage();
+
+    if (message.stop_reason !== 'tool_use' || toolUseBlocks.length === 0) {
+      onEvent({
+        type: 'done',
+        model: message.model,
+        inputTokens: message.usage.input_tokens,
+        outputTokens: message.usage.output_tokens,
+      });
+      return;
+    }
+
+    if (iteration + 1 >= MAX_TOOL_ITERATIONS) {
+      logger.error({ iterations: iteration + 1 }, 'chatStream tool-use loop hit iteration cap');
+      throw new AppError(500, 'AI_LOOP_CAP', 'The AI assistant got stuck in a loop. Please try rephrasing your question.');
+    }
+
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const toolUse of toolUseBlocks) {
+      const result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>);
+      onEvent({ type: 'tool_result', toolId: toolUse.id, toolName: toolUse.name, structured: result.structured });
+      toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: result.text });
+    }
+
+    currentMessages.push({ role: 'assistant', content: message.content });
+    currentMessages.push({ role: 'user', content: toolResults });
+  }
+}
+
 // ─── Text-only: systemPrompt + userPrompt → text ─────────
 
 export async function chatText(

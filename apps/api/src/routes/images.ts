@@ -19,7 +19,7 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'i
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_FETCH_SIZE = 20 * 1024 * 1024;
 
-function isAllowedImageOrigin(url: string): boolean {
+export function isAllowedImageOrigin(url: string): boolean {
   const r2Public = env().R2_PUBLIC_URL;
   if (r2Public && url.startsWith(r2Public)) return true;
   if (url.startsWith('https://portage-images.digitalharmonyai.com/')) return true;

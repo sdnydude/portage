@@ -499,3 +499,58 @@ export interface EbayPoliciesResponse {
   payment: EbayPolicy[];
   returnPolicy: EbayPolicy[];
 }
+
+// ─── Porter rich content blocks (SSE streaming protocol) ──
+
+export interface TextBlock {
+  type: 'text';
+  text: string;
+}
+
+export interface ToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export interface ToolResultBlock {
+  type: 'tool_result';
+  tool_use_id: string;
+  content: unknown;
+}
+
+export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock;
+
+export interface ActionPill {
+  label: string;
+  message: string;
+}
+
+export interface RichMessage {
+  role: 'user' | 'assistant';
+  blocks: ContentBlock[];
+  voiceTranscript?: string;
+}
+
+export interface AudioPlayback {
+  url: string;
+  duration?: number;
+}
+
+export type TextDeltaEvent = { type: 'text_delta'; text: string };
+export type ToolStartEvent = { type: 'tool_start'; toolId: string; toolName: string };
+export type ToolResultEvent = { type: 'tool_result'; toolId: string; toolName: string; structured?: unknown };
+export type ActionPillsEvent = { type: 'action_pills'; pills: ActionPill[] };
+export type AudioEvent = { type: 'audio_url'; url: string };
+export type DoneEvent = { type: 'done'; conversationId: string; model: string; inputTokens: number; outputTokens: number };
+export type ErrorEvent = { type: 'error'; message: string };
+
+export type StreamEvent =
+  | TextDeltaEvent
+  | ToolStartEvent
+  | ToolResultEvent
+  | ActionPillsEvent
+  | AudioEvent
+  | DoneEvent
+  | ErrorEvent;

@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useCallback } from "react";
 import { ScanFlow } from "@/components/capture/scan-flow";
+import { FloatingMic } from "@/components/porter/floating-mic";
 import { useUnreadCount } from "@/hooks/use-messages";
 
 const tabs = [
   { name: "Home", href: "/home", icon: HomeIcon, position: "left" as const },
   { name: "Inventory", href: "/inventory", icon: InventoryIcon, position: "left" as const },
-  { name: "Porter", href: "/porter", icon: PorterIcon, position: "left" as const },
   { name: "Orders", href: "/orders", icon: OrdersIcon, position: "right" as const },
   { name: "More", href: "/more", icon: MoreIcon, position: "right" as const },
 ] as const;
@@ -27,6 +27,7 @@ export function TabBar() {
     setShowScan(false);
   }, []);
 
+  const isHome = pathname.startsWith("/home");
   const leftTabs = tabs.filter((t) => t.position === "left");
   const rightTabs = tabs.filter((t) => t.position === "right" && t.name !== "More");
 
@@ -72,7 +73,7 @@ export function TabBar() {
             );
           })}
 
-          {/* Center SCAN button */}
+          {/* Center SCAN button — all tabs */}
           <div className="flex flex-col items-center justify-center flex-1">
             <button
               onClick={handleScanOpen}
@@ -147,6 +148,9 @@ export function TabBar() {
 
       {/* Scan flow modal */}
       {showScan && <ScanFlow onClose={handleScanClose} />}
+
+      {/* Floating mic — non-home tabs only (home has inline Porter chat) */}
+      {!isHome && <FloatingMic />}
     </>
   );
 }
@@ -183,23 +187,6 @@ function InventoryIcon({ active }: { active: boolean }) {
       strokeLinejoin="round"
     >
       <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-    </svg>
-  );
-}
-
-function PorterIcon({ active }: { active: boolean }) {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill={active ? "currentColor" : "none"}
-      stroke="currentColor"
-      strokeWidth={active ? 0 : 2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
     </svg>
   );
 }

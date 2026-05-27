@@ -18,7 +18,7 @@ export const PRO_TIER_LIMITS = {
   aiScansPerMonth: null,
   aiListingsPerMonth: 75,
   bgRemovalsPerMonth: null,
-  porterExchangesPerDay: 15,
+  porterExchangesPerDay: 500,
   marketplaces: null,
 } as const;
 
