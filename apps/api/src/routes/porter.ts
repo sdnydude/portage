@@ -392,7 +392,7 @@ porterRouter.post('/stream', async (req, res, next) => {
           const ttsRes = await fetch(`${ttsBase}/audio/speech`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: spokenText, model: 'tts-1', voice: 'alloy' }),
+            body: JSON.stringify({ input: spokenText, model: 'turbo' }),
             signal: controller.signal,
           });
           if (ttsRes.ok) {
@@ -556,7 +556,7 @@ porterRouter.post('/speak', requireAuth, async (req, res) => {
     ttsRes = await fetch(`${ttsBase}/audio/speech`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: parsed.data.text, voice: 'alloy', model: 'tts-1' }),
+      body: JSON.stringify({ input: parsed.data.text, model: 'turbo' }),
     });
   } catch {
     res.status(503).json({ error: 'TTS unavailable' });

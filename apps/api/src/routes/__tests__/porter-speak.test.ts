@@ -78,6 +78,8 @@ describe('POST /porter/speak', () => {
       expect(calledUrl).toContain('/audio/speech');
       const body = JSON.parse(calledOpts.body as string);
       expect(body.input).toBe('Hello from Porter');
+      expect(body.model).toBe('turbo');
+      expect(body.voice).toBeUndefined();
     } finally {
       vi.unstubAllGlobals();
       delete process.env.DHG_TTS_URL;

@@ -208,6 +208,11 @@ describe('POST /porter/stream', () => {
       expect(res.text).not.toContain('"type":"audio_url"');
       expect(res.text).not.toContain('"type":"error"');
       expect(fetchMock).toHaveBeenCalled();
+      const [, callOpts] = fetchMock.mock.calls[0];
+      const body = JSON.parse(callOpts.body as string);
+      expect(body.input).toBe('Spoken reply');
+      expect(body.model).toBe('turbo');
+      expect(body.voice).toBeUndefined();
     } finally {
       vi.unstubAllGlobals();
       delete process.env.DHG_TTS_URL;

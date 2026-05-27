@@ -73,26 +73,22 @@ export function TabBar() {
             );
           })}
 
-          {/* Center SCAN button — only on home tab */}
-          {isHome ? (
-            <div className="flex flex-col items-center justify-center flex-1">
-              <button
-                onClick={handleScanOpen}
-                className="relative -mt-7 w-14 h-14 rounded-full bg-forest-green flex items-center justify-center active:scale-95 transition-transform animate-spring-in"
-                style={{
-                  boxShadow: "var(--shadow-elevated), 0 0 0 3px var(--background)",
-                }}
-                aria-label="Scan item"
-              >
-                <ScanIcon />
-              </button>
-              <span className="text-[10px] leading-tight font-semibold text-forest-green mt-0.5">
-                Scan
-              </span>
-            </div>
-          ) : (
-            <div className="flex-1" />
-          )}
+          {/* Center SCAN button — all tabs */}
+          <div className="flex flex-col items-center justify-center flex-1">
+            <button
+              onClick={handleScanOpen}
+              className="relative -mt-7 w-14 h-14 rounded-full bg-forest-green flex items-center justify-center active:scale-95 transition-transform animate-spring-in"
+              style={{
+                boxShadow: "var(--shadow-elevated), 0 0 0 3px var(--background)",
+              }}
+              aria-label="Scan item"
+            >
+              <ScanIcon />
+            </button>
+            <span className="text-[10px] leading-tight font-semibold text-forest-green mt-0.5">
+              Scan
+            </span>
+          </div>
 
           {/* Right tabs */}
           {rightTabs.map((tab) => {
@@ -153,7 +149,7 @@ export function TabBar() {
       {/* Scan flow modal */}
       {showScan && <ScanFlow onClose={handleScanClose} />}
 
-      {/* Floating mic — on all tabs except home */}
+      {/* Floating mic — non-home tabs only (home has inline Porter chat) */}
       {!isHome && <FloatingMic />}
     </>
   );

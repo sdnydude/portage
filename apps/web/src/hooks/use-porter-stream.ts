@@ -29,7 +29,7 @@ export interface PorterStreamState {
   audioUrl: string | null;
   error: string | null;
   conversationId: string | null;
-  sendMessage: (message: string) => Promise<void>;
+  sendMessage: (message: string, onDone?: (text: string) => void) => Promise<void>;
   startNewChat: () => void;
 }
 
@@ -46,7 +46,7 @@ export function usePorterStream(): PorterStreamState {
   // Accumulate streaming blocks without triggering a re-render per chunk
   const streamingRef = useRef<StreamingBlock[]>([]);
 
-  const sendMessage = useCallback(async (message: string) => {
+  const sendMessage = useCallback(async (message: string, onDone?: (text: string) => void) => {
     if (!token || isStreaming) return;
 
     const userMessage: RichMessage = {
@@ -127,6 +127,10 @@ export function usePorterStream(): PorterStreamState {
           ...prev,
           { role: "assistant", blocks: finalBlocks },
         ]);
+        if (onDone) {
+          const finalText = finalBlocks.map((b) => (b as TextBlock).text).join(" ").trim();
+          if (finalText) onDone(finalText);
+        }
       }
 
       setStreamingBlocks([]);

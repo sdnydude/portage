@@ -54,59 +54,6 @@
             "type": "command",
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/doppler-sync.sh",
             "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/session-briefing.sh",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/reset-sweep-counter.sh",
-            "timeout": 3
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/memory-sync.sh",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/session-capture.sh",
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "python3 /home/swebber64/DHG/portage/.claude/hooks/capture-guarantee.py",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/commit-log.sh",
-            "timeout": 5,
-            "async": true
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/capture-sweep-reminder.sh",
-            "timeout": 3
           }
         ]
       }
@@ -127,7 +74,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/enforce-ship.sh",
+            "command": "bash ~/DHG/dhg-memreg/hooks/enforce-ship.sh",
             "timeout": 5
           }
         ]
