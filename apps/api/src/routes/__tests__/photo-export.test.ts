@@ -54,4 +54,94 @@ describe('GET /items/photos/export', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('MISSING_TOKEN');
   });
+
+  it('returns 401 when token not found in DB', async () => {
+    mockSelectTokenReturns([]);
+
+    const res = await request(app).get(`/items/photos/export?token=${VALID_TOKEN}`);
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('INVALID_TOKEN');
+  });
+
+  it('returns 401 when token is expired', async () => {
+    mockSelectTokenReturns([{ ...MOCK_TOKEN_ROW, expiresAt: new Date(Date.now() - 1000) }]);
+
+    const res = await request(app).get(`/items/photos/export?token=${VALID_TOKEN}`);
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('INVALID_TOKEN');
+  });
+
+  it('returns 401 when token use_count is 3 or more', async () => {
+    mockSelectTokenReturns([{ ...MOCK_TOKEN_ROW, useCount: 3 }]);
+
+    const res = await request(app).get(`/items/photos/export?token=${VALID_TOKEN}`);
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('INVALID_TOKEN');
+  });
+
+  it('returns application/zip with correct Content-Disposition', async () => {
+    mockSelectTokenReturns([MOCK_TOKEN_ROW]);
+    vi.mocked(db.update).mockReturnValueOnce({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([]),
+      }),
+    } as any);
+
+    const res = await request(app).get(`/items/photos/export?token=${VALID_TOKEN}`);
+
+    expect(res.headers['content-type']).toMatch(/application\/zip/);
+    expect(res.headers['content-disposition']).toMatch(/portage-photos-/);
+  });
+
+  it('streams a non-empty ZIP body when items have photos', async () => {
+    mockSelectTokenReturns([MOCK_TOKEN_ROW]);
+    vi.mocked(db.update).mockReturnValueOnce({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{
+          id: MOCK_TOKEN_ROW.itemIds[0],
+          title: 'Test Item',
+          photos: [{ url: 'https://portage-images.digitalharmonyai.com/photo1.jpg', key: 'photo1.jpg' }],
+        }]),
+      }),
+    } as any);
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    } as any);
+
+    const res = await request(app).get(`/items/photos/export?token=${VALID_TOKEN}`);
+
+    expect(res.status).toBe(200);
+    // Must contain more than just the empty-ZIP EOCD record (22 bytes) — i.e. photos are present
+    expect(Number(res.headers['content-length'])).toBeGreaterThan(22);
+  });
+
+  it('increments use_count before streaming', async () => {
+    mockSelectTokenReturns([MOCK_TOKEN_ROW]);
+    vi.mocked(db.update).mockReturnValueOnce({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+    // Mock item lookup returning no items (empty ZIP is fine for this test)
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([]),
+      }),
+    } as any);
+
+    await request(app).get(`/items/photos/export?token=${VALID_TOKEN}`);
+
+    expect(vi.mocked(db.update)).toHaveBeenCalledOnce();
+  });
 });

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
 import { eq, desc, ilike, and, sql, inArray } from 'drizzle-orm';
+import { Zip, ZipDeflate } from 'fflate';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { items, exportTokens } from '../db/schema.js';
@@ -9,6 +10,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
+import { isAllowedImageOrigin } from './images.js';
 
 const logger = createLogger('items');
 
@@ -49,6 +51,59 @@ const listQuerySchema = z.object({
 });
 
 export const itemsRouter = Router();
+
+// GET /items/photos/export — token-auth (no requireAuth), defined before middleware
+itemsRouter.get('/photos/export', async (req, res, next) => {
+  try {
+    const token = req.query.token as string | undefined;
+    if (!token) throw new AppError(400, 'MISSING_TOKEN', 'token query parameter is required');
+
+    const [row] = await db.select().from(exportTokens)
+      .where(and(eq(exportTokens.token, token)));
+
+    if (!row || row.expiresAt < new Date() || row.useCount >= 3)
+      throw new AppError(401, 'INVALID_TOKEN', 'Token is invalid or expired');
+
+    await db.update(exportTokens)
+      .set({ useCount: row.useCount + 1 })
+      .where(eq(exportTokens.token, token));
+
+    const itemRows = await db.select({ id: items.id, title: items.title, photos: items.photos })
+      .from(items).where(inArray(items.id, row.itemIds));
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="portage-photos-${date}.zip"`);
+
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      const zip = new Zip((err, chunk, final) => {
+        if (err) { reject(err); return; }
+        chunks.push(Buffer.from(chunk));
+        if (final) resolve();
+      });
+
+      (async () => {
+        let photoIdx = 0;
+        for (const item of itemRows) {
+          for (const photo of (item.photos as any[]) ?? []) {
+            if (!isAllowedImageOrigin(photo.url)) continue;
+            const r = await fetch(photo.url as string);
+            if (!r.ok) continue;
+            const buf = new Uint8Array(await r.arrayBuffer());
+            const file = new ZipDeflate(`photo_${++photoIdx}.jpg`, { level: 0 });
+            zip.add(file);
+            file.push(buf, true);
+          }
+        }
+        zip.end();
+      })().catch(reject);
+    });
+    res.end(Buffer.concat(chunks));
+  } catch (err) {
+    next(err);
+  }
+});
 
 itemsRouter.use(requireAuth);
 
