@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { eq, desc, ilike, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { items } from '../db/schema.js';
+import { items, exportTokens } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
@@ -409,6 +409,13 @@ itemsRouter.post('/photos/export/prepare', async (req, res, next) => {
 
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await db.insert(exportTokens).values({
+      token,
+      userId,
+      itemIds: cappedRows.map(r => r.id),
+      expiresAt,
+    });
 
     res.json({ token, expiresAt, itemCount: cappedRows.length, photoCount, skippedCount });
   } catch (err) {

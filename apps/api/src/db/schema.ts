@@ -306,3 +306,14 @@ export const ebayMessages = pgTable('ebay_messages', {
   index('idx_ebay_messages_conversation_key').on(t.conversationKey),
   index('idx_ebay_messages_user_unread').on(t.userId, t.direction, t.readAt),
 ]);
+
+export const exportTokens = pgTable('export_tokens', {
+  token: varchar('token', { length: 64 }).primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  itemIds: text('item_ids').array().notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  useCount: integer('use_count').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_export_tokens_user_id').on(t.userId),
+]);

@@ -392,6 +392,18 @@ describe('POST /items/photos/export/prepare', () => {
     expect(res.body.itemCount).toBe(1);
   });
 
+  it('persists the token to the database', async () => {
+    mockSelectWhere([{ id: ITEM_UUID_1, photos: MOCK_PHOTOS, title: 'Test Item' }]);
+    mockInsertNoReturn();
+
+    await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: [ITEM_UUID_1] });
+
+    expect(vi.mocked(db.insert)).toHaveBeenCalledOnce();
+  });
+
   it('skips items when cumulative photo count exceeds 300', async () => {
     // Item 1 has 300 photos, item 2 has 1 photo — item 2 should be skipped
     const manyPhotos = Array.from({ length: 300 }, (_, i) => ({
