@@ -121,7 +121,7 @@ export function CompsSearchSheet({ onClose }: CompsSearchSheetProps) {
 
           {!results && !isLoading && !error && (
             <div className="px-4 py-8 text-center text-text-secondary text-sm">
-              Search any item to see what it's selling for on eBay
+              Search any item to see what it&apos;s selling for on eBay
             </div>
           )}
 
