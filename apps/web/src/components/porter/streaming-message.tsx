@@ -1,5 +1,6 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
 import type { RichMessage, ActionPill } from "@portage/shared";
 import type { StreamingBlock } from "@/hooks/use-porter-stream";
 import { ToolBlock } from "./tool-block";
@@ -50,8 +51,8 @@ export function StreamingMessage({
     return (
       <div className="flex flex-col gap-2">
         {textContent && (
-          <div className="rounded-2xl rounded-bl-sm bg-[var(--surface)] px-4 py-2 text-sm leading-relaxed">
-            {textContent}
+          <div className="rounded-2xl rounded-bl-sm bg-[var(--surface)] px-4 py-2 text-sm leading-relaxed prose-porter">
+            <ReactMarkdown>{textContent}</ReactMarkdown>
           </div>
         )}
         {pills.length > 0 && onPillSelect && (
@@ -78,10 +79,11 @@ export function StreamingMessage({
       )}
       {streamingBlocks?.map((block, i) => {
         if (block.type === "text") {
+          const isLast = i === streamingBlocks.length - 1;
           return (
-            <div key={i} className="rounded-2xl rounded-bl-sm bg-[var(--surface)] px-4 py-2 text-sm leading-relaxed">
-              {block.text}
-              {isStreaming && i === (streamingBlocks.length - 1) && (
+            <div key={i} className="rounded-2xl rounded-bl-sm bg-[var(--surface)] px-4 py-2 text-sm leading-relaxed prose-porter">
+              <ReactMarkdown>{block.text ?? ""}</ReactMarkdown>
+              {isStreaming && isLast && (
                 <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-current align-middle" />
               )}
             </div>
