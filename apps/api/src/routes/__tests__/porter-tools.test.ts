@@ -59,6 +59,86 @@ function mockConversationFlow(id: string) {
   } as never);
 }
 
+describe('suggest_listing tool', () => {
+  const ITEM_UUID = '11111111-1111-1111-1111-111111111111';
+  const mockItem = {
+    id: ITEM_UUID,
+    title: 'Marshall JTM45 Stack',
+    description: 'Vintage amp',
+    condition: 'good',
+    brand: 'Marshall',
+    model: 'JTM45',
+    category: 'Amps',
+    estimatedValueRecommended: 2500,
+    estimatedValueMax: 3000,
+  };
+
+  function mockItemSelect() {
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([mockItem]) }),
+      }),
+    } as never);
+  }
+
+  it('falls back to title search when itemId is a slug (simulating UUID DB error)', async () => {
+    mockUserSelect();
+    mockConversationFlow(TEST_CONV_ID);
+
+    let toolResult: StreamToolResult | null = null;
+
+    vi.mocked(chatStream).mockImplementationOnce(async (_msgs, _sys, _tools, execTool, onEvent) => {
+      // Simulate PostgreSQL throwing "invalid input syntax for type uuid" when passed a slug
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockRejectedValue(new Error('invalid input syntax for type uuid: "marshall-jtm45-stack"')),
+          }),
+        }),
+      } as never);
+      // Title search fallback returns the item
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([mockItem]) }),
+        }),
+      } as never);
+
+      toolResult = await execTool('suggest_listing', { itemId: 'marshall-jtm45-stack', marketplace: 'ebay' });
+      onEvent({ type: 'done', model: 'm', inputTokens: 1, outputTokens: 1 });
+    });
+
+    await request(app)
+      .post('/porter/stream')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Suggest listing', conversationId: TEST_CONV_ID });
+
+    const parsed = JSON.parse((toolResult! as StreamToolResult).text);
+    expect(parsed.itemId).toBe(ITEM_UUID);
+    expect(parsed.suggestedTitle).toBe('Marshall JTM45 Stack');
+  });
+
+  it('finds item by UUID', async () => {
+    mockUserSelect();
+    mockConversationFlow(TEST_CONV_ID);
+
+    let toolResult: StreamToolResult | null = null;
+
+    vi.mocked(chatStream).mockImplementationOnce(async (_msgs, _sys, _tools, execTool, onEvent) => {
+      mockItemSelect();
+      toolResult = await execTool('suggest_listing', { itemId: ITEM_UUID, marketplace: 'ebay' });
+      onEvent({ type: 'done', model: 'm', inputTokens: 1, outputTokens: 1 });
+    });
+
+    await request(app)
+      .post('/porter/stream')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Suggest listing', conversationId: TEST_CONV_ID });
+
+    const parsed = JSON.parse((toolResult! as StreamToolResult).text);
+    expect(parsed.itemId).toBe(ITEM_UUID);
+  });
+});
+
 describe('search_inventory tool', () => {
   it('returns photos in structured result', async () => {
     mockUserSelect();

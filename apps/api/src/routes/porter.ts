@@ -147,10 +147,24 @@ async function executeToolCall(userId: string, name: string, input: Record<strin
     }
 
     case 'suggest_listing': {
-      const [item] = await db.select()
-        .from(items)
-        .where(and(eq(items.id, input.itemId as string), eq(items.userId, userId)))
-        .limit(1);
+      const itemId = input.itemId as string;
+      let item: typeof items.$inferSelect | undefined;
+
+      try {
+        const [found] = await db.select().from(items)
+          .where(and(eq(items.id, itemId), eq(items.userId, userId)))
+          .limit(1);
+        item = found;
+      } catch {
+        // UUID type error (Claude passed a slug) — fall through to title search
+      }
+
+      if (!item) {
+        const [found] = await db.select().from(items)
+          .where(and(ilike(items.title, `%${itemId.replace(/[-_]/g, ' ')}%`), eq(items.userId, userId)))
+          .limit(1);
+        item = found;
+      }
 
       if (!item) return 'Item not found.';
 
