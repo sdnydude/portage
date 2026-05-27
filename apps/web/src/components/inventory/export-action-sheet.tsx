@@ -51,7 +51,6 @@ export function ExportActionSheet({
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         if (res.status === 403) {
           setErrorMsg("Some selected items could not be verified. Please try again.");
         } else if (res.status === 400) {
