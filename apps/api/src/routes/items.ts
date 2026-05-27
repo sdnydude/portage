@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { randomBytes } from 'node:crypto';
 import { eq, desc, ilike, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
@@ -371,6 +372,45 @@ itemsRouter.post('/bulk/export', async (req, res, next) => {
 
     logger.info({ userId, count: results.length }, 'Bulk items exported');
     res.json({ items: results, count: results.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const preparePhotoExportSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(50),
+});
+
+itemsRouter.post('/photos/export/prepare', async (req, res, next) => {
+  try {
+    const { ids } = preparePhotoExportSchema.parse(req.body);
+    const userId = req.user!.sub;
+    const dedupedIds = [...new Set(ids)];
+
+    const rows = await db.select({ id: items.id, photos: items.photos, title: items.title })
+      .from(items).where(and(inArray(items.id, dedupedIds), eq(items.userId, userId)));
+
+    if (rows.length !== dedupedIds.length)
+      throw new AppError(403, 'FORBIDDEN', 'One or more items do not belong to you');
+
+    const hasAnyPhotos = rows.some(row => ((row.photos as any[]) ?? []).length > 0);
+    if (!hasAnyPhotos)
+      throw new AppError(422, 'NO_PHOTOS', 'No photos available within the 300-photo limit');
+
+    let photoCount = 0;
+    let skippedCount = 0;
+    const cappedRows: typeof rows = [];
+    for (const row of rows) {
+      const rowPhotos = ((row.photos as any[]) ?? []).length;
+      if (photoCount + rowPhotos > 300) { skippedCount++; continue; }
+      photoCount += rowPhotos;
+      cappedRows.push(row);
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    res.json({ token, expiresAt, itemCount: cappedRows.length, photoCount, skippedCount });
   } catch (err) {
     next(err);
   }
