@@ -32,7 +32,11 @@ export function ExportActionSheet({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function handlePhotoExport() {
-    if (!token) return;
+    if (!token) {
+      setErrorMsg("Not signed in — please reload and try again.");
+      setState("error");
+      return;
+    }
     setState("preparing");
     setErrorMsg(null);
 
@@ -48,11 +52,14 @@ export function ExportActionSheet({
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        const msg = (data as { error?: string }).error ?? "Failed to prepare export";
-        if (res.status === 422) {
+        if (res.status === 403) {
+          setErrorMsg("Some selected items could not be verified. Please try again.");
+        } else if (res.status === 400) {
+          setErrorMsg("Invalid selection — please deselect and try again.");
+        } else if (res.status === 422) {
           setErrorMsg("None of the selected items have photos.");
         } else {
-          setErrorMsg(msg);
+          setErrorMsg("Export failed — please try again.");
         }
         setState("error");
         return;
@@ -80,7 +87,8 @@ export function ExportActionSheet({
     try {
       await onEbayCsv();
       onClose();
-    } catch {
+    } catch (err) {
+      console.error("eBay CSV export failed:", err);
       setErrorMsg("eBay CSV export failed — please try again.");
       setState("error");
     }

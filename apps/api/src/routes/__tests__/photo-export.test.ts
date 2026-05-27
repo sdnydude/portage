@@ -126,6 +126,29 @@ describe('GET /items/photos/export', () => {
     expect(Number(res.headers['content-length'])).toBeGreaterThan(22);
   });
 
+  it('returns 502 when all photo fetches fail', async () => {
+    mockSelectTokenReturns([MOCK_TOKEN_ROW]);
+    vi.mocked(db.update).mockReturnValueOnce({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{
+          id: MOCK_TOKEN_ROW.itemIds[0],
+          title: 'Test Item',
+          photos: [{ url: 'https://portage-images.digitalharmonyai.com/photo1.jpg', key: 'photo1.jpg' }],
+        }]),
+      }),
+    } as any);
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({ ok: false, status: 503 } as any);
+
+    const res = await request(app).get(`/items/photos/export?token=${VALID_TOKEN}`);
+    expect(res.status).toBe(502);
+    expect(res.body.code).toBe('PHOTO_FETCH_FAILED');
+  });
+
   it('increments use_count before streaming', async () => {
     mockSelectTokenReturns([MOCK_TOKEN_ROW]);
     vi.mocked(db.update).mockReturnValueOnce({

@@ -404,9 +404,9 @@ describe('POST /items/photos/export/prepare', () => {
     expect(vi.mocked(db.insert)).toHaveBeenCalledOnce();
   });
 
-  it('skips items when cumulative photo count exceeds 300', async () => {
-    // Item 1 has 300 photos, item 2 has 1 photo — item 2 should be skipped
-    const manyPhotos = Array.from({ length: 300 }, (_, i) => ({
+  it('skips items when cumulative photo count exceeds 60', async () => {
+    // Item 1 has 60 photos, item 2 has 1 photo — item 2 should be skipped
+    const manyPhotos = Array.from({ length: 60 }, (_, i) => ({
       url: `https://portage-images.digitalharmonyai.com/photo${i}.jpg`,
       key: `photo${i}.jpg`,
     }));
@@ -423,7 +423,7 @@ describe('POST /items/photos/export/prepare', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.itemCount).toBe(1);
-    expect(res.body.photoCount).toBe(300);
+    expect(res.body.photoCount).toBe(60);
     expect(res.body.skippedCount).toBe(1);
   });
 });

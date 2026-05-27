@@ -71,11 +71,9 @@ itemsRouter.get('/photos/export', async (req, res, next) => {
     const itemRows = await db.select({ id: items.id, title: items.title, photos: items.photos })
       .from(items).where(inArray(items.id, row.itemIds));
 
-    const date = new Date().toISOString().slice(0, 10);
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="portage-photos-${date}.zip"`);
-
     const chunks: Buffer[] = [];
+    let totalPhotos = 0;
+    let fetchedCount = 0;
     await new Promise<void>((resolve, reject) => {
       const zip = new Zip((err, chunk, final) => {
         if (err) { reject(err); return; }
@@ -88,8 +86,10 @@ itemsRouter.get('/photos/export', async (req, res, next) => {
         for (const item of itemRows) {
           for (const photo of (item.photos as any[]) ?? []) {
             if (!isAllowedImageOrigin(photo.url)) continue;
+            totalPhotos++;
             const r = await fetch(photo.url as string);
             if (!r.ok) continue;
+            fetchedCount++;
             const buf = new Uint8Array(await r.arrayBuffer());
             const file = new ZipDeflate(`photo_${++photoIdx}.jpg`, { level: 0 });
             zip.add(file);
@@ -99,6 +99,13 @@ itemsRouter.get('/photos/export', async (req, res, next) => {
         zip.end();
       })().catch(reject);
     });
+
+    if (totalPhotos > 0 && fetchedCount === 0)
+      throw new AppError(502, 'PHOTO_FETCH_FAILED', 'Failed to fetch photos for export');
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="portage-photos-${date}.zip"`);
     res.end(Buffer.concat(chunks));
   } catch (err) {
     next(err);
@@ -450,14 +457,14 @@ itemsRouter.post('/photos/export/prepare', async (req, res, next) => {
 
     const hasAnyPhotos = rows.some(row => ((row.photos as any[]) ?? []).length > 0);
     if (!hasAnyPhotos)
-      throw new AppError(422, 'NO_PHOTOS', 'No photos available within the 300-photo limit');
+      throw new AppError(422, 'NO_PHOTOS', 'No photos available within the 60-photo limit');
 
     let photoCount = 0;
     let skippedCount = 0;
     const cappedRows: typeof rows = [];
     for (const row of rows) {
       const rowPhotos = ((row.photos as any[]) ?? []).length;
-      if (photoCount + rowPhotos > 300) { skippedCount++; continue; }
+      if (photoCount + rowPhotos > 60) { skippedCount++; continue; }
       photoCount += rowPhotos;
       cappedRows.push(row);
     }
