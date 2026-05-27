@@ -63,8 +63,19 @@ export function StreamingMessage({
   }
 
   // In-progress streaming
+  const hasBlocks = streamingBlocks && streamingBlocks.length > 0;
   return (
     <div className="flex flex-col gap-2">
+      {/* Thinking dots — shown until first block arrives */}
+      {isStreaming && !hasBlocks && (
+        <div className="rounded-2xl rounded-bl-sm bg-[var(--surface)] px-4 py-3 w-fit">
+          <span className="flex gap-1 items-center">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-secondary)] animate-[bounce_1s_ease-in-out_infinite]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-secondary)] animate-[bounce_1s_ease-in-out_0.15s_infinite]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-secondary)] animate-[bounce_1s_ease-in-out_0.3s_infinite]" />
+          </span>
+        </div>
+      )}
       {streamingBlocks?.map((block, i) => {
         if (block.type === "text") {
           return (
