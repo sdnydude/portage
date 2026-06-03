@@ -36,13 +36,26 @@ function normalizeEbayCondition(raw: string | undefined): string {
   return BROWSE_CONDITION_NORMALIZE[raw] ?? raw.toUpperCase().replace(/\s+/g, '_');
 }
 
+// Portage condition → eBay Inventory API ConditionEnum (used-goods defaults).
+// Media categories (books/music/movies/games) use a different condition set;
+// T6's per-category validation corrects those before publish.
 const CONDITION_MAP: Record<string, string> = {
   new: 'NEW',
-  like_new: 'LIKE_NEW',
-  good: 'GOOD',
-  fair: 'GOOD',
-  poor: 'ACCEPTABLE',
+  like_new: 'USED_EXCELLENT',
+  good: 'USED_GOOD',
+  fair: 'USED_ACCEPTABLE',
+  poor: 'USED_ACCEPTABLE',
 };
+
+export function resolveEbayCondition(
+  condition: string,
+  specific?: Record<string, unknown>,
+): string {
+  // An explicit, already-valid eBay enum (e.g. from per-category validation) wins.
+  const override = specific?.condition;
+  if (typeof override === 'string' && override.length > 0) return override;
+  return CONDITION_MAP[condition] ?? 'USED_GOOD';
+}
 
 export class EbayAdapter implements MarketplaceAdapter {
   readonly marketplace = 'ebay' as const;
@@ -81,8 +94,8 @@ export class EbayAdapter implements MarketplaceAdapter {
 
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
     const sku = `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const ebayCondition = CONDITION_MAP[input.condition] ?? 'GOOD';
     const specific = input.marketplaceSpecific ?? {};
+    const ebayCondition = resolveEbayCondition(input.condition, specific);
 
     const product: Record<string, unknown> = {
       title: input.title,
