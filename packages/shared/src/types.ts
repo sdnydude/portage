@@ -72,6 +72,7 @@ export interface Item {
   estimatedValueMax?: number;
   estimatedValueRecommended?: number;
   aiConfidenceScore: number;
+  quantity: number;
   marketplaceData?: MarketplaceData;
   createdAt: Date;
   updatedAt: Date;

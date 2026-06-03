@@ -201,6 +201,22 @@ describe('POST /items', () => {
     expect(res.body.title).toBe('Sony WH-1000XM4');
   });
 
+  it('accepts quantity and passes it to the insert', async () => {
+    const valuesSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, quantity: 5 }]),
+    });
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Sony WH-1000XM4', quantity: 5 });
+
+    expect(res.status).toBe(201);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ quantity: 5 }));
+    expect(res.body.quantity).toBe(5);
+  });
+
   it('returns 400 when title is missing', async () => {
     const res = await request(app)
       .post('/items')

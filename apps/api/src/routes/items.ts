@@ -37,6 +37,7 @@ const createItemSchema = z.object({
   estimatedValueMax: z.number().min(0).optional(),
   estimatedValueRecommended: z.number().min(0).optional(),
   aiConfidenceScore: z.number().min(0).max(1).optional(),
+  quantity: z.number().int().min(0).optional(),
   photos: z.array(photoSchema).optional(),
 });
 
@@ -286,6 +287,7 @@ itemsRouter.post('/', async (req, res, next) => {
       estimatedValueMax: body.estimatedValueMax ?? null,
       estimatedValueRecommended: body.estimatedValueRecommended ?? null,
       aiConfidenceScore: body.aiConfidenceScore ?? 0,
+      quantity: body.quantity ?? 1,
       photos: body.photos ?? [],
     }).returning();
 
