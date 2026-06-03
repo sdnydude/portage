@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../app.js';
 import { createTestToken } from '../../test/helpers.js';
@@ -60,5 +60,64 @@ describe('GET /marketplace/ebay/connect credential selection', () => {
     expect(res.status).toBe(200);
     expect(res.body.authUrl).toContain('client_id=prod-client-id');
     expect(res.body.authUrl).toContain('auth.ebay.com');
+  });
+});
+
+describe('POST /marketplace/ebay/callback identity capture', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function getValidState(): Promise<string> {
+    const connectRes = await request(app)
+      .get('/marketplace/ebay/connect')
+      .set('Authorization', `Bearer ${token}`);
+    return new URL(connectRes.body.authUrl).searchParams.get('state')!;
+  }
+
+  it('stores the eBay userId from the Identity API on a successful callback', async () => {
+    const setMock = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const state = await getValidState();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 7200 }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ userId: 'ebay-user-123', username: 'cooluser' }) }),
+    );
+
+    const res = await request(app)
+      .post('/marketplace/ebay/callback')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ code: 'auth-code', state });
+
+    expect(res.status).toBe(200);
+    expect(res.body.connected).toBe(true);
+    expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ marketplaceUserId: 'ebay-user-123' }));
+  });
+
+  it('still connects when the Identity API fails, leaving marketplaceUserId null', async () => {
+    const setMock = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const state = await getValidState();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 7200 }) })
+        .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'identity error' }),
+    );
+
+    const res = await request(app)
+      .post('/marketplace/ebay/callback')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ code: 'auth-code', state });
+
+    expect(res.status).toBe(200);
+    expect(res.body.connected).toBe(true);
+    expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ marketplaceUserId: null }));
   });
 });

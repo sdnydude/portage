@@ -131,6 +131,26 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
 
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 
+    // Fetch the eBay user's immutable userId for display. Non-fatal: the
+    // connection still succeeds if the Identity API is unavailable.
+    const identityHost = config.EBAY_SANDBOX
+      ? 'https://apiz.sandbox.ebay.com'
+      : 'https://apiz.ebay.com';
+    let marketplaceUserId: string | null = null;
+    try {
+      const identityResponse = await fetch(`${identityHost}/commerce/identity/v1/user/`, {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+      });
+      if (identityResponse.ok) {
+        const identity = await identityResponse.json() as { userId?: string };
+        marketplaceUserId = identity.userId ?? null;
+      } else {
+        logger.warn({ status: identityResponse.status }, 'eBay Identity API non-OK; marketplaceUserId left null');
+      }
+    } catch (identityErr) {
+      logger.warn({ err: identityErr }, 'eBay Identity fetch failed; marketplaceUserId left null');
+    }
+
     const existing = await db.select({ id: marketplaceAccounts.id })
       .from(marketplaceAccounts)
       .where(and(
@@ -145,6 +165,7 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
           accessTokenEncrypted: encrypt(tokenData.access_token),
           refreshTokenEncrypted: encrypt(tokenData.refresh_token),
           tokenExpiresAt: expiresAt,
+          marketplaceUserId,
           updatedAt: new Date(),
         })
         .where(eq(marketplaceAccounts.id, existing[0].id));
@@ -156,6 +177,7 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
         accessTokenEncrypted: encrypt(tokenData.access_token),
         refreshTokenEncrypted: encrypt(tokenData.refresh_token),
         tokenExpiresAt: expiresAt,
+        marketplaceUserId,
       });
     }
 
