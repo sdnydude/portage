@@ -35,7 +35,9 @@ const envSchema = z.object({
   EBAY_PROD_CLIENT_ID: z.string().optional(),
   EBAY_PROD_CLIENT_SECRET: z.string().optional(),
   EBAY_REDIRECT_URI: z.string().optional(),
-  EBAY_SANDBOX: z.coerce.boolean().default(true),
+  // NOTE: z.coerce.boolean() treats any non-empty string as true (Boolean('false') === true),
+  // so "false" would wrongly enable sandbox. Parse the string explicitly instead.
+  EBAY_SANDBOX: z.string().default('true').transform((v) => v.toLowerCase() !== 'false'),
   ETSY_API_KEY: z.string().optional(),
   ETSY_SHARED_SECRET: z.string().optional(),
   ETSY_REDIRECT_URI: z.string().optional(),

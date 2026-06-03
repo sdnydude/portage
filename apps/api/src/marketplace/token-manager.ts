@@ -4,6 +4,7 @@ import { marketplaceAccounts } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { env } from '../lib/env.js';
+import { getEbayUserFlowCredentials } from './ebay-credentials.js';
 
 const logger = createLogger('token-manager');
 
@@ -32,11 +33,12 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
   logger.info({ userId }, 'Refreshing eBay access token');
 
   const config = env();
-  if (!config.EBAY_CLIENT_ID || !config.EBAY_CLIENT_SECRET) {
+  const { clientId, clientSecret } = getEbayUserFlowCredentials(config);
+  if (!clientId || !clientSecret) {
     throw new Error('eBay credentials not configured');
   }
 
-  const credentials = Buffer.from(`${config.EBAY_CLIENT_ID}:${config.EBAY_CLIENT_SECRET}`).toString('base64');
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   const refreshToken = decrypt(account.refreshTokenEncrypted);
 
   const baseUrl = config.EBAY_SANDBOX

@@ -10,6 +10,7 @@ import { db } from '../../db/index.js';
 import { marketplaceAccounts } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { checkMarketplaceLimit } from '../../lib/billing-utils.js';
+import { getEbayUserFlowCredentials } from '../../marketplace/ebay-credentials.js';
 
 const logger = createLogger('ebay-auth');
 
@@ -41,7 +42,8 @@ function ebayAuthUrl(): string {
 ebayAuthRouter.get('/connect', async (req, res, next) => {
   try {
   const config = env();
-  if (!config.EBAY_CLIENT_ID || !config.EBAY_REDIRECT_URI) {
+  const { clientId } = getEbayUserFlowCredentials(config);
+  if (!clientId || !config.EBAY_REDIRECT_URI) {
     throw new AppError(503, 'EBAY_NOT_CONFIGURED', 'eBay integration is not configured');
   }
 
@@ -63,7 +65,7 @@ ebayAuthRouter.get('/connect', async (req, res, next) => {
   ].join(' ');
 
   const authUrl = new URL(`${ebayAuthUrl()}/oauth2/authorize`);
-  authUrl.searchParams.set('client_id', config.EBAY_CLIENT_ID);
+  authUrl.searchParams.set('client_id', clientId);
   authUrl.searchParams.set('redirect_uri', config.EBAY_REDIRECT_URI);
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', scopes);
@@ -86,7 +88,8 @@ const callbackSchema = z.object({
 ebayAuthRouter.post('/callback', async (req, res, next) => {
   try {
     const config = env();
-    if (!config.EBAY_CLIENT_ID || !config.EBAY_CLIENT_SECRET || !config.EBAY_REDIRECT_URI) {
+    const { clientId, clientSecret } = getEbayUserFlowCredentials(config);
+    if (!clientId || !clientSecret || !config.EBAY_REDIRECT_URI) {
       throw new AppError(503, 'EBAY_NOT_CONFIGURED', 'eBay integration is not configured');
     }
 
@@ -99,7 +102,7 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
       throw new AppError(400, 'CSRF_MISMATCH', 'Invalid or expired OAuth state parameter');
     }
 
-    const credentials = Buffer.from(`${config.EBAY_CLIENT_ID}:${config.EBAY_CLIENT_SECRET}`).toString('base64');
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
     const tokenResponse = await fetch(`${ebayBaseUrl()}/identity/v1/oauth2/token`, {
       method: 'POST',
