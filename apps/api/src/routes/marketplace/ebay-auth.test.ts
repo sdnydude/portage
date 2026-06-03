@@ -98,6 +98,27 @@ describe('POST /marketplace/ebay/callback identity capture', () => {
     expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ marketplaceUserId: 'ebay-user-123' }));
   });
 
+  it('exchanges the auth code using the production credentials when EBAY_SANDBOX is false', async () => {
+    vi.mocked(db.update).mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) } as any);
+
+    const state = await getValidState();
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 7200 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ userId: 'u' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await request(app)
+      .post('/marketplace/ebay/callback')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ code: 'auth-code', state });
+
+    const expectedAuth = `Basic ${Buffer.from('prod-client-id:prod-secret').toString('base64')}`;
+    const [tokenUrl, tokenInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(tokenUrl).toContain('https://api.ebay.com/identity/v1/oauth2/token');
+    expect(tokenInit.headers).toMatchObject({ Authorization: expectedAuth });
+  });
+
   it('still connects when the Identity API fails, leaving marketplaceUserId null', async () => {
     const setMock = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
     vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
