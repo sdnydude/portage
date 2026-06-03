@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
-import { resolveEbayCondition, validateEbayListingFields, EbayAdapter } from './ebay-adapter.js';
+import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, EbayAdapter } from './ebay-adapter.js';
 
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
@@ -90,5 +90,104 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
     expect(putCall).toBeTruthy();
     const body = JSON.parse((putCall![1] as RequestInit).body as string);
     expect(body.availability.shipToLocationAvailability.quantity).toBe(7);
+  });
+});
+
+describe('selectValidEbayCondition — per-category condition auto-correct', () => {
+  it('keeps the static default grade when the category supports it', () => {
+    // good → USED_GOOD (5000); a general used category offers 5000
+    expect(selectValidEbayCondition('good', ['1000', '3000', '5000', '6000']))
+      .toEqual({ condition: 'USED_GOOD', conditionId: '5000' });
+  });
+
+  it('falls back to the generic Used grade (3000) when the exact grade is unsupported', () => {
+    // good → 5000 not offered; a general category {1000,3000} resolves to USED_EXCELLENT
+    expect(selectValidEbayCondition('good', ['1000', '3000']))
+      .toEqual({ condition: 'USED_EXCELLENT', conditionId: '3000' });
+  });
+
+  it('selects the granular media grade (LIKE_NEW/2750) when the category offers it', () => {
+    expect(selectValidEbayCondition('like_new', ['2750', '3000', '4000', '5000']))
+      .toEqual({ condition: 'LIKE_NEW', conditionId: '2750' });
+  });
+
+  it('maps a new item to NEW (1000) when supported', () => {
+    expect(selectValidEbayCondition('new', ['1000', '1500', '3000']))
+      .toEqual({ condition: 'NEW', conditionId: '1000' });
+  });
+
+  it('never auto-upgrades a used item to NEW — returns null for a NEW-only category', () => {
+    expect(selectValidEbayCondition('good', ['1000'])).toBeNull();
+  });
+
+  it('returns null for an empty supported list (Metadata API unavailable)', () => {
+    expect(selectValidEbayCondition('good', [])).toBeNull();
+  });
+
+  it('returns null for an unknown Portage condition', () => {
+    expect(selectValidEbayCondition('mystery', ['1000', '3000'])).toBeNull();
+  });
+});
+
+describe('EbayAdapter.getValidConditions — Metadata API condition policies', () => {
+  it('returns the conditionIds a category supports', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      itemConditionPolicies: [{
+        categoryId: '15032',
+        categoryTreeId: '0',
+        itemConditionRequired: true,
+        itemConditions: [
+          { conditionId: '1000', conditionDescription: 'New' },
+          { conditionId: '3000', conditionDescription: 'Used' },
+        ],
+      }],
+      warnings: [],
+    }), { status: 200 }));
+
+    expect(await EbayAdapter.getValidConditions('15032')).toEqual(['1000', '3000']);
+  });
+
+  it('calls the EBAY_US condition-policies endpoint with a URL-encoded category filter', async () => {
+    await EbayAdapter.getValidConditions('15032');
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/sell/metadata/v1/marketplace/EBAY_US/get_item_condition_policies');
+    expect(url).toContain('filter=categoryIds%3A%7B15032%7D');
+  });
+
+  it('returns [] when the Metadata API responds non-OK (never blocks prepare)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('nope', { status: 404 }));
+    expect(await EbayAdapter.getValidConditions('15032')).toEqual([]);
+  });
+
+  it('returns [] when the response has no condition policies', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ itemConditionPolicies: [] }), { status: 200 }));
+    expect(await EbayAdapter.getValidConditions('15032')).toEqual([]);
+  });
+});
+
+describe('resolveEbayCategoryCondition — auto-correct decision + warning policy', () => {
+  it('overrides to the supported grade and warns when it differs from the default', () => {
+    // good default = USED_GOOD (5000); a category offering only {1000,3000}
+    // forces a fall back to USED_EXCELLENT, which the user should know about.
+    const r = resolveEbayCategoryCondition('good', ['1000', '3000']);
+    expect(r.condition).toBe('USED_EXCELLENT');
+    expect(r.warning).toMatch(/USED_EXCELLENT/);
+  });
+
+  it('does nothing (no override, no warning) when the supported list is empty', () => {
+    // Metadata API unavailable → keep the static default silently
+    expect(resolveEbayCategoryCondition('good', [])).toEqual({});
+  });
+
+  it('warns without overriding when no supported grade matches (e.g. used item, NEW-only category)', () => {
+    const r = resolveEbayCategoryCondition('good', ['1000']);
+    expect(r.condition).toBeUndefined();
+    expect(r.warning).toMatch(/doesn't offer/);
+  });
+
+  it('sets the condition but stays silent when the supported grade equals the default', () => {
+    // good default = USED_GOOD (5000); category offers it → no deviation, no warning
+    expect(resolveEbayCategoryCondition('good', ['5000', '3000', '6000']))
+      .toEqual({ condition: 'USED_GOOD' });
   });
 });

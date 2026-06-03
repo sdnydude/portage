@@ -58,6 +58,77 @@ export function resolveEbayCondition(
   return CONDITION_MAP[condition] ?? 'USED_GOOD';
 }
 
+// eBay represents item condition two ways: the Inventory API createListing call
+// sends ConditionEnum strings (NEW, USED_GOOD…), while the Metadata
+// get_item_condition_policies call returns numeric conditionId strings
+// (1000, 5000…). Per-category validation must bridge the two vocabularies.
+export const EBAY_CONDITION_ID_TO_ENUM: Record<string, string> = {
+  '1000': 'NEW',
+  '1500': 'NEW_OTHER',
+  '1750': 'NEW_WITH_DEFECTS',
+  '2000': 'CERTIFIED_REFURBISHED',
+  '2500': 'SELLER_REFURBISHED',
+  '2750': 'LIKE_NEW',
+  '3000': 'USED_EXCELLENT',
+  '4000': 'USED_VERY_GOOD',
+  '5000': 'USED_GOOD',
+  '6000': 'USED_ACCEPTABLE',
+  '7000': 'FOR_PARTS_OR_NOT_WORKING',
+};
+
+// For each Portage condition, the conditionIds to try in preference order; the
+// first one the target category actually supports wins. 3000 (USED_EXCELLENT)
+// doubles as the generic "Used" grade most categories accept, so every used
+// grade resolves in general categories while media/apparel get their granular
+// grade. Conservative bias: never auto-upgrade a used item past generic Used.
+const CONDITION_PREFERENCE_CHAINS: Record<string, string[]> = {
+  new: ['1000', '1500'],
+  like_new: ['2750', '3000', '4000'],
+  good: ['5000', '3000', '4000', '6000'],
+  fair: ['6000', '3000', '5000'],
+  poor: ['6000', '3000', '5000'],
+};
+
+// Snap a Portage condition to the closest eBay grade a category supports.
+// Returns null when no preferred grade is offered (including an empty list); the
+// caller decides whether that means "ignore" (Metadata API gave nothing) or
+// "warn" (the category genuinely lacks a matching grade).
+export function selectValidEbayCondition(
+  portageCondition: string,
+  validConditionIds: string[],
+): { condition: string; conditionId: string } | null {
+  const chain = CONDITION_PREFERENCE_CHAINS[portageCondition];
+  if (!chain) return null;
+  const supported = new Set(validConditionIds);
+  for (const conditionId of chain) {
+    if (supported.has(conditionId)) {
+      const condition = EBAY_CONDITION_ID_TO_ENUM[conditionId];
+      if (condition) return { condition, conditionId };
+    }
+  }
+  return null;
+}
+
+export function resolveEbayCategoryCondition(
+  portageCondition: string,
+  validConditionIds: string[],
+): { condition?: string; warning?: string } {
+  if (validConditionIds.length === 0) return {};
+  const selected = selectValidEbayCondition(portageCondition, validConditionIds);
+  if (!selected) {
+    return {
+      warning: `This eBay category doesn't offer a condition for a "${portageCondition}" item — review the condition before publishing.`,
+    };
+  }
+  if (selected.condition !== resolveEbayCondition(portageCondition)) {
+    return {
+      condition: selected.condition,
+      warning: `eBay condition set to "${selected.condition}" — the closest grade this category accepts for a "${portageCondition}" item.`,
+    };
+  }
+  return { condition: selected.condition };
+}
+
 export interface EbayListingFields {
   categoryId: string;
   merchantLocationKey: string;
@@ -510,5 +581,37 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
 
     return result;
+  }
+
+  // Per-category valid item conditions from the Metadata API. Mirrors
+  // getRequiredAspects: prod app token, graceful [] on any failure so a
+  // transient Metadata hiccup never blocks listing preparation.
+  static async getValidConditions(categoryId: string): Promise<string[]> {
+    const token = await getEbayProdAppToken();
+
+    const filter = encodeURIComponent(`categoryIds:{${categoryId}}`);
+    const response = await fetch(
+      `https://api.ebay.com/sell/metadata/v1/marketplace/EBAY_US/get_item_condition_policies?filter=${filter}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      logger.error({ status: response.status, categoryId }, 'eBay condition policies fetch failed');
+      return [];
+    }
+
+    const data = await response.json() as {
+      itemConditionPolicies?: Array<{
+        itemConditions?: Array<{ conditionId: string }>;
+      }>;
+    };
+
+    const conditions = data.itemConditionPolicies?.[0]?.itemConditions ?? [];
+    return conditions.map(c => c.conditionId);
   }
 }
