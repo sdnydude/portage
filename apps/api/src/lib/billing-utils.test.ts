@@ -14,7 +14,7 @@ describe('billing constants', () => {
     const { PRO_TIER_LIMITS } = await import('@portage/shared');
     expect(PRO_TIER_LIMITS.aiListingsPerMonth).toBe(75);
     expect(PRO_TIER_LIMITS.bgRemovalsPerMonth).toBeNull();
-    expect(PRO_TIER_LIMITS.porterExchangesPerDay).toBe(15);
+    expect(PRO_TIER_LIMITS.porterExchangesPerDay).toBe(500);
     expect(PRO_TIER_LIMITS.marketplaces).toBeNull();
   });
 

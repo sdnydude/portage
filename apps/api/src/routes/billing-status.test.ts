@@ -93,7 +93,7 @@ describe('GET /billing/status', () => {
     expect(res.body.effectiveTier).toBe('pro');
     expect(res.body.usage.aiListings).toEqual({ used: 50, limit: 75, credits: 0 });
     expect(res.body.usage.bgRemovals).toEqual({ used: 30, limit: null });
-    expect(res.body.usage.porterExchanges).toEqual({ limit: 15 });
+    expect(res.body.usage.porterExchanges).toEqual({ limit: 500 });
     expect(res.body.usage.marketplaces).toEqual({ limit: null });
     expect(res.body.subscription).toEqual({
       id: 'sub_123',
