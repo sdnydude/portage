@@ -390,6 +390,7 @@ export interface SellerProfile {
   ebayPaymentPolicyId: string | null;
   ebayReturnPolicyId: string | null;
   ebayMerchantLocationKey: string | null;
+  ebayPublishMode: 'draft' | 'live';
   reverbOffersEnabled: boolean;
   reverbDefaultShipping: ReverbShippingDefaults | null;
   shipFromAddress: ShipFromAddress | null;
