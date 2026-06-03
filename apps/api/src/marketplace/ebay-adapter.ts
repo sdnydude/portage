@@ -1,5 +1,6 @@
 import { createLogger } from '../lib/logger.js';
 import { env } from '../lib/env.js';
+import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
 import type {
   MarketplaceAdapter,
@@ -57,6 +58,29 @@ export function resolveEbayCondition(
   return CONDITION_MAP[condition] ?? 'USED_GOOD';
 }
 
+export interface EbayListingFields {
+  categoryId: string;
+  merchantLocationKey: string;
+  fulfillmentPolicyId: string;
+  paymentPolicyId: string;
+  returnPolicyId: string;
+}
+
+export function validateEbayListingFields(specific: Record<string, unknown>): EbayListingFields {
+  const categoryId = specific.categoryId as string | undefined;
+  if (!categoryId || categoryId === '99') {
+    throw new AppError(400, 'EBAY_CATEGORY_REQUIRED', 'A valid eBay leaf category is required to list this item.');
+  }
+  const merchantLocationKey = specific.merchantLocationKey as string | undefined;
+  const fulfillmentPolicyId = specific.fulfillmentPolicyId as string | undefined;
+  const paymentPolicyId = specific.paymentPolicyId as string | undefined;
+  const returnPolicyId = specific.returnPolicyId as string | undefined;
+  if (!merchantLocationKey || !fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
+    throw new AppError(400, 'EBAY_SETUP_REQUIRED', 'eBay selling is not set up. Run "Set up eBay Selling" in Settings first.');
+  }
+  return { categoryId, merchantLocationKey, fulfillmentPolicyId, paymentPolicyId, returnPolicyId };
+}
+
 export class EbayAdapter implements MarketplaceAdapter {
   readonly marketplace = 'ebay' as const;
 
@@ -96,6 +120,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     const sku = `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const specific = input.marketplaceSpecific ?? {};
     const ebayCondition = resolveEbayCondition(input.condition, specific);
+    const fields = validateEbayListingFields(specific);
 
     const product: Record<string, unknown> = {
       title: input.title,
@@ -110,7 +135,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     if (specific.aspects) product.aspects = specific.aspects;
 
     const inventoryItem: Record<string, unknown> = {
-      availability: { shipToLocationAvailability: { quantity: 1 } },
+      availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
       condition: ebayCondition,
       product,
     };
@@ -140,8 +165,6 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     logger.info({ userId: this.userId, sku }, 'eBay inventory item created');
 
-    const categoryId = specific.categoryId as string | undefined;
-
     const offerData = await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
       method: 'POST',
       body: JSON.stringify({
@@ -152,12 +175,12 @@ export class EbayAdapter implements MarketplaceAdapter {
         pricingSummary: {
           price: { value: String(input.price), currency: input.currency },
         },
-        categoryId: categoryId ?? '99',
-        merchantLocationKey: (specific.merchantLocationKey as string) ?? 'default',
+        categoryId: fields.categoryId,
+        merchantLocationKey: fields.merchantLocationKey,
         listingPolicies: {
-          fulfillmentPolicyId: specific.fulfillmentPolicyId,
-          paymentPolicyId: specific.paymentPolicyId,
-          returnPolicyId: specific.returnPolicyId,
+          fulfillmentPolicyId: fields.fulfillmentPolicyId,
+          paymentPolicyId: fields.paymentPolicyId,
+          returnPolicyId: fields.returnPolicyId,
         },
       }),
     });
