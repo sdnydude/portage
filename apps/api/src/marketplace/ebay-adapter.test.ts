@@ -151,6 +151,64 @@ describe('EbayAdapter.createListing — draft vs live publish mode', () => {
   });
 });
 
+describe('EbayAdapter.createListing — SKU/offer reuse on re-publish', () => {
+  it('reuses an existing SKU instead of minting a new one', async () => {
+    fetchMock.mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes('/offer') && !u.includes('/publish')) {
+        return new Response(JSON.stringify({ offerId: 'offer-x' }), { status: 200 });
+      }
+      if (u.includes('/publish')) {
+        return new Response(JSON.stringify({ listingId: '110' }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      ebaySku: 'portage-existing-sku',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+
+    // the inventory_item PUT targets the existing SKU — no new SKU minted
+    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
+    expect(String(putCall![0])).toContain('/inventory_item/portage-existing-sku');
+    expect(result.ebaySku).toBe('portage-existing-sku');
+  });
+
+  it('reuses an existing offer — publishes it without creating a duplicate', async () => {
+    fetchMock.mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes('/publish')) {
+        return new Response(JSON.stringify({ listingId: '110055' }), { status: 200 });
+      }
+      if (u.includes('/offer')) {
+        return new Response(JSON.stringify({ offerId: 'should-not-be-created' }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      ebaySku: 'portage-existing-sku',
+      ebayOfferId: 'offer-existing',
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+
+    // no NEW offer is created — no POST to the bare /offer endpoint
+    const createOfferCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/sell/inventory/v1/offer'));
+    expect(createOfferCall).toBeUndefined();
+    // the EXISTING offer is the one published, and surfaced back
+    const publishCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/offer/offer-existing/publish'));
+    expect(publishCall).toBeTruthy();
+    expect(result.ebayOfferId).toBe('offer-existing');
+    expect(result.marketplaceListingId).toBe('110055');
+  });
+});
+
 describe('selectValidEbayCondition — per-category condition auto-correct', () => {
   it('keeps the static default grade when the category supports it', () => {
     // good → USED_GOOD (5000); a general used category offers 5000

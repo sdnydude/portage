@@ -13,6 +13,8 @@ export interface MarketplaceListingInput {
   features?: string[];
   quantity?: number;
   publishMode?: 'draft' | 'live';
+  ebaySku?: string;
+  ebayOfferId?: string;
   shippingWeight?: number;
   shippingWeightUnit?: 'oz' | 'lb' | 'g' | 'kg';
   marketplaceSpecific?: Record<string, unknown>;

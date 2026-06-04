@@ -188,7 +188,7 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
-    const sku = `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const specific = input.marketplaceSpecific ?? {};
     const ebayCondition = resolveEbayCondition(input.condition, specific);
     const fields = validateEbayListingFields(specific);
@@ -236,25 +236,28 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     logger.info({ userId: this.userId, sku }, 'eBay inventory item created');
 
-    const offerData = await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
-      method: 'POST',
-      body: JSON.stringify({
-        sku,
-        marketplaceId: 'EBAY_US',
-        format: 'FIXED_PRICE',
-        listingDescription: input.description,
-        pricingSummary: {
-          price: { value: String(input.price), currency: input.currency },
-        },
-        categoryId: fields.categoryId,
-        merchantLocationKey: fields.merchantLocationKey,
-        listingPolicies: {
-          fulfillmentPolicyId: fields.fulfillmentPolicyId,
-          paymentPolicyId: fields.paymentPolicyId,
-          returnPolicyId: fields.returnPolicyId,
-        },
-      }),
-    });
+    // Re-publish reuses the existing offer (no duplicate); a first-time listing POSTs a new one.
+    const offerData: { offerId: string } = input.ebayOfferId
+      ? { offerId: input.ebayOfferId }
+      : await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
+          method: 'POST',
+          body: JSON.stringify({
+            sku,
+            marketplaceId: 'EBAY_US',
+            format: 'FIXED_PRICE',
+            listingDescription: input.description,
+            pricingSummary: {
+              price: { value: String(input.price), currency: input.currency },
+            },
+            categoryId: fields.categoryId,
+            merchantLocationKey: fields.merchantLocationKey,
+            listingPolicies: {
+              fulfillmentPolicyId: fields.fulfillmentPolicyId,
+              paymentPolicyId: fields.paymentPolicyId,
+              returnPolicyId: fields.returnPolicyId,
+            },
+          }),
+        });
 
     // Draft mode: the unpublished offer exists on eBay (offerId + SKU) but we
     // deliberately skip /publish. This is an intentional draft, not a publish
