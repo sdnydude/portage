@@ -812,11 +812,13 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
               <ListingPreviewCard
                 data={prepareListing.data}
                 photos={state.photos}
+                quantity={state.quantity}
                 onFieldChange={(field, value) => flow.setField(field as keyof typeof state, value as never)}
                 onPriceChange={(price) => flow.setField("price", price)}
-                onPublish={(marketplace) => {
+                onQuantityChange={(q) => flow.setField("quantity", q)}
+                onPublish={(marketplace, publishMode) => {
                   flow.setField("marketplace", marketplace);
-                  flow.publish();
+                  flow.publish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
                 }}
                 isPublishing={state.publishStatus === "publishing"}
                 sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}

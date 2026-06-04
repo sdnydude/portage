@@ -72,6 +72,7 @@ export interface Item {
   estimatedValueMax?: number;
   estimatedValueRecommended?: number;
   aiConfidenceScore: number;
+  quantity: number;
   marketplaceData?: MarketplaceData;
   createdAt: Date;
   updatedAt: Date;
@@ -87,6 +88,8 @@ export interface Listing {
   status: 'draft' | 'active' | 'sold' | 'archived';
   price: number;
   currency: string;
+  ebaySku?: string;
+  ebayOfferId?: string;
   createdAt: Date;
   publishedAt?: Date;
   soldAt?: Date;
@@ -336,6 +339,7 @@ export interface ListingFlowState {
   brand: string;
   model: string;
   features: string[];
+  quantity: number;
 
   price: number | null;
   pricingStrategy: PricingStrategy;
@@ -390,6 +394,7 @@ export interface SellerProfile {
   ebayPaymentPolicyId: string | null;
   ebayReturnPolicyId: string | null;
   ebayMerchantLocationKey: string | null;
+  ebayPublishMode: 'draft' | 'live';
   reverbOffersEnabled: boolean;
   reverbDefaultShipping: ReverbShippingDefaults | null;
   shipFromAddress: ShipFromAddress | null;

@@ -6,7 +6,7 @@ import { db } from '../db/index.js';
 import { items, sellerProfiles, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
-import { EbayAdapter } from '../marketplace/ebay-adapter.js';
+import { EbayAdapter, resolveEbayCategoryCondition } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
 import { computeEffectiveTier } from '../lib/billing-utils.js';
@@ -188,7 +188,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       logger.warn({ searchQuery, error: (err as Error).message }, 'Category suggestion failed — searching without category');
     }
 
-    const [ebayCompsResult, aspectsResult, reverbCompsResult] = await Promise.allSettled([
+    const [ebayCompsResult, aspectsResult, reverbCompsResult, validConditionsResult] = await Promise.allSettled([
       EbayAdapter.searchComps(searchQuery, categorySuggestion?.categoryId),
       categorySuggestion
         ? EbayAdapter.getRequiredAspects(categorySuggestion.categoryId)
@@ -196,6 +196,9 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       targetMarketplaces.includes('reverb')
         ? ReverbAdapter.searchComps(searchQuery)
         : Promise.resolve({ listings: [], stats: { median: null, avg: null, sampleSize: 0 } }),
+      categorySuggestion
+        ? EbayAdapter.getValidConditions(categorySuggestion.categoryId)
+        : Promise.resolve([] as string[]),
     ]);
 
     if (ebayCompsResult.status === 'rejected') {
@@ -310,8 +313,20 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       warnings.push('Dimensions are AI-estimated — verify before shipping');
     }
 
+    // T6: per-category condition auto-correct. eBay validates condition against
+    // the category's allowed set at publish; the static CONDITION_MAP default
+    // isn't valid in every category (esp. media/apparel). When the category's
+    // supported conditions are known, snap to the closest supported grade and
+    // surface any deviation as a warning.
+    const validConditionIds = validConditionsResult.status === 'fulfilled' ? validConditionsResult.value : [];
+    const conditionFix = aiFields.ebay
+      ? resolveEbayCategoryCondition(aiFields.condition, validConditionIds)
+      : {};
+    if (conditionFix.warning) warnings.push(conditionFix.warning);
+
     const ebayFields = aiFields.ebay ? {
       ...aiFields.ebay,
+      ...(conditionFix.condition ? { condition: conditionFix.condition } : {}),
       fulfillmentPolicyId: profile?.ebayFulfillmentPolicyId ?? '',
       paymentPolicyId: profile?.ebayPaymentPolicyId ?? '',
       returnPolicyId: profile?.ebayReturnPolicyId ?? '',

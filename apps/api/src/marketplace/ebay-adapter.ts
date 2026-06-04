@@ -1,5 +1,6 @@
 import { createLogger } from '../lib/logger.js';
 import { env } from '../lib/env.js';
+import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
 import type {
   MarketplaceAdapter,
@@ -36,13 +37,120 @@ function normalizeEbayCondition(raw: string | undefined): string {
   return BROWSE_CONDITION_NORMALIZE[raw] ?? raw.toUpperCase().replace(/\s+/g, '_');
 }
 
+// Portage condition → eBay Inventory API ConditionEnum (used-goods defaults).
+// Media categories (books/music/movies/games) use a different condition set;
+// T6's per-category validation corrects those before publish.
 const CONDITION_MAP: Record<string, string> = {
   new: 'NEW',
-  like_new: 'LIKE_NEW',
-  good: 'GOOD',
-  fair: 'GOOD',
-  poor: 'ACCEPTABLE',
+  like_new: 'USED_EXCELLENT',
+  good: 'USED_GOOD',
+  fair: 'USED_ACCEPTABLE',
+  poor: 'USED_ACCEPTABLE',
 };
+
+export function resolveEbayCondition(
+  condition: string,
+  specific?: Record<string, unknown>,
+): string {
+  // An explicit, already-valid eBay enum (e.g. from per-category validation) wins.
+  const override = specific?.condition;
+  if (typeof override === 'string' && override.length > 0) return override;
+  return CONDITION_MAP[condition] ?? 'USED_GOOD';
+}
+
+// eBay represents item condition two ways: the Inventory API createListing call
+// sends ConditionEnum strings (NEW, USED_GOOD…), while the Metadata
+// get_item_condition_policies call returns numeric conditionId strings
+// (1000, 5000…). Per-category validation must bridge the two vocabularies.
+export const EBAY_CONDITION_ID_TO_ENUM: Record<string, string> = {
+  '1000': 'NEW',
+  '1500': 'NEW_OTHER',
+  '1750': 'NEW_WITH_DEFECTS',
+  '2000': 'CERTIFIED_REFURBISHED',
+  '2500': 'SELLER_REFURBISHED',
+  '2750': 'LIKE_NEW',
+  '3000': 'USED_EXCELLENT',
+  '4000': 'USED_VERY_GOOD',
+  '5000': 'USED_GOOD',
+  '6000': 'USED_ACCEPTABLE',
+  '7000': 'FOR_PARTS_OR_NOT_WORKING',
+};
+
+// For each Portage condition, the conditionIds to try in preference order; the
+// first one the target category actually supports wins. 3000 (USED_EXCELLENT)
+// doubles as the generic "Used" grade most categories accept, so every used
+// grade resolves in general categories while media/apparel get their granular
+// grade. Conservative bias: never auto-upgrade a used item past generic Used.
+const CONDITION_PREFERENCE_CHAINS: Record<string, string[]> = {
+  new: ['1000', '1500'],
+  like_new: ['2750', '3000', '4000'],
+  good: ['5000', '3000', '4000', '6000'],
+  fair: ['6000', '3000', '5000'],
+  poor: ['6000', '3000', '5000'],
+};
+
+// Snap a Portage condition to the closest eBay grade a category supports.
+// Returns null when no preferred grade is offered (including an empty list); the
+// caller decides whether that means "ignore" (Metadata API gave nothing) or
+// "warn" (the category genuinely lacks a matching grade).
+export function selectValidEbayCondition(
+  portageCondition: string,
+  validConditionIds: string[],
+): { condition: string; conditionId: string } | null {
+  const chain = CONDITION_PREFERENCE_CHAINS[portageCondition];
+  if (!chain) return null;
+  const supported = new Set(validConditionIds);
+  for (const conditionId of chain) {
+    if (supported.has(conditionId)) {
+      const condition = EBAY_CONDITION_ID_TO_ENUM[conditionId];
+      if (condition) return { condition, conditionId };
+    }
+  }
+  return null;
+}
+
+export function resolveEbayCategoryCondition(
+  portageCondition: string,
+  validConditionIds: string[],
+): { condition?: string; warning?: string } {
+  if (validConditionIds.length === 0) return {};
+  const selected = selectValidEbayCondition(portageCondition, validConditionIds);
+  if (!selected) {
+    return {
+      warning: `This eBay category doesn't offer a condition for a "${portageCondition}" item — review the condition before publishing.`,
+    };
+  }
+  if (selected.condition !== resolveEbayCondition(portageCondition)) {
+    return {
+      condition: selected.condition,
+      warning: `eBay condition set to "${selected.condition}" — the closest grade this category accepts for a "${portageCondition}" item.`,
+    };
+  }
+  return { condition: selected.condition };
+}
+
+export interface EbayListingFields {
+  categoryId: string;
+  merchantLocationKey: string;
+  fulfillmentPolicyId: string;
+  paymentPolicyId: string;
+  returnPolicyId: string;
+}
+
+export function validateEbayListingFields(specific: Record<string, unknown>): EbayListingFields {
+  const categoryId = specific.categoryId as string | undefined;
+  if (!categoryId || categoryId === '99') {
+    throw new AppError(400, 'EBAY_CATEGORY_REQUIRED', 'A valid eBay leaf category is required to list this item.');
+  }
+  const merchantLocationKey = specific.merchantLocationKey as string | undefined;
+  const fulfillmentPolicyId = specific.fulfillmentPolicyId as string | undefined;
+  const paymentPolicyId = specific.paymentPolicyId as string | undefined;
+  const returnPolicyId = specific.returnPolicyId as string | undefined;
+  if (!merchantLocationKey || !fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
+    throw new AppError(400, 'EBAY_SETUP_REQUIRED', 'eBay selling is not set up. Run "Set up eBay Selling" in Settings first.');
+  }
+  return { categoryId, merchantLocationKey, fulfillmentPolicyId, paymentPolicyId, returnPolicyId };
+}
 
 export class EbayAdapter implements MarketplaceAdapter {
   readonly marketplace = 'ebay' as const;
@@ -71,7 +179,15 @@ export class EbayAdapter implements MarketplaceAdapter {
     if (!response.ok) {
       const errorBody = await response.text();
       logger.error({ status: response.status, path, body: errorBody }, 'eBay API error');
-      throw new Error(`eBay API error: ${response.status} on ${path}`);
+      let longMessage: string | undefined;
+      try {
+        const parsed = JSON.parse(errorBody) as { errors?: Array<{ longMessage?: string; message?: string }> };
+        longMessage = parsed.errors?.[0]?.longMessage ?? parsed.errors?.[0]?.message;
+      } catch {
+        // Non-JSON error body (e.g. an HTML 5xx page) — fall back to the generic message.
+      }
+      const sanitized = longMessage?.replace(/<[^>]*>/g, '') ?? `eBay API error: ${response.status} on ${path}`;
+      throw new AppError(response.status, 'EBAY_API_ERROR', sanitized);
     }
 
     if (response.status === 204) return {} as T;
@@ -80,9 +196,10 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
-    const sku = `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const ebayCondition = CONDITION_MAP[input.condition] ?? 'GOOD';
+    const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const specific = input.marketplaceSpecific ?? {};
+    const ebayCondition = resolveEbayCondition(input.condition, specific);
+    const fields = validateEbayListingFields(specific);
 
     const product: Record<string, unknown> = {
       title: input.title,
@@ -97,7 +214,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     if (specific.aspects) product.aspects = specific.aspects;
 
     const inventoryItem: Record<string, unknown> = {
-      availability: { shipToLocationAvailability: { quantity: 1 } },
+      availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
       condition: ebayCondition,
       product,
     };
@@ -127,27 +244,41 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     logger.info({ userId: this.userId, sku }, 'eBay inventory item created');
 
-    const categoryId = specific.categoryId as string | undefined;
+    // Re-publish reuses the existing offer (no duplicate); a first-time listing POSTs a new one.
+    const offerData: { offerId: string } = input.ebayOfferId
+      ? { offerId: input.ebayOfferId }
+      : await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
+          method: 'POST',
+          body: JSON.stringify({
+            sku,
+            marketplaceId: 'EBAY_US',
+            format: 'FIXED_PRICE',
+            listingDescription: input.description,
+            pricingSummary: {
+              price: { value: String(input.price), currency: input.currency },
+            },
+            categoryId: fields.categoryId,
+            merchantLocationKey: fields.merchantLocationKey,
+            listingPolicies: {
+              fulfillmentPolicyId: fields.fulfillmentPolicyId,
+              paymentPolicyId: fields.paymentPolicyId,
+              returnPolicyId: fields.returnPolicyId,
+            },
+          }),
+        });
 
-    const offerData = await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
-      method: 'POST',
-      body: JSON.stringify({
-        sku,
-        marketplaceId: 'EBAY_US',
-        format: 'FIXED_PRICE',
-        listingDescription: input.description,
-        pricingSummary: {
-          price: { value: String(input.price), currency: input.currency },
-        },
-        categoryId: categoryId ?? '99',
-        merchantLocationKey: (specific.merchantLocationKey as string) ?? 'default',
-        listingPolicies: {
-          fulfillmentPolicyId: specific.fulfillmentPolicyId,
-          paymentPolicyId: specific.paymentPolicyId,
-          returnPolicyId: specific.returnPolicyId,
-        },
-      }),
-    });
+    // Draft mode: the unpublished offer exists on eBay (offerId + SKU) but we
+    // deliberately skip /publish. This is an intentional draft, not a publish
+    // failure, so it carries no warning.
+    if (input.publishMode === 'draft') {
+      logger.info({ userId: this.userId, sku, offerId: offerData.offerId }, 'eBay offer saved as draft (publish skipped)');
+      return {
+        marketplaceListingId: offerData.offerId,
+        ebayOfferId: offerData.offerId,
+        ebaySku: sku,
+        status: 'draft',
+      };
+    }
 
     let listingId: string;
     let status: 'active' | 'draft' | 'pending' = 'draft';
@@ -176,12 +307,54 @@ export class EbayAdapter implements MarketplaceAdapter {
       marketplaceUrl,
       status,
       warning,
+      ebayOfferId: offerData.offerId,
+      ebaySku: sku,
     };
   }
 
   async updateListing(marketplaceListingId: string, input: Partial<MarketplaceListingInput>): Promise<MarketplaceListingResult> {
-    const updates: Record<string, unknown> = {};
+    if (input.ebaySku) {
+      const ebayCondition = resolveEbayCondition(input.condition ?? 'good', input.marketplaceSpecific);
+      const specific = input.marketplaceSpecific ?? {};
 
+      const product: Record<string, unknown> = {};
+      if (input.title) product.title = input.title;
+      if (input.description) product.description = input.description;
+      if (input.photos) product.imageUrls = input.photos.map((p) => p.url);
+      if (input.brand) product.brand = input.brand;
+      if (input.model) product.mpn = input.model;
+      if (specific.upc) product.upc = [specific.upc as string];
+      if (specific.epid) product.epid = specific.epid;
+      if (specific.aspects) product.aspects = specific.aspects;
+
+      const inventoryItem: Record<string, unknown> = {
+        availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
+        condition: ebayCondition,
+        product,
+      };
+
+      if (specific.conditionDescription) {
+        inventoryItem.conditionDescription = specific.conditionDescription;
+      }
+
+      if (specific.weight || specific.dimensions) {
+        const pkg: Record<string, unknown> = {};
+        if (specific.weight) pkg.weight = specific.weight;
+        if (specific.dimensions) pkg.dimensions = specific.dimensions;
+        if (specific.packageType) pkg.packageType = specific.packageType;
+        inventoryItem.packageWeightAndSize = pkg;
+      }
+
+      await this.request(`/sell/inventory/v1/inventory_item/${input.ebaySku}`, {
+        method: 'PUT',
+        body: JSON.stringify(inventoryItem),
+      });
+
+      logger.info({ userId: this.userId, sku: input.ebaySku }, 'eBay inventory item updated');
+    }
+
+    const offerId = input.ebayOfferId ?? marketplaceListingId;
+    const updates: Record<string, unknown> = {};
     if (input.title) updates.title = input.title;
     if (input.description) updates.listingDescription = input.description;
     if (input.price) {
@@ -190,10 +363,12 @@ export class EbayAdapter implements MarketplaceAdapter {
       };
     }
 
-    await this.request(`/sell/inventory/v1/offer/${marketplaceListingId}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
+    if (Object.keys(updates).length > 0) {
+      await this.request(`/sell/inventory/v1/offer/${offerId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
+    }
 
     logger.info({ userId: this.userId, marketplaceListingId }, 'eBay listing updated');
 
@@ -202,6 +377,27 @@ export class EbayAdapter implements MarketplaceAdapter {
       marketplaceUrl: `https://www.ebay.com/itm/${marketplaceListingId}`,
       status: 'active',
     };
+  }
+
+  async bulkPublishOffers(offerIds: string[]): Promise<Array<{ offerId: string; listingId?: string; success: boolean; error?: string }>> {
+    const data = await this.request<{
+      responses: Array<{
+        statusCode: number;
+        offerId: string;
+        listingId?: string;
+        errors?: Array<{ message: string }>;
+      }>;
+    }>('/sell/inventory/v1/bulk_publish_offer', {
+      method: 'POST',
+      body: JSON.stringify({ requests: offerIds.map((offerId) => ({ offerId })) }),
+    });
+
+    return data.responses.map((r) => ({
+      offerId: r.offerId,
+      listingId: r.statusCode === 200 ? r.listingId : undefined,
+      success: r.statusCode === 200,
+      error: r.statusCode !== 200 ? r.errors?.[0]?.message : undefined,
+    }));
   }
 
   async deleteListing(marketplaceListingId: string): Promise<void> {
@@ -308,6 +504,95 @@ export class EbayAdapter implements MarketplaceAdapter {
         isLeaf: true,
       };
     });
+  }
+
+  // Account API business-policy creation for one-click eBay seller setup.
+  // Per-seller writes, so they use this.request() (the seller's OAuth token,
+  // which carries the sell.account scope) — not the static app-token reads.
+  async createFulfillmentPolicy(name: string): Promise<string> {
+    const result = await this.request<{ fulfillmentPolicyId: string }>('/sell/account/v1/fulfillment_policy', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        marketplaceId: 'EBAY_US',
+        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
+        handlingTime: { value: 1, unit: 'DAY' },
+        shippingOptions: [{
+          optionType: 'DOMESTIC',
+          costType: 'CALCULATED',
+          shippingServices: [{
+            sortOrder: 1,
+            shippingCarrierCode: 'USPS',
+            shippingServiceCode: 'USPSGroundAdvantage',
+          }],
+        }],
+      }),
+    });
+    logger.info({ userId: this.userId, fulfillmentPolicyId: result.fulfillmentPolicyId }, 'eBay fulfillment policy created');
+    return result.fulfillmentPolicyId;
+  }
+
+  async createPaymentPolicy(name: string): Promise<string> {
+    const result = await this.request<{ paymentPolicyId: string }>('/sell/account/v1/payment_policy', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        marketplaceId: 'EBAY_US',
+        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
+        immediatePay: true,
+      }),
+    });
+    logger.info({ userId: this.userId, paymentPolicyId: result.paymentPolicyId }, 'eBay payment policy created');
+    return result.paymentPolicyId;
+  }
+
+  async createReturnPolicy(name: string): Promise<string> {
+    const result = await this.request<{ returnPolicyId: string }>('/sell/account/v1/return_policy', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        marketplaceId: 'EBAY_US',
+        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
+        returnsAccepted: true,
+        returnPeriod: { value: 30, unit: 'DAY' },
+        returnShippingCostPayer: 'BUYER',
+        refundMethod: 'MONEY_BACK',
+      }),
+    });
+    logger.info({ userId: this.userId, returnPolicyId: result.returnPolicyId }, 'eBay return policy created');
+    return result.returnPolicyId;
+  }
+
+  // Inventory API location create (POST, returns 204). The merchantLocationKey
+  // in the path is the id — POST is NOT idempotent (it 400s if the key already
+  // exists), so the caller (auto-setup, T12) guards with a GET-first check.
+  // A warehouse location with a postalCode is what eBay uses as the ship-from
+  // for the calculated-shipping fulfillment policy.
+  async createInventoryLocation(
+    merchantLocationKey: string,
+    address: {
+      addressLine1?: string;
+      addressLine2?: string;
+      city?: string;
+      stateOrProvince?: string;
+      postalCode?: string;
+      country: string;
+    },
+    name?: string,
+  ): Promise<void> {
+    if (!/^[a-zA-Z0-9_-]+$/.test(merchantLocationKey)) {
+      throw new AppError(400, 'INVALID_LOCATION_KEY', `merchantLocationKey "${merchantLocationKey}" contains invalid characters — only letters, digits, hyphens and underscores are allowed.`);
+    }
+    await this.request(`/sell/inventory/v1/location/${merchantLocationKey}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        location: { address },
+        name,
+        merchantLocationStatus: 'ENABLED',
+        locationTypes: ['WAREHOUSE'],
+      }),
+    });
+    logger.info({ userId: this.userId, merchantLocationKey }, 'eBay inventory location created');
   }
 
   static async searchComps(query: string, category?: string): Promise<CompResult> {
@@ -474,5 +759,37 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
 
     return result;
+  }
+
+  // Per-category valid item conditions from the Metadata API. Mirrors
+  // getRequiredAspects: prod app token, graceful [] on any failure so a
+  // transient Metadata hiccup never blocks listing preparation.
+  static async getValidConditions(categoryId: string): Promise<string[]> {
+    const token = await getEbayProdAppToken();
+
+    const filter = encodeURIComponent(`categoryIds:{${categoryId}}`);
+    const response = await fetch(
+      `https://api.ebay.com/sell/metadata/v1/marketplace/EBAY_US/get_item_condition_policies?filter=${filter}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      logger.error({ status: response.status, categoryId }, 'eBay condition policies fetch failed');
+      return [];
+    }
+
+    const data = await response.json() as {
+      itemConditionPolicies?: Array<{
+        itemConditions?: Array<{ conditionId: string }>;
+      }>;
+    };
+
+    const conditions = data.itemConditionPolicies?.[0]?.itemConditions ?? [];
+    return conditions.map(c => c.conditionId);
   }
 }

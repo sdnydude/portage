@@ -7,9 +7,11 @@ import type { PreparedListingData } from "@portage/shared";
 interface ListingPreviewCardProps {
   data: PreparedListingData;
   photos: Array<{ url: string; key: string }>;
+  quantity: number;
   onFieldChange: (field: string, value: unknown) => void;
   onPriceChange: (price: number) => void;
-  onPublish: (marketplace: "ebay" | "reverb") => void;
+  onQuantityChange: (quantity: number) => void;
+  onPublish: (marketplace: "ebay" | "reverb", publishMode: "draft" | "live") => void;
   isPublishing: boolean;
   sellerProfileComplete: boolean;
 }
@@ -42,14 +44,17 @@ function InlineEdit({ value, field, onSave }: { value: string; field: string; on
 export function ListingPreviewCard({
   data,
   photos,
+  quantity,
   onFieldChange,
   onPriceChange,
+  onQuantityChange,
   onPublish,
   isPublishing,
   sellerProfileComplete,
 }: ListingPreviewCardProps) {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [showAspects, setShowAspects] = useState(false);
+  const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
 
   const handleFieldSave = useCallback((field: string, value: string) => {
     onFieldChange(field, value);
@@ -147,6 +152,47 @@ export function ListingPreviewCard({
         )}
 
         <div className="pt-2">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-medium" style={{ color: "rgba(0,0,0,0.6)" }}>Quantity</span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onQuantityChange(Math.max(1, quantity - 1))}
+                disabled={quantity <= 1}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-lg font-medium disabled:opacity-30"
+                style={{ background: "rgba(0,0,0,0.06)" }}
+                aria-label="Decrease quantity"
+              >
+                −
+              </button>
+              <span className="w-6 text-center text-base font-semibold tabular-nums">{quantity}</span>
+              <button
+                onClick={() => onQuantityChange(quantity + 1)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-lg font-medium"
+                style={{ background: "rgba(0,0,0,0.06)" }}
+                aria-label="Increase quantity"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mb-3 p-1 rounded-xl" style={{ background: "rgba(0,0,0,0.05)" }}>
+            {(["live", "draft"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setPublishMode(mode)}
+                className="flex-1 py-2 text-sm font-medium rounded-lg transition-colors"
+                style={
+                  publishMode === mode
+                    ? { background: "white", color: "var(--flow-accent, #2D5A27)", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }
+                    : { background: "transparent", color: "rgba(0,0,0,0.5)" }
+                }
+              >
+                {mode === "live" ? "Publish live" : "Save as draft"}
+              </button>
+            ))}
+          </div>
+
           {data.isMusicGear && (
             <div className="flex gap-2 mb-3">
               {(["ebay", "reverb"] as const).map(m => (
@@ -176,16 +222,16 @@ export function ListingPreviewCard({
 
           <div className="flex gap-3">
             <button
-              onClick={() => onPublish("ebay")}
+              onClick={() => onPublish("ebay", publishMode)}
               disabled={isPublishing || !sellerProfileComplete}
               className="flex-1 py-3.5 rounded-xl text-base font-semibold text-white disabled:opacity-40"
               style={{ background: "var(--flow-accent, #2D5A27)" }}
             >
-              {isPublishing ? "Publishing..." : "Publish to eBay"}
+              {isPublishing ? "Publishing..." : publishMode === "draft" ? "Save eBay draft" : "Publish to eBay"}
             </button>
             {data.isMusicGear && (
               <button
-                onClick={() => onPublish("reverb")}
+                onClick={() => onPublish("reverb", publishMode)}
                 disabled={isPublishing || !sellerProfileComplete}
                 className="flex-1 py-3.5 rounded-xl text-base font-semibold text-white disabled:opacity-40"
                 style={{ background: "#E8620A" }}
