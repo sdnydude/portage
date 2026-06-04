@@ -3,14 +3,17 @@ import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
 
-const { mockCreateListing } = vi.hoisted(() => ({ mockCreateListing: vi.fn() }));
+const { mockCreateListing, mockUpdateListing } = vi.hoisted(() => ({
+  mockCreateListing: vi.fn(),
+  mockUpdateListing: vi.fn(),
+}));
 
 vi.mock('../db/index.js', () => ({
   db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn() },
 }));
 
 vi.mock('../marketplace/ebay-adapter.js', () => ({
-  EbayAdapter: vi.fn(() => ({ createListing: mockCreateListing })),
+  EbayAdapter: vi.fn(() => ({ createListing: mockCreateListing, updateListing: mockUpdateListing })),
 }));
 
 const ITEM_ID = '00000000-0000-0000-0000-000000000001';
@@ -122,7 +125,51 @@ describe('POST /listings/:id/publish', () => {
       ebayOfferId: 'offer-1',
     }));
   });
+});
 
+describe('PATCH /listings/:id', () => {
+  it('syncs full item fields to eBay including ebaySku and ebayOfferId', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '110012345678', status: 'active' });
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateListing).toHaveBeenCalledWith('110012345678', expect.objectContaining({
+      title: 'Sony WH-1000XM4',
+      description: 'Noise-cancelling headphones',
+      price: 179,
+      currency: 'USD',
+      condition: 'good',
+      quantity: 3,
+      brand: 'Sony',
+      model: 'WH-1000XM4',
+      photos: [{ url: 'https://portage-images.digitalharmonyai.com/p.jpg' }],
+      ebaySku: 'portage-sku-1',
+      ebayOfferId: 'offer-1',
+    }));
+  });
+});
+
+describe('POST /listings/:id/publish — persistence', () => {
   it('persists the result ebaySku and ebayOfferId after publishing a DB-only draft', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',

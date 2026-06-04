@@ -231,6 +231,16 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             title: item.title,
             description: item.description,
             price: updated.price,
+            currency: updated.currency,
+            condition: item.condition,
+            quantity: item.quantity,
+            brand: item.brand,
+            model: item.model,
+            photos: (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
+            features: item.features as string[],
+            ebaySku: updated.ebaySku ?? undefined,
+            ebayOfferId: updated.ebayOfferId ?? undefined,
+            marketplaceSpecific: updated.marketplaceSpecificFields as Record<string, unknown> | undefined,
           });
         } catch (err) {
           if (err instanceof AppError) throw err;

@@ -415,6 +415,41 @@ describe('EbayAdapter — Account API business-policy creation (auto-setup)', ()
   });
 });
 
+describe('EbayAdapter.updateListing — syncs inventory_item + offer', () => {
+  it('PUTs the inventory_item when ebaySku is provided, and uses ebayOfferId for the offer', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.updateListing('listing-id-999', {
+      title: 'Updated Headphones',
+      description: 'Updated description',
+      price: 149,
+      currency: 'USD',
+      condition: 'good',
+      quantity: 5,
+      photos: [{ url: 'https://portage-images.digitalharmonyai.com/updated.jpg' }],
+      brand: 'Sony',
+      model: 'XM5',
+      ebaySku: 'portage-sku-abc',
+      ebayOfferId: 'offer-42',
+    });
+
+    const inventoryPut = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/portage-sku-abc'));
+    expect(inventoryPut).toBeTruthy();
+    const invBody = JSON.parse((inventoryPut![1] as RequestInit).body as string);
+    expect(invBody.condition).toBe('USED_GOOD');
+    expect(invBody.availability.shipToLocationAvailability.quantity).toBe(5);
+    expect(invBody.product.title).toBe('Updated Headphones');
+    expect(invBody.product.imageUrls).toEqual(['https://portage-images.digitalharmonyai.com/updated.jpg']);
+    expect(invBody.product.brand).toBe('Sony');
+    expect(invBody.product.mpn).toBe('XM5');
+
+    const offerPut = fetchMock.mock.calls.find(([u]) => String(u).includes('/offer/offer-42'));
+    expect(offerPut).toBeTruthy();
+    const offerBody = JSON.parse((offerPut![1] as RequestInit).body as string);
+    expect(offerBody.listingDescription).toBe('Updated description');
+    expect(offerBody.pricingSummary.price.value).toBe('149');
+  });
+});
+
 describe('EbayAdapter.createInventoryLocation — Inventory API location (auto-setup)', () => {
   it('POSTs an enabled WAREHOUSE location with the seller address to the merchant-location-key path', async () => {
     // createInventoryLocation returns 204 No Content — the merchantLocationKey

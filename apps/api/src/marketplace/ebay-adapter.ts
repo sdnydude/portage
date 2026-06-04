@@ -312,8 +312,48 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   async updateListing(marketplaceListingId: string, input: Partial<MarketplaceListingInput>): Promise<MarketplaceListingResult> {
-    const updates: Record<string, unknown> = {};
+    if (input.ebaySku) {
+      const ebayCondition = resolveEbayCondition(input.condition ?? 'good', input.marketplaceSpecific);
+      const specific = input.marketplaceSpecific ?? {};
 
+      const product: Record<string, unknown> = {};
+      if (input.title) product.title = input.title;
+      if (input.description) product.description = input.description;
+      if (input.photos) product.imageUrls = input.photos.map((p) => p.url);
+      if (input.brand) product.brand = input.brand;
+      if (input.model) product.mpn = input.model;
+      if (specific.upc) product.upc = [specific.upc as string];
+      if (specific.epid) product.epid = specific.epid;
+      if (specific.aspects) product.aspects = specific.aspects;
+
+      const inventoryItem: Record<string, unknown> = {
+        availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
+        condition: ebayCondition,
+        product,
+      };
+
+      if (specific.conditionDescription) {
+        inventoryItem.conditionDescription = specific.conditionDescription;
+      }
+
+      if (specific.weight || specific.dimensions) {
+        const pkg: Record<string, unknown> = {};
+        if (specific.weight) pkg.weight = specific.weight;
+        if (specific.dimensions) pkg.dimensions = specific.dimensions;
+        if (specific.packageType) pkg.packageType = specific.packageType;
+        inventoryItem.packageWeightAndSize = pkg;
+      }
+
+      await this.request(`/sell/inventory/v1/inventory_item/${input.ebaySku}`, {
+        method: 'PUT',
+        body: JSON.stringify(inventoryItem),
+      });
+
+      logger.info({ userId: this.userId, sku: input.ebaySku }, 'eBay inventory item updated');
+    }
+
+    const offerId = input.ebayOfferId ?? marketplaceListingId;
+    const updates: Record<string, unknown> = {};
     if (input.title) updates.title = input.title;
     if (input.description) updates.listingDescription = input.description;
     if (input.price) {
@@ -322,7 +362,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       };
     }
 
-    await this.request(`/sell/inventory/v1/offer/${marketplaceListingId}`, {
+    await this.request(`/sell/inventory/v1/offer/${offerId}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     });
