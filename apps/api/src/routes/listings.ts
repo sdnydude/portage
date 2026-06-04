@@ -32,6 +32,7 @@ const createListingSchema = z.object({
   price: z.number().positive(),
   currency: z.string().length(3).default('USD'),
   publishImmediately: z.boolean().default(false),
+  publishMode: z.enum(['draft', 'live']).optional(),
   marketplaceSpecificFields: z.record(z.unknown()).optional(),
 });
 
@@ -113,10 +114,16 @@ listingsRouter.post('/', async (req, res, next) => {
     if (!item) throw new AppError(404, 'NOT_FOUND', 'Item not found');
 
     let marketplaceListingId: string | null = null;
+    let ebaySku: string | null = null;
+    let ebayOfferId: string | null = null;
     let status: 'draft' | 'active' = 'draft';
     let publishedAt: Date | null = null;
 
-    if (body.publishImmediately) {
+    // publishMode (when present) takes precedence over the legacy
+    // publishImmediately flag. draft = save to DB only (no marketplace call).
+    const shouldPublish = body.publishMode === 'live' || (body.publishMode === undefined && body.publishImmediately);
+
+    if (shouldPublish) {
       const adapter = getAdapter(userId, body.marketplace);
       const photos = (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [];
 
@@ -128,6 +135,7 @@ listingsRouter.post('/', async (req, res, next) => {
         category: item.category,
         condition: item.condition,
         photos,
+        quantity: item.quantity,
         brand: item.brand,
         model: item.model,
         features: item.features as string[],
@@ -135,6 +143,8 @@ listingsRouter.post('/', async (req, res, next) => {
       });
 
       marketplaceListingId = result.marketplaceListingId;
+      ebaySku = result.ebaySku ?? null;
+      ebayOfferId = result.ebayOfferId ?? null;
       status = result.status === 'active' ? 'active' : 'draft';
       if (status === 'active') publishedAt = new Date();
     }
@@ -144,6 +154,8 @@ listingsRouter.post('/', async (req, res, next) => {
       userId,
       marketplace: body.marketplace,
       marketplaceListingId,
+      ebaySku,
+      ebayOfferId,
       marketplaceSpecificFields: body.marketplaceSpecificFields ?? null,
       status,
       price: body.price,
@@ -266,15 +278,20 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       category: item.category,
       condition: item.condition,
       photos,
+      quantity: item.quantity,
       brand: item.brand,
       model: item.model,
       features: item.features as string[],
       marketplaceSpecific: listing.marketplaceSpecificFields as Record<string, unknown> | undefined,
+      ebaySku: listing.ebaySku ?? undefined,
+      ebayOfferId: listing.ebayOfferId ?? undefined,
     });
 
     const [updated] = await db.update(listings)
       .set({
         marketplaceListingId: result.marketplaceListingId,
+        ebaySku: result.ebaySku ?? null,
+        ebayOfferId: result.ebayOfferId ?? null,
         status: result.status === 'active' ? 'active' : 'draft',
         publishedAt: result.status === 'active' ? new Date() : null,
         updatedAt: new Date(),
