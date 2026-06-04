@@ -201,6 +201,21 @@ export default function SellerProfilePage() {
             className="w-full rounded-lg border px-3 py-2 text-sm"
           />
         </label>
+
+        <label className="block text-sm">
+          <span className="text-sm font-medium mb-1 block">Default Publish Mode</span>
+          <select
+            value={profile.ebayPublishMode}
+            onChange={e => updateField("ebayPublishMode", e.target.value)}
+            className="w-full rounded-lg border px-3 py-2 text-sm"
+          >
+            <option value="live">Publish live immediately</option>
+            <option value="draft">Save as draft (review on eBay first)</option>
+          </select>
+          <span className="text-xs mt-1 block" style={{ color: "rgba(0,0,0,0.45)" }}>
+            Default for new eBay listings. You can still override it per listing at publish time.
+          </span>
+        </label>
       </section>
 
       <section className="rounded-xl p-4 space-y-3" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
