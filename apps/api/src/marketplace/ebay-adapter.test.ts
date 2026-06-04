@@ -209,6 +209,42 @@ describe('EbayAdapter.createListing — SKU/offer reuse on re-publish', () => {
   });
 });
 
+describe('EbayAdapter — surfaces eBay error longMessage', () => {
+  it('throws the eBay longMessage with the eBay status, not a generic 500', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      errors: [{
+        errorId: 25002,
+        domain: 'API_INVENTORY',
+        category: 'REQUEST',
+        message: 'A user error has occurred.',
+        longMessage: 'The condition is not valid for the specified category.',
+      }],
+    }), { status: 400 }));
+
+    const adapter = new EbayAdapter('user-1');
+    const err: any = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any).catch((e) => e);
+
+    expect(err.statusCode).toBe(400);
+    expect(err.message).toMatch(/condition is not valid for the specified category/i);
+  });
+
+  it('falls back to a generic message when the error body is not JSON', async () => {
+    fetchMock.mockResolvedValue(new Response('Service Unavailable', { status: 503 }));
+
+    const adapter = new EbayAdapter('user-1');
+    const err: any = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any).catch((e) => e);
+
+    expect(err.statusCode).toBe(503);
+    expect(err.message).toMatch(/eBay API error/i);
+  });
+});
+
 describe('selectValidEbayCondition — per-category condition auto-correct', () => {
   it('keeps the static default grade when the category supports it', () => {
     // good → USED_GOOD (5000); a general used category offers 5000

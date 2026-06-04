@@ -179,7 +179,14 @@ export class EbayAdapter implements MarketplaceAdapter {
     if (!response.ok) {
       const errorBody = await response.text();
       logger.error({ status: response.status, path, body: errorBody }, 'eBay API error');
-      throw new Error(`eBay API error: ${response.status} on ${path}`);
+      let longMessage: string | undefined;
+      try {
+        const parsed = JSON.parse(errorBody) as { errors?: Array<{ longMessage?: string; message?: string }> };
+        longMessage = parsed.errors?.[0]?.longMessage ?? parsed.errors?.[0]?.message;
+      } catch {
+        // Non-JSON error body (e.g. an HTML 5xx page) — fall back to the generic message.
+      }
+      throw new AppError(response.status, 'EBAY_API_ERROR', longMessage ?? `eBay API error: ${response.status} on ${path}`);
     }
 
     if (response.status === 204) return {} as T;
