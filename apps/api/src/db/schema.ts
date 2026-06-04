@@ -80,6 +80,7 @@ export const listings = pgTable('listings', {
   marketplace: marketplaceEnum('marketplace').notNull(),
   marketplaceListingId: varchar('marketplace_listing_id', { length: 255 }),
   ebaySku: varchar('ebay_sku', { length: 255 }),
+  ebayOfferId: varchar('ebay_offer_id', { length: 255 }),
   marketplaceSpecificFields: jsonb('marketplace_specific_fields'),
   status: listingStatusEnum('status').notNull().default('draft'),
   price: doublePrecision('price').notNull(),

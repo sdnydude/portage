@@ -18,4 +18,11 @@ describe('schema — eBay listing hardening columns', () => {
     expect(sellerProfiles.ebayPublishMode).toBeDefined();
     expect(sellerProfiles.ebayPublishMode.notNull).toBe(true);
   });
+
+  it('adds the listings.ebayOfferId column for offer reuse on re-publish', () => {
+    // Nullable — a live publish overwrites marketplaceListingId with the eBay
+    // listingId, so the offerId is stored separately to re-sync/re-publish.
+    expect(listings.ebayOfferId).toBeDefined();
+    expect(listings.ebayOfferId.notNull).toBe(false);
+  });
 });
