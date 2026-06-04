@@ -9,6 +9,7 @@ import type {
   CompResult,
   RecognitionResult,
   PricingStrategy,
+  EbayPreparedFields,
 } from "@portage/shared";
 
 const INITIAL_STATE: ListingFlowState = {
@@ -29,6 +30,7 @@ const INITIAL_STATE: ListingFlowState = {
   brand: '',
   model: '',
   features: [],
+  quantity: 1,
   price: null,
   pricingStrategy: 'market',
   acceptOffers: true,
@@ -155,6 +157,7 @@ export function useListingFlow() {
       const item = await api<{
         id: string; title: string; description: string; category: string;
         condition: string; brand: string; model: string; features: string[];
+        quantity: number;
         photos: ListingFlowState['photos'];
         estimatedValueRecommended: number | null;
       }>(`/items/${itemId}`, { token });
@@ -169,6 +172,7 @@ export function useListingFlow() {
         brand: item.brand ?? '',
         model: item.model ?? '',
         features: (item.features ?? []) as string[],
+        quantity: item.quantity ?? 1,
         photos: item.photos ?? [],
         price: item.estimatedValueRecommended ?? null,
         recognition: {
@@ -276,7 +280,9 @@ export function useListingFlow() {
     });
   }, [triggerAutoSave]);
 
-  const publish = useCallback(async (): Promise<{ success: boolean; listingId?: string; error?: string }> => {
+  const publish = useCallback(async (
+    options?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: 'draft' | 'live' },
+  ): Promise<{ success: boolean; listingId?: string; error?: string }> => {
     if (!token) return { success: false, error: 'Not authenticated' };
 
     const s = stateRef.current;
@@ -300,6 +306,7 @@ export function useListingFlow() {
             brand: s.brand,
             model: s.model,
             features: s.features,
+            quantity: s.quantity,
             photos: s.photos,
             estimatedValueRecommended: s.price,
             aiConfidenceScore: s.recognition.confidence,
@@ -310,19 +317,30 @@ export function useListingFlow() {
         setState(prev => ({ ...prev, inventoryItemId: itemId }));
       }
 
+      const ebayPreparedFields = options?.ebayPreparedFields;
+      const publishMode = options?.publishMode;
+
+      const marketplaceSpecificFields =
+        s.marketplace === 'ebay' && ebayPreparedFields
+          ? { ...ebayPreparedFields }
+          : s.marketplace === 'reverb'
+            ? {
+                make: s.brand,
+                model: s.model,
+                acceptOffers: s.acceptOffers,
+                ...(s.minimumOfferPrice && { minimumOfferPrice: s.minimumOfferPrice }),
+              }
+            : undefined;
+
       const listing = await api<{ id: string; status: string }>('/listings', {
         method: 'POST',
         body: {
           itemId,
           marketplace: s.marketplace,
           price: s.price,
-          publishImmediately: true,
-          marketplaceSpecificFields: s.marketplace === 'reverb' ? {
-            make: s.brand,
-            model: s.model,
-            acceptOffers: s.acceptOffers,
-            ...(s.minimumOfferPrice && { minimumOfferPrice: s.minimumOfferPrice }),
-          } : undefined,
+          // publishMode takes precedence; publishImmediately retained for backward compat
+          ...(publishMode ? { publishMode } : { publishImmediately: true }),
+          marketplaceSpecificFields,
         },
         token,
       });

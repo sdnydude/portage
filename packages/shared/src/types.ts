@@ -337,6 +337,7 @@ export interface ListingFlowState {
   brand: string;
   model: string;
   features: string[];
+  quantity: number;
 
   price: number | null;
   pricingStrategy: PricingStrategy;
