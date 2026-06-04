@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { sellerProfiles, marketplaceAccounts } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
+import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken } from '../marketplace/token-manager.js';
+import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { env } from '../lib/env.js';
 
 const logger = createLogger('seller-profile');
@@ -147,6 +149,87 @@ sellerProfileRouter.get('/ebay-policies', async (req, res, next) => {
     const returnPolicy = await extractPolicies(returnRes, 'returnPolicies');
 
     res.json({ fulfillment, payment, returnPolicy });
+  } catch (err) {
+    next(err);
+  }
+});
+
+sellerProfileRouter.post('/ebay/auto-setup', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    const [account] = await db.select({ id: marketplaceAccounts.id })
+      .from(marketplaceAccounts)
+      .where(and(eq(marketplaceAccounts.userId, userId), eq(marketplaceAccounts.marketplace, 'ebay')))
+      .limit(1);
+    if (!account) {
+      throw new AppError(400, 'EBAY_NOT_CONNECTED', 'Connect your eBay account before running setup.');
+    }
+
+    const token = await getEbayAccessToken(userId);
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const base = env().EBAY_SANDBOX ? 'https://api.sandbox.ebay.com' : 'https://api.ebay.com';
+
+    // GET-first idempotency: reuse a "Portage Standard" policy by name, else create it.
+    const [fRes, pRes, rRes] = await Promise.allSettled([
+      fetch(`${base}/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_US`, { headers }),
+      fetch(`${base}/sell/account/v1/payment_policy?marketplace_id=EBAY_US`, { headers }),
+      fetch(`${base}/sell/account/v1/return_policy?marketplace_id=EBAY_US`, { headers }),
+    ]);
+    const findPolicyId = async (r: PromiseSettledResult<Response>, listKey: string, name: string): Promise<string | undefined> => {
+      if (r.status === 'rejected' || !r.value.ok) return undefined;
+      const data = await r.value.json() as Record<string, Array<Record<string, string>>>;
+      const match = (data[listKey] ?? []).find((p) => p.name === name);
+      return match ? (match.fulfillmentPolicyId ?? match.paymentPolicyId ?? match.returnPolicyId) : undefined;
+    };
+
+    const adapter = new EbayAdapter(userId);
+    const fulfillmentPolicyId = await findPolicyId(fRes, 'fulfillmentPolicies', 'Portage Standard Fulfillment')
+      ?? await adapter.createFulfillmentPolicy('Portage Standard Fulfillment');
+    const paymentPolicyId = await findPolicyId(pRes, 'paymentPolicies', 'Portage Standard Payment')
+      ?? await adapter.createPaymentPolicy('Portage Standard Payment');
+    const returnPolicyId = await findPolicyId(rRes, 'returnPolicies', 'Portage Standard Return')
+      ?? await adapter.createReturnPolicy('Portage Standard Return');
+
+    const [profile] = await db.select()
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.userId, userId))
+      .limit(1);
+    // Inventory location needs a ship-from address; without one we leave it
+    // unconfigured (policies still complete) rather than block setup.
+    const shipFrom = profile.shipFromAddress as
+      { name?: string; street1?: string; street2?: string; city?: string; state?: string; zip?: string; country?: string } | null;
+    let merchantLocationKey: string | null = profile.ebayMerchantLocationKey ?? null;
+    let locationConfigured = Boolean(merchantLocationKey);
+
+    if (shipFrom) {
+      const key = profile.ebayMerchantLocationKey ?? 'portage-primary';
+      const locRes = await fetch(`${base}/sell/inventory/v1/location/${key}`, { headers });
+      if (!locRes.ok) {
+        await adapter.createInventoryLocation(key, {
+          ...(shipFrom.street1 ? { addressLine1: shipFrom.street1 } : {}),
+          ...(shipFrom.street2 ? { addressLine2: shipFrom.street2 } : {}),
+          ...(shipFrom.city ? { city: shipFrom.city } : {}),
+          ...(shipFrom.state ? { stateOrProvince: shipFrom.state } : {}),
+          ...(shipFrom.zip ? { postalCode: shipFrom.zip } : {}),
+          country: shipFrom.country ?? 'US',
+        }, shipFrom.name);
+      }
+      merchantLocationKey = key;
+      locationConfigured = true;
+    }
+
+    await db.update(sellerProfiles)
+      .set({
+        ebayFulfillmentPolicyId: fulfillmentPolicyId,
+        ebayPaymentPolicyId: paymentPolicyId,
+        ebayReturnPolicyId: returnPolicyId,
+        ebayMerchantLocationKey: merchantLocationKey,
+        updatedAt: new Date(),
+      })
+      .where(eq(sellerProfiles.userId, userId));
+
+    res.json({ setup: { fulfillmentPolicyId, paymentPolicyId, returnPolicyId, merchantLocationKey, locationConfigured } });
   } catch (err) {
     next(err);
   }
