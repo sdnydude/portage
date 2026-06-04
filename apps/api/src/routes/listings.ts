@@ -470,6 +470,7 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
     );
 
     let published = 0;
+    const publishedIds: string[] = [];
     const publishFailed: string[] = [];
 
     if (ebayPublishable.length > 0) {
@@ -489,6 +490,7 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
               .set({ marketplaceListingId: r.listingId ?? null, status: 'active', publishedAt: new Date(), updatedAt: new Date() })
               .where(eq(listings.id, listingId));
             published++;
+            publishedIds.push(listingId);
           } else {
             publishFailed.push(r.offerId);
             logger.warn({ listingId, offerId: r.offerId, error: r.error }, 'Bulk publish failed for offer');
@@ -510,7 +512,7 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
     res.json({
       activated: true,
       count: activated.length + published,
-      ids: activated.map((r) => r.id),
+      ids: [...publishedIds, ...activated.map((r) => r.id)],
       published,
       publishFailed: publishFailed.length,
       skipped: skippedMarketplace.length,

@@ -88,6 +88,8 @@ export interface Listing {
   status: 'draft' | 'active' | 'sold' | 'archived';
   price: number;
   currency: string;
+  ebaySku?: string;
+  ebayOfferId?: string;
   createdAt: Date;
   publishedAt?: Date;
   soldAt?: Date;

@@ -234,5 +234,6 @@ describe('POST /bulk/activate', () => {
     expect(res.body).toMatchObject({ published: 2 });
     expect(res.status).toBe(200);
     expect(mockBulkPublishOffers).toHaveBeenCalledWith(['offer-1', 'offer-2']);
+    expect(res.body.ids).toEqual(expect.arrayContaining([LISTING_1, LISTING_2]));
   });
 });
