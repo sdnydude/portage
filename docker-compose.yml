@@ -133,6 +133,13 @@ services:
       CHATTERBOX_DEVICE: cpu
       CHATTERBOX_MODEL: turbo
       HUGGING_FACE_HUB_TOKEN: ${HUGGINGFACE_API_KEY}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/docs > /dev/null || curl -sf http://localhost:8000/health > /dev/null"]
       interval: 15s
