@@ -686,11 +686,13 @@ function ChatMode({
           <ListingPreviewCard
             data={prepareListing.data}
             photos={state.photos}
+            quantity={state.quantity}
             onFieldChange={(field, value) => setField(field as keyof typeof state, value as never)}
             onPriceChange={(price) => setField("price", price)}
-            onPublish={(marketplace) => {
+            onQuantityChange={(q) => setField("quantity", q)}
+            onPublish={(marketplace, publishMode) => {
               setField("marketplace", marketplace);
-              flow.publish();
+              flow.publish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
             }}
             isPublishing={state.publishStatus === "publishing"}
             sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
@@ -902,6 +904,29 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
             <label style={labelStyle}>Condition</label>
             <div style={{ fontSize: 12, color: TEXT, background: BG, borderRadius: 6, padding: "7px 10px", border: `1px solid ${CARD_BORDER}`, textTransform: "capitalize" }}>{state.condition || "—"}</div>
           </div>
+        </div>
+      </div>
+
+      {/* Quantity */}
+      <div style={{ ...rowStyle, paddingTop: 14 }}>
+        <label style={labelStyle}>Quantity</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button
+            onClick={() => setField("quantity", Math.max(1, state.quantity - 1))}
+            disabled={state.quantity <= 1}
+            style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${CARD_BORDER}`, background: CARD_BG, color: TEXT, fontSize: 18, cursor: state.quantity <= 1 ? "not-allowed" : "pointer", opacity: state.quantity <= 1 ? 0.4 : 1 }}
+            aria-label="Decrease quantity"
+          >
+            −
+          </button>
+          <span style={{ minWidth: 24, textAlign: "center", fontSize: 16, fontWeight: 700, fontFamily: "var(--font-instrument)", color: TEXT }}>{state.quantity}</span>
+          <button
+            onClick={() => setField("quantity", state.quantity + 1)}
+            style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${CARD_BORDER}`, background: CARD_BG, color: TEXT, fontSize: 18, cursor: "pointer" }}
+            aria-label="Increase quantity"
+          >
+            +
+          </button>
         </div>
       </div>
 

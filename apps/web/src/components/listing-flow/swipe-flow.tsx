@@ -1195,8 +1195,10 @@ function ReviewPhase({
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   setField: ReturnType<typeof useListingFlow>["setField"];
-  onPublish: () => void;
+  onPublish: (publishMode: "draft" | "live") => void;
 }) {
+  const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
+
   function cycleMarketplace() {
     const idx = MARKETPLACE_CYCLE.indexOf(state.marketplace);
     const next = MARKETPLACE_CYCLE[(idx + 1) % MARKETPLACE_CYCLE.length];
@@ -1335,6 +1337,43 @@ function ReviewPhase({
           </span>
         </button>
 
+        {/* Quantity stepper */}
+        <div
+          style={{
+            background: "#111",
+            border: "1px solid #222",
+            borderRadius: "12px",
+            padding: "14px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span style={{ color: "#666", fontSize: "12px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.08em" }}>
+            QUANTITY
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+            <button
+              onClick={() => setField("quantity", Math.max(1, state.quantity - 1))}
+              disabled={state.quantity <= 1}
+              style={{ width: 32, height: 32, borderRadius: "8px", border: "1px solid #333", background: "#1a1a1a", color: "#fff", fontSize: 20, cursor: state.quantity <= 1 ? "not-allowed" : "pointer", opacity: state.quantity <= 1 ? 0.4 : 1 }}
+              aria-label="Decrease quantity"
+            >
+              −
+            </button>
+            <span style={{ minWidth: 24, textAlign: "center", fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: "20px", color: "#fff" }}>
+              {state.quantity}
+            </span>
+            <button
+              onClick={() => setField("quantity", state.quantity + 1)}
+              style={{ width: 32, height: 32, borderRadius: "8px", border: "1px solid #333", background: "#1a1a1a", color: "#fff", fontSize: 20, cursor: "pointer" }}
+              aria-label="Increase quantity"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
         {/* Summary rows */}
         <div
           style={{
@@ -1378,9 +1417,39 @@ function ReviewPhase({
           </div>
         )}
 
+        {/* Publish mode toggle */}
+        <div style={{ display: "flex", gap: 8, padding: 4, background: "#111", border: "1px solid #222", borderRadius: "12px" }}>
+          {(["live", "draft"] as const).map((mode) => {
+            const selected = publishMode === mode;
+            return (
+              <button
+                key={mode}
+                onClick={() => setPublishMode(mode)}
+                style={{
+                  flex: 1,
+                  padding: "12px 0",
+                  borderRadius: "9px",
+                  border: "none",
+                  background: selected ? "#F15A22" : "transparent",
+                  color: selected ? "#fff" : "#888",
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontWeight: 600,
+                  fontSize: "12px",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                {mode === "live" ? "Publish Live" : "Save Draft"}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Publish */}
-        <OrangeButton onClick={onPublish} fullWidth large>
-          PUBLISH NOW
+        <OrangeButton onClick={() => onPublish(publishMode)} fullWidth large>
+          {publishMode === "draft" ? "SAVE DRAFT" : "PUBLISH NOW"}
         </OrangeButton>
       </div>
     </div>
@@ -1532,17 +1601,17 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     [applyPricingStrategy]
   );
 
-  const handlePublish = useCallback(async () => {
+  const handlePublish = useCallback(async (publishMode: "draft" | "live") => {
     setPublishError(null);
     setPhase("publishing");
-    const result = await publish();
+    const result = await publish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
     if (result.success) {
       setPhase("success");
     } else {
       setPublishError(result.error ?? "Publishing failed");
       setPhase("review");
     }
-  }, [publish]);
+  }, [publish, prepareListing.data]);
 
   const handleListAnother = useCallback(() => {
     reset();
