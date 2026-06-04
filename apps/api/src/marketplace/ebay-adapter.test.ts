@@ -414,3 +414,34 @@ describe('EbayAdapter — Account API business-policy creation (auto-setup)', ()
     expect(id).toBe('rp-new');
   });
 });
+
+describe('EbayAdapter.createInventoryLocation — Inventory API location (auto-setup)', () => {
+  it('POSTs an enabled WAREHOUSE location with the seller address to the merchant-location-key path', async () => {
+    // createInventoryLocation returns 204 No Content — the merchantLocationKey
+    // in the path is the id, so there is no response body to parse.
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createInventoryLocation(
+      'portage-primary',
+      { addressLine1: '123 Main St', city: 'Austin', stateOrProvince: 'TX', postalCode: '78701', country: 'US' },
+      'Portage Primary Warehouse',
+    );
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/sell/inventory/v1/location/portage-primary');
+    expect((opts as RequestInit).method).toBe('POST');
+
+    const body = JSON.parse((opts as RequestInit).body as string);
+    expect(body.location.address).toEqual({
+      addressLine1: '123 Main St',
+      city: 'Austin',
+      stateOrProvince: 'TX',
+      postalCode: '78701',
+      country: 'US',
+    });
+    expect(body.name).toBe('Portage Primary Warehouse');
+    expect(body.merchantLocationStatus).toBe('ENABLED');
+    expect(body.locationTypes).toEqual(['WAREHOUSE']);
+  });
+});

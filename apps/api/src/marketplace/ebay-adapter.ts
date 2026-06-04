@@ -499,6 +499,35 @@ export class EbayAdapter implements MarketplaceAdapter {
     return result.returnPolicyId;
   }
 
+  // Inventory API location create (POST, returns 204). The merchantLocationKey
+  // in the path is the id — POST is NOT idempotent (it 400s if the key already
+  // exists), so the caller (auto-setup, T12) guards with a GET-first check.
+  // A warehouse location with a postalCode is what eBay uses as the ship-from
+  // for the calculated-shipping fulfillment policy.
+  async createInventoryLocation(
+    merchantLocationKey: string,
+    address: {
+      addressLine1?: string;
+      addressLine2?: string;
+      city?: string;
+      stateOrProvince?: string;
+      postalCode?: string;
+      country: string;
+    },
+    name?: string,
+  ): Promise<void> {
+    await this.request(`/sell/inventory/v1/location/${merchantLocationKey}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        location: { address },
+        name,
+        merchantLocationStatus: 'ENABLED',
+        locationTypes: ['WAREHOUSE'],
+      }),
+    });
+    logger.info({ userId: this.userId, merchantLocationKey }, 'eBay inventory location created');
+  }
+
   static async searchComps(query: string, category?: string): Promise<CompResult> {
     const fetchListings = async (filters: string[], retry = true): Promise<CompListing[]> => {
       const token = await getEbayProdAppToken();
