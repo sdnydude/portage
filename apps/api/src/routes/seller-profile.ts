@@ -63,6 +63,7 @@ const updateSchema = z.object({
   defaultWeightUnit: z.enum(['oz', 'lb', 'g', 'kg']).optional(),
   defaultDimensionUnit: z.enum(['in', 'cm']).optional(),
   defaultPackageType: z.enum(['box', 'envelope', 'poly_mailer']).optional(),
+  ebayPublishMode: z.enum(['draft', 'live']).optional(),
   preferredMarketplaces: z.array(z.enum(['ebay', 'etsy', 'reverb'])).optional(),
   autoPublish: z.boolean().optional(),
   defaultCurrency: z.string().length(3).optional(),
@@ -195,8 +196,7 @@ sellerProfileRouter.post('/ebay/auto-setup', async (req, res, next) => {
       .from(sellerProfiles)
       .where(eq(sellerProfiles.userId, userId))
       .limit(1);
-    // Inventory location needs a ship-from address; without one we leave it
-    // unconfigured (policies still complete) rather than block setup.
+    if (!profile) throw new AppError(400, 'SELLER_PROFILE_REQUIRED', 'Create a seller profile before running eBay setup.');
     const shipFrom = profile.shipFromAddress as
       { name?: string; street1?: string; street2?: string; city?: string; state?: string; zip?: string; country?: string } | null;
     let merchantLocationKey: string | null = profile.ebayMerchantLocationKey ?? null;

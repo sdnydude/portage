@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { items, listings, sellerProfiles } from './schema.js';
 
 // In a schema-push workflow with no migration files, these shape assertions are
-// the only guard against accidental column drift. They cover the three columns
+// the only guard against accidental column drift. They cover the four columns
 // added for eBay listing publish hardening.
 describe('schema — eBay listing hardening columns', () => {
   it('adds quantity, ebaySku, and ebayPublishMode columns', () => {

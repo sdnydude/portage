@@ -217,6 +217,16 @@ describe('POST /items', () => {
     expect(res.body.quantity).toBe(5);
   });
 
+  it('rejects quantity 0 — eBay requires at least 1', async () => {
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Test Item', quantity: 0 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
   it('returns 400 when title is missing', async () => {
     const res = await request(app)
       .post('/items')

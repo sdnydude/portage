@@ -231,6 +231,25 @@ describe('EbayAdapter — surfaces eBay error longMessage', () => {
     expect(err.message).toMatch(/condition is not valid for the specified category/i);
   });
 
+  it('strips HTML/script tags from the longMessage to prevent XSS', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      errors: [{
+        errorId: 25002,
+        longMessage: 'Invalid <script>alert("xss")</script> category <b>bold</b>',
+      }],
+    }), { status: 400 }));
+
+    const adapter = new EbayAdapter('user-1');
+    const err: any = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any).catch((e) => e);
+
+    expect(err.message).not.toMatch(/<script>/);
+    expect(err.message).not.toMatch(/<b>/);
+    expect(err.message).toMatch(/Invalid/);
+  });
+
   it('falls back to a generic message when the error body is not JSON', async () => {
     fetchMock.mockResolvedValue(new Response('Service Unavailable', { status: 503 }));
 
@@ -367,6 +386,8 @@ describe('EbayAdapter — Account API business-policy creation (auto-setup)', ()
     expect(body.shippingOptions[0].optionType).toBe('DOMESTIC');
     expect(body.shippingOptions[0].costType).toBe('CALCULATED');
     expect(body.shippingOptions[0].shippingServices[0].shippingServiceCode).toBe('USPSGroundAdvantage');
+    expect(body.shippingOptions[0].shippingServices[0].shippingCarrierCode).toBe('USPS');
+    expect(body.shippingOptions[0].shippingServices[0]).not.toHaveProperty('freeShipping');
 
     expect(id).toBe('fp-new');
   });
@@ -450,6 +471,21 @@ describe('EbayAdapter.updateListing — syncs inventory_item + offer', () => {
   });
 });
 
+describe('EbayAdapter.updateListing — skips empty offer PUT', () => {
+  it('does not PUT to the offer endpoint when no title, price, or description changed', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.updateListing('listing-id-999', {
+      condition: 'good',
+      quantity: 3,
+      ebaySku: 'portage-sku-abc',
+      ebayOfferId: 'offer-42',
+    });
+
+    const offerPut = fetchMock.mock.calls.find(([u]) => String(u).includes('/offer/offer-42'));
+    expect(offerPut).toBeUndefined();
+  });
+});
+
 describe('EbayAdapter.bulkPublishOffers — batch publish up to 25 offers', () => {
   it('POSTs to bulk_publish_offer and returns per-offer results', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
@@ -509,5 +545,13 @@ describe('EbayAdapter.createInventoryLocation — Inventory API location (auto-s
     expect(body.name).toBe('Portage Primary Warehouse');
     expect(body.merchantLocationStatus).toBe('ENABLED');
     expect(body.locationTypes).toEqual(['WAREHOUSE']);
+  });
+
+  it('rejects a merchantLocationKey containing characters invalid for a URL path segment', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createInventoryLocation('invalid key!@#', { country: 'US' }),
+    ).rejects.toThrow(/merchantLocationKey/i);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

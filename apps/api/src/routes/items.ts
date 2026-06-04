@@ -37,7 +37,7 @@ const createItemSchema = z.object({
   estimatedValueMax: z.number().min(0).optional(),
   estimatedValueRecommended: z.number().min(0).optional(),
   aiConfidenceScore: z.number().min(0).max(1).optional(),
-  quantity: z.number().int().min(0).optional(),
+  quantity: z.number().int().min(1).optional(),
   photos: z.array(photoSchema).optional(),
 });
 

@@ -306,7 +306,7 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
         publishedAt: result.status === 'active' ? new Date() : null,
         updatedAt: new Date(),
       })
-      .where(eq(listings.id, listing.id))
+      .where(and(eq(listings.id, listing.id), eq(listings.userId, userId)))
       .returning();
 
     logger.info({ userId, listingId: updated.id, marketplaceListingId: result.marketplaceListingId }, 'Listing published');

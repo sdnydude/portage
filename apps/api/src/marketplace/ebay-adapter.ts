@@ -186,7 +186,8 @@ export class EbayAdapter implements MarketplaceAdapter {
       } catch {
         // Non-JSON error body (e.g. an HTML 5xx page) — fall back to the generic message.
       }
-      throw new AppError(response.status, 'EBAY_API_ERROR', longMessage ?? `eBay API error: ${response.status} on ${path}`);
+      const sanitized = longMessage?.replace(/<[^>]*>/g, '') ?? `eBay API error: ${response.status} on ${path}`;
+      throw new AppError(response.status, 'EBAY_API_ERROR', sanitized);
     }
 
     if (response.status === 204) return {} as T;
@@ -362,10 +363,12 @@ export class EbayAdapter implements MarketplaceAdapter {
       };
     }
 
-    await this.request(`/sell/inventory/v1/offer/${offerId}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
+    if (Object.keys(updates).length > 0) {
+      await this.request(`/sell/inventory/v1/offer/${offerId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
+    }
 
     logger.info({ userId: this.userId, marketplaceListingId }, 'eBay listing updated');
 
@@ -519,8 +522,8 @@ export class EbayAdapter implements MarketplaceAdapter {
           costType: 'CALCULATED',
           shippingServices: [{
             sortOrder: 1,
+            shippingCarrierCode: 'USPS',
             shippingServiceCode: 'USPSGroundAdvantage',
-            freeShipping: false,
           }],
         }],
       }),
@@ -577,6 +580,9 @@ export class EbayAdapter implements MarketplaceAdapter {
     },
     name?: string,
   ): Promise<void> {
+    if (!/^[a-zA-Z0-9_-]+$/.test(merchantLocationKey)) {
+      throw new AppError(400, 'INVALID_LOCATION_KEY', `merchantLocationKey "${merchantLocationKey}" contains invalid characters — only letters, digits, hyphens and underscores are allowed.`);
+    }
     await this.request(`/sell/inventory/v1/location/${merchantLocationKey}`, {
       method: 'POST',
       body: JSON.stringify({

@@ -90,6 +90,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('PATCH /seller-profile', () => {
+  it('accepts ebayPublishMode in the update schema', async () => {
+    mockSelectOnce([{ id: 'sp-1' }]);
+    mockUpdateReturns([{ id: 'sp-1', ebayPublishMode: 'draft' }]);
+
+    const res = await request(app)
+      .patch('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ebayPublishMode: 'draft' });
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('POST /seller-profile/ebay/auto-setup', () => {
   it('returns 400 when no eBay account is connected', async () => {
     mockSelectOnce([]); // marketplaceAccounts: not connected
@@ -173,6 +187,21 @@ describe('POST /seller-profile/ebay/auto-setup', () => {
     // nothing was created — no POST to any policy or location endpoint
     const anyCreate = fetchMock.mock.calls.find(([, o]: any[]) => (o?.method ?? 'GET').toUpperCase() === 'POST');
     expect(anyCreate).toBeUndefined();
+  });
+
+  it('returns 400 when no seller profile exists (null guard)', async () => {
+    mockSelectOnce([{ id: 'acc-1' }]); // connected
+    mockSelectOnce([]); // no seller profile
+
+    const fetchMock = routedFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await request(app)
+      .post('/seller-profile/ebay/auto-setup')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('SELLER_PROFILE_REQUIRED');
   });
 
   it('creates policies but skips the location when no ship-from address is set', async () => {
