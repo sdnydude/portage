@@ -229,6 +229,7 @@ phase3_plan:
         tdd: false
 
   deferred:
+    - "Photo-first eBay publish drops ebayPreparedFields+publishMode on fallback paths (hybrid ChatMode showReview && !prepareListing.data pill + conversational 🚀 Publish pill call flow.publish() no-args). prepare gated on inventoryItemId which photo-first lacks until publish → broken eBay defaults. HIGH priority. registry id c3b3013c. Found in T16/T17 advisor verification. Fix: create item earlier so prepare runs, or wire fallback path."
     - Etsy marketplace wiring fix (same pattern as eBay, out of scope)
     - Orphaned eBay inventory_item cleanup sweep
     - Seller profile GET auto-create race condition (pre-existing, upsert fix)
