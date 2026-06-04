@@ -10,6 +10,7 @@ import type {
   RecognitionResult,
   PricingStrategy,
   EbayPreparedFields,
+  PreparedListingData,
 } from "@portage/shared";
 
 const INITIAL_STATE: ListingFlowState = {
@@ -317,8 +318,20 @@ export function useListingFlow() {
         setState(prev => ({ ...prev, inventoryItemId: itemId }));
       }
 
-      const ebayPreparedFields = options?.ebayPreparedFields;
+      let ebayPreparedFields = options?.ebayPreparedFields;
       const publishMode = options?.publishMode;
+
+      if (s.marketplace === 'ebay' && !ebayPreparedFields && itemId) {
+        try {
+          const prepared = await api<PreparedListingData>(
+            `/items/${itemId}/prepare-listing`,
+            { method: 'POST', body: { targetMarketplaces: ['ebay'] }, token },
+          );
+          ebayPreparedFields = prepared.ebay ?? null;
+        } catch {
+          // prepare-listing failure is non-fatal — publish continues with no eBay-specific fields
+        }
+      }
 
       const marketplaceSpecificFields =
         s.marketplace === 'ebay' && ebayPreparedFields
