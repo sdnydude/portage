@@ -28,6 +28,7 @@ export interface Item {
   estimatedValueMax: number | null;
   estimatedValueRecommended: number | null;
   aiConfidenceScore: number;
+  quantity: number;
   createdAt: string;
   updatedAt: string;
 }

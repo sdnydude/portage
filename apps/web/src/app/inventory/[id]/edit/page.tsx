@@ -31,6 +31,7 @@ export default function EditItemPage() {
   const [conditionNotes, setConditionNotes] = useState("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
+  const [quantity, setQuantity] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -43,6 +44,7 @@ export default function EditItemPage() {
       setConditionNotes(item.conditionNotes);
       setBrand(item.brand);
       setModel(item.model);
+      setQuantity(item.quantity ?? 1);
     }
   }, [item]);
 
@@ -90,6 +92,7 @@ export default function EditItemPage() {
         conditionNotes: conditionNotes.trim(),
         brand: brand.trim(),
         model: model.trim(),
+        quantity,
       });
       router.back();
     } catch (err) {
@@ -105,7 +108,8 @@ export default function EditItemPage() {
     condition !== item.condition ||
     conditionNotes !== item.conditionNotes ||
     brand !== item.brand ||
-    model !== item.model;
+    model !== item.model ||
+    quantity !== (item.quantity ?? 1);
 
   return (
     <div className="min-h-screen bg-background">
@@ -219,6 +223,20 @@ export default function EditItemPage() {
             />
           </FieldGroup>
         </div>
+
+        <FieldGroup label="Quantity">
+          <input
+            type="number"
+            min={1}
+            inputMode="numeric"
+            value={quantity}
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10);
+              setQuantity(Number.isNaN(n) || n < 1 ? 1 : n);
+            }}
+            className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+          />
+        </FieldGroup>
       </div>
     </div>
   );
