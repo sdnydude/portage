@@ -343,3 +343,74 @@ describe('resolveEbayCategoryCondition — auto-correct decision + warning polic
       .toEqual({ condition: 'USED_GOOD' });
   });
 });
+
+describe('EbayAdapter — Account API business-policy creation (auto-setup)', () => {
+  // These are per-seller writes, so they go through this.request() (the seller's
+  // OAuth user token, which carries the sell.account scope) — NOT the static
+  // app-token methods used for public catalog reads. Each returns the new policy id.
+
+  it('createFulfillmentPolicy POSTs a 1-day-handling, calculated USPS Ground Advantage policy and returns its id', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-new' }), { status: 201 }));
+
+    const adapter = new EbayAdapter('user-1');
+    const id = await adapter.createFulfillmentPolicy('Portage Standard Fulfillment');
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/sell/account/v1/fulfillment_policy');
+    expect((opts as RequestInit).method).toBe('POST');
+
+    const body = JSON.parse((opts as RequestInit).body as string);
+    expect(body.name).toBe('Portage Standard Fulfillment');
+    expect(body.marketplaceId).toBe('EBAY_US');
+    expect(body.categoryTypes).toEqual([{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }]);
+    expect(body.handlingTime).toEqual({ value: 1, unit: 'DAY' });
+    expect(body.shippingOptions[0].optionType).toBe('DOMESTIC');
+    expect(body.shippingOptions[0].costType).toBe('CALCULATED');
+    expect(body.shippingOptions[0].shippingServices[0].shippingServiceCode).toBe('USPSGroundAdvantage');
+
+    expect(id).toBe('fp-new');
+  });
+
+  it('createPaymentPolicy POSTs a managed-payments immediate-pay policy (no offline methods) and returns its id', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ paymentPolicyId: 'pp-new' }), { status: 201 }));
+
+    const adapter = new EbayAdapter('user-1');
+    const id = await adapter.createPaymentPolicy('Portage Standard Payment');
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/sell/account/v1/payment_policy');
+    expect((opts as RequestInit).method).toBe('POST');
+
+    const body = JSON.parse((opts as RequestInit).body as string);
+    expect(body.name).toBe('Portage Standard Payment');
+    expect(body.marketplaceId).toBe('EBAY_US');
+    expect(body.categoryTypes).toEqual([{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }]);
+    expect(body.immediatePay).toBe(true);
+    // eBay Managed Payments controls electronic methods — no offline paymentMethods needed.
+    expect(body.paymentMethods).toBeUndefined();
+
+    expect(id).toBe('pp-new');
+  });
+
+  it('createReturnPolicy POSTs a 30-day, buyer-paid, money-back policy and returns its id', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ returnPolicyId: 'rp-new' }), { status: 201 }));
+
+    const adapter = new EbayAdapter('user-1');
+    const id = await adapter.createReturnPolicy('Portage Standard Return');
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/sell/account/v1/return_policy');
+    expect((opts as RequestInit).method).toBe('POST');
+
+    const body = JSON.parse((opts as RequestInit).body as string);
+    expect(body.name).toBe('Portage Standard Return');
+    expect(body.marketplaceId).toBe('EBAY_US');
+    expect(body.categoryTypes).toEqual([{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }]);
+    expect(body.returnsAccepted).toBe(true);
+    expect(body.returnPeriod).toEqual({ value: 30, unit: 'DAY' });
+    expect(body.returnShippingCostPayer).toBe('BUYER');
+    expect(body.refundMethod).toBe('MONEY_BACK');
+
+    expect(id).toBe('rp-new');
+  });
+});

@@ -442,6 +442,63 @@ export class EbayAdapter implements MarketplaceAdapter {
     });
   }
 
+  // Account API business-policy creation for one-click eBay seller setup.
+  // Per-seller writes, so they use this.request() (the seller's OAuth token,
+  // which carries the sell.account scope) — not the static app-token reads.
+  async createFulfillmentPolicy(name: string): Promise<string> {
+    const result = await this.request<{ fulfillmentPolicyId: string }>('/sell/account/v1/fulfillment_policy', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        marketplaceId: 'EBAY_US',
+        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
+        handlingTime: { value: 1, unit: 'DAY' },
+        shippingOptions: [{
+          optionType: 'DOMESTIC',
+          costType: 'CALCULATED',
+          shippingServices: [{
+            sortOrder: 1,
+            shippingServiceCode: 'USPSGroundAdvantage',
+            freeShipping: false,
+          }],
+        }],
+      }),
+    });
+    logger.info({ userId: this.userId, fulfillmentPolicyId: result.fulfillmentPolicyId }, 'eBay fulfillment policy created');
+    return result.fulfillmentPolicyId;
+  }
+
+  async createPaymentPolicy(name: string): Promise<string> {
+    const result = await this.request<{ paymentPolicyId: string }>('/sell/account/v1/payment_policy', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        marketplaceId: 'EBAY_US',
+        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
+        immediatePay: true,
+      }),
+    });
+    logger.info({ userId: this.userId, paymentPolicyId: result.paymentPolicyId }, 'eBay payment policy created');
+    return result.paymentPolicyId;
+  }
+
+  async createReturnPolicy(name: string): Promise<string> {
+    const result = await this.request<{ returnPolicyId: string }>('/sell/account/v1/return_policy', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        marketplaceId: 'EBAY_US',
+        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
+        returnsAccepted: true,
+        returnPeriod: { value: 30, unit: 'DAY' },
+        returnShippingCostPayer: 'BUYER',
+        refundMethod: 'MONEY_BACK',
+      }),
+    });
+    logger.info({ userId: this.userId, returnPolicyId: result.returnPolicyId }, 'eBay return policy created');
+    return result.returnPolicyId;
+  }
+
   static async searchComps(query: string, category?: string): Promise<CompResult> {
     const fetchListings = async (filters: string[], retry = true): Promise<CompListing[]> => {
       const token = await getEbayProdAppToken();
