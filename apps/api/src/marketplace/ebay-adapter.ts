@@ -376,6 +376,27 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
   }
 
+  async bulkPublishOffers(offerIds: string[]): Promise<Array<{ offerId: string; listingId?: string; success: boolean; error?: string }>> {
+    const data = await this.request<{
+      responses: Array<{
+        statusCode: number;
+        offerId: string;
+        listingId?: string;
+        errors?: Array<{ message: string }>;
+      }>;
+    }>('/sell/inventory/v1/bulk_publish_offer', {
+      method: 'POST',
+      body: JSON.stringify({ requests: offerIds.map((offerId) => ({ offerId })) }),
+    });
+
+    return data.responses.map((r) => ({
+      offerId: r.offerId,
+      listingId: r.statusCode === 200 ? r.listingId : undefined,
+      success: r.statusCode === 200,
+      error: r.statusCode !== 200 ? r.errors?.[0]?.message : undefined,
+    }));
+  }
+
   async deleteListing(marketplaceListingId: string): Promise<void> {
     await this.request(`/sell/inventory/v1/offer/${marketplaceListingId}`, {
       method: 'DELETE',

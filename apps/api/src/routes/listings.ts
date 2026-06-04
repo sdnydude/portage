@@ -440,8 +440,15 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
     const userId = req.user!.sub;
     const { ids } = bulkListingIdsSchema.parse(req.body);
 
-    // Verify ownership
-    const owned = await db.select({ id: listings.id, status: listings.status, marketplaceListingId: listings.marketplaceListingId })
+    // Verify ownership — include marketplace fields for eBay bulk publish
+    const owned = await db.select({
+      id: listings.id,
+      status: listings.status,
+      marketplace: listings.marketplace,
+      marketplaceListingId: listings.marketplaceListingId,
+      ebayOfferId: listings.ebayOfferId,
+      ebaySku: listings.ebaySku,
+    })
       .from(listings)
       .where(and(inArray(listings.id, ids), eq(listings.userId, userId)));
 
@@ -449,36 +456,64 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
       throw new AppError(403, 'FORBIDDEN', 'One or more listings do not belong to you');
     }
 
-    // Only allow activating draft/archived listings without a prior marketplace publish
+    // eBay drafts with an offerId can be bulk-published via the eBay batch API
+    const ebayPublishable = owned.filter((l) =>
+      l.status === 'draft' && l.marketplace === 'ebay' && l.ebayOfferId
+    );
+    // Non-marketplace drafts/archived can be activated locally
     const activatable = owned.filter((l) =>
       (l.status === 'draft' || l.status === 'archived') && !l.marketplaceListingId
     );
+    // Archived marketplace listings need individual re-listing
     const skippedMarketplace = owned.filter((l) =>
-      (l.status === 'draft' || l.status === 'archived') && l.marketplaceListingId
+      l.status === 'archived' && !!l.marketplaceListingId
     );
 
-    if (activatable.length === 0 && skippedMarketplace.length === 0) {
-      throw new AppError(400, 'INVALID_STATUS', 'No eligible listings to activate (only draft/archived listings can be activated)');
+    let published = 0;
+    const publishFailed: string[] = [];
+
+    if (ebayPublishable.length > 0) {
+      const adapter = new EbayAdapter(userId);
+      const offerIds = ebayPublishable.map((l) => l.ebayOfferId!);
+      const offerToListing = new Map(ebayPublishable.map((l) => [l.ebayOfferId!, l.id]));
+
+      // eBay batch API accepts up to 25 per call
+      for (let i = 0; i < offerIds.length; i += 25) {
+        const batch = offerIds.slice(i, i + 25);
+        const results = await adapter.bulkPublishOffers(batch);
+        for (const r of results) {
+          const listingId = offerToListing.get(r.offerId);
+          if (!listingId) continue;
+          if (r.success) {
+            await db.update(listings)
+              .set({ marketplaceListingId: r.listingId ?? null, status: 'active', publishedAt: new Date(), updatedAt: new Date() })
+              .where(eq(listings.id, listingId));
+            published++;
+          } else {
+            publishFailed.push(r.offerId);
+            logger.warn({ listingId, offerId: r.offerId, error: r.error }, 'Bulk publish failed for offer');
+          }
+        }
+      }
     }
 
     let activated: { id: string }[] = [];
     if (activatable.length > 0) {
       const activatableIds = activatable.map((l) => l.id);
-      activated = await db.transaction(async (tx) => {
-        return tx.update(listings)
-          .set({ status: 'active' })
-          .where(and(inArray(listings.id, activatableIds), eq(listings.userId, userId)))
-          .returning({ id: listings.id });
-      });
+      activated = await db.update(listings)
+        .set({ status: 'active', updatedAt: new Date() })
+        .where(and(inArray(listings.id, activatableIds), eq(listings.userId, userId)))
+        .returning({ id: listings.id });
     }
 
-    logger.info({ userId, count: activated.length, skippedMarketplace: skippedMarketplace.length }, 'Bulk listings activated');
+    logger.info({ userId, published, activated: activated.length, failed: publishFailed.length }, 'Bulk listings activated');
     res.json({
       activated: true,
-      count: activated.length,
+      count: activated.length + published,
       ids: activated.map((r) => r.id),
-      skipped: ids.length - activated.length,
-      skippedMarketplace: skippedMarketplace.length,
+      published,
+      publishFailed: publishFailed.length,
+      skipped: skippedMarketplace.length,
       warning: skippedMarketplace.length > 0
         ? `${skippedMarketplace.length} archived listing(s) were previously published to a marketplace and must be re-listed individually`
         : undefined,

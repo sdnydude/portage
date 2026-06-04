@@ -450,6 +450,37 @@ describe('EbayAdapter.updateListing — syncs inventory_item + offer', () => {
   });
 });
 
+describe('EbayAdapter.bulkPublishOffers — batch publish up to 25 offers', () => {
+  it('POSTs to bulk_publish_offer and returns per-offer results', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      responses: [
+        { statusCode: 200, offerId: 'offer-1', listingId: '110001' },
+        { statusCode: 200, offerId: 'offer-2', listingId: '110002' },
+        { statusCode: 400, offerId: 'offer-3', errors: [{ message: 'Policy missing' }] },
+      ],
+    }), { status: 200 }));
+
+    const adapter = new EbayAdapter('user-1');
+    const results = await adapter.bulkPublishOffers(['offer-1', 'offer-2', 'offer-3']);
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/sell/inventory/v1/bulk_publish_offer');
+    expect((opts as RequestInit).method).toBe('POST');
+    const body = JSON.parse((opts as RequestInit).body as string);
+    expect(body.requests).toEqual([
+      { offerId: 'offer-1' },
+      { offerId: 'offer-2' },
+      { offerId: 'offer-3' },
+    ]);
+
+    expect(results).toEqual([
+      { offerId: 'offer-1', listingId: '110001', success: true },
+      { offerId: 'offer-2', listingId: '110002', success: true },
+      { offerId: 'offer-3', listingId: undefined, success: false, error: 'Policy missing' },
+    ]);
+  });
+});
+
 describe('EbayAdapter.createInventoryLocation — Inventory API location (auto-setup)', () => {
   it('POSTs an enabled WAREHOUSE location with the seller address to the merchant-location-key path', async () => {
     // createInventoryLocation returns 204 No Content — the merchantLocationKey

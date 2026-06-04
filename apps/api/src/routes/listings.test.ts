@@ -3,9 +3,10 @@ import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
 
-const { mockCreateListing, mockUpdateListing } = vi.hoisted(() => ({
+const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers } = vi.hoisted(() => ({
   mockCreateListing: vi.fn(),
   mockUpdateListing: vi.fn(),
+  mockBulkPublishOffers: vi.fn(),
 }));
 
 vi.mock('../db/index.js', () => ({
@@ -13,7 +14,11 @@ vi.mock('../db/index.js', () => ({
 }));
 
 vi.mock('../marketplace/ebay-adapter.js', () => ({
-  EbayAdapter: vi.fn(() => ({ createListing: mockCreateListing, updateListing: mockUpdateListing })),
+  EbayAdapter: vi.fn(() => ({
+    createListing: mockCreateListing,
+    updateListing: mockUpdateListing,
+    bulkPublishOffers: mockBulkPublishOffers,
+  })),
 }));
 
 const ITEM_ID = '00000000-0000-0000-0000-000000000001';
@@ -193,5 +198,42 @@ describe('POST /listings/:id/publish — persistence', () => {
       ebaySku: 'new-sku',
       ebayOfferId: 'new-offer',
     }));
+  });
+});
+
+function mockSelectBulk(rows: unknown[]) {
+  vi.mocked(db.select).mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(rows),
+    }),
+  } as any);
+}
+
+const LISTING_1 = '10000000-0000-0000-0000-000000000001';
+const LISTING_2 = '10000000-0000-0000-0000-000000000002';
+
+describe('POST /bulk/activate', () => {
+  it('publishes eBay drafts via bulkPublishOffers and updates their status', async () => {
+    mockSelectBulk([
+      { id: LISTING_1, status: 'draft', marketplace: 'ebay', marketplaceListingId: 'offer-1', ebayOfferId: 'offer-1', ebaySku: 'sku-1' },
+      { id: LISTING_2, status: 'draft', marketplace: 'ebay', marketplaceListingId: 'offer-2', ebayOfferId: 'offer-2', ebaySku: 'sku-2' },
+    ]);
+    mockBulkPublishOffers.mockResolvedValue([
+      { offerId: 'offer-1', listingId: '110001', success: true },
+      { offerId: 'offer-2', listingId: '110002', success: true },
+    ]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'x' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+
+    const res = await request(app)
+      .post('/listings/bulk/activate')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: [LISTING_1, LISTING_2] });
+
+    expect(res.body).toMatchObject({ published: 2 });
+    expect(res.status).toBe(200);
+    expect(mockBulkPublishOffers).toHaveBeenCalledWith(['offer-1', 'offer-2']);
   });
 });
