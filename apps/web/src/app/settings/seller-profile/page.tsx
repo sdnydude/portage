@@ -10,6 +10,7 @@ export default function SellerProfilePage() {
   const [profile, setProfile] = useState<SellerProfile | null>(null);
   const [policies, setPolicies] = useState<EbayPoliciesResponse | null>(null);
   const [saving, setSaving] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -44,6 +45,45 @@ export default function SellerProfilePage() {
     }
   }, [token]);
 
+  const handleAutoSetup = useCallback(async () => {
+    if (!token) return;
+    setSettingUp(true);
+    setMessage(null);
+    try {
+      const result = await api<{
+        setup: {
+          fulfillmentPolicyId: string;
+          paymentPolicyId: string;
+          returnPolicyId: string;
+          merchantLocationKey: string | null;
+          locationConfigured: boolean;
+        };
+      }>("/seller-profile/ebay/auto-setup", { method: "POST", token });
+
+      // Reflect the created/reused IDs immediately, then refresh the policy
+      // lists so the dropdowns gain the new "Portage Standard" options.
+      setProfile(prev => prev ? {
+        ...prev,
+        ebayFulfillmentPolicyId: result.setup.fulfillmentPolicyId,
+        ebayPaymentPolicyId: result.setup.paymentPolicyId,
+        ebayReturnPolicyId: result.setup.returnPolicyId,
+        ebayMerchantLocationKey: result.setup.merchantLocationKey,
+      } : prev);
+
+      const refreshed = await api<EbayPoliciesResponse>("/seller-profile/ebay-policies", { token });
+      setPolicies(refreshed);
+
+      setMessage(result.setup.locationConfigured
+        ? "Saved"
+        : "Policies set up. Add a ship-from address in Shipping settings to enable your eBay location.");
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "eBay setup failed");
+    } finally {
+      setSettingUp(false);
+    }
+  }, [token]);
+
   if (loadError) {
     return (
       <div className="max-w-lg mx-auto px-4 py-8">
@@ -67,14 +107,53 @@ export default function SellerProfilePage() {
     <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
       <h1 className="text-2xl font-bold">Seller Profile</h1>
 
-      {message && (
-        <div className="text-sm py-2 px-3 rounded-lg" style={{ background: message === "Saved" ? "rgba(45,90,39,0.1)" : "rgba(204,51,51,0.1)", color: message === "Saved" ? "#2D5A27" : "#CC3333" }}>
-          {message}
-        </div>
-      )}
+      {message && (() => {
+        const tone = message === "Saved"
+          ? { background: "rgba(45,90,39,0.1)", color: "#2D5A27" }
+          : message.startsWith("Policies set up")
+            ? { background: "rgba(204,153,0,0.12)", color: "#B8860B" }
+            : { background: "rgba(204,51,51,0.1)", color: "#CC3333" };
+        return (
+          <div className="text-sm py-2 px-3 rounded-lg" style={tone}>
+            {message}
+          </div>
+        );
+      })()}
 
       <section className="rounded-xl p-4 space-y-3" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
         <h2 className="text-lg font-semibold">eBay Account</h2>
+
+        {(() => {
+          const hasPolicies = Boolean(
+            profile.ebayFulfillmentPolicyId && profile.ebayPaymentPolicyId && profile.ebayReturnPolicyId,
+          );
+          const fullyConfigured = hasPolicies && Boolean(profile.ebayMerchantLocationKey);
+          const status = fullyConfigured
+            ? { dot: "#2D5A27", label: "eBay selling configured" }
+            : hasPolicies
+              ? { dot: "#B8860B", label: "Policies set · ship-from address needed" }
+              : { dot: "rgba(0,0,0,0.3)", label: "Not set up yet" };
+          return (
+            <div className="flex items-center justify-between gap-3 pb-1">
+              <span className="flex items-center gap-2 text-sm" style={{ color: "rgba(0,0,0,0.7)" }}>
+                <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: status.dot }} />
+                {status.label}
+              </span>
+              <button
+                onClick={handleAutoSetup}
+                disabled={settingUp}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                style={{ background: "#2D5A27" }}
+              >
+                {settingUp ? "Setting up..." : fullyConfigured ? "Re-run setup" : "Set up eBay Selling"}
+              </button>
+            </div>
+          );
+        })()}
+
+        <p className="text-xs" style={{ color: "rgba(0,0,0,0.45)" }}>
+          One-click setup creates standard fulfillment, payment, and return policies plus your inventory location. Safe to re-run.
+        </p>
 
         <label className="block text-sm">
           <span className="text-sm font-medium mb-1 block">Fulfillment Policy</span>
