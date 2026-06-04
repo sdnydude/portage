@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+import { API_BASE } from "@/lib/api";
 
 type VoiceState = "idle" | "listening" | "transcribing" | "done";
 
