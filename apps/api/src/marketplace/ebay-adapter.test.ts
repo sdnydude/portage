@@ -93,6 +93,64 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
   });
 });
 
+describe('EbayAdapter.createListing — draft vs live publish mode', () => {
+  it('draft mode creates an unpublished offer and skips the publish call', async () => {
+    // The offer POST returns an offerId; the inventory PUT uses the default {} mock.
+    fetchMock.mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes('/offer') && !u.includes('/publish')) {
+        return new Response(JSON.stringify({ offerId: 'offer-123' }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      publishMode: 'draft',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+
+    // an intentional draft never calls the publish endpoint
+    const publishCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/publish'));
+    expect(publishCall).toBeUndefined();
+    // it surfaces the offer handle + generated SKU and is marked draft (no warning)
+    expect(result.status).toBe('draft');
+    expect(result.ebayOfferId).toBe('offer-123');
+    expect(result.ebaySku).toMatch(/^portage-/);
+    expect(result.warning).toBeUndefined();
+  });
+
+  it('live mode publishes the offer and returns the listing id, offer id and SKU', async () => {
+    fetchMock.mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes('/publish')) {
+        return new Response(JSON.stringify({ listingId: '110012345678' }), { status: 200 });
+      }
+      if (u.includes('/offer')) {
+        return new Response(JSON.stringify({ offerId: 'offer-789' }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+
+    // live mode publishes and returns the published listing id, plus the offer
+    // handle and SKU needed to re-sync or re-publish the listing later.
+    const publishCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/publish'));
+    expect(publishCall).toBeTruthy();
+    expect(result.status).toBe('active');
+    expect(result.marketplaceListingId).toBe('110012345678');
+    expect(result.ebayOfferId).toBe('offer-789');
+    expect(result.ebaySku).toMatch(/^portage-/);
+  });
+});
+
 describe('selectValidEbayCondition — per-category condition auto-correct', () => {
   it('keeps the static default grade when the category supports it', () => {
     // good → USED_GOOD (5000); a general used category offers 5000

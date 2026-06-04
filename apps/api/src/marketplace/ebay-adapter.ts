@@ -256,6 +256,19 @@ export class EbayAdapter implements MarketplaceAdapter {
       }),
     });
 
+    // Draft mode: the unpublished offer exists on eBay (offerId + SKU) but we
+    // deliberately skip /publish. This is an intentional draft, not a publish
+    // failure, so it carries no warning.
+    if (input.publishMode === 'draft') {
+      logger.info({ userId: this.userId, sku, offerId: offerData.offerId }, 'eBay offer saved as draft (publish skipped)');
+      return {
+        marketplaceListingId: offerData.offerId,
+        ebayOfferId: offerData.offerId,
+        ebaySku: sku,
+        status: 'draft',
+      };
+    }
+
     let listingId: string;
     let status: 'active' | 'draft' | 'pending' = 'draft';
 
@@ -283,6 +296,8 @@ export class EbayAdapter implements MarketplaceAdapter {
       marketplaceUrl,
       status,
       warning,
+      ebayOfferId: offerData.offerId,
+      ebaySku: sku,
     };
   }
 
