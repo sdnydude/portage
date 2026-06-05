@@ -40,6 +40,8 @@ interface ProviderConfig {
   baseUrl?: string;
   visionModel: string;
   chatModel: string;
+  /** OpenAI-compat reasoning_effort; 'none' on Gemini disables thinking (its tokens otherwise truncate JSON vision output). */
+  reasoningEffort?: string;
 }
 
 function resolveProvider(name: string): ProviderConfig | null {
@@ -64,6 +66,7 @@ function resolveProvider(name: string): ProviderConfig | null {
         baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
         visionModel: c.GEMINI_VISION_MODEL,
         chatModel: c.GEMINI_CHAT_MODEL,
+        reasoningEffort: 'none',
       };
     case 'openai':
       if (!c.OPENAI_API_KEY) return null;
@@ -100,12 +103,19 @@ function resolveProvider(name: string): ProviderConfig | null {
 }
 
 function buildChain(envVar: string): ProviderConfig[] {
-  const names = envVar.split(',').map(s => s.trim().toLowerCase());
+  const entries = envVar.split(',').map(s => s.trim()).filter(Boolean);
   const chain: ProviderConfig[] = [];
 
-  for (const name of names) {
+  for (const entry of entries) {
+    const sep = entry.indexOf(':');
+    const name = (sep >= 0 ? entry.slice(0, sep) : entry).toLowerCase();
     const provider = resolveProvider(name);
-    if (provider) chain.push(provider);
+    if (provider) {
+      // "provider:model" overrides the vision model for this chain entry
+      // (lets the chain hold multiple Gemini models, e.g. 3.5-flash → 2.5-flash).
+      if (sep >= 0) provider.visionModel = entry.slice(sep + 1).trim();
+      chain.push(provider);
+    }
   }
 
   if (chain.length === 0) {
@@ -225,6 +235,8 @@ async function visionOpenAI(
     model: config.visionModel,
     max_tokens: options?.maxTokens ?? 1024,
     ...(options?.temperature !== undefined && { temperature: options.temperature }),
+    // Gemini-only: 'none' disables thinking so its tokens don't truncate the JSON output.
+    ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort as 'low' } : {}),
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
@@ -351,6 +363,9 @@ async function visionMultiOpenAI(
     model: config.visionModel,
     max_tokens: options?.maxTokens ?? 4096,
     ...(options?.temperature !== undefined && { temperature: options.temperature }),
+    // Gemini-only: 'none' disables thinking so its tokens don't truncate the JSON output.
+    // Cast: 'none' is valid for Gemini's OpenAI-compat endpoint but absent from the SDK's literal union.
+    ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort as 'low' } : {}),
     response_format: { type: 'json_object' as const },
     messages: [
       { role: 'system', content: systemPrompt },
