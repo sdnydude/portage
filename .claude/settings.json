@@ -66,6 +66,11 @@
             "type": "command",
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/check-ports.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/enforce-frontend-e2e.sh",
+            "timeout": 120
           }
         ]
       },

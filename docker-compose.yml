@@ -58,6 +58,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     container_name: portage-app
     restart: unless-stopped
     ports:

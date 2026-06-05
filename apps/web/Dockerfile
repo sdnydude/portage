@@ -12,6 +12,8 @@ RUN npm run build -w packages/shared && npm run build -w apps/web
 FROM node:20-slim
 WORKDIR /app
 ENV NODE_ENV=production
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder /app/apps/web/public ./apps/web/public
