@@ -6,7 +6,7 @@ import { db } from '../db/index.js';
 import { listings, items } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
-import { EbayAdapter } from '../marketplace/ebay-adapter.js';
+import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { env } from '../lib/env.js';
@@ -280,6 +280,36 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
     const adapter = getAdapter(userId, listing.marketplace);
     const photos = (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [];
 
+    // Self-heal the eBay leaf category: drafts created without prepare-listing (seeded,
+    // photo-first, quick-list) have no categoryId, which publish requires. Resolve it
+    // (explicit field → item cache → Taxonomy API) and cache a freshly-resolved id on the item.
+    let marketplaceSpecific = listing.marketplaceSpecificFields as Record<string, unknown> | undefined;
+    if (listing.marketplace === 'ebay') {
+      const cat = await resolveEbayCategoryId(marketplaceSpecific, item);
+      if (cat.categoryId) {
+        marketplaceSpecific = { ...(marketplaceSpecific ?? {}), categoryId: cat.categoryId };
+        if (cat.newlyResolved) {
+          const md = (item.marketplaceData as Record<string, unknown> | null) ?? {};
+          const ebayMd = (md.ebay as { title?: string | null } | undefined) ?? {};
+          await db.update(items)
+            .set({
+              marketplaceData: {
+                ...md,
+                ebay: {
+                  categoryId: cat.categoryId,
+                  categoryName: cat.categoryName,
+                  title: ebayMd.title ?? null,
+                  cachedAt: new Date().toISOString(),
+                },
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(items.id, item.id));
+          logger.info({ userId, itemId: item.id, categoryId: cat.categoryId }, 'eBay leaf category auto-resolved at publish');
+        }
+      }
+    }
+
     const result = await adapter.createListing({
       title: item.title,
       description: item.description,
@@ -292,7 +322,7 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       brand: item.brand,
       model: item.model,
       features: item.features as string[],
-      marketplaceSpecific: listing.marketplaceSpecificFields as Record<string, unknown> | undefined,
+      marketplaceSpecific,
       ebaySku: listing.ebaySku ?? undefined,
       ebayOfferId: listing.ebayOfferId ?? undefined,
     });

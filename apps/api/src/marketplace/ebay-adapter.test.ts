@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
-import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, EbayAdapter } from './ebay-adapter.js';
+import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter } from './ebay-adapter.js';
 
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
@@ -333,6 +333,32 @@ describe('EbayAdapter.getValidConditions — Metadata API condition policies', (
   it('returns [] when the response has no condition policies', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ itemConditionPolicies: [] }), { status: 200 }));
     expect(await EbayAdapter.getValidConditions('15032')).toEqual([]);
+  });
+});
+
+describe('resolveEbayCategoryId — self-healing leaf category for publish', () => {
+  it('resolves by priority: explicit field > item cache > Taxonomy API (explicit/cache skip the API)', async () => {
+    const spy = vi.spyOn(EbayAdapter, 'getCategorySuggestion')
+      .mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops' });
+
+    // 1. an explicit categoryId on the listing wins and never calls the API (user/listing intent preserved)
+    const explicit = await resolveEbayCategoryId({ categoryId: '177' }, { title: 'X', marketplaceData: null });
+    expect(explicit.categoryId).toBe('177');
+    expect(explicit.newlyResolved).toBe(false);
+
+    // 2. fall back to the item's cached marketplaceData.ebay.categoryId
+    const cached = await resolveEbayCategoryId(undefined, { title: 'X', marketplaceData: { ebay: { categoryId: '9355' } } });
+    expect(cached.categoryId).toBe('9355');
+    expect(cached.newlyResolved).toBe(false);
+
+    expect(spy).not.toHaveBeenCalled();
+
+    // 3. resolve live via Taxonomy API when no categoryId anywhere → flagged for persistence
+    const resolved = await resolveEbayCategoryId(undefined, { title: 'Apple MacBook Pro 16', marketplaceData: null });
+    expect(resolved.categoryId).toBe('111422');
+    expect(resolved.categoryName).toBe('Laptops');
+    expect(resolved.newlyResolved).toBe(true);
+    expect(spy).toHaveBeenCalledWith('Apple MacBook Pro 16');
   });
 });
 
