@@ -36,10 +36,17 @@ export function createApp() {
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
+  const baseOrigins = config.NODE_ENV === 'production'
+    ? ['https://portage.digitalharmonyai.com']
+    : ['http://10.0.0.251:3002', 'http://10.0.0.251:3000', 'https://10.0.0.251:3002', 'https://portage.digitalharmonyai.com', 'https://rehearsal.digitalharmonyai.com'];
+  // Additive, env-gated extra origins (comma-separated) — used by the ephemeral
+  // e2e stack to allow its isolated app port. Unset in prod ⇒ zero change.
+  const extraOrigins = (process.env.EXTRA_CORS_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.use(cors({
-    origin: config.NODE_ENV === 'production'
-      ? ['https://portage.digitalharmonyai.com']
-      : ['http://10.0.0.251:3002', 'http://10.0.0.251:3000', 'https://10.0.0.251:3002', 'https://portage.digitalharmonyai.com', 'https://rehearsal.digitalharmonyai.com'],
+    origin: [...baseOrigins, ...extraOrigins],
     credentials: true,
   }));
 

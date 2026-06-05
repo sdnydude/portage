@@ -1,8 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 
-const EMAIL = "demo@portage.app";
-const PASSWORD = "demo1234demo1234";
+// Defaults target the live demo account (local/hook path). CI overrides these
+// to a register-compliant account it seeds into the ephemeral stack.
+const EMAIL = process.env.E2E_EMAIL ?? "demo@portage.app";
+const PASSWORD = process.env.E2E_PASSWORD ?? "demo1234demo1234";
 const SENTINEL = "E2E-INLINE-EDIT";
 const SHOT_DIR = path.join(process.cwd(), "test-results", "proof");
 
