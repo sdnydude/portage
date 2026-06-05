@@ -6,12 +6,11 @@ name: E2E (deterministic)
 # Required check for merging to main (branch protection).
 
 on:
+  # Runs on ALL PRs to main (no path filter) so it is a reliable required
+  # status check — a path-filtered required check would block unrelated PRs
+  # that never trigger it. Builds are cached when no relevant files change.
   pull_request:
     branches: [main]
-    paths:
-      - 'apps/web/**'
-      - 'apps/api/**'
-      - 'packages/shared/**'
   workflow_dispatch:
 
 concurrency:
