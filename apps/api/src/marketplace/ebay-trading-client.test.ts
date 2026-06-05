@@ -41,6 +41,17 @@ describe('ebay-trading-client', () => {
       expect(options.headers['Content-Type']).toBe('text/xml');
     });
 
+    it('sends a valid X-EBAY-API-COMPATIBILITY-LEVEL header (eBay rejects calls without it)', async () => {
+      mockFetch.mockReturnValue(xmlResponse('<Response><Ack>Success</Ack></Response>'));
+
+      await callTradingApi('GetMemberMessages', '<TestRequest/>', 'test-token-123');
+
+      const [, options] = mockFetch.mock.calls[0];
+      const level = options.headers['X-EBAY-API-COMPATIBILITY-LEVEL'];
+      expect(level).toBeTruthy();
+      expect(Number(level)).toBeGreaterThanOrEqual(1000);
+    });
+
     it('returns parsed XML response', async () => {
       mockFetch.mockReturnValue(xmlResponse('<GetMemberMessagesResponse><Ack>Success</Ack><MemberMessage><Subject>Test</Subject></MemberMessage></GetMemberMessagesResponse>'));
 

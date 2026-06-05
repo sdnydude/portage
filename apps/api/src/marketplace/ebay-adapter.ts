@@ -425,7 +425,7 @@ export class EbayAdapter implements MarketplaceAdapter {
   async getOrders(since?: Date): Promise<MarketplaceOrderResult[]> {
     const params = new URLSearchParams({ limit: '50' });
     if (since) {
-      params.set('filter', `creationdate:[${since.toISOString()}..}`);
+      params.set('filter', `creationdate:[${since.toISOString()}..]`);
     }
 
     const data = await this.request<{
@@ -517,13 +517,19 @@ export class EbayAdapter implements MarketplaceAdapter {
         marketplaceId: 'EBAY_US',
         categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
         handlingTime: { value: 1, unit: 'DAY' },
+        // FLAT_RATE + freeShipping is the safest default: eBay rejected the prior
+        // CALCULATED policy with LSAS LOGISTICS_INFO_IS_MISSING (calculated rates need
+        // seller rate tables), and 'USPSGroundAdvantage' was UNKNOWN_SHIPPING_SERVICE_CODE.
+        // Sellers can override per listing. (USPSGround was recognized but rejected as
+        // NOT_VALID_FOR_SELLING; USPSPriority is a current, sellable USPS service.)
         shippingOptions: [{
           optionType: 'DOMESTIC',
-          costType: 'CALCULATED',
+          costType: 'FLAT_RATE',
           shippingServices: [{
             sortOrder: 1,
             shippingCarrierCode: 'USPS',
-            shippingServiceCode: 'USPSGroundAdvantage',
+            shippingServiceCode: 'USPSPriority',
+            freeShipping: true,
           }],
         }],
       }),
