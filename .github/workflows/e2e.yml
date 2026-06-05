@@ -42,8 +42,12 @@ jobs:
         env:
           COMPOSE_PROJECT_NAME: portage
         run: |
-          docker compose --env-file /home/swebber64/DHG/portage/.env \
-            up -d --build --wait portage-app
+          # docker-compose.yml declares a service-level `env_file: .env`, which
+          # compose resolves relative to the project dir (this CI checkout).
+          # Bring the box's real Doppler-synced .env into the workspace so the
+          # build/run has secrets. (--env-file alone does not satisfy env_file.)
+          cp /home/swebber64/DHG/portage/.env .env
+          docker compose up -d --build --wait portage-app
 
       - name: Run deterministic e2e against :3002
         env:
