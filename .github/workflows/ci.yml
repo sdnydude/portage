@@ -79,6 +79,9 @@ jobs:
           JWT_SECRET: ci-test-secret-that-is-at-least-32-chars
           ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
+      - name: Run web unit tests
+        run: npm run test -w apps/web
+
   build:
     name: Build
     runs-on: ubuntu-latest

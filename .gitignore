@@ -19,5 +19,11 @@ drizzle/meta/
 certs/
 *.png
 .claude/projects/
+
+# Playwright e2e transient artifacts (not committed)
+apps/web/test-results/
+apps/web/playwright-report/
+# Keep committed e2e proof screenshots (override global *.png above)
+!website/static/img/verification/**
 .env.backup-*
 .superpowers/

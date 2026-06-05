@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
-import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, EbayAdapter } from './ebay-adapter.js';
+import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter } from './ebay-adapter.js';
 
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
@@ -336,6 +336,45 @@ describe('EbayAdapter.getValidConditions — Metadata API condition policies', (
   });
 });
 
+describe('resolveEbayCategoryId — self-healing leaf category for publish', () => {
+  it('resolves by priority: explicit field > item cache > Taxonomy API (explicit/cache skip the API)', async () => {
+    const spy = vi.spyOn(EbayAdapter, 'getCategorySuggestion')
+      .mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops' });
+
+    // 1. an explicit categoryId on the listing wins and never calls the API (user/listing intent preserved)
+    const explicit = await resolveEbayCategoryId({ categoryId: '177' }, { title: 'X', marketplaceData: null });
+    expect(explicit.categoryId).toBe('177');
+    expect(explicit.newlyResolved).toBe(false);
+
+    // 2. fall back to the item's cached marketplaceData.ebay.categoryId
+    const cached = await resolveEbayCategoryId(undefined, { title: 'X', marketplaceData: { ebay: { categoryId: '9355' } } });
+    expect(cached.categoryId).toBe('9355');
+    expect(cached.newlyResolved).toBe(false);
+
+    expect(spy).not.toHaveBeenCalled();
+
+    // 3. resolve live via Taxonomy API when no categoryId anywhere → flagged for persistence
+    const resolved = await resolveEbayCategoryId(undefined, { title: 'Apple MacBook Pro 16', marketplaceData: null });
+    expect(resolved.categoryId).toBe('111422');
+    expect(resolved.categoryName).toBe('Laptops');
+    expect(resolved.newlyResolved).toBe(true);
+    expect(spy).toHaveBeenCalledWith('Apple MacBook Pro 16');
+  });
+});
+
+describe('EbayAdapter.getOrders — creationdate range filter', () => {
+  it('builds a valid open-ended creationdate range that closes with ] (not })', async () => {
+    const adapter = new EbayAdapter('user-1');
+    const since = new Date('2026-05-06T13:43:26.945Z');
+
+    await adapter.getOrders(since);
+
+    const url = decodeURIComponent(String(fetchMock.mock.calls[0][0]));
+    expect(url).toContain('creationdate:[2026-05-06T13:43:26.945Z..]');
+    expect(url).not.toContain('..}');
+  });
+});
+
 describe('resolveEbayCategoryCondition — auto-correct decision + warning policy', () => {
   it('overrides to the supported grade and warns when it differs from the default', () => {
     // good default = USED_GOOD (5000); a category offering only {1000,3000}
@@ -368,7 +407,7 @@ describe('EbayAdapter — Account API business-policy creation (auto-setup)', ()
   // OAuth user token, which carries the sell.account scope) — NOT the static
   // app-token methods used for public catalog reads. Each returns the new policy id.
 
-  it('createFulfillmentPolicy POSTs a 1-day-handling, calculated USPS Ground Advantage policy and returns its id', async () => {
+  it('createFulfillmentPolicy POSTs a 1-day-handling FLAT_RATE free-shipping USPS Ground policy and returns its id', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-new' }), { status: 201 }));
 
     const adapter = new EbayAdapter('user-1');
@@ -384,10 +423,13 @@ describe('EbayAdapter — Account API business-policy creation (auto-setup)', ()
     expect(body.categoryTypes).toEqual([{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }]);
     expect(body.handlingTime).toEqual({ value: 1, unit: 'DAY' });
     expect(body.shippingOptions[0].optionType).toBe('DOMESTIC');
-    expect(body.shippingOptions[0].costType).toBe('CALCULATED');
-    expect(body.shippingOptions[0].shippingServices[0].shippingServiceCode).toBe('USPSGroundAdvantage');
-    expect(body.shippingOptions[0].shippingServices[0].shippingCarrierCode).toBe('USPS');
-    expect(body.shippingOptions[0].shippingServices[0]).not.toHaveProperty('freeShipping');
+    // FLAT_RATE + freeShipping avoids the CALCULATED rate-table requirement that eBay
+    // rejected as LSAS LOGISTICS_INFO_IS_MISSING; USPSGroundAdvantage was UNKNOWN_SHIPPING_SERVICE_CODE.
+    expect(body.shippingOptions[0].costType).toBe('FLAT_RATE');
+    const svc = body.shippingOptions[0].shippingServices[0];
+    expect(svc.shippingCarrierCode).toBe('USPS');
+    expect(svc.shippingServiceCode).toBe('USPSPriority');
+    expect(svc.freeShipping).toBe(true);
 
     expect(id).toBe('fp-new');
   });

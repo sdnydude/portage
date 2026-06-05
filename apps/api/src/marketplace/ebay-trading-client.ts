@@ -9,6 +9,12 @@ const logger = createLogger('ebay-trading');
 const SANDBOX_URL = 'https://api.sandbox.ebay.com/ws/api.dll';
 const PROD_URL = 'https://api.ebay.com/ws/api.dll';
 
+// eBay Trading API requires the schema version on every call via this header.
+// Omitting it makes eBay reject the call with ErrorCode 10012
+// ("Header X-EBAY-API-COMPATIBILITY-LEVEL with value (null) is out of range").
+// 1207 is a recent, supported Trading API schema version (eBay's current range is ~1085–1209).
+const EBAY_COMPATIBILITY_LEVEL = '1207';
+
 const parser = new XMLParser({ removeNSPrefix: true, ignoreAttributes: false, attributeNamePrefix: '@_' });
 
 interface ParsedMessage {
@@ -55,6 +61,7 @@ export async function callTradingApi(
   const response = await fetch(baseUrl, {
     method: 'POST',
     headers: {
+      'X-EBAY-API-COMPATIBILITY-LEVEL': EBAY_COMPATIBILITY_LEVEL,
       'X-EBAY-API-IAF-TOKEN': accessToken,
       'X-EBAY-API-CALL-NAME': callName,
       'X-EBAY-API-SITEID': '0',

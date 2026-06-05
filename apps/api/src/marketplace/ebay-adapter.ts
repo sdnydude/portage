@@ -152,6 +152,36 @@ export function validateEbayListingFields(specific: Record<string, unknown>): Eb
   return { categoryId, merchantLocationKey, fulfillmentPolicyId, paymentPolicyId, returnPolicyId };
 }
 
+/**
+ * Resolve the eBay leaf categoryId needed to publish, self-healing when it is missing.
+ * Priority: an explicit categoryId already on the listing/offer (preserves user/listing
+ * intent — never overridden) → the item's cached marketplaceData.ebay.categoryId → a live
+ * eBay Taxonomy API suggestion from the item title. `newlyResolved` is true only when the
+ * live API produced it, signalling the caller to persist it onto the item so the next
+ * publish is instant. (categoryId '99' is eBay's "unset" placeholder and is treated as missing.)
+ */
+export async function resolveEbayCategoryId(
+  marketplaceSpecific: Record<string, unknown> | undefined,
+  item: { title: string; marketplaceData?: unknown },
+): Promise<{ categoryId: string | null; categoryName: string | null; newlyResolved: boolean }> {
+  const explicit = marketplaceSpecific?.categoryId as string | undefined;
+  if (explicit && explicit !== '99') {
+    return { categoryId: explicit, categoryName: null, newlyResolved: false };
+  }
+
+  const cached = (item.marketplaceData as { ebay?: { categoryId?: string; categoryName?: string } } | null | undefined)?.ebay;
+  if (cached?.categoryId && cached.categoryId !== '99') {
+    return { categoryId: cached.categoryId, categoryName: cached.categoryName ?? null, newlyResolved: false };
+  }
+
+  const suggestion = await EbayAdapter.getCategorySuggestion(item.title);
+  return {
+    categoryId: suggestion?.categoryId ?? null,
+    categoryName: suggestion?.categoryName ?? null,
+    newlyResolved: !!suggestion?.categoryId,
+  };
+}
+
 export class EbayAdapter implements MarketplaceAdapter {
   readonly marketplace = 'ebay' as const;
 
@@ -425,7 +455,7 @@ export class EbayAdapter implements MarketplaceAdapter {
   async getOrders(since?: Date): Promise<MarketplaceOrderResult[]> {
     const params = new URLSearchParams({ limit: '50' });
     if (since) {
-      params.set('filter', `creationdate:[${since.toISOString()}..}`);
+      params.set('filter', `creationdate:[${since.toISOString()}..]`);
     }
 
     const data = await this.request<{
@@ -517,13 +547,19 @@ export class EbayAdapter implements MarketplaceAdapter {
         marketplaceId: 'EBAY_US',
         categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
         handlingTime: { value: 1, unit: 'DAY' },
+        // FLAT_RATE + freeShipping is the safest default: eBay rejected the prior
+        // CALCULATED policy with LSAS LOGISTICS_INFO_IS_MISSING (calculated rates need
+        // seller rate tables), and 'USPSGroundAdvantage' was UNKNOWN_SHIPPING_SERVICE_CODE.
+        // Sellers can override per listing. (USPSGround was recognized but rejected as
+        // NOT_VALID_FOR_SELLING; USPSPriority is a current, sellable USPS service.)
         shippingOptions: [{
           optionType: 'DOMESTIC',
-          costType: 'CALCULATED',
+          costType: 'FLAT_RATE',
           shippingServices: [{
             sortOrder: 1,
             shippingCarrierCode: 'USPS',
-            shippingServiceCode: 'USPSGroundAdvantage',
+            shippingServiceCode: 'USPSPriority',
+            freeShipping: true,
           }],
         }],
       }),

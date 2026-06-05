@@ -2,10 +2,11 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
-const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers } = vi.hoisted(() => ({
+const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId } = vi.hoisted(() => ({
   mockCreateListing: vi.fn(),
   mockUpdateListing: vi.fn(),
   mockBulkPublishOffers: vi.fn(),
+  mockResolveEbayCategoryId: vi.fn(),
 }));
 
 vi.mock('../db/index.js', () => ({
@@ -18,6 +19,7 @@ vi.mock('../marketplace/ebay-adapter.js', () => ({
     updateListing: mockUpdateListing,
     bulkPublishOffers: mockBulkPublishOffers,
   })),
+  resolveEbayCategoryId: mockResolveEbayCategoryId,
 }));
 
 const ITEM_ID = '00000000-0000-0000-0000-000000000001';
@@ -63,6 +65,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: resolver finds nothing new, so publish behaves as before unless a test overrides.
+  mockResolveEbayCategoryId.mockResolvedValue({ categoryId: null, categoryName: null, newlyResolved: false });
 });
 
 describe('POST /listings', () => {
@@ -127,6 +131,31 @@ describe('POST /listings/:id/publish', () => {
     expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
       ebaySku: 'portage-sku-1',
       ebayOfferId: 'offer-1',
+    }));
+  });
+
+  it('self-heals the eBay leaf category at publish when the listing has none', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      ebaySku: null, ebayOfferId: null, marketplaceSpecificFields: {},
+    }]);
+    mockSelectOnce([MOCK_ITEM]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockResolveEbayCategoryId.mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops', newlyResolved: true });
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '110', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockResolveEbayCategoryId).toHaveBeenCalled();
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
+      marketplaceSpecific: expect.objectContaining({ categoryId: '111422' }),
     }));
   });
 });
