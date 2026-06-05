@@ -16,8 +16,9 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:api": "npm run test -w apps/api",
+    "test:web": "npm run test -w apps/web",
     "test:e2e": "npm run test:e2e -w apps/web",
-    "test:all": "npm run test:api && npm run test:e2e",
+    "test:all": "npm run test:api && npm run test:web && npm run test:e2e",
     "db:generate": "npm run db:generate -w apps/api",
     "db:push": "npm run db:push -w apps/api",
     "db:studio": "npm run db:studio -w apps/api"

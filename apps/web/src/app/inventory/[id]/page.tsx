@@ -14,6 +14,12 @@ import { ImagePicker } from "@/components/capture/image-picker";
 import { API_BASE } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
 import { formatCondition } from "@/lib/format";
+import {
+  itemToEditFields,
+  buildItemUpdate,
+  canSaveItemEdit,
+  type ItemEditFields,
+} from "@/lib/item-edit";
 
 const conditionColors: Record<string, string> = {
   new: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -22,6 +28,19 @@ const conditionColors: Record<string, string> = {
   fair: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
   poor: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
 };
+
+const conditionOptions = [
+  { value: "new", label: "New" },
+  { value: "like_new", label: "Like New" },
+  { value: "good", label: "Good" },
+  { value: "fair", label: "Fair" },
+  { value: "poor", label: "Poor" },
+];
+
+const categoryOptions = [
+  "electronics", "clothing", "furniture", "collectibles", "sports",
+  "home", "books", "toys", "tools", "jewelry", "art", "music", "other",
+];
 
 export default function ItemDetailPage() {
   const params = useParams<{ id: string }>();
@@ -38,6 +57,10 @@ export default function ItemDetailPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const [isListing, setIsListing] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFields, setEditFields] = useState<ItemEditFields | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(params.id);
   const { createListing } = useListings();
 
@@ -192,6 +215,36 @@ export default function ItemDetailPage() {
   const handlePrevPhoto = () => setPhotoIndex((i) => Math.max(0, i - 1));
   const handleNextPhoto = () => setPhotoIndex((i) => Math.min(photos.length - 1, i + 1));
 
+  const startEdit = () => {
+    setEditFields(itemToEditFields(item));
+    setEditError(null);
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditFields(null);
+    setEditError(null);
+  };
+
+  const setEditField = <K extends keyof ItemEditFields>(key: K, value: ItemEditFields[K]) =>
+    setEditFields((f) => (f ? { ...f, [key]: value } : f));
+
+  const saveEdit = async () => {
+    if (!editFields) return;
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      await updateItem(buildItemUpdate(editFields));
+      setIsEditing(false);
+      setEditFields(null);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -207,9 +260,11 @@ export default function ItemDetailPage() {
               {item.title}
             </span>
           </div>
+          {!isEditing && (
           <div className="flex items-center gap-1">
             <button
-              onClick={() => router.push(`/inventory/${item.id}/edit`)}
+              onClick={startEdit}
+              aria-label="Edit item"
               className="p-2 text-text-secondary hover:text-text-primary rounded-lg transition-colors"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -227,6 +282,7 @@ export default function ItemDetailPage() {
               </svg>
             </button>
           </div>
+          )}
         </div>
       </header>
 
@@ -381,57 +437,183 @@ export default function ItemDetailPage() {
 
         {/* Item Info */}
         <div className="px-4 py-4 space-y-4">
-          {/* Title + Value */}
-          <div className="flex items-start justify-between gap-3">
-            <h1 className="text-xl font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
-              {item.title}
-            </h1>
-            {valueDisplay && (
-              <span className="text-lg font-semibold text-forest-green whitespace-nowrap">
-                {valueDisplay}
-              </span>
-            )}
-          </div>
+          {isEditing && editFields ? (
+            <div className="space-y-4">
+              {editError && (
+                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
+                  {editError}
+                </div>
+              )}
 
-          {/* Condition + Category */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${conditionColors[item.condition] ?? "bg-muted text-text-secondary"}`}>
-              {formatCondition(item.condition)}
-            </span>
-            {item.category && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-text-secondary">
-                {item.category}
-              </span>
-            )}
-            {item.aiConfidenceScore > 0 && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-forest-green-50 text-forest-green">
-                AI {Math.round(item.aiConfidenceScore * 100)}%
-              </span>
-            )}
-          </div>
+              <FieldGroup label="Title">
+                <input
+                  type="text"
+                  value={editFields.title}
+                  onChange={(e) => setEditField("title", e.target.value)}
+                  maxLength={500}
+                  className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+                />
+              </FieldGroup>
 
-          {/* Description */}
-          {item.description && (
-            <div>
-              <h2 className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-1">Description</h2>
-              <p className="text-sm text-text-primary leading-relaxed">{item.description}</p>
-            </div>
-          )}
+              <FieldGroup label="Description">
+                <textarea
+                  value={editFields.description}
+                  onChange={(e) => setEditField("description", e.target.value)}
+                  maxLength={2000}
+                  rows={4}
+                  className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none resize-none"
+                />
+              </FieldGroup>
 
-          {/* Details Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {item.brand && (
-              <DetailField label="Brand" value={item.brand} />
-            )}
-            {item.model && (
-              <DetailField label="Model" value={item.model} />
-            )}
-            {item.conditionNotes && (
-              <div className="col-span-2">
-                <DetailField label="Condition Notes" value={item.conditionNotes} />
+              <div className="grid grid-cols-2 gap-3">
+                <FieldGroup label="Category">
+                  <select
+                    value={editFields.category}
+                    onChange={(e) => setEditField("category", e.target.value)}
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+                  >
+                    <option value="">None</option>
+                    {categoryOptions.map((c) => (
+                      <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                    ))}
+                  </select>
+                </FieldGroup>
+
+                <FieldGroup label="Condition">
+                  <select
+                    value={editFields.condition}
+                    onChange={(e) => setEditField("condition", e.target.value)}
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+                  >
+                    {conditionOptions.map((c) => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                </FieldGroup>
               </div>
-            )}
-          </div>
+
+              <FieldGroup label="Condition Notes">
+                <textarea
+                  value={editFields.conditionNotes}
+                  onChange={(e) => setEditField("conditionNotes", e.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  placeholder="Any scratches, wear, defects..."
+                  className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary placeholder:text-text-placeholder border border-transparent focus:border-border-focus focus:outline-none resize-none"
+                />
+              </FieldGroup>
+
+              <div className="grid grid-cols-2 gap-3">
+                <FieldGroup label="Brand">
+                  <input
+                    type="text"
+                    value={editFields.brand}
+                    onChange={(e) => setEditField("brand", e.target.value)}
+                    maxLength={255}
+                    placeholder="e.g. Sony, Nike"
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary placeholder:text-text-placeholder border border-transparent focus:border-border-focus focus:outline-none"
+                  />
+                </FieldGroup>
+
+                <FieldGroup label="Model">
+                  <input
+                    type="text"
+                    value={editFields.model}
+                    onChange={(e) => setEditField("model", e.target.value)}
+                    maxLength={255}
+                    placeholder="e.g. WH-1000XM5"
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary placeholder:text-text-placeholder border border-transparent focus:border-border-focus focus:outline-none"
+                  />
+                </FieldGroup>
+              </div>
+
+              <FieldGroup label="Quantity">
+                <input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  value={editFields.quantity}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    setEditField("quantity", Number.isNaN(n) || n < 1 ? 1 : n);
+                  }}
+                  className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+                />
+              </FieldGroup>
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={cancelEdit}
+                  disabled={isSavingEdit}
+                  className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-text-primary disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveEdit}
+                  disabled={isSavingEdit || !canSaveItemEdit(editFields, item)}
+                  className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium disabled:opacity-40"
+                >
+                  {isSavingEdit ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Title + Value */}
+              <div className="flex items-start justify-between gap-3">
+                <h1 className="text-xl font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
+                  {item.title}
+                </h1>
+                {valueDisplay && (
+                  <span className="text-lg font-semibold text-forest-green whitespace-nowrap">
+                    {valueDisplay}
+                  </span>
+                )}
+              </div>
+
+              {/* Condition + Category */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${conditionColors[item.condition] ?? "bg-muted text-text-secondary"}`}>
+                  {formatCondition(item.condition)}
+                </span>
+                {item.category && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-text-secondary">
+                    {item.category}
+                  </span>
+                )}
+                {item.aiConfidenceScore > 0 && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-forest-green-50 text-forest-green">
+                    AI {Math.round(item.aiConfidenceScore * 100)}%
+                  </span>
+                )}
+              </div>
+
+              {/* Description */}
+              {item.description && (
+                <div>
+                  <h2 className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-1">Description</h2>
+                  <p className="text-sm text-text-primary leading-relaxed">{item.description}</p>
+                </div>
+              )}
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                {item.brand && (
+                  <DetailField label="Brand" value={item.brand} />
+                )}
+                {item.model && (
+                  <DetailField label="Model" value={item.model} />
+                )}
+                {item.conditionNotes && (
+                  <div className="col-span-2">
+                    <DetailField label="Condition Notes" value={item.conditionNotes} />
+                  </div>
+                )}
+                <DetailField label="Quantity" value={String(item.quantity ?? 1)} />
+              </div>
+            </>
+          )}
 
           {/* Features */}
           {item.features.length > 0 && (
@@ -645,6 +827,17 @@ function DetailField({ label, value }: { label: string; value: string }) {
     <div>
       <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">{label}</span>
       <p className="text-sm text-text-primary mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+        {label}
+      </label>
+      {children}
     </div>
   );
 }

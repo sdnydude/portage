@@ -1,0 +1,59 @@
+name: E2E (deterministic)
+
+# Runs the committed Playwright e2e against the REAL app. Must run on the
+# self-hosted runner (g700data1) — only it can reach the portage-app container
+# on :3002. To verify the merged commit (not whatever happens to be deployed),
+# the app container is rebuilt from this checkout before the e2e runs.
+#
+# NOTE: this makes a push to main touching apps/web auto-rebuild portage-app
+# (auto-deploy-then-verify). To make it manual-only, drop the `push` trigger
+# and keep `workflow_dispatch`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'apps/api/**'
+      - 'packages/shared/**'
+  workflow_dispatch:
+
+concurrency:
+  group: portage-e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: Deterministic e2e
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium
+
+      - name: Rebuild portage-app from this commit (and wait for healthy)
+        env:
+          COMPOSE_PROJECT_NAME: portage
+        run: |
+          docker compose --env-file /home/swebber64/DHG/portage/.env \
+            up -d --build --wait portage-app
+
+      - name: Run deterministic e2e against :3002
+        env:
+          E2E_BASE_URL: http://10.0.0.251:3002
+        run: npm run test:e2e -w apps/web
+
+      - name: Upload proof screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-proof
+          path: apps/web/test-results/proof/
+          if-no-files-found: ignore
