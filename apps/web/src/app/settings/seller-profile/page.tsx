@@ -13,16 +13,36 @@ export default function SellerProfilePage() {
   const [settingUp, setSettingUp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [ebayConnected, setEbayConnected] = useState(false);
+  const [addr, setAddr] = useState({ name: "", street1: "", street2: "", city: "", state: "", zip: "" });
 
   useEffect(() => {
     if (!token) return;
     api<{ profile: SellerProfile }>("/seller-profile", { token })
-      .then(data => setProfile(data.profile))
+      .then(data => {
+        setProfile(data.profile);
+        const sf = data.profile.shipFromAddress as { name?: string; street1?: string; street2?: string; city?: string; state?: string; zip?: string } | null;
+        if (sf) setAddr({ name: sf.name ?? "", street1: sf.street1 ?? "", street2: sf.street2 ?? "", city: sf.city ?? "", state: sf.state ?? "", zip: sf.zip ?? "" });
+      })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load profile"));
 
     api<EbayPoliciesResponse>("/seller-profile/ebay-policies", { token })
       .then(data => setPolicies(data))
       .catch(() => {});
+
+    api<{ accounts: Array<{ marketplace: string }> }>("/users/me/marketplace-accounts", { token })
+      .then(data => setEbayConnected(data.accounts.some(a => a.marketplace === "ebay")))
+      .catch(() => {});
+  }, [token]);
+
+  const handleConnect = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await api<{ authUrl: string }>("/marketplace/ebay/connect", { token });
+      window.location.assign(data.authUrl);
+    } catch {
+      setMessage("Failed to start eBay connection");
+    }
   }, [token]);
 
   const updateField = useCallback(async (field: string, value: unknown) => {
@@ -50,6 +70,10 @@ export default function SellerProfilePage() {
     setSettingUp(true);
     setMessage(null);
     try {
+      // Save the ship-from address first so setup can build the eBay location.
+      if (addr.street1 && addr.city && addr.zip) {
+        await api("/seller-profile", { method: "PATCH", body: { shipFromAddress: { ...addr, country: "US" } }, token });
+      }
       const result = await api<{
         setup: {
           fulfillmentPolicyId: string;
@@ -74,15 +98,15 @@ export default function SellerProfilePage() {
       setPolicies(refreshed);
 
       setMessage(result.setup.locationConfigured
-        ? "Saved"
-        : "Policies set up. Add a ship-from address in Shipping settings to enable your eBay location.");
+        ? "eBay selling is set up — you're ready to list."
+        : "Policies set up. Fill in your ship-from address above, then run setup again to finish.");
       setTimeout(() => setMessage(null), 5000);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "eBay setup failed");
     } finally {
       setSettingUp(false);
     }
-  }, [token]);
+  }, [token, addr]);
 
   if (loadError) {
     return (
@@ -123,6 +147,37 @@ export default function SellerProfilePage() {
       <section className="rounded-xl p-4 space-y-3" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
         <h2 className="text-lg font-semibold">eBay Account</h2>
 
+        {/* Step 1 — Connect */}
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-sm" style={{ color: "rgba(0,0,0,0.7)" }}>
+            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: ebayConnected ? "#2D5A27" : "rgba(0,0,0,0.3)" }} />
+            {ebayConnected ? "eBay account connected" : "Connect your eBay account"}
+          </span>
+          <button
+            onClick={handleConnect}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium"
+            style={ebayConnected
+              ? { background: "transparent", color: "#2D5A27", border: "1px solid rgba(45,90,39,0.4)" }
+              : { background: "#2D5A27", color: "white" }}
+          >
+            {ebayConnected ? "Reconnect / switch account" : "Connect eBay"}
+          </button>
+        </div>
+
+        {/* Step 2 — Ship-from address (eBay uses it to create your inventory location) */}
+        <div className="space-y-2 pt-1">
+          <span className="text-sm font-medium block">Ship-from address</span>
+          <input placeholder="Name" value={addr.name} onChange={e => setAddr({ ...addr, name: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
+          <input placeholder="Street address" value={addr.street1} onChange={e => setAddr({ ...addr, street1: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
+          <input placeholder="Apt, suite (optional)" value={addr.street2} onChange={e => setAddr({ ...addr, street2: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
+          <div className="grid grid-cols-3 gap-2">
+            <input placeholder="City" value={addr.city} onChange={e => setAddr({ ...addr, city: e.target.value })} className="rounded-lg border px-3 py-2 text-sm" />
+            <input placeholder="State" value={addr.state} onChange={e => setAddr({ ...addr, state: e.target.value })} className="rounded-lg border px-3 py-2 text-sm" />
+            <input placeholder="ZIP" value={addr.zip} onChange={e => setAddr({ ...addr, zip: e.target.value })} className="rounded-lg border px-3 py-2 text-sm" />
+          </div>
+        </div>
+
+        {/* Step 3 — One-click setup (pulls policies + creates location from the address above) */}
         {(() => {
           const hasPolicies = Boolean(
             profile.ebayFulfillmentPolicyId && profile.ebayPaymentPolicyId && profile.ebayReturnPolicyId,
