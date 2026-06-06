@@ -91,6 +91,18 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
     const body = JSON.parse((putCall![1] as RequestInit).body as string);
     expect(body.availability.shipToLocationAvailability.quantity).toBe(7);
   });
+
+  it('sends Accept-Language: en-US on the inventory PUT (eBay rejects it otherwise — error 25709)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    expect(putCall).toBeTruthy();
+    const headers = (putCall![1] as RequestInit).headers as Record<string, string>;
+    expect(headers['Accept-Language']).toBe('en-US');
+  });
 });
 
 describe('EbayAdapter.createListing — draft vs live publish mode', () => {

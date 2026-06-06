@@ -202,6 +202,9 @@ export class EbayAdapter implements MarketplaceAdapter {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'Content-Language': 'en-US',
+        // eBay's Inventory API validates Accept-Language on inventory_item/offer
+        // calls and rejects requests without an explicit, valid value (error 25709).
+        'Accept-Language': 'en-US',
         ...options.headers as Record<string, string>,
       },
     });
