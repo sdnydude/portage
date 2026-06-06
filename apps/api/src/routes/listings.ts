@@ -361,9 +361,15 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       .where(and(eq(listings.id, listing.id), eq(listings.userId, userId)))
       .returning();
 
-    logger.info({ userId, listingId: updated.id, marketplaceListingId: result.marketplaceListingId }, 'Listing published');
+    if (result.status === 'active') {
+      logger.info({ userId, listingId: updated.id, marketplaceListingId: result.marketplaceListingId }, 'Listing published');
+    } else {
+      logger.warn({ userId, listingId: updated.id, warning: result.warning }, 'Listing publish did not go live — saved as draft');
+    }
 
-    res.json(updated);
+    // Carry the adapter's warning (publish fell back to draft) through to the
+    // client so a non-active result is never presented as a successful publish.
+    res.json({ ...updated, warning: result.warning });
   } catch (err) {
     next(err);
   }

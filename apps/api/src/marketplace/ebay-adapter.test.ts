@@ -124,6 +124,55 @@ describe('EbayAdapter.createListing — required item aspects', () => {
   });
 });
 
+describe('EbayAdapter.createListing — required-aspect publish gate', () => {
+  const mockRequiredAspects = (aspects: unknown[]) => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes('get_item_aspects_for_category')) {
+        return new Response(JSON.stringify({ aspects }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+  };
+
+  it('blocks a live publish with EbayAspectsRequiredError naming each unfilled required aspect (before any inventory/offer write)', async () => {
+    mockRequiredAspects([
+      { localizedAspectName: 'Brand', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' } },
+      { localizedAspectName: 'Preamp Type', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' }, aspectValues: [{ localizedValue: 'Tube' }, { localizedValue: 'Solid State' }] },
+    ]);
+    const adapter = new EbayAdapter('user-1');
+    await expect(adapter.createListing({
+      ...baseInput,
+      brand: 'Cloud Microphones',
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '119018', ...validSetup },
+    } as any)).rejects.toMatchObject({
+      code: 'EBAY_ASPECTS_REQUIRED',
+      statusCode: 422,
+      missing: [{ name: 'Preamp Type', values: ['Tube', 'Solid State'] }],
+    });
+    // gate runs before eBay writes: no inventory PUT, no offer POST
+    expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'))).toBeUndefined();
+    expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/offer'))).toBeUndefined();
+  });
+
+  it('passes when the required specific is provided — writing it under eBay\'s canonical name with one value for SINGLE-cardinality aspects', async () => {
+    mockRequiredAspects([
+      { localizedAspectName: 'Preamp Type', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' }, aspectValues: [{ localizedValue: 'Tube' }, { localizedValue: 'Solid State' }] },
+    ]);
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      publishMode: 'live',
+      // client echoes a lower-cased key and (defensively) two values
+      marketplaceSpecific: { categoryId: '119018', ...validSetup, aspects: { 'preamp type': ['Tube', 'Solid State'] } },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.product.aspects['Preamp Type']).toEqual(['Tube']);
+    expect(body.product.aspects['preamp type']).toBeUndefined();
+  });
+});
+
 describe('EbayAdapter.createListing — draft vs live publish mode', () => {
   it('draft mode creates an unpublished offer and skips the publish call', async () => {
     // The offer POST returns an offerId; the inventory PUT uses the default {} mock.

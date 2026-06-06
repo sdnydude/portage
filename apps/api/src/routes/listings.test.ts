@@ -161,6 +161,32 @@ describe('POST /listings/:id/publish', () => {
     }));
   });
 
+  it('surfaces the publish warning when eBay activation falls back to draft instead of reporting success', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
+      marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
+    }]);
+    mockSelectOnce([MOCK_ITEM]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'draft' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({
+      marketplaceListingId: 'offer-1', ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
+      status: 'draft', warning: 'Listing created as draft — publish to eBay failed.',
+    });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('draft');
+    expect(res.body.warning).toMatch(/publish to eBay failed/i);
+  });
+
   it('self-heals eBay setup fields from the seller profile when the draft lacks them', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',

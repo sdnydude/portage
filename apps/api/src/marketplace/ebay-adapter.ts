@@ -14,6 +14,24 @@ import type {
 
 const logger = createLogger('ebay-adapter');
 
+/**
+ * Thrown when a listing cannot publish because one or more category-required
+ * eBay item specifics (aspects) have no value. Carries the missing aspect names
+ * and their allowed values so the caller can collect them from the user, rather
+ * than letting eBay reject the publish with the opaque error 25002.
+ */
+export class EbayAspectsRequiredError extends AppError {
+  constructor(public readonly missing: Array<{ name: string; values: string[] | null }>) {
+    super(
+      422,
+      'EBAY_ASPECTS_REQUIRED',
+      `eBay needs these item specifics filled in: ${missing.map((m) => m.name).join(', ')}`,
+      missing,
+    );
+    this.name = 'EbayAspectsRequiredError';
+  }
+}
+
 const BROWSE_CONDITION_NORMALIZE: Record<string, string> = {
   'New': 'NEW',
   'New other (see details)': 'NEW',
@@ -252,7 +270,40 @@ export class EbayAdapter implements MarketplaceAdapter {
     const aspects: Record<string, string[]> = { ...(specific.aspects as Record<string, string[]> | undefined ?? {}) };
     if (input.brand && !aspects.Brand) aspects.Brand = [input.brand];
     if (input.model && !aspects.Model) aspects.Model = [input.model];
-    if (Object.keys(aspects).length > 0) product.aspects = aspects;
+
+    // Publish gate: eBay rejects publish (error 25002) when a category-required
+    // item specific has no value. Check here — before any inventory/offer write
+    // — so the caller can collect the missing specifics from the user instead of
+    // creating a dead offer and surfacing eBay's opaque error. We also canonicalize
+    // each value under eBay's exact aspect name (matching is case-insensitive) and
+    // collapse SINGLE-cardinality aspects to one value, since eBay rejects extras.
+    if (input.publishMode !== 'draft') {
+      const required = await EbayAdapter.getRequiredAspects(fields.categoryId);
+      const byLower = new Map(Object.keys(aspects).map((k) => [k.toLowerCase(), k]));
+      const missing: Array<{ name: string; values: string[] | null }> = [];
+      const canonical: Record<string, string[]> = {};
+
+      for (const [name, meta] of Object.entries(required)) {
+        const ourKey = byLower.get(name.toLowerCase());
+        const vals = ourKey ? aspects[ourKey].filter((v) => v && v.trim()) : [];
+        if (vals.length === 0) {
+          if (meta.required) missing.push({ name, values: meta.values });
+          continue;
+        }
+        canonical[name] = meta.cardinality === 'MULTI' ? vals : [vals[0]];
+        byLower.delete(name.toLowerCase());
+      }
+      if (missing.length > 0) throw new EbayAspectsRequiredError(missing);
+
+      // Preserve any extra specifics we hold that aren't part of the category schema.
+      for (const [, key] of byLower) {
+        const vals = aspects[key].filter((v) => v && v.trim());
+        if (vals.length > 0) canonical[key] = vals;
+      }
+      if (Object.keys(canonical).length > 0) product.aspects = canonical;
+    } else if (Object.keys(aspects).length > 0) {
+      product.aspects = aspects;
+    }
 
     const inventoryItem: Record<string, unknown> = {
       availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
@@ -771,7 +822,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
   }
 
-  static async getRequiredAspects(categoryId: string): Promise<Record<string, { required: boolean; values: string[] | null }>> {
+  static async getRequiredAspects(categoryId: string): Promise<Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>> {
     const token = await getEbayProdAppToken();
 
     const response = await fetch(
@@ -792,16 +843,17 @@ export class EbayAdapter implements MarketplaceAdapter {
     const data = await response.json() as {
       aspects?: Array<{
         localizedAspectName: string;
-        aspectConstraint?: { aspectRequired?: boolean };
+        aspectConstraint?: { aspectRequired?: boolean; itemToAspectCardinality?: string };
         aspectValues?: Array<{ localizedValue: string }>;
       }>;
     };
 
-    const result: Record<string, { required: boolean; values: string[] | null }> = {};
+    const result: Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }> = {};
     for (const aspect of data.aspects ?? []) {
       result[aspect.localizedAspectName] = {
         required: aspect.aspectConstraint?.aspectRequired ?? false,
         values: aspect.aspectValues?.map(v => v.localizedValue) ?? null,
+        cardinality: aspect.aspectConstraint?.itemToAspectCardinality === 'MULTI' ? 'MULTI' : 'SINGLE',
       };
     }
 
