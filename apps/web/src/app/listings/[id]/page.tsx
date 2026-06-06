@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { api, ApiError } from "@/lib/api";
 import type { Listing } from "@portage/shared";
+import { AspectFillSheet, type AspectRequirement } from "@/components/listing/aspect-fill-sheet";
 
 interface ItemPhoto {
   url: string;
@@ -97,6 +98,9 @@ export default function ListingDetailPage() {
   const [isEnding, setIsEnding] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [aspectMissing, setAspectMissing] = useState<AspectRequirement[] | null>(null);
+  const [aspectSaving, setAspectSaving] = useState(false);
+  const [aspectError, setAspectError] = useState<string | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 
@@ -247,14 +251,55 @@ export default function ListingDetailPage() {
     if (!token || !listing) return;
     setIsPublishing(true);
     setSaveError(null);
+    setSaveWarning(null);
 
     try {
-      const updated = await api<Listing>(`/listings/${listing.id}/publish`, { method: "POST", token });
+      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}/publish`, { method: "POST", token });
       setListing(updated);
+      setSaveWarning(updated.warning ?? null);
     } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : "Failed to publish listing");
+      // eBay needs category-required item specifics — collect them, then re-publish.
+      if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
+        setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);
+      } else {
+        setSaveError(err instanceof ApiError ? err.message : "Failed to publish listing");
+      }
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  const handleAspectsSave = async (aspects: Record<string, string[]>) => {
+    if (!token || !listing) return;
+    setAspectSaving(true);
+    setAspectError(null);
+
+    try {
+      // Merge the filled specifics into the listing's marketplaceSpecificFields,
+      // then re-publish. The publish gate re-validates server-side.
+      const existing = (listing.marketplaceSpecificFields ?? {}) as Record<string, unknown>;
+      const existingAspects = (existing.aspects as Record<string, string[]> | undefined) ?? {};
+      await api(`/listings/${listing.id}`, {
+        method: "PATCH",
+        token,
+        body: { marketplaceSpecificFields: { ...existing, aspects: { ...existingAspects, ...aspects } } },
+      });
+
+      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}/publish`, { method: "POST", token });
+      setListing(updated);
+      setSaveWarning(updated.warning ?? null);
+      setAspectMissing(null);
+    } catch (err) {
+      // A cascade (eBay surfaced more required specifics) keeps the sheet open
+      // with the new list; anything else is shown inline in the sheet.
+      if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
+        setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);
+        setAspectError("eBay needs a few more details to publish.");
+      } else {
+        setAspectError(err instanceof ApiError ? err.message : "Failed to publish listing");
+      }
+    } finally {
+      setAspectSaving(false);
     }
   };
 
@@ -653,6 +698,24 @@ export default function ListingDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {aspectMissing && (
+        <AspectFillSheet
+          missing={aspectMissing}
+          initial={{
+            ...(item?.brand ? { Brand: [item.brand] } : {}),
+            ...(item?.model ? { Model: [item.model] } : {}),
+          }}
+          marketplaceLabel={marketplaceLabel}
+          saving={aspectSaving}
+          error={aspectError}
+          onCancel={() => {
+            setAspectMissing(null);
+            setAspectError(null);
+          }}
+          onSave={handleAspectsSave}
+        />
       )}
 
       {showArchiveConfirm && (
