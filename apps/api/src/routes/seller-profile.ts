@@ -202,6 +202,13 @@ sellerProfileRouter.post('/ebay/auto-setup', async (req, res, next) => {
     let merchantLocationKey: string | null = profile.ebayMerchantLocationKey ?? null;
     let locationConfigured = Boolean(merchantLocationKey);
 
+    // eBay requires an inventory location to publish. Without a ship-from address we
+    // cannot create one — fail loudly instead of saving a half-configured setup (policy
+    // IDs but no location) that silently breaks publish later with EBAY_SETUP_REQUIRED.
+    if (!shipFrom && !merchantLocationKey) {
+      throw new AppError(400, 'SHIP_FROM_REQUIRED', 'Add a ship-from address to your seller profile before running eBay setup — eBay needs it to create your inventory location.');
+    }
+
     if (shipFrom) {
       const key = profile.ebayMerchantLocationKey ?? 'portage-primary';
       const locRes = await fetch(`${base}/sell/inventory/v1/location/${key}`, { headers });

@@ -204,24 +204,22 @@ describe('POST /seller-profile/ebay/auto-setup', () => {
     expect(res.body.code).toBe('SELLER_PROFILE_REQUIRED');
   });
 
-  it('creates policies but skips the location when no ship-from address is set', async () => {
+  it('rejects setup with SHIP_FROM_REQUIRED when no ship-from address is set (no silent partial setup)', async () => {
     mockSelectOnce([{ id: 'acc-1' }]); // connected
     mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: null, ebayMerchantLocationKey: null }]);
-    mockUpdateReturns([{ id: 'sp-1' }]);
 
-    const fetchMock = routedFetch(); // policies absent → created
+    const fetchMock = routedFetch();
     vi.stubGlobal('fetch', fetchMock);
 
     const res = await request(app)
       .post('/seller-profile/ebay/auto-setup')
       .set('Authorization', `Bearer ${authToken}`);
 
-    expect(res.status).toBe(200);
-    expect(res.body.setup.fulfillmentPolicyId).toBe('fp-1'); // policies still created
-    expect(res.body.setup.locationConfigured).toBe(false);
-    expect(res.body.setup.merchantLocationKey).toBeNull();
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('SHIP_FROM_REQUIRED');
 
-    // no location was created
+    // nothing was persisted (no partial setup) and no location was created
+    expect(vi.mocked(db.update)).not.toHaveBeenCalled();
     const locationPost = fetchMock.mock.calls.find(
       ([u, o]: any[]) => String(u).includes('/location/') && (o?.method ?? 'GET').toUpperCase() === 'POST',
     );

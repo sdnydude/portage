@@ -112,7 +112,8 @@ describe('POST /listings/:id/publish', () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
       itemId: ITEM_ID, price: 199, currency: 'USD',
-      ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1', marketplaceSpecificFields: {},
+      ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
+      marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
     const updateSet = vi.fn().mockReturnValue({
@@ -138,7 +139,8 @@ describe('POST /listings/:id/publish', () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
       itemId: ITEM_ID, price: 199, currency: 'USD',
-      ebaySku: null, ebayOfferId: null, marketplaceSpecificFields: {},
+      ebaySku: null, ebayOfferId: null,
+      marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
     const updateSet = vi.fn().mockReturnValue({
@@ -156,6 +158,38 @@ describe('POST /listings/:id/publish', () => {
     expect(mockResolveEbayCategoryId).toHaveBeenCalled();
     expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
       marketplaceSpecific: expect.objectContaining({ categoryId: '111422' }),
+    }));
+  });
+
+  it('self-heals eBay setup fields from the seller profile when the draft lacks them', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      ebaySku: null, ebayOfferId: null, marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([{
+      ebayFulfillmentPolicyId: 'fp-9', ebayPaymentPolicyId: 'pp-9',
+      ebayReturnPolicyId: 'rp-9', ebayMerchantLocationKey: 'loc-9',
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '110', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
+      marketplaceSpecific: expect.objectContaining({
+        fulfillmentPolicyId: 'fp-9',
+        paymentPolicyId: 'pp-9',
+        returnPolicyId: 'rp-9',
+        merchantLocationKey: 'loc-9',
+      }),
     }));
   });
 });
@@ -207,7 +241,8 @@ describe('POST /listings/:id/publish — persistence', () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
       itemId: ITEM_ID, price: 199, currency: 'USD',
-      ebaySku: null, ebayOfferId: null, marketplaceSpecificFields: {},
+      ebaySku: null, ebayOfferId: null,
+      marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
     const updateSet = vi.fn().mockReturnValue({

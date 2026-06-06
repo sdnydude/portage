@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, desc, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { listings, items } from '../db/schema.js';
+import { listings, items, sellerProfiles } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
@@ -307,6 +307,28 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
             .where(eq(items.id, item.id));
           logger.info({ userId, itemId: item.id, categoryId: cat.categoryId }, 'eBay leaf category auto-resolved at publish');
         }
+      }
+
+      // Self-heal eBay setup fields (policy IDs + inventory location) from the seller
+      // profile. Drafts created without prepare-listing (seeded, photo-first, quick-list)
+      // carry none of these, which publish requires; the profile is the source of truth.
+      const ms = (marketplaceSpecific ?? {}) as Record<string, unknown>;
+      const fp = ms.fulfillmentPolicyId as string | undefined;
+      const pp = ms.paymentPolicyId as string | undefined;
+      const rp = ms.returnPolicyId as string | undefined;
+      const loc = ms.merchantLocationKey as string | undefined;
+      if (!fp || !pp || !rp || !loc) {
+        const [profile] = await db.select()
+          .from(sellerProfiles)
+          .where(eq(sellerProfiles.userId, userId))
+          .limit(1);
+        marketplaceSpecific = {
+          ...ms,
+          fulfillmentPolicyId: fp || profile?.ebayFulfillmentPolicyId || undefined,
+          paymentPolicyId: pp || profile?.ebayPaymentPolicyId || undefined,
+          returnPolicyId: rp || profile?.ebayReturnPolicyId || undefined,
+          merchantLocationKey: loc || profile?.ebayMerchantLocationKey || undefined,
+        };
       }
     }
 
