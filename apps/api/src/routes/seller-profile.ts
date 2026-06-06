@@ -263,7 +263,7 @@ sellerProfileRouter.post('/ebay/auto-setup', async (req, res, next) => {
           ...(effectiveShipFrom.state ? { stateOrProvince: effectiveShipFrom.state } : {}),
           ...(effectiveShipFrom.zip ? { postalCode: effectiveShipFrom.zip } : {}),
           country: effectiveShipFrom.country ?? 'US',
-        }, effectiveShipFrom.name);
+        }, effectiveShipFrom.name || 'Portage Primary');
       }
       merchantLocationKey = key;
       locationConfigured = true;

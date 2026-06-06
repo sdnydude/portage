@@ -249,6 +249,26 @@ describe('POST /seller-profile/ebay/auto-setup', () => {
     expect(res.body.setup.locationConfigured).toBe(true);
   });
 
+  it('sends a non-empty location name when the ship-from name is blank (eBay 25802 rejects empty name)', async () => {
+    mockSelectOnce([{ id: 'acc-1' }]); // connected
+    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: { name: '', zip: '33308', country: 'US' }, ebayMerchantLocationKey: null }]);
+    mockUpdateReturns([{ id: 'sp-1' }]);
+
+    const fetchMock = routedFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await request(app)
+      .post('/seller-profile/ebay/auto-setup')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    const locationPost = fetchMock.mock.calls.find(
+      ([u, o]: any[]) => String(u).includes('/location/') && (o?.method ?? 'GET').toUpperCase() === 'POST',
+    );
+    expect(locationPost).toBeTruthy();
+    expect(JSON.parse((locationPost![1] as any).body).name).toBeTruthy();
+  });
+
   it('pulls the ship-from address from eBay registration and creates the location (one-click, no manual entry)', async () => {
     mockSelectOnce([{ id: 'acc-1' }]); // connected
     mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: null, ebayMerchantLocationKey: null }]);
