@@ -715,9 +715,9 @@ function ChatMode({
             onFieldChange={(field, value) => setField(field as keyof typeof state, value as never)}
             onPriceChange={(price) => setField("price", price)}
             onQuantityChange={(q) => setField("quantity", q)}
-            onPublish={(marketplace, publishMode) => {
+            onPublish={(marketplace, publishMode, aspects) => {
               setField("marketplace", marketplace);
-              runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
+              runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode, aspects });
             }}
             isPublishing={state.publishStatus === "publishing"}
             sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}

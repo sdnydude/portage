@@ -8,6 +8,7 @@ import { env } from '../../lib/env.js';
 import { encrypt } from '../../lib/crypto.js';
 import { db } from '../../db/index.js';
 import { marketplaceAccounts } from '../../db/schema.js';
+import { EbayAdapter } from '../../marketplace/ebay-adapter.js';
 import { eq, and } from 'drizzle-orm';
 import { checkMarketplaceLimit } from '../../lib/billing-utils.js';
 import { getEbayUserFlowCredentials } from '../../marketplace/ebay-credentials.js';
@@ -26,6 +27,17 @@ setInterval(() => {
 export const ebayAuthRouter = Router();
 
 ebayAuthRouter.use(requireAuth);
+
+// The category's required item specifics (aspects) + allowed values, so the
+// listing flow can collect them up front instead of failing at publish.
+ebayAuthRouter.get('/category-aspects/:categoryId', async (req, res, next) => {
+  try {
+    const aspects = await EbayAdapter.getRequiredAspects(req.params.categoryId);
+    res.json({ aspects });
+  } catch (err) {
+    next(err);
+  }
+});
 
 function ebayBaseUrl(): string {
   return env().EBAY_SANDBOX
