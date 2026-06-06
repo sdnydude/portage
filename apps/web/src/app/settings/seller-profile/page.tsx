@@ -71,7 +71,9 @@ export default function SellerProfilePage() {
     setMessage(null);
     try {
       // Save the ship-from address first so setup can build the eBay location.
-      if (addr.street1 && addr.city && addr.zip) {
+      // eBay WAREHOUSE locations need only postalCode + country — so ZIP alone is
+      // enough; the street/city fields are optional.
+      if (addr.zip) {
         await api("/seller-profile", { method: "PATCH", body: { shipFromAddress: { ...addr, country: "US" } }, token });
       }
       const result = await api<{
@@ -166,7 +168,10 @@ export default function SellerProfilePage() {
 
         {/* Step 2 — Ship-from address (eBay uses it to create your inventory location) */}
         <div className="space-y-2 pt-1">
-          <span className="text-sm font-medium block">Ship-from address</span>
+          <span className="text-sm font-medium block">Ship-from location</span>
+          <span className="text-xs block" style={{ color: "rgba(0,0,0,0.45)" }}>
+            Only your ZIP is required — eBay uses it to compute buyer shipping. Street/city are optional.
+          </span>
           <input placeholder="Name" value={addr.name} onChange={e => setAddr({ ...addr, name: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
           <input placeholder="Street address" value={addr.street1} onChange={e => setAddr({ ...addr, street1: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
           <input placeholder="Apt, suite (optional)" value={addr.street2} onChange={e => setAddr({ ...addr, street2: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
