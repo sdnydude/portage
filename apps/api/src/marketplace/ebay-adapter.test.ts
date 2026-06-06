@@ -105,6 +105,25 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
   });
 });
 
+describe('EbayAdapter.createListing — required item aspects', () => {
+  const aspectsFromPut = () => {
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    return JSON.parse((putCall![1] as RequestInit).body as string).product.aspects;
+  };
+
+  it('maps brand and model into product.aspects (eBay validates required item specifics there, not product.brand — error 25002)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Cloud Microphones',
+      model: 'CL-1',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    expect(aspectsFromPut().Brand).toEqual(['Cloud Microphones']);
+    expect(aspectsFromPut().Model).toEqual(['CL-1']);
+  });
+});
+
 describe('EbayAdapter.createListing — draft vs live publish mode', () => {
   it('draft mode creates an unpublished offer and skips the publish call', async () => {
     // The offer POST returns an offerId; the inventory PUT uses the default {} mock.

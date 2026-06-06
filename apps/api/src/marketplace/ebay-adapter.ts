@@ -211,7 +211,7 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      logger.error({ status: response.status, path, body: errorBody }, 'eBay API error');
+      logger.error({ status: response.status, path, body: errorBody, requestBody: typeof options.body === 'string' ? options.body : undefined }, 'eBay API error');
       let longMessage: string | undefined;
       try {
         const parsed = JSON.parse(errorBody) as { errors?: Array<{ longMessage?: string; message?: string }> };
@@ -244,7 +244,15 @@ export class EbayAdapter implements MarketplaceAdapter {
     if (input.model) product.mpn = input.model;
     if (specific.upc) product.upc = [specific.upc as string];
     if (specific.epid) product.epid = specific.epid;
-    if (specific.aspects) product.aspects = specific.aspects;
+
+    // eBay validates category-required item specifics from `aspects` (not the
+    // legacy product.brand/mpn fields), so a missing Brand aspect fails publish
+    // with error 25002. Surface Brand/Model here, but let explicit AI-prepared
+    // aspects win — curated values are authoritative over the derived fallbacks.
+    const aspects: Record<string, string[]> = { ...(specific.aspects as Record<string, string[]> | undefined ?? {}) };
+    if (input.brand && !aspects.Brand) aspects.Brand = [input.brand];
+    if (input.model && !aspects.Model) aspects.Model = [input.model];
+    if (Object.keys(aspects).length > 0) product.aspects = aspects;
 
     const inventoryItem: Record<string, unknown> = {
       availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
