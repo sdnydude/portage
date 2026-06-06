@@ -7,8 +7,9 @@ import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
+import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
-import type { ListingFlowState } from "@portage/shared";
+import type { ListingFlowState, EbayPreparedFields } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -655,15 +656,39 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
     setShippingConfirmed(true);
   }, []);
 
-  const handlePublish = useCallback(async () => {
-    setIsPublishing(true);
+  const [aspectsNeeded, setAspectsNeeded] = useState<AspectRequirement[] | null>(null);
+  const [aspectSaving, setAspectSaving] = useState(false);
+  const [aspectError, setAspectError] = useState<string | null>(null);
+  const [pendingPublishOpts, setPendingPublishOpts] = useState<{ ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live" } | undefined>(undefined);
+
+  const runPublish = useCallback(async (
+    opts?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live"; aspects?: Record<string, string[]> },
+  ) => {
+    const fillingAspects = !!opts?.aspects;
     setPublishError(null);
-    const result = await flow.publish();
-    setIsPublishing(false);
-    if (!result.success) {
+    setAspectError(null);
+    if (fillingAspects) setAspectSaving(true);
+    else setIsPublishing(true);
+
+    const result = await flow.publish(opts);
+
+    if (fillingAspects) setAspectSaving(false);
+    else setIsPublishing(false);
+
+    if (result.success) {
+      setAspectsNeeded(null);
+    } else if (result.aspectsRequired) {
+      setPendingPublishOpts(opts);
+      setAspectsNeeded(result.aspectsRequired);
+      if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
+    } else if (fillingAspects) {
+      setAspectError(result.error ?? "Publishing failed");
+    } else {
       setPublishError(result.error ?? "Publishing failed");
     }
   }, [flow]);
+
+  const handlePublish = useCallback(() => runPublish(), [runPublish]);
 
   // Derive the effective lastStep (merging hook's lastStep with local flags)
   const effectiveLastStep = useMemo(() => {
@@ -818,7 +843,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
                 onQuantityChange={(q) => flow.setField("quantity", q)}
                 onPublish={(marketplace, publishMode) => {
                   flow.setField("marketplace", marketplace);
-                  flow.publish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
+                  runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
                 }}
                 isPublishing={state.publishStatus === "publishing"}
                 sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
@@ -898,6 +923,23 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onPhotos={(photos) => flow.startFromPhoto(photos)}
         onCancel={() => setShowCapture(false)}
       />
+
+      {aspectsNeeded && (
+        <AspectFillSheet
+          missing={aspectsNeeded}
+          initial={{
+            ...(state.brand ? { Brand: [state.brand] } : {}),
+            ...(state.model ? { Model: [state.model] } : {}),
+          }}
+          saving={aspectSaving}
+          error={aspectError}
+          onCancel={() => {
+            setAspectsNeeded(null);
+            setAspectError(null);
+          }}
+          onSave={(aspects) => runPublish({ ...pendingPublishOpts, aspects })}
+        />
+      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import type {
   EbayPreparedFields,
   PreparedListingData,
 } from "@portage/shared";
+import type { AspectRequirement } from "@/components/listing/aspect-fill-sheet";
 
 const INITIAL_STATE: ListingFlowState = {
   photos: [],
@@ -282,8 +283,8 @@ export function useListingFlow() {
   }, [triggerAutoSave]);
 
   const publish = useCallback(async (
-    options?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: 'draft' | 'live' },
-  ): Promise<{ success: boolean; listingId?: string; error?: string }> => {
+    options?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: 'draft' | 'live'; aspects?: Record<string, string[]> },
+  ): Promise<{ success: boolean; listingId?: string; error?: string; aspectsRequired?: AspectRequirement[] }> => {
     if (!token) return { success: false, error: 'Not authenticated' };
 
     const s = stateRef.current;
@@ -333,6 +334,15 @@ export function useListingFlow() {
         }
       }
 
+      // Merge user-supplied item specifics (from the aspect sheet on a prior
+      // EBAY_ASPECTS_REQUIRED) into the prepared fields before publishing.
+      if (options?.aspects && ebayPreparedFields) {
+        ebayPreparedFields = {
+          ...ebayPreparedFields,
+          aspects: { ...(ebayPreparedFields.aspects ?? {}), ...options.aspects },
+        };
+      }
+
       const marketplaceSpecificFields =
         s.marketplace === 'ebay' && ebayPreparedFields
           ? { ...ebayPreparedFields }
@@ -372,6 +382,15 @@ export function useListingFlow() {
 
       return { success: true, listingId: listing.id };
     } catch (err) {
+      // eBay needs category-required item specifics — surface them so the flow
+      // can collect the values and retry. No listing row was created (the gate
+      // throws before insert), so re-publishing won't duplicate.
+      if (err instanceof ApiError && err.code === 'EBAY_ASPECTS_REQUIRED') {
+        setState(prev => ({ ...prev, publishStatus: 'idle' }));
+        // Include `error` so a flow that doesn't render the aspect sheet still
+        // shows eBay's human-readable "needs these item specifics" message.
+        return { success: false, error: err.message, aspectsRequired: (err.details as unknown as AspectRequirement[]) ?? [] };
+      }
       const msg = err instanceof ApiError ? err.message : 'Publishing failed';
       await saveDraft(stateRef.current, {
         draftId: s.draftId ?? undefined,

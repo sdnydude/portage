@@ -6,7 +6,9 @@ import { formatCondition } from "@/lib/format";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
+import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
+import type { EbayPreparedFields } from "@portage/shared";
 
 /* ─────────────────────────────────────────────
    Types
@@ -1601,17 +1603,43 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     [applyPricingStrategy]
   );
 
-  const handlePublish = useCallback(async (publishMode: "draft" | "live") => {
+  const [aspectsNeeded, setAspectsNeeded] = useState<AspectRequirement[] | null>(null);
+  const [aspectSaving, setAspectSaving] = useState(false);
+  const [aspectError, setAspectError] = useState<string | null>(null);
+  const pendingPublishOpts = useRef<{ ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live" } | undefined>(undefined);
+
+  const runPublish = useCallback(async (
+    opts?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live"; aspects?: Record<string, string[]> },
+  ) => {
+    const fillingAspects = !!opts?.aspects;
     setPublishError(null);
-    setPhase("publishing");
-    const result = await publish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
+    setAspectError(null);
+    if (fillingAspects) setAspectSaving(true);
+    else setPhase("publishing");
+
+    const result = await publish(opts);
+
+    if (fillingAspects) setAspectSaving(false);
+
     if (result.success) {
+      setAspectsNeeded(null);
       setPhase("success");
+    } else if (result.aspectsRequired) {
+      pendingPublishOpts.current = opts;
+      setAspectsNeeded(result.aspectsRequired);
+      if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
+      else setPhase("review");
+    } else if (fillingAspects) {
+      setAspectError(result.error ?? "Publishing failed");
     } else {
       setPublishError(result.error ?? "Publishing failed");
       setPhase("review");
     }
-  }, [publish, prepareListing.data]);
+  }, [publish]);
+
+  const handlePublish = useCallback((publishMode: "draft" | "live") => {
+    runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
+  }, [runPublish, prepareListing.data]);
 
   const handleListAnother = useCallback(() => {
     reset();
@@ -1749,6 +1777,23 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
         onPhotos={(photos) => flow.startFromPhoto(photos)}
         onCancel={() => setShowCapture(false)}
       />
+
+      {aspectsNeeded && (
+        <AspectFillSheet
+          missing={aspectsNeeded}
+          initial={{
+            ...(state.brand ? { Brand: [state.brand] } : {}),
+            ...(state.model ? { Model: [state.model] } : {}),
+          }}
+          saving={aspectSaving}
+          error={aspectError}
+          onCancel={() => {
+            setAspectsNeeded(null);
+            setAspectError(null);
+          }}
+          onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+        />
+      )}
     </div>
   );
 }

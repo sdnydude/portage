@@ -7,6 +7,8 @@ import { formatPrice } from "@/lib/format";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
+import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
+import type { EbayPreparedFields } from "@portage/shared";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
 import { ShippingConfigCard } from "./shipping-config-card";
 import { PricingStrategyPicker } from "./pricing-strategy-picker";
@@ -412,17 +414,40 @@ function ChatMode({
     [flow, state.photos]
   );
 
-  const handlePublish = async () => {
+  const [aspectsNeeded, setAspectsNeeded] = useState<AspectRequirement[] | null>(null);
+  const [aspectSaving, setAspectSaving] = useState(false);
+  const [aspectError, setAspectError] = useState<string | null>(null);
+  const pendingPublishOpts = useRef<{ ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live" } | undefined>(undefined);
+
+  const runPublish = async (
+    opts?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live"; aspects?: Record<string, string[]> },
+  ) => {
+    const fillingAspects = !!opts?.aspects;
     setPublishError(null);
-    setIsPublishing(true);
-    const result = await flow.publish();
-    setIsPublishing(false);
+    setAspectError(null);
+    if (fillingAspects) setAspectSaving(true);
+    else setIsPublishing(true);
+
+    const result = await flow.publish(opts);
+
+    if (fillingAspects) setAspectSaving(false);
+    else setIsPublishing(false);
+
     if (result.success) {
+      setAspectsNeeded(null);
       onPublish();
+    } else if (result.aspectsRequired) {
+      pendingPublishOpts.current = opts;
+      setAspectsNeeded(result.aspectsRequired);
+      if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
+    } else if (fillingAspects) {
+      setAspectError(result.error ?? "Publishing failed");
     } else {
       setPublishError(result.error ?? "Publishing failed");
     }
   };
+
+  const handlePublish = () => runPublish();
 
   const candidate = state.recognition.candidates[state.recognition.selectedIndex];
   const primaryPhoto = state.photos[state.primaryPhotoIndex];
@@ -692,7 +717,7 @@ function ChatMode({
             onQuantityChange={(q) => setField("quantity", q)}
             onPublish={(marketplace, publishMode) => {
               setField("marketplace", marketplace);
-              flow.publish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
+              runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
             }}
             isPublishing={state.publishStatus === "publishing"}
             sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
@@ -755,6 +780,23 @@ function ChatMode({
       )}
 
       <div ref={bottomRef} />
+
+      {aspectsNeeded && (
+        <AspectFillSheet
+          missing={aspectsNeeded}
+          initial={{
+            ...(state.brand ? { Brand: [state.brand] } : {}),
+            ...(state.model ? { Model: [state.model] } : {}),
+          }}
+          saving={aspectSaving}
+          error={aspectError}
+          onCancel={() => {
+            setAspectsNeeded(null);
+            setAspectError(null);
+          }}
+          onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+        />
+      )}
     </div>
   );
 }
