@@ -165,6 +165,15 @@ export default function MarketplacePage() {
                   </p>
                 )}
 
+                {marketplace === "ebay" && account && (
+                  <a
+                    href="/settings/seller-profile"
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-forest-green hover:underline"
+                  >
+                    Finish eBay setup — ship-from &amp; selling policies →
+                  </a>
+                )}
+
                 {marketplace === "reverb" && !account && showReverbInput && (
                   <div className="mt-3 space-y-2">
                     <p className="text-xs text-text-secondary">
