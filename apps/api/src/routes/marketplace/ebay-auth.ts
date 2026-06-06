@@ -69,6 +69,9 @@ ebayAuthRouter.get('/connect', async (req, res, next) => {
   authUrl.searchParams.set('redirect_uri', config.EBAY_REDIRECT_URI);
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', scopes);
+  // Force the eBay sign-in screen even when an eBay session cookie exists, so a
+  // user who disconnects can reconnect under a DIFFERENT eBay account.
+  authUrl.searchParams.set('prompt', 'login');
   const state = randomBytes(16).toString('hex');
   stateStore.set(state, { userId: req.user!.sub, expiresAt: Date.now() + 10 * 60_000 });
 

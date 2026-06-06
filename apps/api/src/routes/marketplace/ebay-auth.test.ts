@@ -61,6 +61,15 @@ describe('GET /marketplace/ebay/connect credential selection', () => {
     expect(res.body.authUrl).toContain('client_id=prod-client-id');
     expect(res.body.authUrl).toContain('auth.ebay.com');
   });
+
+  it('forces re-login with prompt=login so users can switch eBay accounts on reconnect', async () => {
+    const res = await request(app)
+      .get('/marketplace/ebay/connect')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.authUrl).toContain('prompt=login');
+  });
 });
 
 describe('POST /marketplace/ebay/callback identity capture', () => {
