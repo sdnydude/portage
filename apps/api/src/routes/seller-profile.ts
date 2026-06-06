@@ -202,25 +202,68 @@ sellerProfileRouter.post('/ebay/auto-setup', async (req, res, next) => {
     let merchantLocationKey: string | null = profile.ebayMerchantLocationKey ?? null;
     let locationConfigured = Boolean(merchantLocationKey);
 
-    // eBay requires an inventory location to publish. Without a ship-from address we
-    // cannot create one — fail loudly instead of saving a half-configured setup (policy
-    // IDs but no location) that silently breaks publish later with EBAY_SETUP_REQUIRED.
-    if (!shipFrom && !merchantLocationKey) {
+    // Pull existing eBay inventory locations — if the seller already has one, use it
+    // (no manual ship-from address needed). This is the "pull from eBay" path.
+    if (!merchantLocationKey) {
+      try {
+        const locListRes = await fetch(`${base}/sell/inventory/v1/location?limit=10`, { headers });
+        if (locListRes.ok) {
+          const locData = await locListRes.json() as { locations?: Array<{ merchantLocationKey?: string }> };
+          const existing = locData.locations?.find((l) => l.merchantLocationKey)?.merchantLocationKey;
+          if (existing) {
+            merchantLocationKey = existing;
+            locationConfigured = true;
+          }
+        }
+      } catch {
+        // fall through to create-from-shipFrom / SHIP_FROM_REQUIRED
+      }
+    }
+
+    // Still no location? Pull the seller's registration address from eBay identity and
+    // use it as the ship-from — true one-click setup with no manual entry.
+    let effectiveShipFrom = shipFrom;
+    if (!merchantLocationKey && !effectiveShipFrom) {
+      try {
+        const identityHost = env().EBAY_SANDBOX ? 'https://apiz.sandbox.ebay.com' : 'https://apiz.ebay.com';
+        const idRes = await fetch(`${identityHost}/commerce/identity/v1/user/`, { headers });
+        if (idRes.ok) {
+          const identity = await idRes.json() as {
+            businessAccount?: { address?: Record<string, string> };
+            individualAccount?: { registrationAddress?: Record<string, string> };
+          };
+          const a = identity.businessAccount?.address ?? identity.individualAccount?.registrationAddress;
+          if (a && (a.postalCode || a.addressLine1)) {
+            effectiveShipFrom = {
+              street1: a.addressLine1, street2: a.addressLine2,
+              city: a.city, state: a.stateOrProvince, zip: a.postalCode, country: a.country ?? 'US',
+            };
+          }
+        }
+      } catch {
+        // fall through to SHIP_FROM_REQUIRED
+      }
+    }
+
+    // eBay requires an inventory location to publish. If we still have neither a
+    // ship-from (profile or eBay-pulled) nor an existing location, fail loudly so the
+    // UI can collect an address — never save a half-configured setup.
+    if (!effectiveShipFrom && !merchantLocationKey) {
       throw new AppError(400, 'SHIP_FROM_REQUIRED', 'Add a ship-from address to your seller profile before running eBay setup — eBay needs it to create your inventory location.');
     }
 
-    if (shipFrom) {
+    if (effectiveShipFrom && !merchantLocationKey) {
       const key = profile.ebayMerchantLocationKey ?? 'portage-primary';
       const locRes = await fetch(`${base}/sell/inventory/v1/location/${key}`, { headers });
       if (!locRes.ok) {
         await adapter.createInventoryLocation(key, {
-          ...(shipFrom.street1 ? { addressLine1: shipFrom.street1 } : {}),
-          ...(shipFrom.street2 ? { addressLine2: shipFrom.street2 } : {}),
-          ...(shipFrom.city ? { city: shipFrom.city } : {}),
-          ...(shipFrom.state ? { stateOrProvince: shipFrom.state } : {}),
-          ...(shipFrom.zip ? { postalCode: shipFrom.zip } : {}),
-          country: shipFrom.country ?? 'US',
-        }, shipFrom.name);
+          ...(effectiveShipFrom.street1 ? { addressLine1: effectiveShipFrom.street1 } : {}),
+          ...(effectiveShipFrom.street2 ? { addressLine2: effectiveShipFrom.street2 } : {}),
+          ...(effectiveShipFrom.city ? { city: effectiveShipFrom.city } : {}),
+          ...(effectiveShipFrom.state ? { stateOrProvince: effectiveShipFrom.state } : {}),
+          ...(effectiveShipFrom.zip ? { postalCode: effectiveShipFrom.zip } : {}),
+          country: effectiveShipFrom.country ?? 'US',
+        }, effectiveShipFrom.name);
       }
       merchantLocationKey = key;
       locationConfigured = true;

@@ -54,7 +54,9 @@ function routedFetch(overrides: Record<string, Response> = {}) {
       u.includes('/fulfillment_policy') ? 'fulfillment' :
       u.includes('/payment_policy') ? 'payment' :
       u.includes('/return_policy') ? 'return' :
-      u.includes('/location/') ? 'location' : 'other'
+      (u.includes('/inventory/v1/location') && !u.includes('/location/')) ? 'location-list' :
+      u.includes('/location/') ? 'location' :
+      u.includes('/commerce/identity') ? 'identity' : 'other'
     }`;
     if (overrides[key]) return overrides[key].clone();
     // sensible defaults: empty policy lists, location absent, creates succeed
@@ -65,6 +67,8 @@ function routedFetch(overrides: Record<string, Response> = {}) {
       case 'POST fulfillment': return new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-1' }), { status: 201 });
       case 'POST payment': return new Response(JSON.stringify({ paymentPolicyId: 'pp-1' }), { status: 201 });
       case 'POST return': return new Response(JSON.stringify({ returnPolicyId: 'rp-1' }), { status: 201 });
+      case 'GET location-list': return new Response(JSON.stringify({ locations: [] }), { status: 200 });
+      case 'GET identity': return new Response(JSON.stringify({ userId: 'ebay-u' }), { status: 200 });
       case 'GET location': return new Response('', { status: 404 });
       case 'POST location': return new Response(null, { status: 204 });
       default: return new Response('{}', { status: 200 });
@@ -224,5 +228,50 @@ describe('POST /seller-profile/ebay/auto-setup', () => {
       ([u, o]: any[]) => String(u).includes('/location/') && (o?.method ?? 'GET').toUpperCase() === 'POST',
     );
     expect(locationPost).toBeUndefined();
+  });
+
+  it('pulls and uses an existing eBay inventory location (no manual ship-from needed)', async () => {
+    mockSelectOnce([{ id: 'acc-1' }]); // connected
+    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: null, ebayMerchantLocationKey: null }]);
+    mockUpdateReturns([{ id: 'sp-1' }]);
+
+    const fetchMock = routedFetch({
+      'GET location-list': new Response(JSON.stringify({ locations: [{ merchantLocationKey: 'ebay-loc-7' }] }), { status: 200 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await request(app)
+      .post('/seller-profile/ebay/auto-setup')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.setup.merchantLocationKey).toBe('ebay-loc-7');
+    expect(res.body.setup.locationConfigured).toBe(true);
+  });
+
+  it('pulls the ship-from address from eBay registration and creates the location (one-click, no manual entry)', async () => {
+    mockSelectOnce([{ id: 'acc-1' }]); // connected
+    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: null, ebayMerchantLocationKey: null }]);
+    mockUpdateReturns([{ id: 'sp-1' }]);
+
+    const fetchMock = routedFetch({
+      'GET identity': new Response(JSON.stringify({
+        userId: 'ebay-u',
+        businessAccount: { address: { addressLine1: '500 Oak Ave', city: 'Denver', stateOrProvince: 'CO', postalCode: '80202', country: 'US' } },
+      }), { status: 200 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await request(app)
+      .post('/seller-profile/ebay/auto-setup')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.setup.locationConfigured).toBe(true);
+    const locationPost = fetchMock.mock.calls.find(
+      ([u, o]: any[]) => String(u).includes('/location/') && (o?.method ?? 'GET').toUpperCase() === 'POST',
+    );
+    expect(locationPost).toBeTruthy();
+    expect(JSON.parse((locationPost![1] as any).body).location.address.postalCode).toBe('80202');
   });
 });
