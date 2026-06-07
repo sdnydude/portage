@@ -7,12 +7,41 @@ import { listings, items, sellerProfiles } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
+import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { env } from '../lib/env.js';
 import type { MarketplaceAdapter } from '@portage/shared';
 
 const logger = createLogger('listings');
+
+/**
+ * Inject the item's stored package weight/dimensions into marketplaceSpecific in
+ * the eBay shape. Item columns are the single source of truth (populated by the
+ * listing flow / edit page), so this runs on EVERY eBay publish path — including
+ * photo-first/seeded drafts that never carried weight — to clear error 25020.
+ * Ephemeral: the merged object is passed to the adapter, never persisted to the
+ * listing row.
+ */
+type ItemShipping = {
+  weightOz: number | null;
+  lengthIn: number | null;
+  widthIn: number | null;
+  heightIn: number | null;
+  ebayPackageType: string | null;
+};
+function mergeItemShipping(
+  item: ItemShipping,
+  specific: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const merged = { ...(specific ?? {}) };
+  if (item.weightOz != null) merged.weight = toEbayWeight(item.weightOz);
+  if (item.lengthIn != null && item.widthIn != null && item.heightIn != null) {
+    merged.dimensions = toEbayDimensions(item.lengthIn, item.widthIn, item.heightIn);
+  }
+  if (item.ebayPackageType) merged.packageType = item.ebayPackageType;
+  return merged;
+}
 
 function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): MarketplaceAdapter {
   switch (marketplace) {
@@ -139,7 +168,9 @@ listingsRouter.post('/', async (req, res, next) => {
         brand: item.brand,
         model: item.model,
         features: item.features as string[],
-        marketplaceSpecific: body.marketplaceSpecificFields,
+        marketplaceSpecific: body.marketplace === 'ebay'
+          ? mergeItemShipping(item, body.marketplaceSpecificFields)
+          : body.marketplaceSpecificFields,
       });
 
       marketplaceListingId = result.marketplaceListingId;
@@ -330,6 +361,10 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
           merchantLocationKey: loc || profile?.ebayMerchantLocationKey || undefined,
         };
       }
+
+      // Item columns are the source of truth for package weight/dimensions —
+      // merge them in eBay shape so calculated-shipping publishes carry weight.
+      marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
     }
 
     const result = await adapter.createListing({

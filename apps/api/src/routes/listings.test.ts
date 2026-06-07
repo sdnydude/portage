@@ -70,6 +70,37 @@ beforeEach(() => {
 });
 
 describe('POST /listings', () => {
+  it('merges item weight/dimensions into marketplaceSpecific on eBay publish', async () => {
+    mockSelectOnce([
+      { ...MOCK_ITEM, weightOz: 56, lengthIn: 10, widthIn: 8, heightIn: 4, ebayPackageType: 'MAILING_BOX' },
+    ]);
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        marketplaceSpecificFields: { categoryId: '123' },
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockCreateListing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketplaceSpecific: expect.objectContaining({
+          categoryId: '123',
+          weight: { value: 56, unit: 'OUNCE' },
+          dimensions: { length: 10, width: 8, height: 4, unit: 'INCH' },
+          packageType: 'MAILING_BOX',
+        }),
+      }),
+    );
+  });
+
   it('persists ebaySku and ebayOfferId from the publish result', async () => {
     mockSelectOnce([MOCK_ITEM]);
     const insertValues = mockInsertCapture();
