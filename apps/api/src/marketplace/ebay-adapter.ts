@@ -32,6 +32,23 @@ export class EbayAspectsRequiredError extends AppError {
   }
 }
 
+/**
+ * Thrown when publishing to a CALCULATED-shipping fulfillment policy without a
+ * package weight + dimensions, which eBay otherwise rejects with the opaque
+ * error 25020. The route surfaces this as a structured 422 so the UI can prompt
+ * the seller to fill weight/dimensions instead of failing the publish blindly.
+ */
+export class EbayWeightRequiredError extends AppError {
+  constructor() {
+    super(
+      422,
+      'EBAY_WEIGHT_REQUIRED',
+      'eBay calculated shipping needs a package weight and dimensions. Add them before publishing.',
+    );
+    this.name = 'EbayWeightRequiredError';
+  }
+}
+
 const BROWSE_CONDITION_NORMALIZE: Record<string, string> = {
   'New': 'NEW',
   'New other (see details)': 'NEW',
@@ -249,8 +266,19 @@ export class EbayAdapter implements MarketplaceAdapter {
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
     const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const specific = input.marketplaceSpecific ?? {};
-    const ebayCondition = resolveEbayCondition(input.condition, specific);
+    let ebayCondition = resolveEbayCondition(input.condition, specific);
     const fields = validateEbayListingFields(specific);
+
+    // Calculated shipping requires a package weight + dimensions (eBay error
+    // 25020). Gate pre-flight with a clear 422 instead of eBay's opaque reject.
+    // Only fetch the policy when weight/dims are absent — the only case the gate
+    // can fire — so the happy path adds no extra API call.
+    const weightValue = (specific.weight as { value?: number } | undefined)?.value ?? 0;
+    if (weightValue <= 0 || !specific.dimensions) {
+      if (await this.getFulfillmentPolicy(fields.fulfillmentPolicyId)) {
+        throw new EbayWeightRequiredError();
+      }
+    }
 
     const product: Record<string, unknown> = {
       title: input.title,
@@ -301,6 +329,15 @@ export class EbayAdapter implements MarketplaceAdapter {
         if (vals.length > 0) canonical[key] = vals;
       }
       if (Object.keys(canonical).length > 0) product.aspects = canonical;
+
+      // eBay rejects a condition that isn't valid for the category (error 25021).
+      // Snap the item to the closest grade this category actually accepts — but
+      // never override an explicit, already-valid eBay enum the caller supplied.
+      if (!specific.condition) {
+        const validConditionIds = await EbayAdapter.getValidConditions(fields.categoryId);
+        const conditionFix = resolveEbayCategoryCondition(input.condition, validConditionIds);
+        if (conditionFix.condition) ebayCondition = conditionFix.condition;
+      }
     } else if (Object.keys(aspects).length > 0) {
       product.aspects = aspects;
     }
@@ -406,8 +443,16 @@ export class EbayAdapter implements MarketplaceAdapter {
 
   async updateListing(marketplaceListingId: string, input: Partial<MarketplaceListingInput>): Promise<MarketplaceListingResult> {
     if (input.ebaySku) {
-      const ebayCondition = resolveEbayCondition(input.condition ?? 'good', input.marketplaceSpecific);
+      let ebayCondition = resolveEbayCondition(input.condition ?? 'good', input.marketplaceSpecific);
       const specific = input.marketplaceSpecific ?? {};
+
+      // Same per-category guard as publish (eBay error 25021): snap to a grade the
+      // category accepts, unless an explicit valid enum was supplied.
+      if (specific.categoryId && !specific.condition) {
+        const validConditionIds = await EbayAdapter.getValidConditions(specific.categoryId as string);
+        const conditionFix = resolveEbayCategoryCondition(input.condition ?? 'good', validConditionIds);
+        if (conditionFix.condition) ebayCondition = conditionFix.condition;
+      }
 
       const product: Record<string, unknown> = {};
       if (input.title) product.title = input.title;
@@ -599,6 +644,32 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   // Account API business-policy creation for one-click eBay seller setup.
+  // Per-instance cache of policyId → isCalculated, so the weight gate doesn't
+  // re-fetch the policy on every publish.
+  private readonly calculatedPolicyCache = new Map<string, boolean>();
+
+  /**
+   * Return true when the fulfillment policy uses CALCULATED shipping (which
+   * hard-requires a package weight + dimensions). Cached per adapter instance.
+   * Fail-open: a lookup error returns false so a transient hiccup never blocks
+   * a publish.
+   */
+  async getFulfillmentPolicy(policyId: string): Promise<boolean> {
+    const cached = this.calculatedPolicyCache.get(policyId);
+    if (cached !== undefined) return cached;
+    try {
+      const policy = await this.request<{ shippingOptions?: Array<{ costType?: string }> }>(
+        `/sell/account/v1/fulfillment_policy/${policyId}`,
+      );
+      const isCalculated = (policy.shippingOptions ?? []).some((o) => o.costType === 'CALCULATED');
+      this.calculatedPolicyCache.set(policyId, isCalculated);
+      return isCalculated;
+    } catch (err) {
+      logger.warn({ userId: this.userId, policyId, err: (err as Error).message }, 'fulfillment policy lookup failed — not gating weight');
+      return false;
+    }
+  }
+
   // Per-seller writes, so they use this.request() (the seller's OAuth token,
   // which carries the sell.account scope) — not the static app-token reads.
   async createFulfillmentPolicy(name: string): Promise<string> {

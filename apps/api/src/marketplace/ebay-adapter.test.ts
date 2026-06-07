@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
-import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter } from './ebay-adapter.js';
+import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError } from './ebay-adapter.js';
 
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
@@ -231,6 +231,86 @@ describe('EbayAdapter.createListing — draft vs live publish mode', () => {
   });
 });
 
+describe('EbayAdapter.createListing — per-category condition auto-correct at publish', () => {
+  const mockConditionPolicies = (conditionIds: string[]) => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes('get_item_condition_policies')) {
+        return new Response(JSON.stringify({
+          itemConditionPolicies: [{ itemConditions: conditionIds.map((id) => ({ conditionId: id })) }],
+        }), { status: 200 });
+      }
+      if (u.includes('/publish')) return new Response(JSON.stringify({ listingId: '110012345678' }), { status: 200 });
+      if (u.includes('/offer')) return new Response(JSON.stringify({ offerId: 'offer-1' }), { status: 200 });
+      return new Response('{}', { status: 200 });
+    });
+  };
+  const conditionFromPut = () => {
+    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
+    return JSON.parse((putCall![1] as RequestInit).body as string).condition;
+  };
+
+  it('snaps a "good" item to the closest grade the category accepts when USED_GOOD is invalid (eBay error 25021)', async () => {
+    // cat 119018 (Pro Audio) accepts {New, Open box, Seller refurbished, Used, For parts} — NOT 5000/USED_GOOD
+    mockConditionPolicies(['1000', '1500', '2500', '3000', '7000']);
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      condition: 'good',
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '119018', ...validSetup },
+    } as any);
+    expect(conditionFromPut()).toBe('USED_EXCELLENT'); // conditionId 3000, not USED_GOOD (5000)
+  });
+
+  it('does not override an explicit, already-valid marketplaceSpecific.condition', async () => {
+    mockConditionPolicies(['1000', '1500', '2500', '3000', '7000']);
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      condition: 'good',
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '119018', ...validSetup, condition: 'SELLER_REFURBISHED' },
+    } as any);
+    expect(conditionFromPut()).toBe('SELLER_REFURBISHED'); // user's explicit valid choice wins over the snap
+  });
+
+  it('keeps USED_GOOD for a category that does accept it (no regression for media categories)', async () => {
+    mockConditionPolicies(['1000', '2750', '3000', '4000', '5000', '6000']);
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      condition: 'good',
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '11233', ...validSetup },
+    } as any);
+    expect(conditionFromPut()).toBe('USED_GOOD'); // 5000 is valid here — chain prefers it
+  });
+});
+
+describe('EbayAdapter.updateListing — per-category condition auto-correct', () => {
+  it('snaps condition to a category-valid grade on update (same 25021 guard as publish)', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes('get_item_condition_policies')) {
+        return new Response(JSON.stringify({
+          itemConditionPolicies: [{ itemConditions: ['1000', '1500', '2500', '3000', '7000'].map((id) => ({ conditionId: id })) }],
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    await adapter.updateListing('listing-1', {
+      ebaySku: 'portage-sku-1',
+      condition: 'good',
+      marketplaceSpecific: { categoryId: '119018' },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.condition).toBe('USED_EXCELLENT'); // not USED_GOOD (5000), which 119018 rejects
+  });
+});
+
 describe('EbayAdapter.createListing — SKU/offer reuse on re-publish', () => {
   it('reuses an existing SKU instead of minting a new one', async () => {
     fetchMock.mockImplementation(async (url: any) => {
@@ -304,7 +384,7 @@ describe('EbayAdapter — surfaces eBay error longMessage', () => {
     const adapter = new EbayAdapter('user-1');
     const err: any = await adapter.createListing({
       ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 1, width: 1, height: 1, unit: 'INCH' } },
     } as any).catch((e) => e);
 
     expect(err.statusCode).toBe(400);
@@ -322,7 +402,7 @@ describe('EbayAdapter — surfaces eBay error longMessage', () => {
     const adapter = new EbayAdapter('user-1');
     const err: any = await adapter.createListing({
       ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 1, width: 1, height: 1, unit: 'INCH' } },
     } as any).catch((e) => e);
 
     expect(err.message).not.toMatch(/<script>/);
@@ -336,7 +416,7 @@ describe('EbayAdapter — surfaces eBay error longMessage', () => {
     const adapter = new EbayAdapter('user-1');
     const err: any = await adapter.createListing({
       ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 1, width: 1, height: 1, unit: 'INCH' } },
     } as any).catch((e) => e);
 
     expect(err.statusCode).toBe(503);
@@ -675,5 +755,46 @@ describe('EbayAdapter.createInventoryLocation — Inventory API location (auto-s
       adapter.createInventoryLocation('invalid key!@#', { country: 'US' }),
     ).rejects.toThrow(/merchantLocationKey/i);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('EbayAdapter.getFulfillmentPolicy — CALCULATED shipping detection', () => {
+  it('returns true for CALCULATED, false for FLAT_RATE, and caches per instance', async () => {
+    let calcCalls = 0;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/sell/account/v1/fulfillment_policy/calc')) {
+        calcCalls++;
+        return new Response(JSON.stringify({ shippingOptions: [{ optionType: 'DOMESTIC', costType: 'CALCULATED' }] }), { status: 200 });
+      }
+      if (url.includes('/sell/account/v1/fulfillment_policy/flat')) {
+        return new Response(JSON.stringify({ shippingOptions: [{ optionType: 'DOMESTIC', costType: 'FLAT_RATE' }] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    expect(await adapter.getFulfillmentPolicy('calc')).toBe(true);
+    expect(await adapter.getFulfillmentPolicy('flat')).toBe(false);
+    // cached — a repeat lookup issues no new request
+    expect(await adapter.getFulfillmentPolicy('calc')).toBe(true);
+    expect(calcCalls).toBe(1);
+  });
+});
+
+describe('createListing — calculated-shipping weight gate (eBay error 25020)', () => {
+  const calculatedFetch = async (url: string) => {
+    if (url.includes('/sell/account/v1/fulfillment_policy/')) {
+      return new Response(JSON.stringify({ shippingOptions: [{ optionType: 'DOMESTIC', costType: 'CALCULATED' }] }), { status: 200 });
+    }
+    return new Response('{}', { status: 200 });
+  };
+
+  it('blocks a calculated-policy publish missing weight (422), before any inventory write', async () => {
+    fetchMock.mockImplementation(calculatedFetch);
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({ ...baseInput, marketplaceSpecific: { categoryId: '15032', ...validSetup } } as any),
+    ).rejects.toBeInstanceOf(EbayWeightRequiredError);
+    expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'))).toBeUndefined();
   });
 });
