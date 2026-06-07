@@ -14,6 +14,21 @@ import type {
 } from "@portage/shared";
 import type { AspectRequirement } from "@/components/listing/aspect-fill-sheet";
 
+export interface PublishOptions {
+  ebayPreparedFields?: EbayPreparedFields | null;
+  publishMode?: 'draft' | 'live';
+  aspects?: Record<string, string[]>;
+  // Weight/dims supplied by the fill sheet on a retry after EBAY_WEIGHT_REQUIRED;
+  // overrides flow state so persistence isn't subject to a setState race.
+  weightDims?: {
+    weight: number | null;
+    dimLength: number | null;
+    dimWidth: number | null;
+    dimHeight: number | null;
+    ebayPackageType: string | null;
+  };
+}
+
 const INITIAL_STATE: ListingFlowState = {
   photos: [],
   primaryPhotoIndex: 0,
@@ -333,8 +348,8 @@ export function useListingFlow() {
   }, [triggerAutoSave]);
 
   const publish = useCallback(async (
-    options?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: 'draft' | 'live'; aspects?: Record<string, string[]> },
-  ): Promise<{ success: boolean; listingId?: string; error?: string; aspectsRequired?: AspectRequirement[] }> => {
+    options?: PublishOptions,
+  ): Promise<{ success: boolean; listingId?: string; error?: string; aspectsRequired?: AspectRequirement[]; weightRequired?: boolean }> => {
     if (!token) return { success: false, error: 'Not authenticated' };
 
     const s = stateRef.current;
@@ -349,7 +364,15 @@ export function useListingFlow() {
 
       // weight column is ounces; flow state carries decimal pounds. The route
       // requires a positive weightOz, so sub-half-ounce values resolve to null.
-      const rawOz = s.weight != null ? Math.round(s.weight * 16) : 0;
+      // A fill-sheet retry supplies values via options.weightDims (seller-confirmed).
+      const wd = options?.weightDims;
+      const weightLbs = wd ? wd.weight : s.weight;
+      const dimL = wd ? wd.dimLength : s.dimLength;
+      const dimW = wd ? wd.dimWidth : s.dimWidth;
+      const dimH = wd ? wd.dimHeight : s.dimHeight;
+      const pkgType = wd ? wd.ebayPackageType : s.ebayPackageType;
+      const estimated = wd ? false : s.weightEstimated;
+      const rawOz = weightLbs != null ? Math.round(weightLbs * 16) : 0;
       const weightOz = rawOz > 0 ? rawOz : null;
 
       if (!itemId) {
@@ -370,11 +393,11 @@ export function useListingFlow() {
             ...(weightOz != null && {
               weightOz,
               // route schema is positive().optional() — send undefined, never null.
-              lengthIn: s.dimLength ?? undefined,
-              widthIn: s.dimWidth ?? undefined,
-              heightIn: s.dimHeight ?? undefined,
-              ebayPackageType: s.ebayPackageType ?? undefined,
-              weightEstimated: s.weightEstimated,
+              lengthIn: dimL ?? undefined,
+              widthIn: dimW ?? undefined,
+              heightIn: dimH ?? undefined,
+              ebayPackageType: pkgType ?? undefined,
+              weightEstimated: estimated,
             }),
           },
           token,
@@ -389,11 +412,11 @@ export function useListingFlow() {
           body: {
             weightOz,
             // route schema is positive().optional() — send undefined, never null.
-            lengthIn: s.dimLength ?? undefined,
-            widthIn: s.dimWidth ?? undefined,
-            heightIn: s.dimHeight ?? undefined,
-            ebayPackageType: s.ebayPackageType ?? undefined,
-            weightEstimated: s.weightEstimated,
+            lengthIn: dimL ?? undefined,
+            widthIn: dimW ?? undefined,
+            heightIn: dimH ?? undefined,
+            ebayPackageType: pkgType ?? undefined,
+            weightEstimated: estimated,
           },
           token,
         });
@@ -470,6 +493,13 @@ export function useListingFlow() {
         // Include `error` so a flow that doesn't render the aspect sheet still
         // shows eBay's human-readable "needs these item specifics" message.
         return { success: false, error: err.message, aspectsRequired: (err.details as unknown as AspectRequirement[]) ?? [] };
+      }
+      // Calculated-shipping publish missing package weight/dims — surface so the
+      // flow can collect them and retry. Like the aspects gate, the publish
+      // throws before any listing row is created, so retrying won't duplicate.
+      if (err instanceof ApiError && err.code === 'EBAY_WEIGHT_REQUIRED') {
+        setState(prev => ({ ...prev, publishStatus: 'idle' }));
+        return { success: false, error: err.message, weightRequired: true };
       }
       const msg = err instanceof ApiError ? err.message : 'Publishing failed';
       await saveDraft(stateRef.current, {

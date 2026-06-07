@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { api, ApiError } from "@/lib/api";
 import type { Listing } from "@portage/shared";
 import { AspectFillSheet, type AspectRequirement } from "@/components/listing/aspect-fill-sheet";
+import { WeightFillSheet } from "@/components/listing/weight-fill-sheet";
+import type { WeightDimsValue } from "@/components/listing/weight-dims-inputs";
 
 interface ItemPhoto {
   url: string;
@@ -101,6 +103,9 @@ export default function ListingDetailPage() {
   const [aspectMissing, setAspectMissing] = useState<AspectRequirement[] | null>(null);
   const [aspectSaving, setAspectSaving] = useState(false);
   const [aspectError, setAspectError] = useState<string | null>(null);
+  const [weightMissing, setWeightMissing] = useState(false);
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 
@@ -261,11 +266,56 @@ export default function ListingDetailPage() {
       // eBay needs category-required item specifics — collect them, then re-publish.
       if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
         setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);
+      } else if (err instanceof ApiError && err.code === "EBAY_WEIGHT_REQUIRED") {
+        // Calculated shipping needs package weight/dims — collect, then re-publish.
+        setWeightMissing(true);
       } else {
         setSaveError(err instanceof ApiError ? err.message : "Failed to publish listing");
       }
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  const handleWeightSave = async (value: WeightDimsValue) => {
+    if (!token || !listing) return;
+    setWeightSaving(true);
+    setWeightError(null);
+
+    try {
+      // Persist weight/dims to the item columns (publish source of truth), then
+      // re-publish. weight is decimal pounds; the column is ounces.
+      const rawOz = value.weight != null ? Math.round(value.weight * 16) : 0;
+      await api(`/items/${listing.itemId}`, {
+        method: "PATCH",
+        token,
+        body: {
+          weightOz: rawOz > 0 ? rawOz : undefined,
+          lengthIn: value.dimLength ?? undefined,
+          widthIn: value.dimWidth ?? undefined,
+          heightIn: value.dimHeight ?? undefined,
+          ebayPackageType: value.ebayPackageType ?? undefined,
+          weightEstimated: false,
+        },
+      });
+
+      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}/publish`, { method: "POST", token });
+      setListing(updated);
+      setSaveWarning(updated.warning ?? null);
+      setWeightMissing(false);
+    } catch (err) {
+      // A cascade (eBay then surfaced required specifics) hands off to the aspect
+      // sheet; anything else is shown inline in the weight sheet.
+      if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
+        setWeightMissing(false);
+        setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);
+      } else if (err instanceof ApiError && err.code === "EBAY_WEIGHT_REQUIRED") {
+        setWeightError("Add the package weight and dimensions to continue.");
+      } else {
+        setWeightError(err instanceof ApiError ? err.message : "Failed to publish listing");
+      }
+    } finally {
+      setWeightSaving(false);
     }
   };
 
@@ -715,6 +765,19 @@ export default function ListingDetailPage() {
             setAspectError(null);
           }}
           onSave={handleAspectsSave}
+        />
+      )}
+
+      {weightMissing && (
+        <WeightFillSheet
+          marketplaceLabel={marketplaceLabel}
+          saving={weightSaving}
+          error={weightError}
+          onCancel={() => {
+            setWeightMissing(false);
+            setWeightError(null);
+          }}
+          onSave={handleWeightSave}
         />
       )}
 

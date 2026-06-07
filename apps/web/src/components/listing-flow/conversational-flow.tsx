@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useListingFlow } from "@/hooks/use-listing-flow";
+import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { formatPrice, formatCondition } from "@/lib/format";
 import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
@@ -10,8 +10,9 @@ import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
 import { WeightDimsInputs, type WeightDimsChange } from "../listing/weight-dims-inputs";
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
+import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
-import type { ListingFlowState, EbayPreparedFields } from "@portage/shared";
+import type { ListingFlowState } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -685,30 +686,42 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
   const [aspectsNeeded, setAspectsNeeded] = useState<AspectRequirement[] | null>(null);
   const [aspectSaving, setAspectSaving] = useState(false);
   const [aspectError, setAspectError] = useState<string | null>(null);
-  const [pendingPublishOpts, setPendingPublishOpts] = useState<{ ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live" } | undefined>(undefined);
+  const [weightNeeded, setWeightNeeded] = useState(false);
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const [pendingPublishOpts, setPendingPublishOpts] = useState<PublishOpts | undefined>(undefined);
 
-  const runPublish = useCallback(async (
-    opts?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live"; aspects?: Record<string, string[]> },
-  ) => {
+  const runPublish = useCallback(async (opts?: PublishOpts) => {
     const fillingAspects = !!opts?.aspects;
+    const fillingWeight = !!opts?.weightDims;
     setPublishError(null);
     setAspectError(null);
+    setWeightError(null);
     if (fillingAspects) setAspectSaving(true);
+    else if (fillingWeight) setWeightSaving(true);
     else setIsPublishing(true);
 
     const result = await flow.publish(opts);
 
     if (fillingAspects) setAspectSaving(false);
+    else if (fillingWeight) setWeightSaving(false);
     else setIsPublishing(false);
 
     if (result.success) {
       setAspectsNeeded(null);
+      setWeightNeeded(false);
     } else if (result.aspectsRequired) {
       setPendingPublishOpts(opts);
       setAspectsNeeded(result.aspectsRequired);
       if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
+    } else if (result.weightRequired) {
+      setPendingPublishOpts(opts);
+      setWeightNeeded(true);
+      if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
     } else if (fillingAspects) {
       setAspectError(result.error ?? "Publishing failed");
+    } else if (fillingWeight) {
+      setWeightError(result.error ?? "Publishing failed");
     } else {
       setPublishError(result.error ?? "Publishing failed");
     }
@@ -971,6 +984,25 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
             setAspectError(null);
           }}
           onSave={(aspects) => runPublish({ ...pendingPublishOpts, aspects })}
+        />
+      )}
+
+      {weightNeeded && (
+        <WeightFillSheet
+          initial={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          saving={weightSaving}
+          error={weightError}
+          onCancel={() => {
+            setWeightNeeded(false);
+            setWeightError(null);
+          }}
+          onSave={(value) => runPublish({ ...pendingPublishOpts, weightDims: value })}
         />
       )}
     </div>

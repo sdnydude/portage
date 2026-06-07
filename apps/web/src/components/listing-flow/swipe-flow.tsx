@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useListingFlow } from "@/hooks/use-listing-flow";
+import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { formatCondition } from "@/lib/format";
 import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
@@ -9,8 +9,8 @@ import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
 import { WeightDimsInputsInline } from "../listing/weight-dims-inputs";
+import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
-import type { EbayPreparedFields } from "@portage/shared";
 
 /* ─────────────────────────────────────────────
    Types
@@ -1612,31 +1612,44 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const [aspectsNeeded, setAspectsNeeded] = useState<AspectRequirement[] | null>(null);
   const [aspectSaving, setAspectSaving] = useState(false);
   const [aspectError, setAspectError] = useState<string | null>(null);
-  const pendingPublishOpts = useRef<{ ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live" } | undefined>(undefined);
+  const [weightNeeded, setWeightNeeded] = useState(false);
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const pendingPublishOpts = useRef<PublishOpts | undefined>(undefined);
 
-  const runPublish = useCallback(async (
-    opts?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: "draft" | "live"; aspects?: Record<string, string[]> },
-  ) => {
+  const runPublish = useCallback(async (opts?: PublishOpts) => {
     const fillingAspects = !!opts?.aspects;
+    const fillingWeight = !!opts?.weightDims;
     setPublishError(null);
     setAspectError(null);
+    setWeightError(null);
     if (fillingAspects) setAspectSaving(true);
+    else if (fillingWeight) setWeightSaving(true);
     else setPhase("publishing");
 
     const result = await publish(opts);
 
     if (fillingAspects) setAspectSaving(false);
+    else if (fillingWeight) setWeightSaving(false);
 
     if (result.success) {
       setAspectsNeeded(null);
+      setWeightNeeded(false);
       setPhase("success");
     } else if (result.aspectsRequired) {
       pendingPublishOpts.current = opts;
       setAspectsNeeded(result.aspectsRequired);
       if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
       else setPhase("review");
+    } else if (result.weightRequired) {
+      pendingPublishOpts.current = opts;
+      setWeightNeeded(true);
+      if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
+      else setPhase("review");
     } else if (fillingAspects) {
       setAspectError(result.error ?? "Publishing failed");
+    } else if (fillingWeight) {
+      setWeightError(result.error ?? "Publishing failed");
     } else {
       setPublishError(result.error ?? "Publishing failed");
       setPhase("review");
@@ -1799,6 +1812,25 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
             setAspectError(null);
           }}
           onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+        />
+      )}
+
+      {weightNeeded && (
+        <WeightFillSheet
+          initial={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          saving={weightSaving}
+          error={weightError}
+          onCancel={() => {
+            setWeightNeeded(false);
+            setWeightError(null);
+          }}
+          onSave={(value) => runPublish({ ...pendingPublishOpts.current, weightDims: value })}
         />
       )}
     </div>
