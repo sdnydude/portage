@@ -44,6 +44,11 @@ const INITIAL_STATE: ListingFlowState = {
   shippingCost: null,
   packageSize: 'medium',
   weight: null,
+  dimLength: null,
+  dimWidth: null,
+  dimHeight: null,
+  ebayPackageType: null,
+  weightEstimated: false,
   draftId: null,
   publishStatus: 'idle',
   listingId: null,
@@ -162,6 +167,12 @@ export function useListingFlow() {
         quantity: number;
         photos: ListingFlowState['photos'];
         estimatedValueRecommended: number | null;
+        weightOz: number | null;
+        lengthIn: number | null;
+        widthIn: number | null;
+        heightIn: number | null;
+        ebayPackageType: string | null;
+        weightEstimated: boolean;
       }>(`/items/${itemId}`, { token });
 
       setState({
@@ -177,6 +188,13 @@ export function useListingFlow() {
         quantity: item.quantity ?? 1,
         photos: item.photos ?? [],
         price: item.estimatedValueRecommended ?? null,
+        // weight column is ounces; flow state carries decimal pounds.
+        weight: item.weightOz != null ? item.weightOz / 16 : null,
+        dimLength: item.lengthIn ?? null,
+        dimWidth: item.widthIn ?? null,
+        dimHeight: item.heightIn ?? null,
+        ebayPackageType: item.ebayPackageType ?? null,
+        weightEstimated: item.weightEstimated ?? false,
         recognition: {
           status: 'complete',
           candidates: [],
@@ -297,6 +315,11 @@ export function useListingFlow() {
     try {
       let itemId = s.inventoryItemId;
 
+      // weight column is ounces; flow state carries decimal pounds. The route
+      // requires a positive weightOz, so sub-half-ounce values resolve to null.
+      const rawOz = s.weight != null ? Math.round(s.weight * 16) : 0;
+      const weightOz = rawOz > 0 ? rawOz : null;
+
       if (!itemId) {
         const item = await api<{ id: string }>('/items', {
           method: 'POST',
@@ -312,11 +335,36 @@ export function useListingFlow() {
             photos: s.photos,
             estimatedValueRecommended: s.price,
             aiConfidenceScore: s.recognition.confidence,
+            ...(weightOz != null && {
+              weightOz,
+              // route schema is positive().optional() — send undefined, never null.
+              lengthIn: s.dimLength ?? undefined,
+              widthIn: s.dimWidth ?? undefined,
+              heightIn: s.dimHeight ?? undefined,
+              ebayPackageType: s.ebayPackageType ?? undefined,
+              weightEstimated: s.weightEstimated,
+            }),
           },
           token,
         });
         itemId = item.id;
         setState(prev => ({ ...prev, inventoryItemId: itemId }));
+      } else if (weightOz != null) {
+        // Existing item: persist weight/dims to the item columns so the
+        // publish-time merge (listings route) can emit packageWeightAndSize.
+        await api(`/items/${itemId}`, {
+          method: 'PATCH',
+          body: {
+            weightOz,
+            // route schema is positive().optional() — send undefined, never null.
+            lengthIn: s.dimLength ?? undefined,
+            widthIn: s.dimWidth ?? undefined,
+            heightIn: s.dimHeight ?? undefined,
+            ebayPackageType: s.ebayPackageType ?? undefined,
+            weightEstimated: s.weightEstimated,
+          },
+          token,
+        });
       }
 
       let ebayPreparedFields = options?.ebayPreparedFields;
