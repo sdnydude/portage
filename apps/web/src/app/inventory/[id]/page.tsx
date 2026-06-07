@@ -20,6 +20,7 @@ import {
   canSaveItemEdit,
   type ItemEditFields,
 } from "@/lib/item-edit";
+import { WeightDimsInputs } from "@/components/listing/weight-dims-inputs";
 
 const conditionColors: Record<string, string> = {
   new: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -540,6 +541,22 @@ export default function ItemDetailPage() {
                   className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
                 />
               </FieldGroup>
+
+              {/* eBay Calculated shipping (weight + dimensions). Editing flips
+                  the AI-estimated flag to seller-confirmed. */}
+              <WeightDimsInputs
+                value={{
+                  weight: editFields.weight,
+                  dimLength: editFields.dimLength,
+                  dimWidth: editFields.dimWidth,
+                  dimHeight: editFields.dimHeight,
+                  ebayPackageType: editFields.ebayPackageType,
+                }}
+                onChange={(patch) =>
+                  setEditFields((f) => (f ? { ...f, ...patch, weightEstimated: false } : f))
+                }
+                estimated={editFields.weightEstimated}
+              />
 
               <div className="flex gap-3 pt-1">
                 <button
