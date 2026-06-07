@@ -271,11 +271,15 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     // Calculated shipping requires a package weight + dimensions (eBay error
     // 25020). Gate pre-flight with a clear 422 instead of eBay's opaque reject.
-    // Only fetch the policy when weight/dims are absent — the only case the gate
-    // can fire — so the happy path adds no extra API call.
-    const weightValue = (specific.weight as { value?: number } | undefined)?.value ?? 0;
-    if (weightValue <= 0 || !specific.dimensions) {
-      if (await this.getFulfillmentPolicy(fields.fulfillmentPolicyId)) {
+    // Drafts are exempt — eBay only enforces this at live publish (mirrors the
+    // aspects gate). Only fetch the policy when weight/dims are absent or invalid
+    // — the happy path adds no extra API call.
+    if (input.publishMode !== 'draft') {
+      const rawWeight = specific.weight as { value?: unknown } | undefined;
+      const weightOk = typeof rawWeight?.value === 'number' && rawWeight.value > 0;
+      const d = specific.dimensions as { length?: number; width?: number; height?: number } | undefined;
+      const dimsOk = !!d && (d.length ?? 0) > 0 && (d.width ?? 0) > 0 && (d.height ?? 0) > 0;
+      if ((!weightOk || !dimsOk) && (await this.getFulfillmentPolicy(fields.fulfillmentPolicyId))) {
         throw new EbayWeightRequiredError();
       }
     }
@@ -644,8 +648,9 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   // Account API business-policy creation for one-click eBay seller setup.
-  // Per-instance cache of policyId → isCalculated, so the weight gate doesn't
-  // re-fetch the policy on every publish.
+  // Cache of policyId → isCalculated for this adapter instance. Adapters are
+  // created per request, so this dedupes repeat lookups within a single
+  // createListing/publish call, not across requests.
   private readonly calculatedPolicyCache = new Map<string, boolean>();
 
   /**
@@ -665,7 +670,12 @@ export class EbayAdapter implements MarketplaceAdapter {
       this.calculatedPolicyCache.set(policyId, isCalculated);
       return isCalculated;
     } catch (err) {
-      logger.warn({ userId: this.userId, policyId, err: (err as Error).message }, 'fulfillment policy lookup failed — not gating weight');
+      // Fail-open: a transient lookup failure shouldn't block a publish (a
+      // fail-closed default would wrongly block valid flat-rate publishes too).
+      // Log the HTTP status so a recurring 403 (missing sell.account scope) or
+      // 404 (bad policyId) — which silently skip the gate — is diagnosable.
+      const status = err instanceof AppError ? err.statusCode : undefined;
+      logger.warn({ userId: this.userId, policyId, status, err: (err as Error).message }, 'fulfillment policy lookup failed — weight gate skipped this publish');
       return false;
     }
   }

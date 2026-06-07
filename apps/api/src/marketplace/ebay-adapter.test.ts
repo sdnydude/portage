@@ -796,5 +796,21 @@ describe('createListing — calculated-shipping weight gate (eBay error 25020)',
       adapter.createListing({ ...baseInput, marketplaceSpecific: { categoryId: '15032', ...validSetup } } as any),
     ).rejects.toBeInstanceOf(EbayWeightRequiredError);
     expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'))).toBeUndefined();
+
+    // zero-valued dimensions are not real dimensions — must also gate
+    await expect(
+      adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 56, unit: 'OUNCE' }, dimensions: { length: 0, width: 8, height: 4, unit: 'INCH' } },
+      } as any),
+    ).rejects.toBeInstanceOf(EbayWeightRequiredError);
+  });
+
+  it('does NOT gate a draft save — weight is only required at live publish', async () => {
+    fetchMock.mockImplementation(calculatedFetch);
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({ ...baseInput, publishMode: 'draft', marketplaceSpecific: { categoryId: '15032', ...validSetup } } as any),
+    ).resolves.toBeDefined();
   });
 });
