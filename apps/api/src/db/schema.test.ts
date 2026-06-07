@@ -26,3 +26,27 @@ describe('schema — eBay listing hardening columns', () => {
     expect(listings.ebayOfferId.notNull).toBe(false);
   });
 });
+
+// eBay Calculated shipping requires a package weight + dimensions (error 25020).
+// These columns store the seller-confirmed or AI-estimated package metrics,
+// normalized to ounces + inches; converted to the eBay packageWeightAndSize
+// shape at publish. All nullable (existing rows) except the estimate flag.
+describe('schema — eBay package weight & dimension columns', () => {
+  it('adds nullable weightOz + length/width/height_in + ebayPackageType, and a weightEstimated flag', () => {
+    expect(items.weightOz).toBeDefined();
+    expect(items.weightOz.notNull).toBe(false);
+    expect(items.lengthIn).toBeDefined();
+    expect(items.lengthIn.notNull).toBe(false);
+    expect(items.widthIn).toBeDefined();
+    expect(items.widthIn.notNull).toBe(false);
+    expect(items.heightIn).toBeDefined();
+    expect(items.heightIn.notNull).toBe(false);
+    // ebayPackageType holds an eBay enum string (MAILING_BOX/LETTER/...) —
+    // deliberately a varchar, NOT the box/envelope/poly_mailer packageTypeEnum.
+    expect(items.ebayPackageType).toBeDefined();
+    expect(items.ebayPackageType.notNull).toBe(false);
+    // weightEstimated: true when AI-populated, flips false on seller edit.
+    expect(items.weightEstimated).toBeDefined();
+    expect(items.weightEstimated.notNull).toBe(true);
+  });
+});
