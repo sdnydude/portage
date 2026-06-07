@@ -688,7 +688,13 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
     }
   }, [flow]);
 
-  const handlePublish = useCallback(() => runPublish(), [runPublish]);
+  // Chat "Publish" pill (primary CTA) + Review fallback. Pass eBay prepared
+  // fields + publishMode so they aren't dropped on this path; no draft/live
+  // toggle here, so live is the intended mode (matches prior behavior).
+  const handlePublish = useCallback(
+    () => runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode: "live" }),
+    [runPublish, prepareListing.data],
+  );
 
   // Derive the effective lastStep (merging hook's lastStep with local flags)
   const effectiveLastStep = useMemo(() => {

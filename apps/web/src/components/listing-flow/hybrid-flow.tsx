@@ -447,7 +447,10 @@ function ChatMode({
     }
   };
 
-  const handlePublish = () => runPublish();
+  // Fallback Review pill (shown when no AI-prepared card). Pass the same context
+  // as the ListingPreviewCard path so eBay prepared fields + publishMode aren't
+  // dropped — this pill has no draft/live toggle, so live is the intended mode.
+  const handlePublish = () => runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode: "live" });
 
   const candidate = state.recognition.candidates[state.recognition.selectedIndex];
   const primaryPhoto = state.photos[state.primaryPhotoIndex];
