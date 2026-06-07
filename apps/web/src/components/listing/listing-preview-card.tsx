@@ -215,12 +215,10 @@ export function ListingPreviewCard({
           </div>
         )}
 
-        {data.ebay && (
-          <div className="text-sm space-y-1" style={{ color: "rgba(0,0,0,0.6)" }}>
-            <p>Weight: ~{data.ebay.weight.value} {data.ebay.weight.unit} (estimated)</p>
-            <p>Dimensions: {data.ebay.dimensions.length}x{data.ebay.dimensions.width}x{data.ebay.dimensions.height} {data.ebay.dimensions.unit} (estimated)</p>
-          </div>
-        )}
+        {/* Weight/dimensions are captured editably in each flow's shipping step
+            (WeightDimsInputs) and persisted to the item columns, which are the
+            source of truth at publish — so the old read-only estimate block here
+            (which showed the prepare estimate, not the publish value) is gone. */}
 
         {data.warnings.length > 0 && (
           <div className="space-y-1">

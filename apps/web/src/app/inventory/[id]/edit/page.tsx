@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
 import { useAuth } from "@/hooks/use-auth";
+import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
 
 const conditions = [
   { value: "new", label: "New" },
@@ -32,6 +33,10 @@ export default function EditItemPage() {
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [weightDims, setWeightDims] = useState<WeightDimsValue>({
+    weight: null, dimLength: null, dimWidth: null, dimHeight: null, ebayPackageType: null,
+  });
+  const [weightEstimated, setWeightEstimated] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -45,8 +50,23 @@ export default function EditItemPage() {
       setBrand(item.brand);
       setModel(item.model);
       setQuantity(item.quantity ?? 1);
+      setWeightDims({
+        // weight column is ounces; the input works in decimal pounds.
+        weight: item.weightOz != null ? item.weightOz / 16 : null,
+        dimLength: item.lengthIn ?? null,
+        dimWidth: item.widthIn ?? null,
+        dimHeight: item.heightIn ?? null,
+        ebayPackageType: item.ebayPackageType ?? null,
+      });
+      setWeightEstimated(item.weightEstimated ?? false);
     }
   }, [item]);
+
+  // Manual edits clear the AI-estimated flag (these are now seller-confirmed).
+  const handleWeightDimsChange = (patch: Partial<WeightDimsValue>) => {
+    setWeightDims((prev) => ({ ...prev, ...patch }));
+    setWeightEstimated(false);
+  };
 
   useEffect(() => {
     if (!isAuthenticated) router.replace("/inventory");
@@ -84,6 +104,9 @@ export default function EditItemPage() {
     setIsSaving(true);
     setSaveError(null);
     try {
+      // weight column is ounces; the route requires a positive weightOz, so a
+      // sub-half-ounce or empty value is sent as undefined (left unchanged).
+      const rawOz = weightDims.weight != null ? Math.round(weightDims.weight * 16) : 0;
       await updateItem({
         title: title.trim(),
         description: description.trim(),
@@ -93,6 +116,12 @@ export default function EditItemPage() {
         brand: brand.trim(),
         model: model.trim(),
         quantity,
+        weightOz: rawOz > 0 ? rawOz : undefined,
+        lengthIn: weightDims.dimLength ?? undefined,
+        widthIn: weightDims.dimWidth ?? undefined,
+        heightIn: weightDims.dimHeight ?? undefined,
+        ebayPackageType: weightDims.ebayPackageType ?? undefined,
+        weightEstimated,
       });
       router.back();
     } catch (err) {
@@ -109,7 +138,12 @@ export default function EditItemPage() {
     conditionNotes !== item.conditionNotes ||
     brand !== item.brand ||
     model !== item.model ||
-    quantity !== (item.quantity ?? 1);
+    quantity !== (item.quantity ?? 1) ||
+    weightDims.weight !== (item.weightOz != null ? item.weightOz / 16 : null) ||
+    weightDims.dimLength !== (item.lengthIn ?? null) ||
+    weightDims.dimWidth !== (item.widthIn ?? null) ||
+    weightDims.dimHeight !== (item.heightIn ?? null) ||
+    weightDims.ebayPackageType !== (item.ebayPackageType ?? null);
 
   return (
     <div className="min-h-screen bg-background">
@@ -237,6 +271,14 @@ export default function EditItemPage() {
             className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
           />
         </FieldGroup>
+
+        {/* eBay Calculated shipping (weight + dimensions). Editing flips the
+            AI-estimated flag to seller-confirmed. */}
+        <WeightDimsInputs
+          value={weightDims}
+          onChange={handleWeightDimsChange}
+          estimated={weightEstimated}
+        />
       </div>
     </div>
   );

@@ -3,10 +3,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
 import { formatCondition } from "@/lib/format";
+import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
+import { WeightDimsInputsInline } from "../listing/weight-dims-inputs";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
 import type { EbayPreparedFields } from "@portage/shared";
 
@@ -1066,10 +1068,12 @@ const PACKAGE_CARDS: PackageCard[] = [
 function ShippingPhase({
   state,
   setField,
+  updateWeightDims,
   onNext,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   setField: ReturnType<typeof useListingFlow>["setField"];
+  updateWeightDims: ReturnType<typeof useListingFlow>["updateWeightDims"];
   onNext: () => void;
 }) {
   const currentSize = (state.packageSize ?? "medium") as PackageSize;
@@ -1145,31 +1149,25 @@ function ShippingPhase({
           );
         })}
 
-        {/* Weight input */}
+        {/* Weight + dimensions */}
         <div style={{ marginTop: 8 }}>
-          <p style={{ color: "#666", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", letterSpacing: "0.1em", marginBottom: 8 }}>
-            WEIGHT (LBS) — OPTIONAL
-          </p>
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="e.g. 2.5"
-            value={state.weight ?? ""}
-            onChange={(e) => {
-              const val = e.target.value ? parseFloat(e.target.value) : null;
-              setField("weight", val);
+          <WeightDimsInputsInline
+            value={{
+              weight: state.weight,
+              dimLength: state.dimLength,
+              dimWidth: state.dimWidth,
+              dimHeight: state.dimHeight,
+              ebayPackageType: state.ebayPackageType,
             }}
-            style={{
-              width: "100%",
-              background: "#111",
-              border: "1px solid #222",
-              borderRadius: "10px",
-              padding: "14px 16px",
-              color: "#fff",
+            onChange={updateWeightDims}
+            estimated={state.weightEstimated}
+            tokens={{ text: "#fff", secondary: "#666", cardBg: "#111", cardBorder: "#222" }}
+            labelStyleOverride={{
+              color: "#666",
               fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: "16px",
-              outline: "none",
-              boxSizing: "border-box",
+              fontSize: "11px",
+              letterSpacing: "0.1em",
+              marginBottom: 8,
             }}
           />
         </div>
@@ -1530,7 +1528,7 @@ function PublishingPhase() {
 export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const flow = useListingFlow();
   const prepareListing = usePrepareListing();
-  const { state, setField, startFromItem, confirmRecognition, fetchComps, applyPricingStrategy, publish, reset } = flow;
+  const { state, setField, updateWeightDims, startFromItem, confirmRecognition, fetchComps, applyPricingStrategy, publish, reset } = flow;
 
   const [phase, setPhase] = useState<Phase>("recognition");
   const [scanPercent, setScanPercent] = useState(0);
@@ -1587,6 +1585,14 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     const idx = PHASE_ORDER.indexOf(phase);
     if (idx > 0) setPhase(PHASE_ORDER[idx - 1]);
   }, [phase]);
+
+  // Pre-fill weight/dims from the AI estimate (guarded — never clobbers a weight
+  // the seller already entered).
+  useEffect(() => {
+    const ebay = prepareListing.data?.ebay;
+    if (ebay) flow.applyEstimatedWeightDims(ebayEstimateToWeightDims(ebay));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepareListing.data]);
 
   const handleConfirmRecognition = useCallback(() => {
     confirmRecognition(state.recognition.selectedIndex);
@@ -1718,6 +1724,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
           <ShippingPhase
             state={state}
             setField={setField}
+            updateWeightDims={updateWeightDims}
             onNext={() => setPhase("review")}
           />
         )}

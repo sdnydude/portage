@@ -89,6 +89,38 @@ export function useListingFlow() {
     });
   }, [triggerAutoSave]);
 
+  // Manual weight/dimension edits: merge the patch and clear the AI-estimated
+  // flag in one update so the persisted item records seller-confirmed metrics.
+  const updateWeightDims = useCallback((patch: Partial<Pick<ListingFlowState,
+    'weight' | 'dimLength' | 'dimWidth' | 'dimHeight' | 'ebayPackageType'>>) => {
+    setState(prev => {
+      const next = { ...prev, ...patch, weightEstimated: false };
+      triggerAutoSave(next);
+      return next;
+    });
+  }, [triggerAutoSave]);
+
+  // AI-estimate prefill: populate weight/dims from a prepare result, marking
+  // them estimated. Only fills when the seller hasn't already entered a weight,
+  // so it never clobbers confirmed values.
+  const applyEstimatedWeightDims = useCallback((est: {
+    weight?: number | null; dimLength?: number | null;
+    dimWidth?: number | null; dimHeight?: number | null; ebayPackageType?: string | null;
+  }) => {
+    setState(prev => {
+      if (prev.weight != null) return prev;
+      return {
+        ...prev,
+        weight: est.weight ?? null,
+        dimLength: est.dimLength ?? null,
+        dimWidth: est.dimWidth ?? null,
+        dimHeight: est.dimHeight ?? null,
+        ebayPackageType: est.ebayPackageType ?? null,
+        weightEstimated: true,
+      };
+    });
+  }, []);
+
   const startFromPhoto = useCallback(async (photos: ListingFlowState['photos']) => {
     if (!token) return;
     setError(null);
@@ -476,6 +508,8 @@ export function useListingFlow() {
     clearError,
     saveWarning,
     setField,
+    updateWeightDims,
+    applyEstimatedWeightDims,
     startFromPhoto,
     startFromItem,
     resumeDraft,

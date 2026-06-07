@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
 import { formatPrice, formatCondition } from "@/lib/format";
+import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
+import { WeightDimsInputs, type WeightDimsChange } from "../listing/weight-dims-inputs";
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
 import type { ListingFlowState, EbayPreparedFields } from "@portage/shared";
@@ -279,6 +281,7 @@ function deriveMessages(
     onEditDescription: () => void;
     onSetShippingSize: (s: string) => void;
     onSetShippingMethod: (m: string) => void;
+    onWeightDimsChange: WeightDimsChange;
     onSetMarketplace: (m: "ebay" | "etsy" | "reverb") => void;
     onPublish: () => void;
     onConfirmDetails: () => void;
@@ -491,6 +494,21 @@ function deriveMessages(
     id: "shipping-q",
     role: "porter",
     content: "How should we ship this? Pick a package size, then a method.",
+    card: !shippingReached ? (
+      <div className="rounded-2xl p-4" style={{ background: "#FAF8F5", border: "1px solid #E8E5DE" }}>
+        <WeightDimsInputs
+          value={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          onChange={handlers.onWeightDimsChange}
+          estimated={state.weightEstimated}
+        />
+      </div>
+    ) : undefined,
     pills: !shippingReached
       ? [
           { label: "Small", action: () => handlers.onSetShippingSize("small"), variant: state.packageSize === "small" ? "primary" : "outline" },
@@ -602,6 +620,14 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [lastStep, state.recognition.status, state.compsStatus, state.publishStatus, isPublishing]);
+
+  // Pre-fill weight/dims from the AI estimate (guarded — never clobbers a weight
+  // the seller already entered).
+  useEffect(() => {
+    const ebay = prepareListing.data?.ebay;
+    if (ebay) flow.applyEstimatedWeightDims(ebayEstimateToWeightDims(ebay));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepareListing.data]);
 
   // ── handlers ──
 
@@ -717,6 +743,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onConfirmDetails: handleConfirmDetails,
         onSetShippingSize: handleSetShippingSize,
         onSetShippingMethod: handleSetShippingMethod,
+        onWeightDimsChange: flow.updateWeightDims,
         onSetMarketplace: handleSetMarketplace,
         onPublish: handlePublish,
         onConfirmShipping: handleConfirmShipping,

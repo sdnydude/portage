@@ -2,13 +2,19 @@
 
 import type { CSSProperties, ComponentType, ReactNode } from "react";
 import type { PackageSize, ShippingMethod } from "@portage/shared";
+import {
+  WeightDimsInputsInline,
+  type WeightDimsValue,
+  type WeightDimsChange,
+} from "../listing/weight-dims-inputs";
 
 interface ShippingConfigCardProps {
   packageSize: PackageSize | null;
-  weight: number | null;
   shippingMethod: ShippingMethod | null;
+  weightDims: WeightDimsValue;
+  weightEstimated?: boolean;
   onPackageSizeChange: (size: PackageSize) => void;
-  onWeightChange: (weight: number | null) => void;
+  onWeightDimsChange: WeightDimsChange;
   onShippingMethodChange: (method: ShippingMethod) => void;
   Pill: ComponentType<{
     children: ReactNode;
@@ -35,8 +41,8 @@ const methodLabels: Record<ShippingMethod, string> = {
 };
 
 export function ShippingConfigCard({
-  packageSize, weight, shippingMethod,
-  onPackageSizeChange, onWeightChange, onShippingMethodChange,
+  packageSize, shippingMethod, weightDims, weightEstimated,
+  onPackageSizeChange, onWeightDimsChange, onShippingMethodChange,
   Pill, tokens, labelStyleOverride,
 }: ShippingConfigCardProps) {
   const labelStyle: CSSProperties = labelStyleOverride ?? {
@@ -46,18 +52,6 @@ export function ShippingConfigCard({
     marginBottom: 6,
     textTransform: "uppercase",
     letterSpacing: "0.05em",
-  };
-
-  const inputStyle: CSSProperties = {
-    width: "100%",
-    fontSize: 14,
-    color: tokens.text,
-    background: tokens.cardBg,
-    border: `1px solid ${tokens.cardBorder}`,
-    borderRadius: 8,
-    padding: "8px 12px",
-    outline: "none",
-    boxSizing: "border-box",
   };
 
   return (
@@ -72,21 +66,13 @@ export function ShippingConfigCard({
           ))}
         </div>
       </div>
-      <div>
-        <p style={labelStyle}>Weight (lbs)</p>
-        <input
-          type="number"
-          min={0}
-          step={0.1}
-          value={weight ?? ""}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            onWeightChange(isNaN(v) ? null : v);
-          }}
-          placeholder="0.0"
-          style={inputStyle}
-        />
-      </div>
+      <WeightDimsInputsInline
+        value={weightDims}
+        onChange={onWeightDimsChange}
+        estimated={weightEstimated}
+        tokens={tokens}
+        labelStyleOverride={labelStyleOverride}
+      />
       <div>
         <p style={labelStyle}>Method</p>
         <div style={{ display: "flex", gap: 6 }}>

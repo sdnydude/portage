@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { useListingFlow } from "@/hooks/use-listing-flow";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { formatPrice } from "@/lib/format";
+import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
@@ -388,7 +389,7 @@ function ChatMode({
   onShowCapture: () => void;
   prepareListing: ReturnType<typeof usePrepareListing>;
 }) {
-  const { state, lastStep, setField, confirmRecognition, fetchComps, applyPricingStrategy } = flow;
+  const { state, lastStep, setField, updateWeightDims, confirmRecognition, fetchComps, applyPricingStrategy } = flow;
   const bottomRef = useRef<HTMLDivElement>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -688,10 +689,17 @@ function ChatMode({
           <InlineCard title="Shipping">
             <ShippingConfigCard
               packageSize={state.packageSize}
-              weight={state.weight}
               shippingMethod={state.shippingMethod}
+              weightDims={{
+                weight: state.weight,
+                dimLength: state.dimLength,
+                dimWidth: state.dimWidth,
+                dimHeight: state.dimHeight,
+                ebayPackageType: state.ebayPackageType,
+              }}
+              weightEstimated={state.weightEstimated}
               onPackageSizeChange={(s) => setField("packageSize", s)}
-              onWeightChange={(w) => setField("weight", w)}
+              onWeightDimsChange={updateWeightDims}
               onShippingMethodChange={(m) => setField("shippingMethod", m)}
               Pill={Pill}
               tokens={{ text: TEXT, secondary: SECONDARY, cardBg: CARD_BG, cardBorder: CARD_BORDER }}
@@ -807,7 +815,7 @@ function ChatMode({
 // ─── COMPACT MODE ─────────────────────────────────────────────────────────────
 
 function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
-  const { state, setField, applyPricingStrategy, publish } = flow;
+  const { state, setField, updateWeightDims, applyPricingStrategy, publish } = flow;
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1025,10 +1033,17 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
       <div style={{ ...rowStyle, paddingTop: 14 }}>
         <ShippingConfigCard
           packageSize={state.packageSize}
-          weight={state.weight}
           shippingMethod={state.shippingMethod}
+          weightDims={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          weightEstimated={state.weightEstimated}
           onPackageSizeChange={(s) => setField("packageSize", s)}
-          onWeightChange={(w) => setField("weight", w)}
+          onWeightDimsChange={updateWeightDims}
           onShippingMethodChange={(m) => setField("shippingMethod", m)}
           Pill={Pill}
           tokens={{ text: TEXT, secondary: SECONDARY, cardBg: CARD_BG, cardBorder: CARD_BORDER }}
@@ -1079,6 +1094,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
 export function HybridFlow({ itemId }: HybridFlowProps) {
   const flow = useListingFlow();
   const prepareListing = usePrepareListing();
+  const { applyEstimatedWeightDims } = flow;
   const { compactMode, updatePrefs } = useUserPreferences();
   const [localCompact, setLocalCompact] = useState<boolean | null>(null);
   const [showCapture, setShowCapture] = useState(false);
@@ -1092,6 +1108,13 @@ export function HybridFlow({ itemId }: HybridFlowProps) {
       flow.startFromItem(itemId);
     }
   }, [itemId, flow]);
+
+  // Pre-fill weight/dims from the AI estimate (no-op once the seller has entered
+  // a weight, so it never clobbers confirmed values).
+  useEffect(() => {
+    const ebay = prepareListing.data?.ebay;
+    if (ebay) applyEstimatedWeightDims(ebayEstimateToWeightDims(ebay));
+  }, [prepareListing.data, applyEstimatedWeightDims]);
 
   const toggleMode = useCallback(() => {
     const next = !isCompact;
