@@ -217,6 +217,38 @@ describe('POST /items', () => {
     expect(res.body.quantity).toBe(5);
   });
 
+  it('accepts weight/dimension fields and passes them to the insert', async () => {
+    const valuesSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM }]),
+    });
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        title: 'Vintage Guitar',
+        weightOz: 56,
+        lengthIn: 45,
+        widthIn: 18,
+        heightIn: 6,
+        ebayPackageType: 'MAILING_BOX',
+        weightEstimated: true,
+      });
+
+    expect(res.status).toBe(201);
+    expect(valuesSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        weightOz: 56,
+        lengthIn: 45,
+        widthIn: 18,
+        heightIn: 6,
+        ebayPackageType: 'MAILING_BOX',
+        weightEstimated: true,
+      }),
+    );
+  });
+
   it('rejects quantity 0 — eBay requires at least 1', async () => {
     const res = await request(app)
       .post('/items')

@@ -38,6 +38,12 @@ const createItemSchema = z.object({
   estimatedValueRecommended: z.number().min(0).optional(),
   aiConfidenceScore: z.number().min(0).max(1).optional(),
   quantity: z.number().int().min(1).optional(),
+  weightOz: z.number().positive().optional(),
+  lengthIn: z.number().positive().optional(),
+  widthIn: z.number().positive().optional(),
+  heightIn: z.number().positive().optional(),
+  ebayPackageType: z.string().max(50).optional(),
+  weightEstimated: z.boolean().optional(),
   photos: z.array(photoSchema).optional(),
 });
 
@@ -288,6 +294,12 @@ itemsRouter.post('/', async (req, res, next) => {
       estimatedValueRecommended: body.estimatedValueRecommended ?? null,
       aiConfidenceScore: body.aiConfidenceScore ?? 0,
       quantity: body.quantity ?? 1,
+      weightOz: body.weightOz ?? null,
+      lengthIn: body.lengthIn ?? null,
+      widthIn: body.widthIn ?? null,
+      heightIn: body.heightIn ?? null,
+      ebayPackageType: body.ebayPackageType ?? null,
+      weightEstimated: body.weightEstimated ?? false,
       photos: body.photos ?? [],
     }).returning();
 
