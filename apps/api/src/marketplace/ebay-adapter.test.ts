@@ -105,6 +105,28 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
   });
 });
 
+describe('EbayAdapter.createListing — packageWeightAndSize', () => {
+  it('sends weight and dimensions but omits packageType (eBay rejects unsupported packageType — error 25101)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: {
+        categoryId: '15032',
+        ...validSetup,
+        weight: { value: 8, unit: 'OUNCE' },
+        dimensions: { length: 8, width: 6, height: 4, unit: 'INCH' },
+        packageType: 'MAILING_BOX',
+      },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.packageWeightAndSize.weight).toEqual({ value: 8, unit: 'OUNCE' });
+    expect(body.packageWeightAndSize.dimensions).toEqual({ length: 8, width: 6, height: 4, unit: 'INCH' });
+    expect(body.packageWeightAndSize.packageType).toBeUndefined();
+  });
+});
+
 describe('EbayAdapter.createListing — required item aspects', () => {
   const aspectsFromPut = () => {
     const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));

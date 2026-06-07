@@ -357,15 +357,17 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
 
     if (specific.weight || specific.dimensions) {
+      // packageType is deliberately NOT sent. eBay rejects the whole
+      // <ShippingPackage> (error 25101 / 216305) when the packageType isn't
+      // supported by the courier in the resolved fulfillment policy, and it's
+      // optional — calculated shipping computes rates from weight + dimensions
+      // alone. We keep the seller's chosen packageType stored as metadata only.
       const pkg: Record<string, unknown> = {};
       if (specific.weight) {
         pkg.weight = specific.weight;
       }
       if (specific.dimensions) {
         pkg.dimensions = specific.dimensions;
-      }
-      if (specific.packageType) {
-        pkg.packageType = specific.packageType;
       }
       inventoryItem.packageWeightAndSize = pkg;
     }
