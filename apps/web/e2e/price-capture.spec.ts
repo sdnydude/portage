@@ -56,3 +56,23 @@ test("price persists through the item editor and prefills the publish sheet (edi
   await expect(sheetPrice).toHaveValue("999.99");
   await page.screenshot({ path: path.join(SHOT_DIR, "price-2-publish-prefilled.png"), fullPage: true });
 });
+
+test("the detail price field allows free keystroke editing (delete the first digit)", async ({ page }) => {
+  await login(page);
+  await page.goto("/inventory");
+  const firstItem = page.locator('a[href^="/inventory/"]').first();
+  await expect(firstItem).toBeVisible();
+  await page.goto((await firstItem.getAttribute("href"))!);
+
+  await page.getByRole("button", { name: "Edit item" }).click();
+  const price = page.getByLabel("Price (USD)");
+  await price.fill("250");
+  // Delete the FIRST digit via the keyboard (the reported bug: it used to stick).
+  await price.press("Home");
+  await price.press("Delete");
+  await expect(price).toHaveValue("50");
+  // And a trailing decimal is preserved mid-edit (not normalized away).
+  await price.fill("");
+  await price.type("12.");
+  await expect(price).toHaveValue("12.");
+});
