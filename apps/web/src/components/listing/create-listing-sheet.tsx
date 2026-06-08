@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { DisclaimerSheet } from "./disclaimer-sheet";
@@ -16,6 +16,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
   const { token } = useAuth();
   const [marketplace, setMarketplace] = useState<"ebay" | "etsy">("ebay");
   const [price, setPrice] = useState(suggestedPrice?.toString() ?? "");
+  // Keep the prefill in sync if suggestedPrice resolves after mount (e.g. comps
+  // load asynchronously). The user can still edit freely afterward.
+  useEffect(() => {
+    setPrice(suggestedPrice?.toString() ?? "");
+  }, [suggestedPrice]);
   const [publishNow, setPublishNow] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);

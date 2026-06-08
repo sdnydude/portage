@@ -9,6 +9,8 @@ import { useEnhance } from "@/hooks/use-enhance";
 import { useBgRemoval } from "@/hooks/use-bg-removal";
 import { CropTool } from "@/components/listing-flow/crop-tool";
 import { BeforeAfterSlider } from "@/components/image/before-after-slider";
+import { ScanReviewActions } from "./scan-review-actions";
+import { resolvePublishPrice } from "@/lib/price";
 import type { RecognitionCandidate, CompResult } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -141,6 +143,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [compsLoading, setCompsLoading] = useState(false);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const [isListingForSale, setIsListingForSale] = useState(false);
+  // Seller-set sale price for the review step (null = use the resolved default).
+  const [listPrice, setListPrice] = useState<number | null>(null);
   const [activeTool, setActiveTool] = useState<"none" | "crop">("none");
   const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
 
@@ -461,6 +465,50 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     token, photos, editName, editDescription, editCategory,
     editCondition, editConditionNotes, editValueLow, editValueHigh,
     editBrand, editModel, candidates, selectedCandidateIndex, onClose,
+  ]);
+
+  // Resolve the price shown/used in the review step: the seller's edited value
+  // wins, else fall back to comps/estimate via the unit-tested helper.
+  const valueLowNum = parseFloat(editValueLow) || 0;
+  const valueHighNum = parseFloat(editValueHigh) || 0;
+  const recommendedNum = Math.round((valueLowNum + valueHighNum) / 2) || null;
+  const reviewPrice = listPrice ?? resolvePublishPrice(
+    { estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
+    comps?.stats,
+  );
+
+  const handleSaveAndList = useCallback(async () => {
+    if (!token || photos.length === 0 || isListingForSale) return;
+    setIsListingForSale(true);
+    setState("saving");
+    try {
+      const itemPhotos = photos.map((p, i) => ({ url: p.url, key: p.key, width: p.width, height: p.height, isPrimary: i === 0 }));
+      const selectedCandidate = candidates[selectedCandidateIndex];
+      const price = reviewPrice;
+      const newItem = await api<{ id: string }>("/items", {
+        method: "POST", token,
+        body: {
+          title: editName, description: editDescription, category: editCategory,
+          condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
+          conditionNotes: editConditionNotes, brand: editBrand || undefined, model: editModel || undefined,
+          features: selectedCandidate?.features ?? [],
+          estimatedValueMin: valueLowNum, estimatedValueMax: valueHighNum, estimatedValueRecommended: recommendedNum ?? 0,
+          aiConfidenceScore: selectedCandidate?.confidence ?? 0.85, photos: itemPhotos,
+          // Persist the seller's price so it prefills future publishes.
+          ...(price && price > 0 ? { price } : {}),
+        },
+      });
+      await api("/listings", { method: "POST", token, body: { itemId: newItem.id, marketplace: "ebay", price: price ?? 0, publishImmediately: false } });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+      setState("review");
+      setIsListingForSale(false);
+    }
+  }, [
+    token, photos, isListingForSale, candidates, selectedCandidateIndex, reviewPrice,
+    editName, editDescription, editCategory, editCondition, editConditionNotes,
+    editBrand, editModel, valueLowNum, valueHighNum, recommendedNum, onClose,
   ]);
 
   // ─── Back to capture from review ──────────────────────────────────────────
@@ -1107,65 +1155,17 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             </div>
           </div>
 
-          {/* Fixed bottom: Rescan + Save + List */}
-          <div
-            className="fixed bottom-0 left-0 right-0 z-[70] px-4 py-3 glass-thick glass-fallback border-t border-border"
-            style={{ paddingBottom: "calc(0.75rem + var(--safe-area-bottom))" }}
-          >
-            <div className="flex gap-2">
-              <button
-                onClick={handleRescan}
-                disabled={isSaving || isListingForSale}
-                className="flex-shrink-0 px-3 py-3.5 rounded-2xl bg-muted text-text-primary font-semibold text-sm disabled:opacity-50 transition-opacity"
-              >
-                Rescan
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={!editName.trim() || isSaving || isListingForSale}
-                className="flex-1 py-3.5 rounded-2xl bg-forest-green text-white font-semibold text-sm disabled:opacity-50 transition-opacity"
-                style={{ boxShadow: "var(--shadow-elevated)" }}
-              >
-                {isSaving ? "Saving..." : "Save"}
-              </button>
-              <button
-                onClick={async () => {
-                  if (!token || photos.length === 0 || isListingForSale) return;
-                  setIsListingForSale(true);
-                  setState("saving");
-                  try {
-                    const valueLow = parseFloat(editValueLow) || 0;
-                    const valueHigh = parseFloat(editValueHigh) || 0;
-                    const valueRecommended = Math.round((valueLow + valueHigh) / 2);
-                    const itemPhotos = photos.map((p, i) => ({ url: p.url, key: p.key, width: p.width, height: p.height, isPrimary: i === 0 }));
-                    const selectedCandidate = candidates[selectedCandidateIndex];
-                    const newItem = await api<{ id: string }>("/items", {
-                      method: "POST", token,
-                      body: {
-                        title: editName, description: editDescription, category: editCategory,
-                        condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
-                        conditionNotes: editConditionNotes, brand: editBrand || undefined, model: editModel || undefined,
-                        features: selectedCandidate?.features ?? [],
-                        estimatedValueMin: valueLow, estimatedValueMax: valueHigh, estimatedValueRecommended: valueRecommended,
-                        aiConfidenceScore: selectedCandidate?.confidence ?? 0.85, photos: itemPhotos,
-                      },
-                    });
-                    const price = comps?.stats.soldMedian ?? comps?.stats.activeMedian ?? (valueRecommended || 0);
-                    await api("/listings", { method: "POST", token, body: { itemId: newItem.id, marketplace: "ebay", price, publishImmediately: false } });
-                    onClose();
-                  } catch (err) {
-                    setError(err instanceof Error ? err.message : "Failed to save");
-                    setState("review");
-                    setIsListingForSale(false);
-                  }
-                }}
-                disabled={!editName.trim() || isSaving || isListingForSale}
-                className="flex-1 py-3.5 rounded-2xl border-2 border-forest-green text-forest-green font-semibold text-sm disabled:opacity-50 transition-opacity"
-              >
-                {isListingForSale ? "Listing..." : "Save & List"}
-              </button>
-            </div>
-          </div>
+          {/* Fixed bottom: editable price + Rescan + Save + List (extracted) */}
+          <ScanReviewActions
+            price={reviewPrice}
+            onPriceChange={setListPrice}
+            onRescan={handleRescan}
+            onSave={handleSave}
+            onSaveAndList={handleSaveAndList}
+            isSaving={isSaving}
+            isListing={isListingForSale}
+            canSave={!!editName.trim()}
+          />
         </div>
       )}
 
