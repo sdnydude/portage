@@ -317,6 +317,10 @@ export interface RecognitionCandidate {
   estimatedValueLow: number;
   estimatedValueHigh: number;
   confidence: number;
+  // AI-estimated packaged shipping weight (oz) + box dimensions (in) from the scan.
+  weight?: { value: number; unit: string };
+  dimensions?: { length: number; width: number; height: number; unit: string };
+  packageType?: string;
 }
 
 export interface RecognitionResult {

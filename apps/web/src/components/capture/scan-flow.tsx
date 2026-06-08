@@ -452,6 +452,13 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           estimatedValueRecommended: valueRecommended,
           aiConfidenceScore: selectedCandidate?.confidence ?? 0.85,
           photos: itemPhotos,
+          // Persist the scan's AI-estimated packaged weight/dimensions so the item
+          // carries them for eBay Calculated shipping without re-running prepare.
+          ...(selectedCandidate?.weight && selectedCandidate.weight.value > 0
+            ? { weightOz: selectedCandidate.weight.value, weightEstimated: true } : {}),
+          ...(selectedCandidate?.dimensions
+            ? { lengthIn: selectedCandidate.dimensions.length, widthIn: selectedCandidate.dimensions.width, heightIn: selectedCandidate.dimensions.height } : {}),
+          ...(selectedCandidate?.packageType ? { ebayPackageType: selectedCandidate.packageType } : {}),
         },
       });
 
@@ -496,6 +503,12 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           aiConfidenceScore: selectedCandidate?.confidence ?? 0.85, photos: itemPhotos,
           // Persist the seller's price so it prefills future publishes.
           ...(price && price > 0 ? { price } : {}),
+          // Persist the scan's AI-estimated packaged weight/dimensions for Calculated shipping.
+          ...(selectedCandidate?.weight && selectedCandidate.weight.value > 0
+            ? { weightOz: selectedCandidate.weight.value, weightEstimated: true } : {}),
+          ...(selectedCandidate?.dimensions
+            ? { lengthIn: selectedCandidate.dimensions.length, widthIn: selectedCandidate.dimensions.width, heightIn: selectedCandidate.dimensions.height } : {}),
+          ...(selectedCandidate?.packageType ? { ebayPackageType: selectedCandidate.packageType } : {}),
         },
       });
       await api("/listings", { method: "POST", token, body: { itemId: newItem.id, marketplace: "ebay", price: price ?? 0, publishImmediately: false } });

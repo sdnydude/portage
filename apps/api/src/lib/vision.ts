@@ -60,6 +60,12 @@ const CandidateSchema = z.object({
   estimatedValueLow: z.number(),
   estimatedValueHigh: z.number(),
   confidence: z.number().min(0).max(1),
+  // AI-estimated packaged shipping weight (ounces) + box dimensions (inches), so a
+  // scanned item carries weight/dims for eBay Calculated shipping without waiting
+  // for the prepare-listing step. Optional — older responses may omit them.
+  weight: z.object({ value: z.number(), unit: z.string() }).optional(),
+  dimensions: z.object({ length: z.number(), width: z.number(), height: z.number(), unit: z.string() }).optional(),
+  packageType: z.string().optional(),
 });
 
 const DetailedVisionResultSchema = z.object({
@@ -183,6 +189,12 @@ Analyze the image and return a JSON object with:
   - brand (string|null), model (string|null), features (string[])
   - estimatedValueLow (int), estimatedValueHigh (int)
   - confidence (float 0-1, your confidence this is the correct identification)
+  - weight: { value, unit:"oz" } — the realistic PACKAGED shipping weight (item + box
+    + padding) in ounces, estimated from the item type. NEVER 0. (e.g. paperback ≈ 8oz,
+    guitar pedal ≈ 14oz, projector ≈ 48oz, coffee mug ≈ 16oz)
+  - dimensions: { length, width, height, unit:"in" } — the shipping box size in inches,
+    estimated from the item. NEVER 0.
+  - packageType: one of "LETTER" | "PACKAGE_THICK_ENVELOPE" | "MAILING_BOX" | "LARGE_PACKAGE", by size
 - reasoning: array of 3-5 strings explaining what visual features led to the identification
   (e.g. "Pointed pocket flaps indicate Type III", "Tab logo suggests pre-1971")
 
