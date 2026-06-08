@@ -221,6 +221,22 @@ sellerProfileRouter.post('/ebay/auto-setup', async (req, res, next) => {
     let merchantLocationKey: string | null = profile.ebayMerchantLocationKey ?? null;
     let locationConfigured = Boolean(merchantLocationKey);
 
+    // A stored location key can be stale/corrupted (e.g. a typo'd "portagef-primary"
+    // that doesn't exist on eBay) — every publish then fails with 25002 "Location
+    // information not found". Verify the key actually resolves on eBay; if not, drop
+    // it so the pull/create logic below re-resolves a valid one and re-persists it.
+    if (merchantLocationKey) {
+      try {
+        const verify = await fetch(`${base}/sell/inventory/v1/location/${merchantLocationKey}`, { headers });
+        if (!verify.ok) {
+          merchantLocationKey = null;
+          locationConfigured = false;
+        }
+      } catch {
+        // Transient network error — keep the stored key rather than wiping it.
+      }
+    }
+
     // Pull existing eBay inventory locations — if the seller already has one, use it
     // (no manual ship-from address needed). This is the "pull from eBay" path.
     if (!merchantLocationKey) {

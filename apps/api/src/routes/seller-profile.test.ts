@@ -226,6 +226,28 @@ describe('POST /seller-profile/ebay/auto-setup', () => {
     expect(postCreate).toBeUndefined();
   });
 
+  it('self-heals a stored merchant location key that no longer resolves on eBay (404) instead of trusting it', async () => {
+    mockSelectOnce([{ id: 'acc-1' }]); // connected
+    // Profile holds a corrupted key ("portagef-primary") that 404s on eBay — every
+    // publish then fails with 25002. Setup must re-resolve a valid location.
+    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: SHIP_FROM, ebayMerchantLocationKey: 'portagef-primary' }]);
+    mockUpdateReturns([{ id: 'sp-1' }]);
+
+    const fetchMock = routedFetch({
+      'GET location': new Response('', { status: 404 }), // stored key does not exist on eBay
+      'GET location-list': new Response(JSON.stringify({ locations: [{ merchantLocationKey: 'portage-primary' }] }), { status: 200 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await request(app)
+      .post('/seller-profile/ebay/auto-setup')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    // Healed to the real, existing location — NOT the broken stored key.
+    expect(res.body.setup.merchantLocationKey).toBe('portage-primary');
+  });
+
   it('returns 400 when no seller profile exists (null guard)', async () => {
     mockSelectOnce([{ id: 'acc-1' }]); // connected
     mockSelectOnce([]); // no seller profile
