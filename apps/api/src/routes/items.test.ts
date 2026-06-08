@@ -217,6 +217,32 @@ describe('POST /items', () => {
     expect(res.body.quantity).toBe(5);
   });
 
+  it('accepts a seller-set price and passes it to the insert', async () => {
+    const valuesSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, price: 129.99 }]),
+    });
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Sony WH-1000XM4', price: 129.99 });
+
+    expect(res.status).toBe(201);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ price: 129.99 }));
+    expect(res.body.price).toBe(129.99);
+  });
+
+  it('rejects a price of 0 (eBay disallows $0 listings; null/omitted is the unset sentinel)', async () => {
+    mockInsertReturns([MOCK_ITEM]);
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Freebie', price: 0 });
+
+    expect(res.status).toBe(400);
+  });
+
   it('accepts weight/dimension fields and passes them to the insert', async () => {
     const valuesSpy = vi.fn().mockReturnValue({
       returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM }]),

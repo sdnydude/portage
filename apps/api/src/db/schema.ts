@@ -64,6 +64,9 @@ export const items = pgTable('items', {
   estimatedValueMin: doublePrecision('estimated_value_min'),
   estimatedValueMax: doublePrecision('estimated_value_max'),
   estimatedValueRecommended: doublePrecision('estimated_value_recommended'),
+  // Seller-set sale price (distinct from the AI estimate above). Prefills the
+  // editable price field shown on every eBay publish; nullable (existing rows).
+  price: doublePrecision('price'),
   aiConfidenceScore: real('ai_confidence_score').notNull().default(0),
   quantity: integer('quantity').notNull().default(1),
   // eBay Calculated shipping requires package weight + dimensions (error 25020).

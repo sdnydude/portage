@@ -27,6 +27,9 @@ export interface Item {
   estimatedValueMin: number | null;
   estimatedValueMax: number | null;
   estimatedValueRecommended: number | null;
+  // Seller-set sale price (distinct from the AI estimate). Prefills the editable
+  // price field on every eBay publish; null means unset.
+  price?: number | null;
   aiConfidenceScore: number;
   quantity: number;
   // eBay Calculated shipping: weight in ounces, dimensions in inches.

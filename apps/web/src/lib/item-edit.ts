@@ -10,6 +10,8 @@ export interface ItemEditFields {
   brand: string;
   model: string;
   quantity: number;
+  // Seller-set sale price (dollars). null = unset.
+  price: number | null;
   // eBay Calculated shipping: weight in decimal POUNDS (the UI works in lb+oz),
   // dimensions in inches. weightEstimated marks AI-populated vs seller-confirmed.
   weight: number | null;
@@ -30,6 +32,8 @@ export interface ItemUpdatePayload {
   brand: string;
   model: string;
   quantity: number;
+  // route schema is min(0.01).optional() — omit (undefined) rather than send null/0.
+  price?: number;
   // route schema is positive().optional() — omit (undefined) rather than send null/0.
   weightOz?: number;
   lengthIn?: number;
@@ -50,6 +54,7 @@ export function itemToEditFields(item: Item): ItemEditFields {
     brand: item.brand,
     model: item.model,
     quantity: item.quantity ?? 1,
+    price: item.price ?? null,
     // weight column is ounces; the UI works in decimal pounds.
     weight: item.weightOz != null ? item.weightOz / 16 : null,
     dimLength: item.lengthIn ?? null,
@@ -72,6 +77,7 @@ export function buildItemUpdate(fields: ItemEditFields): ItemUpdatePayload {
     brand: fields.brand.trim(),
     model: fields.model.trim(),
     quantity: fields.quantity,
+    price: fields.price != null && fields.price > 0 ? fields.price : undefined,
     weightOz: rawOz > 0 ? rawOz : undefined,
     lengthIn: fields.dimLength ?? undefined,
     widthIn: fields.dimWidth ?? undefined,
@@ -92,6 +98,7 @@ export function hasItemChanges(fields: ItemEditFields, item: Item): boolean {
     fields.brand !== item.brand ||
     fields.model !== item.model ||
     fields.quantity !== (item.quantity ?? 1) ||
+    fields.price !== (item.price ?? null) ||
     fields.weight !== (item.weightOz != null ? item.weightOz / 16 : null) ||
     fields.dimLength !== (item.lengthIn ?? null) ||
     fields.dimWidth !== (item.widthIn ?? null) ||

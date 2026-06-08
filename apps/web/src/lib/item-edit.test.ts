@@ -38,6 +38,7 @@ const baseFields: ItemEditFields = {
   brand: "Canon",
   model: "AE-1",
   quantity: 1,
+  price: null,
   weight: null,
   dimLength: null,
   dimWidth: null,
@@ -84,6 +85,7 @@ describe("buildItemUpdate", () => {
       brand: "Canon",
       model: "AE-1",
       quantity: 3,
+      price: undefined,
       weightEstimated: false,
       weightOz: undefined,
       lengthIn: undefined,
@@ -108,6 +110,12 @@ describe("buildItemUpdate", () => {
     const result = buildItemUpdate({ ...baseFields, weight: 0.02 });
     expect(result.weightOz).toBeUndefined();
   });
+
+  it("sends a set price and omits it when unset or non-positive", () => {
+    expect(buildItemUpdate({ ...baseFields, price: 129.99 }).price).toBe(129.99);
+    expect(buildItemUpdate({ ...baseFields, price: null }).price).toBeUndefined();
+    expect(buildItemUpdate({ ...baseFields, price: 0 }).price).toBeUndefined();
+  });
 });
 
 describe("hasItemChanges", () => {
@@ -121,6 +129,12 @@ describe("hasItemChanges", () => {
 
   it("treats a quantity change as a change", () => {
     expect(hasItemChanges({ ...baseFields, quantity: 5 }, baseItem)).toBe(true);
+  });
+
+  it("treats a price change as a change (so Save enables on price edit)", () => {
+    expect(hasItemChanges({ ...baseFields, price: 99 }, baseItem)).toBe(true);
+    const priced: Item = { ...baseItem, price: 99 };
+    expect(hasItemChanges(itemToEditFields(priced), priced)).toBe(false);
   });
 
   it("treats a weight or dimension change as a change", () => {

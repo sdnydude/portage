@@ -13,6 +13,7 @@ import type {
   PreparedListingData,
 } from "@portage/shared";
 import type { AspectRequirement } from "@/components/listing/aspect-fill-sheet";
+import { resolvePublishPrice } from "@/lib/price";
 
 export interface PublishOptions {
   ebayPreparedFields?: EbayPreparedFields | null;
@@ -214,6 +215,7 @@ export function useListingFlow() {
         quantity: number;
         photos: ListingFlowState['photos'];
         estimatedValueRecommended: number | null;
+        price: number | null;
         weightOz: number | null;
         lengthIn: number | null;
         widthIn: number | null;
@@ -234,7 +236,9 @@ export function useListingFlow() {
         features: (item.features ?? []) as string[],
         quantity: item.quantity ?? 1,
         photos: item.photos ?? [],
-        price: item.estimatedValueRecommended ?? null,
+        // Prefill from the seller's set price first, then the AI estimate (no
+        // comps at seed time). resolvePublishPrice is unit-tested.
+        price: resolvePublishPrice(item),
         // weight column is ounces; flow state carries decimal pounds.
         weight: item.weightOz != null ? item.weightOz / 16 : null,
         dimLength: item.lengthIn ?? null,
