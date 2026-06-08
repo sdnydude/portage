@@ -172,7 +172,8 @@ describe('POST /seller-profile/ebay/auto-setup', () => {
     mockUpdateReturns([{ id: 'sp-1' }]);
 
     const fetchMock = routedFetch({
-      'GET fulfillment': new Response(JSON.stringify({ fulfillmentPolicies: [{ fulfillmentPolicyId: 'fp-existing', name: 'Portage Standard Fulfillment' }] }), { status: 200 }),
+      // Already CALCULATED → pure reuse, no migration PUT.
+      'GET fulfillment': new Response(JSON.stringify({ fulfillmentPolicies: [{ fulfillmentPolicyId: 'fp-existing', name: 'Portage Standard Fulfillment', shippingOptions: [{ costType: 'CALCULATED' }] }] }), { status: 200 }),
       'GET payment': new Response(JSON.stringify({ paymentPolicies: [{ paymentPolicyId: 'pp-existing', name: 'Portage Standard Payment' }] }), { status: 200 }),
       'GET return': new Response(JSON.stringify({ returnPolicies: [{ returnPolicyId: 'rp-existing', name: 'Portage Standard Return' }] }), { status: 200 }),
       'GET location': new Response(JSON.stringify({ merchantLocationKey: 'portage-primary' }), { status: 200 }),
@@ -191,6 +192,38 @@ describe('POST /seller-profile/ebay/auto-setup', () => {
     // nothing was created — no POST to any policy or location endpoint
     const anyCreate = fetchMock.mock.calls.find(([, o]: any[]) => (o?.method ?? 'GET').toUpperCase() === 'POST');
     expect(anyCreate).toBeUndefined();
+  });
+
+  it('migrates a stale FLAT_RATE Portage Standard Fulfillment to CALCULATED in place (PUT, same id, no duplicate)', async () => {
+    mockSelectOnce([{ id: 'acc-1' }]); // connected
+    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: SHIP_FROM, ebayMerchantLocationKey: 'portage-primary' }]);
+    mockUpdateReturns([{ id: 'sp-1' }]);
+
+    const fetchMock = routedFetch({
+      // Legacy flat-rate policy from before the calculated default — must be migrated.
+      'GET fulfillment': new Response(JSON.stringify({ fulfillmentPolicies: [{ fulfillmentPolicyId: 'fp-existing', name: 'Portage Standard Fulfillment', shippingOptions: [{ costType: 'FLAT_RATE' }] }] }), { status: 200 }),
+      'GET location': new Response(JSON.stringify({ merchantLocationKey: 'portage-primary' }), { status: 200 }),
+      'PUT fulfillment': new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-existing' }), { status: 200 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await request(app)
+      .post('/seller-profile/ebay/auto-setup')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    // Same policy id — migrated in place, not duplicated.
+    expect(res.body.setup.fulfillmentPolicyId).toBe('fp-existing');
+
+    // A PUT to the fulfillment-policy id path migrated it; no POST create happened.
+    const put = fetchMock.mock.calls.find(([u, o]: any[]) =>
+      String(u).includes('/fulfillment_policy/fp-existing') && (o?.method ?? '').toUpperCase() === 'PUT');
+    expect(put).toBeDefined();
+    const putBody = JSON.parse((put![1] as RequestInit).body as string);
+    expect(putBody.shippingOptions[0].costType).toBe('CALCULATED');
+    const postCreate = fetchMock.mock.calls.find(([u, o]: any[]) =>
+      String(u).endsWith('/fulfillment_policy') && (o?.method ?? '').toUpperCase() === 'POST');
+    expect(postCreate).toBeUndefined();
   });
 
   it('returns 400 when no seller profile exists (null guard)', async () => {

@@ -185,8 +185,27 @@ sellerProfileRouter.post('/ebay/auto-setup', async (req, res, next) => {
     };
 
     const adapter = new EbayAdapter(userId);
-    const fulfillmentPolicyId = await findPolicyId(fRes, 'fulfillmentPolicies', 'Portage Standard Fulfillment')
-      ?? await adapter.createFulfillmentPolicy('Portage Standard Fulfillment');
+
+    // Fulfillment is special: reuse by name, but migrate a legacy non-CALCULATED
+    // "Portage Standard Fulfillment" (e.g. the old FLAT_RATE default) to the
+    // canonical buyer-paid CALCULATED shape IN PLACE (same id), so sellers who ran
+    // setup before the calculated default converge without a duplicate policy.
+    const resolveFulfillmentPolicyId = async (): Promise<string> => {
+      const name = 'Portage Standard Fulfillment';
+      if (fRes.status === 'fulfilled' && fRes.value.ok) {
+        const data = await fRes.value.json() as {
+          fulfillmentPolicies?: Array<{ fulfillmentPolicyId?: string; name?: string; shippingOptions?: Array<{ costType?: string }> }>;
+        };
+        const match = (data.fulfillmentPolicies ?? []).find((p) => p.name === name);
+        if (match?.fulfillmentPolicyId) {
+          const isCalculated = (match.shippingOptions ?? []).some((o) => o.costType === 'CALCULATED');
+          return isCalculated ? match.fulfillmentPolicyId : adapter.updateFulfillmentPolicy(match.fulfillmentPolicyId, name);
+        }
+      }
+      return adapter.createFulfillmentPolicy(name);
+    };
+
+    const fulfillmentPolicyId = await resolveFulfillmentPolicyId();
     const paymentPolicyId = await findPolicyId(pRes, 'paymentPolicies', 'Portage Standard Payment')
       ?? await adapter.createPaymentPolicy('Portage Standard Payment');
     const returnPolicyId = await findPolicyId(rRes, 'returnPolicies', 'Portage Standard Return')

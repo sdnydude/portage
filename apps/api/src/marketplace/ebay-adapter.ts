@@ -682,35 +682,57 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
   }
 
+  // CALCULATED + USPSParcel: buyer pays the exact computed shipping cost, which
+  // needs the item's packageWeightAndSize (captured end-to-end now). The earlier
+  // LOGISTICS_INFO_IS_MISSING rejection was NOT a missing rate table — it was a
+  // downstream symptom of an invalid service code. A live probe confirmed:
+  // USPSGround → NOT_VALID_FOR_SELLING, USPSGroundAdvantage → UNKNOWN_SHIPPING_
+  // SERVICE_CODE, but USPSParcel/USPSPriority are accepted for CALCULATED. No
+  // freeShipping/shippingCost — calculated computes the rate.
+  private fulfillmentPolicyBody(name: string) {
+    return {
+      name,
+      marketplaceId: 'EBAY_US',
+      categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
+      handlingTime: { value: 1, unit: 'DAY' },
+      // eBay's PUT (full replace, used by updateFulfillmentPolicy) requires
+      // globalShipping explicitly — without it the migrate PUT fails with 20403
+      // "Global shipping field is null". POST defaults it, so including it is safe
+      // for both. We don't offer eBay International Shipping by default.
+      globalShipping: false,
+      shippingOptions: [{
+        optionType: 'DOMESTIC',
+        costType: 'CALCULATED',
+        shippingServices: [{
+          sortOrder: 1,
+          shippingCarrierCode: 'USPS',
+          shippingServiceCode: 'USPSParcel',
+        }],
+      }],
+    };
+  }
+
   // Per-seller writes, so they use this.request() (the seller's OAuth token,
   // which carries the sell.account scope) — not the static app-token reads.
   async createFulfillmentPolicy(name: string): Promise<string> {
     const result = await this.request<{ fulfillmentPolicyId: string }>('/sell/account/v1/fulfillment_policy', {
       method: 'POST',
-      body: JSON.stringify({
-        name,
-        marketplaceId: 'EBAY_US',
-        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
-        handlingTime: { value: 1, unit: 'DAY' },
-        // FLAT_RATE + freeShipping is the safest default: eBay rejected the prior
-        // CALCULATED policy with LSAS LOGISTICS_INFO_IS_MISSING (calculated rates need
-        // seller rate tables), and 'USPSGroundAdvantage' was UNKNOWN_SHIPPING_SERVICE_CODE.
-        // Sellers can override per listing. (USPSGround was recognized but rejected as
-        // NOT_VALID_FOR_SELLING; USPSPriority is a current, sellable USPS service.)
-        shippingOptions: [{
-          optionType: 'DOMESTIC',
-          costType: 'FLAT_RATE',
-          shippingServices: [{
-            sortOrder: 1,
-            shippingCarrierCode: 'USPS',
-            shippingServiceCode: 'USPSPriority',
-            freeShipping: true,
-          }],
-        }],
-      }),
+      body: JSON.stringify(this.fulfillmentPolicyBody(name)),
     });
     logger.info({ userId: this.userId, fulfillmentPolicyId: result.fulfillmentPolicyId }, 'eBay fulfillment policy created');
     return result.fulfillmentPolicyId;
+  }
+
+  // Migrate an existing policy (e.g. a legacy FLAT_RATE "Portage Standard
+  // Fulfillment") to the canonical CALCULATED shape in place. PUT is a full
+  // replace and keeps the same policyId, so live offers referencing it stay valid.
+  async updateFulfillmentPolicy(policyId: string, name: string): Promise<string> {
+    const result = await this.request<{ fulfillmentPolicyId: string }>(`/sell/account/v1/fulfillment_policy/${policyId}`, {
+      method: 'PUT',
+      body: JSON.stringify(this.fulfillmentPolicyBody(name)),
+    });
+    logger.info({ userId: this.userId, fulfillmentPolicyId: policyId }, 'eBay fulfillment policy migrated to calculated');
+    return result.fulfillmentPolicyId ?? policyId;
   }
 
   async createPaymentPolicy(name: string): Promise<string> {

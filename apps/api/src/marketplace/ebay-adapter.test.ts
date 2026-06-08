@@ -589,7 +589,7 @@ describe('EbayAdapter — Account API business-policy creation (auto-setup)', ()
   // OAuth user token, which carries the sell.account scope) — NOT the static
   // app-token methods used for public catalog reads. Each returns the new policy id.
 
-  it('createFulfillmentPolicy POSTs a 1-day-handling FLAT_RATE free-shipping USPS Ground policy and returns its id', async () => {
+  it('createFulfillmentPolicy POSTs a 1-day-handling CALCULATED USPSParcel buyer-paid policy and returns its id', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-new' }), { status: 201 }));
 
     const adapter = new EbayAdapter('user-1');
@@ -605,15 +605,40 @@ describe('EbayAdapter — Account API business-policy creation (auto-setup)', ()
     expect(body.categoryTypes).toEqual([{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }]);
     expect(body.handlingTime).toEqual({ value: 1, unit: 'DAY' });
     expect(body.shippingOptions[0].optionType).toBe('DOMESTIC');
-    // FLAT_RATE + freeShipping avoids the CALCULATED rate-table requirement that eBay
-    // rejected as LSAS LOGISTICS_INFO_IS_MISSING; USPSGroundAdvantage was UNKNOWN_SHIPPING_SERVICE_CODE.
-    expect(body.shippingOptions[0].costType).toBe('FLAT_RATE');
+    // CALCULATED + USPSParcel: buyer pays the exact computed rate (needs item
+    // packageWeightAndSize, now captured). A live probe proved the earlier
+    // LOGISTICS_INFO_IS_MISSING was a bad service code (USPSGround →
+    // NOT_VALID_FOR_SELLING, USPSGroundAdvantage → UNKNOWN), not a rate-table gap.
+    expect(body.shippingOptions[0].costType).toBe('CALCULATED');
     const svc = body.shippingOptions[0].shippingServices[0];
     expect(svc.shippingCarrierCode).toBe('USPS');
-    expect(svc.shippingServiceCode).toBe('USPSPriority');
-    expect(svc.freeShipping).toBe(true);
+    expect(svc.shippingServiceCode).toBe('USPSParcel');
+    // No freeShipping/shippingCost — calculated computes the buyer-paid rate.
+    expect(svc.freeShipping).toBeUndefined();
+    expect(svc.shippingCost).toBeUndefined();
 
     expect(id).toBe('fp-new');
+  });
+
+  it('updateFulfillmentPolicy PUTs the same CALCULATED USPSParcel body to the policy-id path (migrate a stale FLAT_RATE policy in place)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-existing' }), { status: 200 }));
+
+    const adapter = new EbayAdapter('user-1');
+    const id = await adapter.updateFulfillmentPolicy('fp-existing', 'Portage Standard Fulfillment');
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/sell/account/v1/fulfillment_policy/fp-existing');
+    expect((opts as RequestInit).method).toBe('PUT');
+
+    const body = JSON.parse((opts as RequestInit).body as string);
+    expect(body.name).toBe('Portage Standard Fulfillment');
+    expect(body.shippingOptions[0].costType).toBe('CALCULATED');
+    expect(body.shippingOptions[0].shippingServices[0].shippingServiceCode).toBe('USPSParcel');
+    // eBay's PUT (full replace) requires globalShipping explicitly — POST defaults
+    // it, but a PUT without it fails with 20403 "Global shipping field is null".
+    expect(body.globalShipping).toBe(false);
+
+    expect(id).toBe('fp-existing');
   });
 
   it('createPaymentPolicy POSTs a managed-payments immediate-pay policy (no offline methods) and returns its id', async () => {
