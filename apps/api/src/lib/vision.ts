@@ -232,7 +232,7 @@ RULES:
 - Condition description must reference specific wear visible in photos (scratches, scuffs, patina, etc.)
 - If no wear is visible, say "Item appears to be in [condition] condition with no visible wear."
 - Price suggestion should target slightly below sold median for faster sale
-- Weight and dimensions are visual estimates — always flag as estimated
+- ALWAYS estimate a realistic PACKAGED shipping weight (item + box + padding) in ounces and the shipping box dimensions in inches, inferred from the item type, brand/model, and what is visible. These are required for shipping — NEVER return 0 for weight or any dimension. If unsure, estimate from a comparable item. Anchor examples: guitar pedal ≈ 12–18 oz in a 7×5×4 in box; vinyl LP ≈ 9 oz in 13×13×1; paperback book ≈ 8 oz in 9×6×1; wireless mic/instrument system ≈ 24–40 oz in a 12×9×4 box; coffee mug ≈ 16 oz in 6×6×5. Pick the closest analog and adjust. Flag them as estimates.
 - Determine if item is music gear (instruments, amps, pedals, audio equipment, accessories)
 - If music gear, fill Reverb fields. If not, set reverb to null and isMusicGear to false.
 
@@ -246,7 +246,7 @@ OUTPUT JSON STRUCTURE (all top-level fields required):
   "model": "Model name/number",
   "isMusicGear": true/false,
   "aiConfidence": 0.0-1.0,
-  "ebay": { "title": "≤80 char eBay title", "categoryId": "", "categoryName": "", "condition": "", "conditionDescription": "", "aspects": {}, "upc": null, "epid": null, "weight": {"value":0,"unit":"oz"}, "dimensions": {"length":0,"width":0,"height":0,"unit":"in"}, "packageType": "LETTER" },
+  "ebay": { "title": "≤80 char eBay title", "categoryId": "", "categoryName": "", "condition": "", "conditionDescription": "", "aspects": {}, "upc": null, "epid": null, "weight": {"value": <estimated packaged oz, never 0>, "unit":"oz"}, "dimensions": {"length": <in>, "width": <in>, "height": <in>, "unit":"in"}, "packageType": "LETTER|PACKAGE_THICK_ENVELOPE|MAILING_BOX|LARGE_PACKAGE — pick by size" },
   "reverb": null or { "make": "", "model": "", "title": "", "categoryUuid": "", "categoryName": "", "conditionUuid": "", "conditionName": "", "year": null, "finish": null, "description": "" }
 }
 
