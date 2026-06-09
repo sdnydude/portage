@@ -39,7 +39,9 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#2D5A27",
+  // The status bar overlays the dark graphite Porter hero in both themes
+  // (viewportFit cover + safe-area padding), so match the hero top in both.
+  themeColor: "#262A2D",
 };
 
 export default function RootLayout({
@@ -50,9 +52,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${instrumentSans.variable} ${plusJakarta.variable} ${jetbrainsMono.variable} h-full`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        {/* Set the theme class before paint: stored override, else OS preference. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();",
+          }}
+        />
         <AuthProvider>{children}</AuthProvider>
         <ServiceWorkerRegistration />
       </body>

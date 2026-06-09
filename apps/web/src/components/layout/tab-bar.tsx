@@ -10,6 +10,8 @@ import { useUnreadCount } from "@/hooks/use-messages";
 const tabs = [
   { name: "Home", href: "/home", icon: HomeIcon, position: "left" as const },
   { name: "Inventory", href: "/inventory", icon: InventoryIcon, position: "left" as const },
+  { name: "Listings", href: "/listings", icon: ListingsIcon, position: "left" as const },
+  { name: "Porter", href: "/porter", icon: PorterIcon, position: "right" as const },
   { name: "Orders", href: "/orders", icon: OrdersIcon, position: "right" as const },
   { name: "More", href: "/more", icon: MoreIcon, position: "right" as const },
 ] as const;
@@ -44,10 +46,10 @@ export function TabBar() {
 
       {/* Tab bar */}
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 border-t glass-regular glass-fallback"
+        className="fixed bottom-0 left-0 right-0 z-50 border-t glass-nav glass-fallback"
         style={{ paddingBottom: "var(--safe-area-bottom)" }}
       >
-        <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2 relative">
+        <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-1 relative">
           {/* Left tabs */}
           {leftTabs.map((tab) => {
             const isActive = pathname.startsWith(tab.href);
@@ -55,12 +57,13 @@ export function TabBar() {
               <Link
                 key={tab.name}
                 href={tab.href}
-                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors ${
+                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${
                   isActive
-                    ? "text-forest-green"
+                    ? "text-[var(--text-primary)]"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
+                {isActive && <span aria-hidden className="absolute top-0.5 h-1 w-1 rounded-full bg-current" />}
                 <tab.icon active={isActive} />
                 <span
                   className={`text-[10px] leading-tight ${
@@ -77,7 +80,7 @@ export function TabBar() {
           <div className="flex flex-col items-center justify-center flex-1">
             <button
               onClick={handleScanOpen}
-              className="relative -mt-7 w-14 h-14 rounded-full bg-forest-green flex items-center justify-center active:scale-95 transition-transform animate-spring-in"
+              className="relative -mt-7 w-14 h-14 rounded-full bg-[var(--orange)] flex items-center justify-center active:scale-95 transition-transform animate-spring-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--orange-dark)] focus-visible:ring-offset-[var(--background)]"
               style={{
                 boxShadow: "var(--shadow-elevated), 0 0 0 3px var(--background)",
               }}
@@ -85,28 +88,31 @@ export function TabBar() {
             >
               <ScanIcon />
             </button>
-            <span className="text-[10px] leading-tight font-semibold text-forest-green mt-0.5">
+            <span className="text-[10px] leading-tight font-semibold text-[var(--orange-dark)] mt-0.5">
               Scan
             </span>
           </div>
 
-          {/* Right tabs */}
+          {/* Right tabs (Porter tinted teal as the AI accent) */}
           {rightTabs.map((tab) => {
             const isActive = pathname.startsWith(tab.href);
+            const isPorter = tab.name === "Porter";
+            const colorClass = isPorter
+              ? "text-[var(--teal)]"
+              : isActive
+                ? "text-[var(--text-primary)]"
+                : "text-text-secondary hover:text-text-primary";
             return (
               <Link
                 key={tab.name}
                 href={tab.href}
-                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors ${
-                  isActive
-                    ? "text-forest-green"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
+                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${colorClass}`}
               >
+                {isActive && <span aria-hidden className="absolute top-0.5 h-1 w-1 rounded-full bg-current" />}
                 <tab.icon active={isActive} />
                 <span
                   className={`text-[10px] leading-tight ${
-                    isActive ? "font-semibold" : "font-normal"
+                    isActive || isPorter ? "font-semibold" : "font-normal"
                   }`}
                 >
                   {tab.name}
@@ -121,16 +127,17 @@ export function TabBar() {
             return (
               <Link
                 href="/more"
-                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors relative ${
+                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors relative rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${
                   isActive
-                    ? "text-forest-green"
+                    ? "text-[var(--text-primary)]"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
+                {isActive && <span aria-hidden className="absolute top-0.5 h-1 w-1 rounded-full bg-current" />}
                 <div className="relative">
                   <MoreIcon active={isActive} />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full bg-forest-green border-2 border-[var(--background)]" />
+                    <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full bg-[var(--orange)] border-2 border-[var(--background)]" />
                   )}
                 </div>
                 <span
@@ -149,8 +156,9 @@ export function TabBar() {
       {/* Scan flow modal */}
       {showScan && <ScanFlow onClose={handleScanClose} />}
 
-      {/* Floating mic — non-home tabs only (home has inline Porter chat) */}
-      {!isHome && <FloatingMic />}
+      {/* Floating mic — suppressed where Porter chat already exists inline:
+          /home (inline Porter card) and /porter (the full Porter page). */}
+      {!isHome && !pathname.startsWith("/porter") && <FloatingMic />}
     </>
   );
 }
@@ -191,6 +199,41 @@ function InventoryIcon({ active }: { active: boolean }) {
   );
 }
 
+function ListingsIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={active ? 2.5 : 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z" />
+      <circle cx="7" cy="7" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PorterIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill={active ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={active ? 0 : 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 2.5l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9z" />
+    </svg>
+  );
+}
+
 function OrdersIcon({ active }: { active: boolean }) {
   return (
     <svg
@@ -223,9 +266,9 @@ function MoreIcon({ active }: { active: boolean }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" />
       <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-      <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" />
     </svg>
   );
 }

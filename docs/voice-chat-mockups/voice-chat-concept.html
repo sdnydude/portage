@@ -1,0 +1,767 @@
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: #f8f7f4;
+    margin: 0;
+    padding: 0;
+  }
+
+  h2 {
+    font-family: 'Instrument Sans', sans-serif;
+    color: #1a1a1a;
+  }
+
+  .subtitle {
+    color: #666;
+    font-size: 0.95rem;
+    margin-top: -0.5rem;
+  }
+
+  /* ── Phone Frame ── */
+  .phone-frame {
+    width: 375px;
+    height: 740px;
+    border: 2px solid #d4d0c8;
+    border-radius: 40px;
+    overflow: hidden;
+    background: #faf9f6;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+    margin: 0 auto;
+  }
+
+  .phone-screen {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding-top: 44px;
+  }
+
+  /* ── Status Bar ── */
+  .status-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    z-index: 10;
+  }
+
+  /* ── Chat Header ── */
+  .chat-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(45,90,39,0.08);
+    background: #faf9f6;
+  }
+
+  .porter-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #2D5A27 0%, #3a7a32 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-family: 'Instrument Sans', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    box-shadow: 0 2px 8px rgba(45,90,39,0.25);
+  }
+
+  .porter-info h3 {
+    margin: 0;
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+
+  .porter-info span {
+    font-size: 0.72rem;
+    color: #2D5A27;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .porter-info span::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2D5A27;
+    display: inline-block;
+  }
+
+  .header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+
+  .header-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: #555;
+  }
+
+  /* ── Messages Area ── */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 16px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* ── Message Bubbles ── */
+  .msg {
+    max-width: 82%;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .msg.user {
+    align-self: flex-end;
+  }
+
+  .msg.assistant {
+    align-self: flex-start;
+  }
+
+  .msg-bubble {
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: #1a1a1a;
+  }
+
+  .msg.user .msg-bubble {
+    background: #2D5A27;
+    color: white;
+    border-radius: 18px 18px 4px 18px;
+  }
+
+  .msg.assistant .msg-bubble {
+    background: white;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 18px 18px 18px 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .msg-time {
+    font-size: 0.65rem;
+    color: #999;
+    padding: 0 4px;
+  }
+
+  .msg.user .msg-time {
+    text-align: right;
+  }
+
+  /* ── Voice Indicator (user speaking) ── */
+  .voice-msg {
+    align-self: flex-end;
+    max-width: 82%;
+  }
+
+  .voice-bubble {
+    background: #2D5A27;
+    border-radius: 18px 18px 4px 18px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: white;
+  }
+
+  .voice-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 24px;
+    flex: 1;
+  }
+
+  .waveform .bar {
+    width: 3px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.7);
+    animation: wave 0.8s ease-in-out infinite;
+  }
+
+  @keyframes wave {
+    0%, 100% { height: 4px; }
+    50% { height: var(--h, 16px); }
+  }
+
+  .voice-duration {
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    opacity: 0.8;
+    flex-shrink: 0;
+  }
+
+  /* ── Tool Use Block ── */
+  .tool-block {
+    align-self: flex-start;
+    max-width: 88%;
+    background: rgba(45,90,39,0.04);
+    border: 1px solid rgba(45,90,39,0.1);
+    border-radius: 12px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: #2D5A27;
+    font-weight: 500;
+  }
+
+  .tool-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(45,90,39,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+  }
+
+  .tool-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(45,90,39,0.15);
+    border-top-color: #2D5A27;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ── Inline Result Card ── */
+  .result-card {
+    align-self: flex-start;
+    max-width: 88%;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+
+  .result-items {
+    display: flex;
+    gap: 0;
+  }
+
+  .result-item {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    border-right: 1px solid rgba(0,0,0,0.05);
+  }
+
+  .result-item:last-child {
+    border-right: none;
+  }
+
+  .result-item .thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    margin: 0 auto 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+  }
+
+  .result-item .item-name {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .result-item .item-price {
+    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: #2D5A27;
+    font-weight: 500;
+  }
+
+  /* ── Action Pills ── */
+  .action-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 4px 16px 8px;
+  }
+
+  .pill {
+    padding: 7px 14px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid rgba(45,90,39,0.15);
+    background: white;
+    color: #2D5A27;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .pill:hover {
+    background: rgba(45,90,39,0.06);
+    border-color: rgba(45,90,39,0.3);
+  }
+
+  .pill.active {
+    background: #2D5A27;
+    color: white;
+    border-color: #2D5A27;
+  }
+
+  /* ── Input Area ── */
+  .input-area {
+    padding: 8px 12px 28px;
+    border-top: 1px solid rgba(0,0,0,0.05);
+    background: #faf9f6;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .input-field {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 22px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: white;
+    font-size: 0.875rem;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    color: #999;
+    outline: none;
+    min-height: 20px;
+  }
+
+  .mic-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2D5A27 0%, #3a7a32 100%);
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.1rem;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(45,90,39,0.3);
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .mic-btn::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2px solid rgba(45,90,39,0.2);
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.3); opacity: 0; }
+  }
+
+  .send-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #999;
+    font-size: 1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* ── Thinking indicator ── */
+  .thinking {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 18px 18px 18px 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .thinking-dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .thinking-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2D5A27;
+    opacity: 0.3;
+    animation: blink 1.2s ease-in-out infinite;
+  }
+
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes blink {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 0.8; }
+  }
+
+  /* ── Layout ── */
+  .mockup-row {
+    display: flex;
+    gap: 40px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 24px 0;
+  }
+
+  .mockup-label {
+    text-align: center;
+    font-family: 'Instrument Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #555;
+    margin-top: 16px;
+    letter-spacing: 0.02em;
+  }
+
+  .feature-callouts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    max-width: 800px;
+    margin: 24px auto 0;
+  }
+
+  .callout {
+    background: white;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .callout-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(45,90,39,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+  }
+
+  .callout h4 {
+    margin: 0 0 2px;
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+
+  .callout p {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #666;
+    line-height: 1.4;
+  }
+</style>
+
+<h2>Voice Chat Concept  -  Porter Upgraded</h2>
+<p class="subtitle">Claude-inspired interface adapted with Portage's design system</p>
+
+<div class="mockup-row">
+
+  <!-- Phone 1: Active Conversation -->
+  <div>
+    <div class="phone-frame">
+      <div class="phone-screen">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+
+        <div class="chat-header">
+          <div class="porter-avatar">P</div>
+          <div class="porter-info">
+            <h3>Porter</h3>
+            <span>Listening</span>
+          </div>
+          <div class="header-actions">
+            <div class="header-btn">&#10227;</div>
+            <div class="header-btn">...</div>
+          </div>
+        </div>
+
+        <div class="messages">
+          <!-- User text message -->
+          <div class="msg user">
+            <div class="msg-bubble">What guitars do I have in stock?</div>
+            <div class="msg-time">9:38 AM</div>
+          </div>
+
+          <!-- Tool use block -->
+          <div class="tool-block">
+            <div class="tool-icon">🔍</div>
+            Searched inventory for "guitars"
+            <span style="margin-left:auto;font-size:0.7rem;opacity:0.6">0.8s</span>
+          </div>
+
+          <!-- Assistant response with inline results -->
+          <div class="msg assistant">
+            <div class="msg-bubble">Found 3 guitars in your inventory:</div>
+          </div>
+
+          <div class="result-card">
+            <div class="result-items">
+              <div class="result-item">
+                <div class="thumb" style="background:#f0ebe3">🎸</div>
+                <div class="item-name">Gibson SG '61</div>
+                <div class="item-price">$1,849</div>
+              </div>
+              <div class="result-item">
+                <div class="thumb" style="background:#e8efe7">🎸</div>
+                <div class="item-name">Fender Tele MIJ</div>
+                <div class="item-price">$925</div>
+              </div>
+              <div class="result-item">
+                <div class="thumb" style="background:#eee8f0">🎸</div>
+                <div class="item-name">Martin D-28</div>
+                <div class="item-price">$2,100</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Voice message from user -->
+          <div class="voice-msg">
+            <div class="voice-bubble">
+              <div class="voice-icon">🎤</div>
+              <div class="waveform">
+                <div class="bar" style="--h:8px;animation-delay:0s"></div>
+                <div class="bar" style="--h:16px;animation-delay:0.1s"></div>
+                <div class="bar" style="--h:12px;animation-delay:0.15s"></div>
+                <div class="bar" style="--h:20px;animation-delay:0.2s"></div>
+                <div class="bar" style="--h:14px;animation-delay:0.25s"></div>
+                <div class="bar" style="--h:18px;animation-delay:0.3s"></div>
+                <div class="bar" style="--h:10px;animation-delay:0.35s"></div>
+                <div class="bar" style="--h:22px;animation-delay:0.05s"></div>
+                <div class="bar" style="--h:6px;animation-delay:0.4s"></div>
+                <div class="bar" style="--h:16px;animation-delay:0.12s"></div>
+                <div class="bar" style="--h:20px;animation-delay:0.28s"></div>
+                <div class="bar" style="--h:8px;animation-delay:0.18s"></div>
+                <div class="bar" style="--h:14px;animation-delay:0.32s"></div>
+                <div class="bar" style="--h:18px;animation-delay:0.08s"></div>
+                <div class="bar" style="--h:12px;animation-delay:0.22s"></div>
+              </div>
+              <div class="voice-duration">0:03</div>
+            </div>
+          </div>
+
+          <!-- Tool use in progress -->
+          <div class="tool-block">
+            <div class="tool-icon">💰</div>
+            Checking eBay comps...
+            <div class="tool-spinner"></div>
+          </div>
+
+          <!-- Thinking -->
+          <div class="thinking">
+            <div class="thinking-dots">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action pills -->
+        <div class="action-pills">
+          <div class="pill">List the Gibson</div>
+          <div class="pill">Compare prices</div>
+          <div class="pill">Show all stock</div>
+        </div>
+
+        <!-- Input -->
+        <div class="input-area">
+          <div class="input-field">Ask Porter anything...</div>
+          <button class="mic-btn">🎤</button>
+          <button class="send-btn">&uarr;</button>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-label">Full Conversation  -  Voice + Text</div>
+  </div>
+
+  <!-- Phone 2: Floating Mic Overlay -->
+  <div>
+    <div class="phone-frame">
+      <div class="phone-screen" style="background:#f0f0ea;">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+
+        <!-- Fake "Items" page behind overlay -->
+        <div style="padding:56px 20px 20px;opacity:0.3;">
+          <div style="font-family:'Instrument Sans',sans-serif;font-size:1.3rem;font-weight:700;color:#1a1a1a;margin-bottom:16px;">My Items</div>
+          <div style="background:white;border-radius:12px;padding:14px;margin-bottom:8px;border:1px solid rgba(0,0,0,0.06);">
+            <div style="font-size:0.85rem;font-weight:600;color:#1a1a1a;">Gibson SG '61 Reissue</div>
+            <div style="font-size:0.75rem;color:#666;margin-top:4px;">Cherry · Excellent · $1,849</div>
+          </div>
+          <div style="background:white;border-radius:12px;padding:14px;margin-bottom:8px;border:1px solid rgba(0,0,0,0.06);">
+            <div style="font-size:0.85rem;font-weight:600;color:#1a1a1a;">Fender Telecaster MIJ</div>
+            <div style="font-size:0.75rem;color:#666;margin-top:4px;">Sunburst · Very Good · $925</div>
+          </div>
+          <div style="background:white;border-radius:12px;padding:14px;margin-bottom:8px;border:1px solid rgba(0,0,0,0.06);">
+            <div style="font-size:0.85rem;font-weight:600;color:#1a1a1a;">Martin D-28</div>
+            <div style="font-size:0.75rem;color:#666;margin-top:4px;">Natural · Mint · $2,100</div>
+          </div>
+        </div>
+
+        <!-- Bottom sheet overlay -->
+        <div style="position:absolute;bottom:0;left:0;right:0;background:white;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,0.12);padding:20px 20px 32px;z-index:20;">
+          <div style="width:36px;height:4px;border-radius:2px;background:#ddd;margin:0 auto 16px;"></div>
+
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+            <div class="porter-avatar" style="width:28px;height:28px;font-size:0.8rem;border-radius:8px;">P</div>
+            <span style="font-family:'Instrument Sans',sans-serif;font-size:0.85rem;font-weight:600;color:#1a1a1a;">Porter</span>
+            <span style="font-size:0.72rem;color:#2D5A27;font-weight:500;display:flex;align-items:center;gap:4px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:#2D5A27;display:inline-block;"></span>
+              Listening
+            </span>
+          </div>
+
+          <!-- Large waveform -->
+          <div style="display:flex;align-items:center;justify-content:center;gap:3px;height:60px;margin:12px 0 16px;">
+            <div class="bar" style="--h:20px;animation-delay:0s;width:4px;border-radius:2px;background:rgba(45,90,39,0.4);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:35px;animation-delay:0.1s;width:4px;border-radius:2px;background:rgba(45,90,39,0.5);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:25px;animation-delay:0.15s;width:4px;border-radius:2px;background:rgba(45,90,39,0.45);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:45px;animation-delay:0.2s;width:4px;border-radius:2px;background:rgba(45,90,39,0.6);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:30px;animation-delay:0.25s;width:4px;border-radius:2px;background:rgba(45,90,39,0.5);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:50px;animation-delay:0.3s;width:4px;border-radius:2px;background:rgba(45,90,39,0.7);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:20px;animation-delay:0.35s;width:4px;border-radius:2px;background:rgba(45,90,39,0.4);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:40px;animation-delay:0.05s;width:4px;border-radius:2px;background:rgba(45,90,39,0.55);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:15px;animation-delay:0.4s;width:4px;border-radius:2px;background:rgba(45,90,39,0.35);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:35px;animation-delay:0.12s;width:4px;border-radius:2px;background:rgba(45,90,39,0.5);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:45px;animation-delay:0.28s;width:4px;border-radius:2px;background:rgba(45,90,39,0.6);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:20px;animation-delay:0.18s;width:4px;border-radius:2px;background:rgba(45,90,39,0.4);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:30px;animation-delay:0.32s;width:4px;border-radius:2px;background:rgba(45,90,39,0.5);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:50px;animation-delay:0.08s;width:4px;border-radius:2px;background:rgba(45,90,39,0.65);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:25px;animation-delay:0.22s;width:4px;border-radius:2px;background:rgba(45,90,39,0.45);animation:wave 0.8s ease-in-out infinite;"></div>
+            <div class="bar" style="--h:35px;animation-delay:0.38s;width:4px;border-radius:2px;background:rgba(45,90,39,0.5);animation:wave 0.8s ease-in-out infinite;"></div>
+          </div>
+
+          <div style="text-align:center;font-size:0.82rem;color:#555;margin-bottom:16px;">
+            "List the Gibson on eBay for eighteen fifty..."
+          </div>
+
+          <div style="display:flex;gap:8px;justify-content:center;">
+            <div class="pill active" style="font-size:0.75rem;padding:6px 12px;">🎤 Listening</div>
+            <div class="pill" style="font-size:0.75rem;padding:6px 12px;">Cancel</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-label">Floating Mic  -  Bottom Sheet Overlay</div>
+  </div>
+</div>
+
+<!-- Feature callouts -->
+<div class="feature-callouts">
+  <div class="callout">
+    <div class="callout-icon">💬</div>
+    <div>
+      <h4>Message Pills</h4>
+      <p>Claude-style bubbles  -  green for you, white for Porter, with tool-use blocks visible inline</p>
+    </div>
+  </div>
+  <div class="callout">
+    <div class="callout-icon">🎤</div>
+    <div>
+      <h4>Voice Waveform</h4>
+      <p>Animated waveform shows when you're speaking  -  visible in both chat and floating overlay</p>
+    </div>
+  </div>
+  <div class="callout">
+    <div class="callout-icon">🔧</div>
+    <div>
+      <h4>Tool Use Blocks</h4>
+      <p>See what Porter is doing  -  searching inventory, checking comps, preparing listings  -  like Claude's tool indicators</p>
+    </div>
+  </div>
+  <div class="callout">
+    <div class="callout-icon">⚡</div>
+    <div>
+      <h4>Action Pills</h4>
+      <p>Contextual quick actions that change based on conversation  -  tap or say them to continue</p>
+    </div>
+  </div>
+</div>
