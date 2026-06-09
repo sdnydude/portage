@@ -50,9 +50,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${instrumentSans.variable} ${plusJakarta.variable} ${jetbrainsMono.variable} h-full`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        {/* Set the theme class before paint: stored override, else OS preference. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();",
+          }}
+        />
         <AuthProvider>{children}</AuthProvider>
         <ServiceWorkerRegistration />
       </body>

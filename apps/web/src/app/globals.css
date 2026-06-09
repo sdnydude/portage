@@ -124,8 +124,9 @@
   --font-mono: var(--font-jetbrains);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+/* Dark theme — applied via the .dark class on <html>. The theme-init script in
+   the root layout defaults it to the OS preference, honoring a stored override. */
+:root.dark {
     --background: #14130F;
     --foreground: #F0EDE8;
     --surface: #1A1713;
@@ -175,7 +176,6 @@
     --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.3);
     --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.4);
     --shadow-floating: 0 16px 48px rgba(0, 0, 0, 0.5);
-  }
 }
 
 body {

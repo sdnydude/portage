@@ -11,6 +11,7 @@ import { ActionPills } from "@/components/porter/action-pills";
 import { FullChat } from "@/components/porter/full-chat";
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
 import { CompsSearchSheet } from "@/components/comps-search-sheet";
+import { ThemeToggle } from "@/components/theme-toggle";
 import Link from "next/link";
 
 function getGreeting(): string {
@@ -203,6 +204,8 @@ export default function HomePage() {
               </svg>
             </button>
           )}
+
+          <ThemeToggle className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors" />
 
           <Link
             href="/settings"
