@@ -71,8 +71,19 @@ export interface Item {
   estimatedValueMin?: number;
   estimatedValueMax?: number;
   estimatedValueRecommended?: number;
+  // Seller-set sale price (distinct from the AI estimate). Prefills the editable
+  // price field on every eBay publish; null/undefined means unset.
+  price?: number | null;
   aiConfidenceScore: number;
   quantity: number;
+  // eBay Calculated shipping (error 25020): normalized weight in ounces,
+  // dimensions in inches. weightEstimated marks AI-populated vs seller-confirmed.
+  weightOz?: number | null;
+  lengthIn?: number | null;
+  widthIn?: number | null;
+  heightIn?: number | null;
+  ebayPackageType?: string | null;
+  weightEstimated?: boolean;
   marketplaceData?: MarketplaceData;
   createdAt: Date;
   updatedAt: Date;
@@ -306,6 +317,10 @@ export interface RecognitionCandidate {
   estimatedValueLow: number;
   estimatedValueHigh: number;
   confidence: number;
+  // AI-estimated packaged shipping weight (oz) + box dimensions (in) from the scan.
+  weight?: { value: number; unit: string };
+  dimensions?: { length: number; width: number; height: number; unit: string };
+  packageType?: string;
 }
 
 export interface RecognitionResult {
@@ -353,7 +368,16 @@ export interface ListingFlowState {
   shippingMethod: ShippingMethod;
   shippingCost: number | null;
   packageSize: PackageSize;
+  // weight stays decimal pounds (existing flow consumers); dimensions are inches.
+  // ebayPackageType is the eBay enum (MAILING_BOX/LETTER/...), distinct from packageSize.
   weight: number | null;
+  dimLength: number | null;
+  dimWidth: number | null;
+  dimHeight: number | null;
+  ebayPackageType: string | null;
+  // true while weight/dims are AI-estimated and unconfirmed; any manual edit
+  // flips it false so the persisted item records seller-confirmed metrics.
+  weightEstimated: boolean;
 
   draftId: string | null;
   publishStatus: 'idle' | 'publishing' | 'published' | 'failed';

@@ -36,8 +36,17 @@ const createItemSchema = z.object({
   estimatedValueMin: z.number().min(0).optional(),
   estimatedValueMax: z.number().min(0).optional(),
   estimatedValueRecommended: z.number().min(0).optional(),
+  // Seller-set sale price. Floor 0.01 — eBay disallows $0 listings, and null
+  // (omitted) means "unset", so it falls through to comps/estimate at publish.
+  price: z.number().min(0.01).optional(),
   aiConfidenceScore: z.number().min(0).max(1).optional(),
   quantity: z.number().int().min(1).optional(),
+  weightOz: z.number().positive().optional(),
+  lengthIn: z.number().positive().optional(),
+  widthIn: z.number().positive().optional(),
+  heightIn: z.number().positive().optional(),
+  ebayPackageType: z.string().max(50).optional(),
+  weightEstimated: z.boolean().optional(),
   photos: z.array(photoSchema).optional(),
 });
 
@@ -286,8 +295,15 @@ itemsRouter.post('/', async (req, res, next) => {
       estimatedValueMin: body.estimatedValueMin ?? null,
       estimatedValueMax: body.estimatedValueMax ?? null,
       estimatedValueRecommended: body.estimatedValueRecommended ?? null,
+      price: body.price ?? null,
       aiConfidenceScore: body.aiConfidenceScore ?? 0,
       quantity: body.quantity ?? 1,
+      weightOz: body.weightOz ?? null,
+      lengthIn: body.lengthIn ?? null,
+      widthIn: body.widthIn ?? null,
+      heightIn: body.heightIn ?? null,
+      ebayPackageType: body.ebayPackageType ?? null,
+      weightEstimated: body.weightEstimated ?? false,
       photos: body.photos ?? [],
     }).returning();
 

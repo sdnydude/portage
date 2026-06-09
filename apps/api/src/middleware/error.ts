@@ -9,6 +9,7 @@ export class AppError extends Error {
     public statusCode: number,
     public code: string,
     message: string,
+    public details?: unknown,
   ) {
     super(message);
     this.name = 'AppError';
@@ -17,7 +18,11 @@ export class AppError extends Error {
 
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof AppError) {
-    res.status(err.statusCode).json({ error: err.message, code: err.code });
+    res.status(err.statusCode).json({
+      error: err.message,
+      code: err.code,
+      ...(err.details !== undefined && { details: err.details }),
+    });
     return;
   }
 

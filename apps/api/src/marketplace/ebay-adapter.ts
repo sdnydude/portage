@@ -14,6 +14,41 @@ import type {
 
 const logger = createLogger('ebay-adapter');
 
+/**
+ * Thrown when a listing cannot publish because one or more category-required
+ * eBay item specifics (aspects) have no value. Carries the missing aspect names
+ * and their allowed values so the caller can collect them from the user, rather
+ * than letting eBay reject the publish with the opaque error 25002.
+ */
+export class EbayAspectsRequiredError extends AppError {
+  constructor(public readonly missing: Array<{ name: string; values: string[] | null }>) {
+    super(
+      422,
+      'EBAY_ASPECTS_REQUIRED',
+      `eBay needs these item specifics filled in: ${missing.map((m) => m.name).join(', ')}`,
+      missing,
+    );
+    this.name = 'EbayAspectsRequiredError';
+  }
+}
+
+/**
+ * Thrown when publishing to a CALCULATED-shipping fulfillment policy without a
+ * package weight + dimensions, which eBay otherwise rejects with the opaque
+ * error 25020. The route surfaces this as a structured 422 so the UI can prompt
+ * the seller to fill weight/dimensions instead of failing the publish blindly.
+ */
+export class EbayWeightRequiredError extends AppError {
+  constructor() {
+    super(
+      422,
+      'EBAY_WEIGHT_REQUIRED',
+      'eBay calculated shipping needs a package weight and dimensions. Add them before publishing.',
+    );
+    this.name = 'EbayWeightRequiredError';
+  }
+}
+
 const BROWSE_CONDITION_NORMALIZE: Record<string, string> = {
   'New': 'NEW',
   'New other (see details)': 'NEW',
@@ -202,13 +237,16 @@ export class EbayAdapter implements MarketplaceAdapter {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'Content-Language': 'en-US',
+        // eBay's Inventory API validates Accept-Language on inventory_item/offer
+        // calls and rejects requests without an explicit, valid value (error 25709).
+        'Accept-Language': 'en-US',
         ...options.headers as Record<string, string>,
       },
     });
 
     if (!response.ok) {
       const errorBody = await response.text();
-      logger.error({ status: response.status, path, body: errorBody }, 'eBay API error');
+      logger.error({ status: response.status, path, body: errorBody, requestBody: typeof options.body === 'string' ? options.body : undefined }, 'eBay API error');
       let longMessage: string | undefined;
       try {
         const parsed = JSON.parse(errorBody) as { errors?: Array<{ longMessage?: string; message?: string }> };
@@ -228,8 +266,23 @@ export class EbayAdapter implements MarketplaceAdapter {
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
     const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const specific = input.marketplaceSpecific ?? {};
-    const ebayCondition = resolveEbayCondition(input.condition, specific);
+    let ebayCondition = resolveEbayCondition(input.condition, specific);
     const fields = validateEbayListingFields(specific);
+
+    // Calculated shipping requires a package weight + dimensions (eBay error
+    // 25020). Gate pre-flight with a clear 422 instead of eBay's opaque reject.
+    // Drafts are exempt — eBay only enforces this at live publish (mirrors the
+    // aspects gate). Only fetch the policy when weight/dims are absent or invalid
+    // — the happy path adds no extra API call.
+    if (input.publishMode !== 'draft') {
+      const rawWeight = specific.weight as { value?: unknown } | undefined;
+      const weightOk = typeof rawWeight?.value === 'number' && rawWeight.value > 0;
+      const d = specific.dimensions as { length?: number; width?: number; height?: number } | undefined;
+      const dimsOk = !!d && (d.length ?? 0) > 0 && (d.width ?? 0) > 0 && (d.height ?? 0) > 0;
+      if ((!weightOk || !dimsOk) && (await this.getFulfillmentPolicy(fields.fulfillmentPolicyId))) {
+        throw new EbayWeightRequiredError();
+      }
+    }
 
     const product: Record<string, unknown> = {
       title: input.title,
@@ -241,7 +294,57 @@ export class EbayAdapter implements MarketplaceAdapter {
     if (input.model) product.mpn = input.model;
     if (specific.upc) product.upc = [specific.upc as string];
     if (specific.epid) product.epid = specific.epid;
-    if (specific.aspects) product.aspects = specific.aspects;
+
+    // eBay validates category-required item specifics from `aspects` (not the
+    // legacy product.brand/mpn fields), so a missing Brand aspect fails publish
+    // with error 25002. Surface Brand/Model here, but let explicit AI-prepared
+    // aspects win — curated values are authoritative over the derived fallbacks.
+    const aspects: Record<string, string[]> = { ...(specific.aspects as Record<string, string[]> | undefined ?? {}) };
+    if (input.brand && !aspects.Brand) aspects.Brand = [input.brand];
+    if (input.model && !aspects.Model) aspects.Model = [input.model];
+
+    // Publish gate: eBay rejects publish (error 25002) when a category-required
+    // item specific has no value. Check here — before any inventory/offer write
+    // — so the caller can collect the missing specifics from the user instead of
+    // creating a dead offer and surfacing eBay's opaque error. We also canonicalize
+    // each value under eBay's exact aspect name (matching is case-insensitive) and
+    // collapse SINGLE-cardinality aspects to one value, since eBay rejects extras.
+    if (input.publishMode !== 'draft') {
+      const required = await EbayAdapter.getRequiredAspects(fields.categoryId);
+      const byLower = new Map(Object.keys(aspects).map((k) => [k.toLowerCase(), k]));
+      const missing: Array<{ name: string; values: string[] | null }> = [];
+      const canonical: Record<string, string[]> = {};
+
+      for (const [name, meta] of Object.entries(required)) {
+        const ourKey = byLower.get(name.toLowerCase());
+        const vals = ourKey ? aspects[ourKey].filter((v) => v && v.trim()) : [];
+        if (vals.length === 0) {
+          if (meta.required) missing.push({ name, values: meta.values });
+          continue;
+        }
+        canonical[name] = meta.cardinality === 'MULTI' ? vals : [vals[0]];
+        byLower.delete(name.toLowerCase());
+      }
+      if (missing.length > 0) throw new EbayAspectsRequiredError(missing);
+
+      // Preserve any extra specifics we hold that aren't part of the category schema.
+      for (const [, key] of byLower) {
+        const vals = aspects[key].filter((v) => v && v.trim());
+        if (vals.length > 0) canonical[key] = vals;
+      }
+      if (Object.keys(canonical).length > 0) product.aspects = canonical;
+
+      // eBay rejects a condition that isn't valid for the category (error 25021).
+      // Snap the item to the closest grade this category actually accepts — but
+      // never override an explicit, already-valid eBay enum the caller supplied.
+      if (!specific.condition) {
+        const validConditionIds = await EbayAdapter.getValidConditions(fields.categoryId);
+        const conditionFix = resolveEbayCategoryCondition(input.condition, validConditionIds);
+        if (conditionFix.condition) ebayCondition = conditionFix.condition;
+      }
+    } else if (Object.keys(aspects).length > 0) {
+      product.aspects = aspects;
+    }
 
     const inventoryItem: Record<string, unknown> = {
       availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
@@ -254,15 +357,17 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
 
     if (specific.weight || specific.dimensions) {
+      // packageType is deliberately NOT sent. eBay rejects the whole
+      // <ShippingPackage> (error 25101 / 216305) when the packageType isn't
+      // supported by the courier in the resolved fulfillment policy, and it's
+      // optional — calculated shipping computes rates from weight + dimensions
+      // alone. We keep the seller's chosen packageType stored as metadata only.
       const pkg: Record<string, unknown> = {};
       if (specific.weight) {
         pkg.weight = specific.weight;
       }
       if (specific.dimensions) {
         pkg.dimensions = specific.dimensions;
-      }
-      if (specific.packageType) {
-        pkg.packageType = specific.packageType;
       }
       inventoryItem.packageWeightAndSize = pkg;
     }
@@ -344,8 +449,16 @@ export class EbayAdapter implements MarketplaceAdapter {
 
   async updateListing(marketplaceListingId: string, input: Partial<MarketplaceListingInput>): Promise<MarketplaceListingResult> {
     if (input.ebaySku) {
-      const ebayCondition = resolveEbayCondition(input.condition ?? 'good', input.marketplaceSpecific);
+      let ebayCondition = resolveEbayCondition(input.condition ?? 'good', input.marketplaceSpecific);
       const specific = input.marketplaceSpecific ?? {};
+
+      // Same per-category guard as publish (eBay error 25021): snap to a grade the
+      // category accepts, unless an explicit valid enum was supplied.
+      if (specific.categoryId && !specific.condition) {
+        const validConditionIds = await EbayAdapter.getValidConditions(specific.categoryId as string);
+        const conditionFix = resolveEbayCategoryCondition(input.condition ?? 'good', validConditionIds);
+        if (conditionFix.condition) ebayCondition = conditionFix.condition;
+      }
 
       const product: Record<string, unknown> = {};
       if (input.title) product.title = input.title;
@@ -368,10 +481,14 @@ export class EbayAdapter implements MarketplaceAdapter {
       }
 
       if (specific.weight || specific.dimensions) {
+        // packageType is deliberately NOT sent — symmetry with createListing.
+        // eBay rejects the whole <ShippingPackage> (error 25101 / 216305) when
+        // packageType isn't supported by the courier in the resolved fulfillment
+        // policy, and it's optional: calculated shipping computes rates from
+        // weight + dimensions alone. The seller's packageType stays metadata-only.
         const pkg: Record<string, unknown> = {};
         if (specific.weight) pkg.weight = specific.weight;
         if (specific.dimensions) pkg.dimensions = specific.dimensions;
-        if (specific.packageType) pkg.packageType = specific.packageType;
         inventoryItem.packageWeightAndSize = pkg;
       }
 
@@ -537,35 +654,89 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   // Account API business-policy creation for one-click eBay seller setup.
+  // Cache of policyId → isCalculated for this adapter instance. Adapters are
+  // created per request, so this dedupes repeat lookups within a single
+  // createListing/publish call, not across requests.
+  private readonly calculatedPolicyCache = new Map<string, boolean>();
+
+  /**
+   * Return true when the fulfillment policy uses CALCULATED shipping (which
+   * hard-requires a package weight + dimensions). Cached per adapter instance.
+   * Fail-open: a lookup error returns false so a transient hiccup never blocks
+   * a publish.
+   */
+  async getFulfillmentPolicy(policyId: string): Promise<boolean> {
+    const cached = this.calculatedPolicyCache.get(policyId);
+    if (cached !== undefined) return cached;
+    try {
+      const policy = await this.request<{ shippingOptions?: Array<{ costType?: string }> }>(
+        `/sell/account/v1/fulfillment_policy/${policyId}`,
+      );
+      const isCalculated = (policy.shippingOptions ?? []).some((o) => o.costType === 'CALCULATED');
+      this.calculatedPolicyCache.set(policyId, isCalculated);
+      return isCalculated;
+    } catch (err) {
+      // Fail-open: a transient lookup failure shouldn't block a publish (a
+      // fail-closed default would wrongly block valid flat-rate publishes too).
+      // Log the HTTP status so a recurring 403 (missing sell.account scope) or
+      // 404 (bad policyId) — which silently skip the gate — is diagnosable.
+      const status = err instanceof AppError ? err.statusCode : undefined;
+      logger.warn({ userId: this.userId, policyId, status, err: (err as Error).message }, 'fulfillment policy lookup failed — weight gate skipped this publish');
+      return false;
+    }
+  }
+
+  // CALCULATED + USPSParcel: buyer pays the exact computed shipping cost, which
+  // needs the item's packageWeightAndSize (captured end-to-end now). The earlier
+  // LOGISTICS_INFO_IS_MISSING rejection was NOT a missing rate table — it was a
+  // downstream symptom of an invalid service code. A live probe confirmed:
+  // USPSGround → NOT_VALID_FOR_SELLING, USPSGroundAdvantage → UNKNOWN_SHIPPING_
+  // SERVICE_CODE, but USPSParcel/USPSPriority are accepted for CALCULATED. No
+  // freeShipping/shippingCost — calculated computes the rate.
+  private fulfillmentPolicyBody(name: string) {
+    return {
+      name,
+      marketplaceId: 'EBAY_US',
+      categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
+      handlingTime: { value: 1, unit: 'DAY' },
+      // eBay's PUT (full replace, used by updateFulfillmentPolicy) requires
+      // globalShipping explicitly — without it the migrate PUT fails with 20403
+      // "Global shipping field is null". POST defaults it, so including it is safe
+      // for both. We don't offer eBay International Shipping by default.
+      globalShipping: false,
+      shippingOptions: [{
+        optionType: 'DOMESTIC',
+        costType: 'CALCULATED',
+        shippingServices: [{
+          sortOrder: 1,
+          shippingCarrierCode: 'USPS',
+          shippingServiceCode: 'USPSParcel',
+        }],
+      }],
+    };
+  }
+
   // Per-seller writes, so they use this.request() (the seller's OAuth token,
   // which carries the sell.account scope) — not the static app-token reads.
   async createFulfillmentPolicy(name: string): Promise<string> {
     const result = await this.request<{ fulfillmentPolicyId: string }>('/sell/account/v1/fulfillment_policy', {
       method: 'POST',
-      body: JSON.stringify({
-        name,
-        marketplaceId: 'EBAY_US',
-        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
-        handlingTime: { value: 1, unit: 'DAY' },
-        // FLAT_RATE + freeShipping is the safest default: eBay rejected the prior
-        // CALCULATED policy with LSAS LOGISTICS_INFO_IS_MISSING (calculated rates need
-        // seller rate tables), and 'USPSGroundAdvantage' was UNKNOWN_SHIPPING_SERVICE_CODE.
-        // Sellers can override per listing. (USPSGround was recognized but rejected as
-        // NOT_VALID_FOR_SELLING; USPSPriority is a current, sellable USPS service.)
-        shippingOptions: [{
-          optionType: 'DOMESTIC',
-          costType: 'FLAT_RATE',
-          shippingServices: [{
-            sortOrder: 1,
-            shippingCarrierCode: 'USPS',
-            shippingServiceCode: 'USPSPriority',
-            freeShipping: true,
-          }],
-        }],
-      }),
+      body: JSON.stringify(this.fulfillmentPolicyBody(name)),
     });
     logger.info({ userId: this.userId, fulfillmentPolicyId: result.fulfillmentPolicyId }, 'eBay fulfillment policy created');
     return result.fulfillmentPolicyId;
+  }
+
+  // Migrate an existing policy (e.g. a legacy FLAT_RATE "Portage Standard
+  // Fulfillment") to the canonical CALCULATED shape in place. PUT is a full
+  // replace and keeps the same policyId, so live offers referencing it stay valid.
+  async updateFulfillmentPolicy(policyId: string, name: string): Promise<string> {
+    const result = await this.request<{ fulfillmentPolicyId: string }>(`/sell/account/v1/fulfillment_policy/${policyId}`, {
+      method: 'PUT',
+      body: JSON.stringify(this.fulfillmentPolicyBody(name)),
+    });
+    logger.info({ userId: this.userId, fulfillmentPolicyId: policyId }, 'eBay fulfillment policy migrated to calculated');
+    return result.fulfillmentPolicyId ?? policyId;
   }
 
   async createPaymentPolicy(name: string): Promise<string> {
@@ -760,7 +931,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
   }
 
-  static async getRequiredAspects(categoryId: string): Promise<Record<string, { required: boolean; values: string[] | null }>> {
+  static async getRequiredAspects(categoryId: string): Promise<Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>> {
     const token = await getEbayProdAppToken();
 
     const response = await fetch(
@@ -781,16 +952,17 @@ export class EbayAdapter implements MarketplaceAdapter {
     const data = await response.json() as {
       aspects?: Array<{
         localizedAspectName: string;
-        aspectConstraint?: { aspectRequired?: boolean };
+        aspectConstraint?: { aspectRequired?: boolean; itemToAspectCardinality?: string };
         aspectValues?: Array<{ localizedValue: string }>;
       }>;
     };
 
-    const result: Record<string, { required: boolean; values: string[] | null }> = {};
+    const result: Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }> = {};
     for (const aspect of data.aspects ?? []) {
       result[aspect.localizedAspectName] = {
         required: aspect.aspectConstraint?.aspectRequired ?? false,
         values: aspect.aspectValues?.map(v => v.localizedValue) ?? null,
+        cardinality: aspect.aspectConstraint?.itemToAspectCardinality === 'MULTI' ? 'MULTI' : 'SINGLE',
       };
     }
 

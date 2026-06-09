@@ -9,7 +9,6 @@ import { useEnhance } from "@/hooks/use-enhance";
 import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { useComps } from "@/hooks/use-comps";
-import { useListings } from "@/hooks/use-listings";
 import { ImagePicker } from "@/components/capture/image-picker";
 import { API_BASE } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
@@ -20,6 +19,9 @@ import {
   canSaveItemEdit,
   type ItemEditFields,
 } from "@/lib/item-edit";
+import { WeightDimsInputs } from "@/components/listing/weight-dims-inputs";
+import { PriceField } from "@/components/listing/price-field";
+import { resolvePublishPrice } from "@/lib/price";
 
 const conditionColors: Record<string, string> = {
   new: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -56,13 +58,11 @@ export default function ItemDetailPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
-  const [isListing, setIsListing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editFields, setEditFields] = useState<ItemEditFields | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(params.id);
-  const { createListing } = useListings();
 
   const handleAddPhotos = useCallback(
     async (files: File[]) => {
@@ -541,6 +541,29 @@ export default function ItemDetailPage() {
                 />
               </FieldGroup>
 
+              <FieldGroup label="Price (USD)">
+                <PriceField
+                  value={editFields.price}
+                  onChange={(price) => setEditField("price", price)}
+                />
+              </FieldGroup>
+
+              {/* eBay Calculated shipping (weight + dimensions). Editing flips
+                  the AI-estimated flag to seller-confirmed. */}
+              <WeightDimsInputs
+                value={{
+                  weight: editFields.weight,
+                  dimLength: editFields.dimLength,
+                  dimWidth: editFields.dimWidth,
+                  dimHeight: editFields.dimHeight,
+                  ebayPackageType: editFields.ebayPackageType,
+                }}
+                onChange={(patch) =>
+                  setEditFields((f) => (f ? { ...f, ...patch, weightEstimated: false } : f))
+                }
+                estimated={editFields.weightEstimated}
+              />
+
               <div className="flex gap-3 pt-1">
                 <button
                   onClick={cancelEdit}
@@ -665,20 +688,6 @@ export default function ItemDetailPage() {
             className="w-full py-3 rounded-xl bg-forest-green text-white text-sm font-semibold hover:bg-forest-green/90 transition-colors"
           >
             List on Marketplace
-          </button>
-          <button
-            onClick={async () => {
-              if (!item || isListing) return;
-              setIsListing(true);
-              const price = comps?.stats.soldMedian ?? comps?.stats.activeMedian ?? item.estimatedValueRecommended ?? item.estimatedValueMin ?? 0;
-              await createListing({ itemId: item.id, marketplace: "ebay", price, publishImmediately: false });
-              setIsListing(false);
-              router.push("/listings");
-            }}
-            disabled={isListing}
-            className="w-full py-3 rounded-xl border-2 border-forest-green text-forest-green text-sm font-semibold hover:bg-forest-green-50 transition-colors disabled:opacity-50"
-          >
-            {isListing ? "Creating..." : "List for Sale"}
           </button>
 
           {/* Comparable Listings */}
@@ -810,7 +819,7 @@ export default function ItemDetailPage() {
       {showListingSheet && (
         <CreateListingSheet
           itemId={item.id}
-          suggestedPrice={item.estimatedValueRecommended ?? undefined}
+          suggestedPrice={resolvePublishPrice(item, comps?.stats) ?? undefined}
           onCreated={() => {
             setShowListingSheet(false);
             router.push("/listings");

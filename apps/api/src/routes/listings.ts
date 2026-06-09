@@ -3,16 +3,45 @@ import { z } from 'zod';
 import { eq, desc, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { listings, items } from '../db/schema.js';
+import { listings, items, sellerProfiles } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
+import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { env } from '../lib/env.js';
 import type { MarketplaceAdapter } from '@portage/shared';
 
 const logger = createLogger('listings');
+
+/**
+ * Inject the item's stored package weight/dimensions into marketplaceSpecific in
+ * the eBay shape. Item columns are the single source of truth (populated by the
+ * listing flow / edit page), so this runs on EVERY eBay publish path — including
+ * photo-first/seeded drafts that never carried weight — to clear error 25020.
+ * Ephemeral: the merged object is passed to the adapter, never persisted to the
+ * listing row.
+ */
+type ItemShipping = {
+  weightOz: number | null;
+  lengthIn: number | null;
+  widthIn: number | null;
+  heightIn: number | null;
+  ebayPackageType: string | null;
+};
+function mergeItemShipping(
+  item: ItemShipping,
+  specific: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const merged = { ...(specific ?? {}) };
+  if (item.weightOz != null) merged.weight = toEbayWeight(item.weightOz);
+  if (item.lengthIn != null && item.widthIn != null && item.heightIn != null) {
+    merged.dimensions = toEbayDimensions(item.lengthIn, item.widthIn, item.heightIn);
+  }
+  if (item.ebayPackageType) merged.packageType = item.ebayPackageType;
+  return merged;
+}
 
 function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): MarketplaceAdapter {
   switch (marketplace) {
@@ -139,7 +168,9 @@ listingsRouter.post('/', async (req, res, next) => {
         brand: item.brand,
         model: item.model,
         features: item.features as string[],
-        marketplaceSpecific: body.marketplaceSpecificFields,
+        marketplaceSpecific: body.marketplace === 'ebay'
+          ? mergeItemShipping(item, body.marketplaceSpecificFields)
+          : body.marketplaceSpecificFields,
       });
 
       marketplaceListingId = result.marketplaceListingId;
@@ -308,6 +339,32 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
           logger.info({ userId, itemId: item.id, categoryId: cat.categoryId }, 'eBay leaf category auto-resolved at publish');
         }
       }
+
+      // Self-heal eBay setup fields (policy IDs + inventory location) from the seller
+      // profile. Drafts created without prepare-listing (seeded, photo-first, quick-list)
+      // carry none of these, which publish requires; the profile is the source of truth.
+      const ms = (marketplaceSpecific ?? {}) as Record<string, unknown>;
+      const fp = ms.fulfillmentPolicyId as string | undefined;
+      const pp = ms.paymentPolicyId as string | undefined;
+      const rp = ms.returnPolicyId as string | undefined;
+      const loc = ms.merchantLocationKey as string | undefined;
+      if (!fp || !pp || !rp || !loc) {
+        const [profile] = await db.select()
+          .from(sellerProfiles)
+          .where(eq(sellerProfiles.userId, userId))
+          .limit(1);
+        marketplaceSpecific = {
+          ...ms,
+          fulfillmentPolicyId: fp || profile?.ebayFulfillmentPolicyId || undefined,
+          paymentPolicyId: pp || profile?.ebayPaymentPolicyId || undefined,
+          returnPolicyId: rp || profile?.ebayReturnPolicyId || undefined,
+          merchantLocationKey: loc || profile?.ebayMerchantLocationKey || undefined,
+        };
+      }
+
+      // Item columns are the source of truth for package weight/dimensions —
+      // merge them in eBay shape so calculated-shipping publishes carry weight.
+      marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
     }
 
     const result = await adapter.createListing({
@@ -339,9 +396,15 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       .where(and(eq(listings.id, listing.id), eq(listings.userId, userId)))
       .returning();
 
-    logger.info({ userId, listingId: updated.id, marketplaceListingId: result.marketplaceListingId }, 'Listing published');
+    if (result.status === 'active') {
+      logger.info({ userId, listingId: updated.id, marketplaceListingId: result.marketplaceListingId }, 'Listing published');
+    } else {
+      logger.warn({ userId, listingId: updated.id, warning: result.warning }, 'Listing publish did not go live — saved as draft');
+    }
 
-    res.json(updated);
+    // Carry the adapter's warning (publish fell back to draft) through to the
+    // client so a non-active result is never presented as a successful publish.
+    res.json({ ...updated, warning: result.warning });
   } catch (err) {
     next(err);
   }

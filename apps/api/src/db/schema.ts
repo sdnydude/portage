@@ -64,8 +64,21 @@ export const items = pgTable('items', {
   estimatedValueMin: doublePrecision('estimated_value_min'),
   estimatedValueMax: doublePrecision('estimated_value_max'),
   estimatedValueRecommended: doublePrecision('estimated_value_recommended'),
+  // Seller-set sale price (distinct from the AI estimate above). Prefills the
+  // editable price field shown on every eBay publish; nullable (existing rows).
+  price: doublePrecision('price'),
   aiConfidenceScore: real('ai_confidence_score').notNull().default(0),
   quantity: integer('quantity').notNull().default(1),
+  // eBay Calculated shipping requires package weight + dimensions (error 25020).
+  // Normalized: weight in ounces, dimensions in inches; nullable (existing rows).
+  weightOz: real('weight_oz'),
+  lengthIn: real('length_in'),
+  widthIn: real('width_in'),
+  heightIn: real('height_in'),
+  // eBay enum string (MAILING_BOX/LETTER/...) — deliberately varchar, not packageTypeEnum.
+  ebayPackageType: varchar('ebay_package_type', { length: 50 }),
+  // true when AI-populated the metrics; flips false on seller edit.
+  weightEstimated: boolean('weight_estimated').notNull().default(false),
   marketplaceData: jsonb('marketplace_data').$type<import('@portage/shared').MarketplaceData>(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

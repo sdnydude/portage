@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
-import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter } from './ebay-adapter.js';
+import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError } from './ebay-adapter.js';
 
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
@@ -91,6 +91,108 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
     const body = JSON.parse((putCall![1] as RequestInit).body as string);
     expect(body.availability.shipToLocationAvailability.quantity).toBe(7);
   });
+
+  it('sends Accept-Language: en-US on the inventory PUT (eBay rejects it otherwise — error 25709)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    expect(putCall).toBeTruthy();
+    const headers = (putCall![1] as RequestInit).headers as Record<string, string>;
+    expect(headers['Accept-Language']).toBe('en-US');
+  });
+});
+
+describe('EbayAdapter.createListing — packageWeightAndSize', () => {
+  it('sends weight and dimensions but omits packageType (eBay rejects unsupported packageType — error 25101)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: {
+        categoryId: '15032',
+        ...validSetup,
+        weight: { value: 8, unit: 'OUNCE' },
+        dimensions: { length: 8, width: 6, height: 4, unit: 'INCH' },
+        packageType: 'MAILING_BOX',
+      },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.packageWeightAndSize.weight).toEqual({ value: 8, unit: 'OUNCE' });
+    expect(body.packageWeightAndSize.dimensions).toEqual({ length: 8, width: 6, height: 4, unit: 'INCH' });
+    expect(body.packageWeightAndSize.packageType).toBeUndefined();
+  });
+});
+
+describe('EbayAdapter.createListing — required item aspects', () => {
+  const aspectsFromPut = () => {
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    return JSON.parse((putCall![1] as RequestInit).body as string).product.aspects;
+  };
+
+  it('maps brand and model into product.aspects (eBay validates required item specifics there, not product.brand — error 25002)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Cloud Microphones',
+      model: 'CL-1',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    expect(aspectsFromPut().Brand).toEqual(['Cloud Microphones']);
+    expect(aspectsFromPut().Model).toEqual(['CL-1']);
+  });
+});
+
+describe('EbayAdapter.createListing — required-aspect publish gate', () => {
+  const mockRequiredAspects = (aspects: unknown[]) => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes('get_item_aspects_for_category')) {
+        return new Response(JSON.stringify({ aspects }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+  };
+
+  it('blocks a live publish with EbayAspectsRequiredError naming each unfilled required aspect (before any inventory/offer write)', async () => {
+    mockRequiredAspects([
+      { localizedAspectName: 'Brand', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' } },
+      { localizedAspectName: 'Preamp Type', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' }, aspectValues: [{ localizedValue: 'Tube' }, { localizedValue: 'Solid State' }] },
+    ]);
+    const adapter = new EbayAdapter('user-1');
+    await expect(adapter.createListing({
+      ...baseInput,
+      brand: 'Cloud Microphones',
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '119018', ...validSetup },
+    } as any)).rejects.toMatchObject({
+      code: 'EBAY_ASPECTS_REQUIRED',
+      statusCode: 422,
+      missing: [{ name: 'Preamp Type', values: ['Tube', 'Solid State'] }],
+    });
+    // gate runs before eBay writes: no inventory PUT, no offer POST
+    expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'))).toBeUndefined();
+    expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/offer'))).toBeUndefined();
+  });
+
+  it('passes when the required specific is provided — writing it under eBay\'s canonical name with one value for SINGLE-cardinality aspects', async () => {
+    mockRequiredAspects([
+      { localizedAspectName: 'Preamp Type', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' }, aspectValues: [{ localizedValue: 'Tube' }, { localizedValue: 'Solid State' }] },
+    ]);
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      publishMode: 'live',
+      // client echoes a lower-cased key and (defensively) two values
+      marketplaceSpecific: { categoryId: '119018', ...validSetup, aspects: { 'preamp type': ['Tube', 'Solid State'] } },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.product.aspects['Preamp Type']).toEqual(['Tube']);
+    expect(body.product.aspects['preamp type']).toBeUndefined();
+  });
 });
 
 describe('EbayAdapter.createListing — draft vs live publish mode', () => {
@@ -148,6 +250,86 @@ describe('EbayAdapter.createListing — draft vs live publish mode', () => {
     expect(result.marketplaceListingId).toBe('110012345678');
     expect(result.ebayOfferId).toBe('offer-789');
     expect(result.ebaySku).toMatch(/^portage-/);
+  });
+});
+
+describe('EbayAdapter.createListing — per-category condition auto-correct at publish', () => {
+  const mockConditionPolicies = (conditionIds: string[]) => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes('get_item_condition_policies')) {
+        return new Response(JSON.stringify({
+          itemConditionPolicies: [{ itemConditions: conditionIds.map((id) => ({ conditionId: id })) }],
+        }), { status: 200 });
+      }
+      if (u.includes('/publish')) return new Response(JSON.stringify({ listingId: '110012345678' }), { status: 200 });
+      if (u.includes('/offer')) return new Response(JSON.stringify({ offerId: 'offer-1' }), { status: 200 });
+      return new Response('{}', { status: 200 });
+    });
+  };
+  const conditionFromPut = () => {
+    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
+    return JSON.parse((putCall![1] as RequestInit).body as string).condition;
+  };
+
+  it('snaps a "good" item to the closest grade the category accepts when USED_GOOD is invalid (eBay error 25021)', async () => {
+    // cat 119018 (Pro Audio) accepts {New, Open box, Seller refurbished, Used, For parts} — NOT 5000/USED_GOOD
+    mockConditionPolicies(['1000', '1500', '2500', '3000', '7000']);
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      condition: 'good',
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '119018', ...validSetup },
+    } as any);
+    expect(conditionFromPut()).toBe('USED_EXCELLENT'); // conditionId 3000, not USED_GOOD (5000)
+  });
+
+  it('does not override an explicit, already-valid marketplaceSpecific.condition', async () => {
+    mockConditionPolicies(['1000', '1500', '2500', '3000', '7000']);
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      condition: 'good',
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '119018', ...validSetup, condition: 'SELLER_REFURBISHED' },
+    } as any);
+    expect(conditionFromPut()).toBe('SELLER_REFURBISHED'); // user's explicit valid choice wins over the snap
+  });
+
+  it('keeps USED_GOOD for a category that does accept it (no regression for media categories)', async () => {
+    mockConditionPolicies(['1000', '2750', '3000', '4000', '5000', '6000']);
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      condition: 'good',
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '11233', ...validSetup },
+    } as any);
+    expect(conditionFromPut()).toBe('USED_GOOD'); // 5000 is valid here — chain prefers it
+  });
+});
+
+describe('EbayAdapter.updateListing — per-category condition auto-correct', () => {
+  it('snaps condition to a category-valid grade on update (same 25021 guard as publish)', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes('get_item_condition_policies')) {
+        return new Response(JSON.stringify({
+          itemConditionPolicies: [{ itemConditions: ['1000', '1500', '2500', '3000', '7000'].map((id) => ({ conditionId: id })) }],
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    await adapter.updateListing('listing-1', {
+      ebaySku: 'portage-sku-1',
+      condition: 'good',
+      marketplaceSpecific: { categoryId: '119018' },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.condition).toBe('USED_EXCELLENT'); // not USED_GOOD (5000), which 119018 rejects
   });
 });
 
@@ -224,7 +406,7 @@ describe('EbayAdapter — surfaces eBay error longMessage', () => {
     const adapter = new EbayAdapter('user-1');
     const err: any = await adapter.createListing({
       ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 1, width: 1, height: 1, unit: 'INCH' } },
     } as any).catch((e) => e);
 
     expect(err.statusCode).toBe(400);
@@ -242,7 +424,7 @@ describe('EbayAdapter — surfaces eBay error longMessage', () => {
     const adapter = new EbayAdapter('user-1');
     const err: any = await adapter.createListing({
       ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 1, width: 1, height: 1, unit: 'INCH' } },
     } as any).catch((e) => e);
 
     expect(err.message).not.toMatch(/<script>/);
@@ -256,7 +438,7 @@ describe('EbayAdapter — surfaces eBay error longMessage', () => {
     const adapter = new EbayAdapter('user-1');
     const err: any = await adapter.createListing({
       ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 1, width: 1, height: 1, unit: 'INCH' } },
     } as any).catch((e) => e);
 
     expect(err.statusCode).toBe(503);
@@ -407,7 +589,7 @@ describe('EbayAdapter — Account API business-policy creation (auto-setup)', ()
   // OAuth user token, which carries the sell.account scope) — NOT the static
   // app-token methods used for public catalog reads. Each returns the new policy id.
 
-  it('createFulfillmentPolicy POSTs a 1-day-handling FLAT_RATE free-shipping USPS Ground policy and returns its id', async () => {
+  it('createFulfillmentPolicy POSTs a 1-day-handling CALCULATED USPSParcel buyer-paid policy and returns its id', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-new' }), { status: 201 }));
 
     const adapter = new EbayAdapter('user-1');
@@ -423,15 +605,40 @@ describe('EbayAdapter — Account API business-policy creation (auto-setup)', ()
     expect(body.categoryTypes).toEqual([{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }]);
     expect(body.handlingTime).toEqual({ value: 1, unit: 'DAY' });
     expect(body.shippingOptions[0].optionType).toBe('DOMESTIC');
-    // FLAT_RATE + freeShipping avoids the CALCULATED rate-table requirement that eBay
-    // rejected as LSAS LOGISTICS_INFO_IS_MISSING; USPSGroundAdvantage was UNKNOWN_SHIPPING_SERVICE_CODE.
-    expect(body.shippingOptions[0].costType).toBe('FLAT_RATE');
+    // CALCULATED + USPSParcel: buyer pays the exact computed rate (needs item
+    // packageWeightAndSize, now captured). A live probe proved the earlier
+    // LOGISTICS_INFO_IS_MISSING was a bad service code (USPSGround →
+    // NOT_VALID_FOR_SELLING, USPSGroundAdvantage → UNKNOWN), not a rate-table gap.
+    expect(body.shippingOptions[0].costType).toBe('CALCULATED');
     const svc = body.shippingOptions[0].shippingServices[0];
     expect(svc.shippingCarrierCode).toBe('USPS');
-    expect(svc.shippingServiceCode).toBe('USPSPriority');
-    expect(svc.freeShipping).toBe(true);
+    expect(svc.shippingServiceCode).toBe('USPSParcel');
+    // No freeShipping/shippingCost — calculated computes the buyer-paid rate.
+    expect(svc.freeShipping).toBeUndefined();
+    expect(svc.shippingCost).toBeUndefined();
 
     expect(id).toBe('fp-new');
+  });
+
+  it('updateFulfillmentPolicy PUTs the same CALCULATED USPSParcel body to the policy-id path (migrate a stale FLAT_RATE policy in place)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-existing' }), { status: 200 }));
+
+    const adapter = new EbayAdapter('user-1');
+    const id = await adapter.updateFulfillmentPolicy('fp-existing', 'Portage Standard Fulfillment');
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/sell/account/v1/fulfillment_policy/fp-existing');
+    expect((opts as RequestInit).method).toBe('PUT');
+
+    const body = JSON.parse((opts as RequestInit).body as string);
+    expect(body.name).toBe('Portage Standard Fulfillment');
+    expect(body.shippingOptions[0].costType).toBe('CALCULATED');
+    expect(body.shippingOptions[0].shippingServices[0].shippingServiceCode).toBe('USPSParcel');
+    // eBay's PUT (full replace) requires globalShipping explicitly — POST defaults
+    // it, but a PUT without it fails with 20403 "Global shipping field is null".
+    expect(body.globalShipping).toBe(false);
+
+    expect(id).toBe('fp-existing');
   });
 
   it('createPaymentPolicy POSTs a managed-payments immediate-pay policy (no offline methods) and returns its id', async () => {
@@ -510,6 +717,29 @@ describe('EbayAdapter.updateListing — syncs inventory_item + offer', () => {
     const offerBody = JSON.parse((offerPut![1] as RequestInit).body as string);
     expect(offerBody.listingDescription).toBe('Updated description');
     expect(offerBody.pricingSummary.price.value).toBe('149');
+  });
+});
+
+describe('EbayAdapter.updateListing — packageWeightAndSize', () => {
+  it('sends weight and dimensions but omits packageType (symmetry with createListing — eBay rejects unsupported packageType, error 25101)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.updateListing('listing-id-999', {
+      condition: 'good',
+      ebaySku: 'portage-sku-abc',
+      ebayOfferId: 'offer-42',
+      marketplaceSpecific: {
+        weight: { value: 8, unit: 'OUNCE' },
+        dimensions: { length: 8, width: 6, height: 4, unit: 'INCH' },
+        packageType: 'MAILING_BOX',
+      },
+    });
+
+    const inventoryPut = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/portage-sku-abc'));
+    expect(inventoryPut).toBeTruthy();
+    const invBody = JSON.parse((inventoryPut![1] as RequestInit).body as string);
+    expect(invBody.packageWeightAndSize.weight).toEqual({ value: 8, unit: 'OUNCE' });
+    expect(invBody.packageWeightAndSize.dimensions).toEqual({ length: 8, width: 6, height: 4, unit: 'INCH' });
+    expect(invBody.packageWeightAndSize.packageType).toBeUndefined();
   });
 });
 
@@ -595,5 +825,62 @@ describe('EbayAdapter.createInventoryLocation — Inventory API location (auto-s
       adapter.createInventoryLocation('invalid key!@#', { country: 'US' }),
     ).rejects.toThrow(/merchantLocationKey/i);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('EbayAdapter.getFulfillmentPolicy — CALCULATED shipping detection', () => {
+  it('returns true for CALCULATED, false for FLAT_RATE, and caches per instance', async () => {
+    let calcCalls = 0;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/sell/account/v1/fulfillment_policy/calc')) {
+        calcCalls++;
+        return new Response(JSON.stringify({ shippingOptions: [{ optionType: 'DOMESTIC', costType: 'CALCULATED' }] }), { status: 200 });
+      }
+      if (url.includes('/sell/account/v1/fulfillment_policy/flat')) {
+        return new Response(JSON.stringify({ shippingOptions: [{ optionType: 'DOMESTIC', costType: 'FLAT_RATE' }] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    expect(await adapter.getFulfillmentPolicy('calc')).toBe(true);
+    expect(await adapter.getFulfillmentPolicy('flat')).toBe(false);
+    // cached — a repeat lookup issues no new request
+    expect(await adapter.getFulfillmentPolicy('calc')).toBe(true);
+    expect(calcCalls).toBe(1);
+  });
+});
+
+describe('createListing — calculated-shipping weight gate (eBay error 25020)', () => {
+  const calculatedFetch = async (url: string) => {
+    if (url.includes('/sell/account/v1/fulfillment_policy/')) {
+      return new Response(JSON.stringify({ shippingOptions: [{ optionType: 'DOMESTIC', costType: 'CALCULATED' }] }), { status: 200 });
+    }
+    return new Response('{}', { status: 200 });
+  };
+
+  it('blocks a calculated-policy publish missing weight (422), before any inventory write', async () => {
+    fetchMock.mockImplementation(calculatedFetch);
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({ ...baseInput, marketplaceSpecific: { categoryId: '15032', ...validSetup } } as any),
+    ).rejects.toBeInstanceOf(EbayWeightRequiredError);
+    expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'))).toBeUndefined();
+
+    // zero-valued dimensions are not real dimensions — must also gate
+    await expect(
+      adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 56, unit: 'OUNCE' }, dimensions: { length: 0, width: 8, height: 4, unit: 'INCH' } },
+      } as any),
+    ).rejects.toBeInstanceOf(EbayWeightRequiredError);
+  });
+
+  it('does NOT gate a draft save — weight is only required at live publish', async () => {
+    fetchMock.mockImplementation(calculatedFetch);
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({ ...baseInput, publishMode: 'draft', marketplaceSpecific: { categoryId: '15032', ...validSetup } } as any),
+    ).resolves.toBeDefined();
   });
 });

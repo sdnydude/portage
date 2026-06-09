@@ -171,6 +171,27 @@ describe('identifyItemDetailed', () => {
     expect(result.reasoning).toEqual(['Black over-ear design', 'Sony branding visible']);
   });
 
+  it('parses AI-estimated weight and dimensions on a candidate', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify({
+        candidates: [{
+          name: 'Vintage Camera', description: 'd', category: 'electronics', condition: 'good',
+          brand: null, model: null, estimatedValueLow: 50, estimatedValueHigh: 90, confidence: 0.9,
+          weight: { value: 24, unit: 'oz' },
+          dimensions: { length: 12, width: 9, height: 4, unit: 'in' },
+          packageType: 'MAILING_BOX',
+        }],
+        reasoning: [],
+      }),
+      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await identifyItemDetailed('base64data', 'image/jpeg');
+    expect(result.candidates[0].weight).toEqual({ value: 24, unit: 'oz' });
+    expect(result.candidates[0].dimensions).toEqual({ length: 12, width: 9, height: 4, unit: 'in' });
+    expect(result.candidates[0].packageType).toBe('MAILING_BOX');
+  });
+
   it('falls back to single-candidate VisionResult when detailed parse fails', async () => {
     vi.mocked(analyzeImage).mockResolvedValue({
       text: JSON.stringify(VALID_VISION_JSON),

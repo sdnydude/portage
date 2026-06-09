@@ -4,6 +4,7 @@ import { createApp } from '../../app.js';
 import { createTestToken } from '../../test/helpers.js';
 import { resetEnv, loadEnv } from '../../lib/env.js';
 import { db } from '../../db/index.js';
+import { EbayAdapter } from '../../marketplace/ebay-adapter.js';
 
 vi.mock('../../db/index.js', () => ({
   db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn() },
@@ -149,5 +150,22 @@ describe('POST /marketplace/ebay/callback identity capture', () => {
     expect(res.status).toBe(200);
     expect(res.body.connected).toBe(true);
     expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ marketplaceUserId: null }));
+  });
+});
+
+describe('GET /marketplace/ebay/category-aspects/:categoryId', () => {
+  it('returns the required-aspect schema for a category', async () => {
+    vi.spyOn(EbayAdapter, 'getRequiredAspects').mockResolvedValue({
+      'Preamp Type': { required: true, values: ['Tube', 'Solid State'], cardinality: 'SINGLE' },
+      Brand: { required: true, values: null, cardinality: 'SINGLE' },
+    });
+
+    const res = await request(app)
+      .get('/marketplace/ebay/category-aspects/119018')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(EbayAdapter.getRequiredAspects).toHaveBeenCalledWith('119018');
+    expect(res.body.aspects['Preamp Type']).toEqual({ required: true, values: ['Tube', 'Solid State'], cardinality: 'SINGLE' });
   });
 });

@@ -12,6 +12,23 @@ import type {
   EbayPreparedFields,
   PreparedListingData,
 } from "@portage/shared";
+import type { AspectRequirement } from "@/components/listing/aspect-fill-sheet";
+import { resolvePublishPrice } from "@/lib/price";
+
+export interface PublishOptions {
+  ebayPreparedFields?: EbayPreparedFields | null;
+  publishMode?: 'draft' | 'live';
+  aspects?: Record<string, string[]>;
+  // Weight/dims supplied by the fill sheet on a retry after EBAY_WEIGHT_REQUIRED;
+  // overrides flow state so persistence isn't subject to a setState race.
+  weightDims?: {
+    weight: number | null;
+    dimLength: number | null;
+    dimWidth: number | null;
+    dimHeight: number | null;
+    ebayPackageType: string | null;
+  };
+}
 
 const INITIAL_STATE: ListingFlowState = {
   photos: [],
@@ -43,6 +60,11 @@ const INITIAL_STATE: ListingFlowState = {
   shippingCost: null,
   packageSize: 'medium',
   weight: null,
+  dimLength: null,
+  dimWidth: null,
+  dimHeight: null,
+  ebayPackageType: null,
+  weightEstimated: false,
   draftId: null,
   publishStatus: 'idle',
   listingId: null,
@@ -82,6 +104,38 @@ export function useListingFlow() {
       return next;
     });
   }, [triggerAutoSave]);
+
+  // Manual weight/dimension edits: merge the patch and clear the AI-estimated
+  // flag in one update so the persisted item records seller-confirmed metrics.
+  const updateWeightDims = useCallback((patch: Partial<Pick<ListingFlowState,
+    'weight' | 'dimLength' | 'dimWidth' | 'dimHeight' | 'ebayPackageType'>>) => {
+    setState(prev => {
+      const next = { ...prev, ...patch, weightEstimated: false };
+      triggerAutoSave(next);
+      return next;
+    });
+  }, [triggerAutoSave]);
+
+  // AI-estimate prefill: populate weight/dims from a prepare result, marking
+  // them estimated. Only fills when the seller hasn't already entered a weight,
+  // so it never clobbers confirmed values.
+  const applyEstimatedWeightDims = useCallback((est: {
+    weight?: number | null; dimLength?: number | null;
+    dimWidth?: number | null; dimHeight?: number | null; ebayPackageType?: string | null;
+  }) => {
+    setState(prev => {
+      if (prev.weight != null) return prev;
+      return {
+        ...prev,
+        weight: est.weight ?? null,
+        dimLength: est.dimLength ?? null,
+        dimWidth: est.dimWidth ?? null,
+        dimHeight: est.dimHeight ?? null,
+        ebayPackageType: est.ebayPackageType ?? null,
+        weightEstimated: true,
+      };
+    });
+  }, []);
 
   const startFromPhoto = useCallback(async (photos: ListingFlowState['photos']) => {
     if (!token) return;
@@ -161,6 +215,13 @@ export function useListingFlow() {
         quantity: number;
         photos: ListingFlowState['photos'];
         estimatedValueRecommended: number | null;
+        price: number | null;
+        weightOz: number | null;
+        lengthIn: number | null;
+        widthIn: number | null;
+        heightIn: number | null;
+        ebayPackageType: string | null;
+        weightEstimated: boolean;
       }>(`/items/${itemId}`, { token });
 
       setState({
@@ -175,7 +236,16 @@ export function useListingFlow() {
         features: (item.features ?? []) as string[],
         quantity: item.quantity ?? 1,
         photos: item.photos ?? [],
-        price: item.estimatedValueRecommended ?? null,
+        // Prefill from the seller's set price first, then the AI estimate (no
+        // comps at seed time). resolvePublishPrice is unit-tested.
+        price: resolvePublishPrice(item),
+        // weight column is ounces; flow state carries decimal pounds.
+        weight: item.weightOz != null ? item.weightOz / 16 : null,
+        dimLength: item.lengthIn ?? null,
+        dimWidth: item.widthIn ?? null,
+        dimHeight: item.heightIn ?? null,
+        ebayPackageType: item.ebayPackageType ?? null,
+        weightEstimated: item.weightEstimated ?? false,
         recognition: {
           status: 'complete',
           candidates: [],
@@ -282,8 +352,8 @@ export function useListingFlow() {
   }, [triggerAutoSave]);
 
   const publish = useCallback(async (
-    options?: { ebayPreparedFields?: EbayPreparedFields | null; publishMode?: 'draft' | 'live' },
-  ): Promise<{ success: boolean; listingId?: string; error?: string }> => {
+    options?: PublishOptions,
+  ): Promise<{ success: boolean; listingId?: string; error?: string; aspectsRequired?: AspectRequirement[]; weightRequired?: boolean }> => {
     if (!token) return { success: false, error: 'Not authenticated' };
 
     const s = stateRef.current;
@@ -295,6 +365,19 @@ export function useListingFlow() {
 
     try {
       let itemId = s.inventoryItemId;
+
+      // weight column is ounces; flow state carries decimal pounds. The route
+      // requires a positive weightOz, so sub-half-ounce values resolve to null.
+      // A fill-sheet retry supplies values via options.weightDims (seller-confirmed).
+      const wd = options?.weightDims;
+      const weightLbs = wd ? wd.weight : s.weight;
+      const dimL = wd ? wd.dimLength : s.dimLength;
+      const dimW = wd ? wd.dimWidth : s.dimWidth;
+      const dimH = wd ? wd.dimHeight : s.dimHeight;
+      const pkgType = wd ? wd.ebayPackageType : s.ebayPackageType;
+      const estimated = wd ? false : s.weightEstimated;
+      const rawOz = weightLbs != null ? Math.round(weightLbs * 16) : 0;
+      const weightOz = rawOz > 0 ? rawOz : null;
 
       if (!itemId) {
         const item = await api<{ id: string }>('/items', {
@@ -311,11 +394,36 @@ export function useListingFlow() {
             photos: s.photos,
             estimatedValueRecommended: s.price,
             aiConfidenceScore: s.recognition.confidence,
+            ...(weightOz != null && {
+              weightOz,
+              // route schema is positive().optional() — send undefined, never null.
+              lengthIn: dimL ?? undefined,
+              widthIn: dimW ?? undefined,
+              heightIn: dimH ?? undefined,
+              ebayPackageType: pkgType ?? undefined,
+              weightEstimated: estimated,
+            }),
           },
           token,
         });
         itemId = item.id;
         setState(prev => ({ ...prev, inventoryItemId: itemId }));
+      } else if (weightOz != null) {
+        // Existing item: persist weight/dims to the item columns so the
+        // publish-time merge (listings route) can emit packageWeightAndSize.
+        await api(`/items/${itemId}`, {
+          method: 'PATCH',
+          body: {
+            weightOz,
+            // route schema is positive().optional() — send undefined, never null.
+            lengthIn: dimL ?? undefined,
+            widthIn: dimW ?? undefined,
+            heightIn: dimH ?? undefined,
+            ebayPackageType: pkgType ?? undefined,
+            weightEstimated: estimated,
+          },
+          token,
+        });
       }
 
       let ebayPreparedFields = options?.ebayPreparedFields;
@@ -331,6 +439,15 @@ export function useListingFlow() {
         } catch {
           // prepare-listing failure is non-fatal — publish continues with no eBay-specific fields
         }
+      }
+
+      // Merge user-supplied item specifics (from the aspect sheet on a prior
+      // EBAY_ASPECTS_REQUIRED) into the prepared fields before publishing.
+      if (options?.aspects && ebayPreparedFields) {
+        ebayPreparedFields = {
+          ...ebayPreparedFields,
+          aspects: { ...(ebayPreparedFields.aspects ?? {}), ...options.aspects },
+        };
       }
 
       const marketplaceSpecificFields =
@@ -372,6 +489,22 @@ export function useListingFlow() {
 
       return { success: true, listingId: listing.id };
     } catch (err) {
+      // eBay needs category-required item specifics — surface them so the flow
+      // can collect the values and retry. No listing row was created (the gate
+      // throws before insert), so re-publishing won't duplicate.
+      if (err instanceof ApiError && err.code === 'EBAY_ASPECTS_REQUIRED') {
+        setState(prev => ({ ...prev, publishStatus: 'idle' }));
+        // Include `error` so a flow that doesn't render the aspect sheet still
+        // shows eBay's human-readable "needs these item specifics" message.
+        return { success: false, error: err.message, aspectsRequired: (err.details as unknown as AspectRequirement[]) ?? [] };
+      }
+      // Calculated-shipping publish missing package weight/dims — surface so the
+      // flow can collect them and retry. Like the aspects gate, the publish
+      // throws before any listing row is created, so retrying won't duplicate.
+      if (err instanceof ApiError && err.code === 'EBAY_WEIGHT_REQUIRED') {
+        setState(prev => ({ ...prev, publishStatus: 'idle' }));
+        return { success: false, error: err.message, weightRequired: true };
+      }
       const msg = err instanceof ApiError ? err.message : 'Publishing failed';
       await saveDraft(stateRef.current, {
         draftId: s.draftId ?? undefined,
@@ -409,6 +542,8 @@ export function useListingFlow() {
     clearError,
     saveWarning,
     setField,
+    updateWeightDims,
+    applyEstimatedWeightDims,
     startFromPhoto,
     startFromItem,
     resumeDraft,

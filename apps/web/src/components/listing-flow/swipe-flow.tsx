@@ -1,11 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useListingFlow } from "@/hooks/use-listing-flow";
+import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { formatCondition } from "@/lib/format";
+import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
+import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
+import { WeightDimsInputsInline } from "../listing/weight-dims-inputs";
+import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
 
 /* ─────────────────────────────────────────────
@@ -1064,10 +1068,12 @@ const PACKAGE_CARDS: PackageCard[] = [
 function ShippingPhase({
   state,
   setField,
+  updateWeightDims,
   onNext,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   setField: ReturnType<typeof useListingFlow>["setField"];
+  updateWeightDims: ReturnType<typeof useListingFlow>["updateWeightDims"];
   onNext: () => void;
 }) {
   const currentSize = (state.packageSize ?? "medium") as PackageSize;
@@ -1143,31 +1149,25 @@ function ShippingPhase({
           );
         })}
 
-        {/* Weight input */}
+        {/* Weight + dimensions */}
         <div style={{ marginTop: 8 }}>
-          <p style={{ color: "#666", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", letterSpacing: "0.1em", marginBottom: 8 }}>
-            WEIGHT (LBS) — OPTIONAL
-          </p>
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="e.g. 2.5"
-            value={state.weight ?? ""}
-            onChange={(e) => {
-              const val = e.target.value ? parseFloat(e.target.value) : null;
-              setField("weight", val);
+          <WeightDimsInputsInline
+            value={{
+              weight: state.weight,
+              dimLength: state.dimLength,
+              dimWidth: state.dimWidth,
+              dimHeight: state.dimHeight,
+              ebayPackageType: state.ebayPackageType,
             }}
-            style={{
-              width: "100%",
-              background: "#111",
-              border: "1px solid #222",
-              borderRadius: "10px",
-              padding: "14px 16px",
-              color: "#fff",
+            onChange={updateWeightDims}
+            estimated={state.weightEstimated}
+            tokens={{ text: "#fff", secondary: "#666", cardBg: "#111", cardBorder: "#222" }}
+            labelStyleOverride={{
+              color: "#666",
               fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: "16px",
-              outline: "none",
-              boxSizing: "border-box",
+              fontSize: "11px",
+              letterSpacing: "0.1em",
+              marginBottom: 8,
             }}
           />
         </div>
@@ -1528,7 +1528,7 @@ function PublishingPhase() {
 export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const flow = useListingFlow();
   const prepareListing = usePrepareListing();
-  const { state, setField, startFromItem, confirmRecognition, fetchComps, applyPricingStrategy, publish, reset } = flow;
+  const { state, setField, updateWeightDims, startFromItem, confirmRecognition, fetchComps, applyPricingStrategy, publish, reset } = flow;
 
   const [phase, setPhase] = useState<Phase>("recognition");
   const [scanPercent, setScanPercent] = useState(0);
@@ -1586,6 +1586,14 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     if (idx > 0) setPhase(PHASE_ORDER[idx - 1]);
   }, [phase]);
 
+  // Pre-fill weight/dims from the AI estimate (guarded — never clobbers a weight
+  // the seller already entered).
+  useEffect(() => {
+    const ebay = prepareListing.data?.ebay;
+    if (ebay) flow.applyEstimatedWeightDims(ebayEstimateToWeightDims(ebay));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepareListing.data]);
+
   const handleConfirmRecognition = useCallback(() => {
     confirmRecognition(state.recognition.selectedIndex);
     if (state.inventoryItemId) {
@@ -1601,17 +1609,56 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     [applyPricingStrategy]
   );
 
-  const handlePublish = useCallback(async (publishMode: "draft" | "live") => {
+  const [aspectsNeeded, setAspectsNeeded] = useState<AspectRequirement[] | null>(null);
+  const [aspectSaving, setAspectSaving] = useState(false);
+  const [aspectError, setAspectError] = useState<string | null>(null);
+  const [weightNeeded, setWeightNeeded] = useState(false);
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const pendingPublishOpts = useRef<PublishOpts | undefined>(undefined);
+
+  const runPublish = useCallback(async (opts?: PublishOpts) => {
+    const fillingAspects = !!opts?.aspects;
+    const fillingWeight = !!opts?.weightDims;
     setPublishError(null);
-    setPhase("publishing");
-    const result = await publish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
+    setAspectError(null);
+    setWeightError(null);
+    if (fillingAspects) setAspectSaving(true);
+    else if (fillingWeight) setWeightSaving(true);
+    else setPhase("publishing");
+
+    const result = await publish(opts);
+
+    if (fillingAspects) setAspectSaving(false);
+    else if (fillingWeight) setWeightSaving(false);
+
     if (result.success) {
+      setAspectsNeeded(null);
+      setWeightNeeded(false);
       setPhase("success");
+    } else if (result.aspectsRequired) {
+      pendingPublishOpts.current = opts;
+      setAspectsNeeded(result.aspectsRequired);
+      if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
+      else setPhase("review");
+    } else if (result.weightRequired) {
+      pendingPublishOpts.current = opts;
+      setWeightNeeded(true);
+      if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
+      else setPhase("review");
+    } else if (fillingAspects) {
+      setAspectError(result.error ?? "Publishing failed");
+    } else if (fillingWeight) {
+      setWeightError(result.error ?? "Publishing failed");
     } else {
       setPublishError(result.error ?? "Publishing failed");
       setPhase("review");
     }
-  }, [publish, prepareListing.data]);
+  }, [publish]);
+
+  const handlePublish = useCallback((publishMode: "draft" | "live") => {
+    runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
+  }, [runPublish, prepareListing.data]);
 
   const handleListAnother = useCallback(() => {
     reset();
@@ -1690,6 +1737,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
           <ShippingPhase
             state={state}
             setField={setField}
+            updateWeightDims={updateWeightDims}
             onNext={() => setPhase("review")}
           />
         )}
@@ -1749,6 +1797,42 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
         onPhotos={(photos) => flow.startFromPhoto(photos)}
         onCancel={() => setShowCapture(false)}
       />
+
+      {aspectsNeeded && (
+        <AspectFillSheet
+          missing={aspectsNeeded}
+          initial={{
+            ...(state.brand ? { Brand: [state.brand] } : {}),
+            ...(state.model ? { Model: [state.model] } : {}),
+          }}
+          saving={aspectSaving}
+          error={aspectError}
+          onCancel={() => {
+            setAspectsNeeded(null);
+            setAspectError(null);
+          }}
+          onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+        />
+      )}
+
+      {weightNeeded && (
+        <WeightFillSheet
+          initial={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          saving={weightSaving}
+          error={weightError}
+          onCancel={() => {
+            setWeightNeeded(false);
+            setWeightError(null);
+          }}
+          onSave={(value) => runPublish({ ...pendingPublishOpts.current, weightDims: value })}
+        />
+      )}
     </div>
   );
 }

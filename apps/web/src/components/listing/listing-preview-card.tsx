@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { CompsPricingWidget } from "./comps-pricing-widget";
+import { useRequiredAspects } from "@/hooks/use-required-aspects";
 import type { PreparedListingData } from "@portage/shared";
 
 interface ListingPreviewCardProps {
@@ -11,7 +12,7 @@ interface ListingPreviewCardProps {
   onFieldChange: (field: string, value: unknown) => void;
   onPriceChange: (price: number) => void;
   onQuantityChange: (quantity: number) => void;
-  onPublish: (marketplace: "ebay" | "reverb", publishMode: "draft" | "live") => void;
+  onPublish: (marketplace: "ebay" | "reverb", publishMode: "draft" | "live", aspects?: Record<string, string[]>) => void;
   isPublishing: boolean;
   sellerProfileComplete: boolean;
 }
@@ -53,7 +54,6 @@ export function ListingPreviewCard({
   sellerProfileComplete,
 }: ListingPreviewCardProps) {
   const [photoIndex, setPhotoIndex] = useState(0);
-  const [showAspects, setShowAspects] = useState(false);
   const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
 
   const handleFieldSave = useCallback((field: string, value: string) => {
@@ -61,6 +61,44 @@ export function ListingPreviewCard({
   }, [onFieldChange]);
 
   const currentPrice = data.pricing.suggested;
+
+  // ── eBay item specifics (aspects) ──────────────────────────────────────────
+  // The AI pre-fills aspects at prepare time; we fetch the category's required
+  // schema so the user can review/complete them HERE, before publishing — eBay
+  // rejects publish (error 25002) when a required specific is missing.
+  const categoryId = data.ebay?.categoryId ?? null;
+  const { aspects: requiredAspects } = useRequiredAspects(categoryId);
+  const [aspectValues, setAspectValues] = useState<Record<string, string>>({});
+
+  // Seed from the AI-prepared values when the prepared category changes.
+  useEffect(() => {
+    const seed: Record<string, string> = {};
+    for (const [k, v] of Object.entries(data.ebay?.aspects ?? {})) {
+      seed[k] = Array.isArray(v) ? (v[0] ?? "") : String(v ?? "");
+    }
+    setAspectValues(seed);
+  }, [categoryId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Display every required aspect (from the schema) plus any extra the AI filled.
+  const aspectNames = Array.from(
+    new Set([
+      ...Object.entries(requiredAspects).filter(([, m]) => m.required).map(([n]) => n),
+      ...Object.keys(data.ebay?.aspects ?? {}),
+    ]),
+  );
+  const missingRequired = Object.entries(requiredAspects)
+    .filter(([name, m]) => m.required && !(aspectValues[name] ?? "").trim())
+    .map(([name]) => name);
+  const aspectsBlockPublish = missingRequired.length > 0;
+  const [showAspects, setShowAspects] = useState(false);
+
+  const buildAspects = (): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(aspectValues)) {
+      if (v.trim()) out[k] = [v.trim()];
+    }
+    return out;
+  };
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
@@ -112,34 +150,75 @@ export function ListingPreviewCard({
           onPriceChange={onPriceChange}
         />
 
-        {data.ebay?.aspects && (
+        {data.ebay && aspectNames.length > 0 && (
           <div>
             <button
               onClick={() => setShowAspects(!showAspects)}
               className="flex items-center justify-between w-full text-sm font-medium py-2"
             >
-              <span>Item Specifics</span>
-              <span style={{ color: "rgba(0,0,0,0.4)" }}>{showAspects ? "▲" : "▼"}</span>
+              <span>
+                Item Specifics
+                {aspectsBlockPublish && (
+                  <span className="ml-2 text-xs font-normal" style={{ color: "#CC3333" }}>
+                    {missingRequired.length} required
+                  </span>
+                )}
+              </span>
+              <span style={{ color: "rgba(0,0,0,0.4)" }}>{showAspects || aspectsBlockPublish ? "▲" : "▼"}</span>
             </button>
-            {showAspects && (
-              <div className="space-y-1 pb-2">
-                {Object.entries(data.ebay.aspects).map(([key, values]) => (
-                  <div key={key} className="flex text-sm">
-                    <span className="w-1/3 shrink-0" style={{ color: "rgba(0,0,0,0.5)" }}>{key}</span>
-                    <span>{values.join(", ")}</span>
-                  </div>
-                ))}
+            {(showAspects || aspectsBlockPublish) && (
+              <div className="space-y-3 pb-2">
+                {aspectNames.map((name) => {
+                  const meta = requiredAspects[name];
+                  const isRequired = meta?.required ?? false;
+                  const empty = !(aspectValues[name] ?? "").trim();
+                  const allowed = meta?.values ?? null;
+                  return (
+                    <div key={name} className="space-y-1">
+                      <label className="text-xs font-medium" style={{ color: empty && isRequired ? "#CC3333" : "rgba(0,0,0,0.5)" }}>
+                        {name}{isRequired ? " *" : ""}
+                      </label>
+                      {allowed && allowed.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {allowed.map((v) => {
+                            const selected = aspectValues[name] === v;
+                            return (
+                              <button
+                                key={v}
+                                type="button"
+                                onClick={() => setAspectValues((p) => ({ ...p, [name]: v }))}
+                                className="px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors"
+                                style={selected
+                                  ? { background: "var(--flow-accent, #2D5A27)", color: "white", borderColor: "var(--flow-accent, #2D5A27)" }
+                                  : { background: "transparent", color: "rgba(0,0,0,0.7)", borderColor: "rgba(0,0,0,0.15)" }}
+                              >
+                                {v}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          value={aspectValues[name] ?? ""}
+                          onChange={(e) => setAspectValues((p) => ({ ...p, [name]: e.target.value }))}
+                          placeholder={`Enter ${name}`}
+                          className="w-full px-2.5 py-1.5 rounded-lg text-sm outline-none border"
+                          style={{ borderColor: empty && isRequired ? "#CC3333" : "rgba(0,0,0,0.15)", background: "white" }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
 
-        {data.ebay && (
-          <div className="text-sm space-y-1" style={{ color: "rgba(0,0,0,0.6)" }}>
-            <p>Weight: ~{data.ebay.weight.value} {data.ebay.weight.unit} (estimated)</p>
-            <p>Dimensions: {data.ebay.dimensions.length}x{data.ebay.dimensions.width}x{data.ebay.dimensions.height} {data.ebay.dimensions.unit} (estimated)</p>
-          </div>
-        )}
+        {/* Weight/dimensions are captured editably in each flow's shipping step
+            (WeightDimsInputs) and persisted to the item columns, which are the
+            source of truth at publish — so the old read-only estimate block here
+            (which showed the prepare estimate, not the publish value) is gone. */}
 
         {data.warnings.length > 0 && (
           <div className="space-y-1">
@@ -220,10 +299,16 @@ export function ListingPreviewCard({
             </a>
           )}
 
+          {aspectsBlockPublish && publishMode === "live" && (
+            <p className="text-xs mb-2" style={{ color: "#CC3333" }}>
+              Fill the required item specifics above before publishing to eBay.
+            </p>
+          )}
+
           <div className="flex gap-3">
             <button
-              onClick={() => onPublish("ebay", publishMode)}
-              disabled={isPublishing || !sellerProfileComplete}
+              onClick={() => onPublish("ebay", publishMode, buildAspects())}
+              disabled={isPublishing || !sellerProfileComplete || (aspectsBlockPublish && publishMode === "live")}
               className="flex-1 py-3.5 rounded-xl text-base font-semibold text-white disabled:opacity-40"
               style={{ background: "var(--flow-accent, #2D5A27)" }}
             >
@@ -231,7 +316,7 @@ export function ListingPreviewCard({
             </button>
             {data.isMusicGear && (
               <button
-                onClick={() => onPublish("reverb", publishMode)}
+                onClick={() => onPublish("reverb", publishMode, buildAspects())}
                 disabled={isPublishing || !sellerProfileComplete}
                 className="flex-1 py-3.5 rounded-xl text-base font-semibold text-white disabled:opacity-40"
                 style={{ background: "#E8620A" }}

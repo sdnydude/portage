@@ -47,7 +47,9 @@ function CallbackContent() {
 
     api("/marketplace/ebay/callback", { method: "POST", token, body: { code, state } })
       .then(() => {
-        router.replace("/settings/marketplace");
+        // Land on the consolidated eBay panel (connect ✓ → ship-from → Set Up),
+        // not back on the bare marketplace list.
+        router.replace("/settings/seller-profile");
       })
       .catch((err) => {
         setStatus("error");

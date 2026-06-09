@@ -47,6 +47,17 @@
     ]
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/intake-protocol.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
@@ -80,6 +91,11 @@
           {
             "type": "command",
             "command": "bash ~/DHG/dhg-memreg/hooks/enforce-ship.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/guard-schema-push.sh",
             "timeout": 5
           }
         ]

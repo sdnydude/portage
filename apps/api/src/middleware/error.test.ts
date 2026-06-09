@@ -32,6 +32,21 @@ describe('errorHandler', () => {
     expect(res.body).toEqual({ error: 'Access denied', code: 'FORBIDDEN' });
   });
 
+  it('includes the details payload when an AppError carries one', () => {
+    const res = mockRes();
+    const missing = [{ name: 'Preamp Type', values: ['Tube', 'Solid State'] }];
+    const err = new AppError(422, 'EBAY_ASPECTS_REQUIRED', 'eBay needs item specifics', missing);
+
+    errorHandler(err, mockReq, res, mockNext);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({
+      error: 'eBay needs item specifics',
+      code: 'EBAY_ASPECTS_REQUIRED',
+      details: missing,
+    });
+  });
+
   it('handles ZodError with 400 and details array', () => {
     const schema = z.object({ name: z.string(), age: z.number() });
     const result = schema.safeParse({ name: 123, age: 'old' });
