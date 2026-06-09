@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useOnboarding } from "@/hooks/use-onboarding";
 import { usePorter } from "@/hooks/use-porter-context";
+import { useVoiceInput } from "@/hooks/use-voice-input";
 import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
 import { FullChat } from "@/components/porter/full-chat";
@@ -66,7 +67,7 @@ const STATUS_BADGE: Record<string, { bg: string; label: string }> = {
 };
 
 export default function HomePage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, token } = useAuth();
   const { data, isLoading, error } = useDashboard();
   const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -95,6 +96,21 @@ export default function HomePage() {
     setIsEngaged(true);
     porter.sendMessage(message);
   };
+
+  // Push-to-talk mic on the ask card — reuses the same voice flow as FloatingMic.
+  const voice = useVoiceInput();
+  const voiceSentRef = useRef(false);
+  useEffect(() => {
+    if (voice.state === "listening") voiceSentRef.current = false;
+    if (voice.state === "done" && voice.transcript && !voiceSentRef.current) {
+      voiceSentRef.current = true;
+      setIsEngaged(true);
+      porter.sendMessage(voice.transcript);
+      voice.reset();
+    }
+  }, [voice, setIsEngaged, porter]);
+  const startVoice = () => { if (token) voice.start(token); };
+  const stopVoice = () => voice.stop();
 
   if (!isAuthenticated) {
     return (
@@ -145,23 +161,32 @@ export default function HomePage() {
       : data.recentListings.filter((l) => l.status === listingFilter);
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pb-8" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
+    <div className="max-w-2xl mx-auto px-4 pb-8">
 
-      {/* ─── Porter section ─── */}
-      <div className="mb-6">
-        {/* Header row: avatar + greeting + actions */}
-        <div className="flex items-center gap-3 mb-4">
-          {/* Porter avatar */}
-          <div
-            className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-[family-name:var(--font-instrument)] font-bold text-white text-base select-none"
-            style={{ background: "linear-gradient(135deg, #4a8a3e 0%, #2D5A27 100%)" }}
-          >
-            P
-          </div>
+      {/* ─── Porter hero ─── */}
+      <div
+        className="relative -mx-4 px-4 pb-7 rounded-b-[32px] overflow-hidden"
+        style={{
+          paddingTop: "max(env(safe-area-inset-top), 18px)",
+          background:
+            "radial-gradient(125% 95% at 80% -12%, rgba(63,192,196,0.38), transparent 58%), linear-gradient(162deg, var(--hero-top) 0%, var(--hero-bottom) 100%)",
+          boxShadow: "0 20px 44px -30px rgba(6,18,20,0.85)",
+        }}
+      >
+        {/* teal AI aurora */}
+        <div
+          aria-hidden
+          className="porter-aurora pointer-events-none absolute -top-20 -right-12 w-72 h-72 rounded-full blur-3xl opacity-50"
+          style={{ background: "conic-gradient(from 200deg, rgba(63,192,196,0.6), rgba(17,154,160,0.4), rgba(110,210,215,0.5), rgba(63,192,196,0.6))" }}
+        />
 
+        {/* Header row: greeting + actions */}
+        <div className="relative flex items-center gap-3 mb-5">
           <div className="flex-1 min-w-0">
-            <p className="text-text-secondary text-xs">{getGreeting()},</p>
-            <p className="font-[family-name:var(--font-instrument)] font-bold text-text-primary text-lg sm:text-xl leading-tight truncate">
+            <p className="font-[family-name:var(--font-jetbrains)] text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--on-forest-mute)]">
+              {getGreeting()}
+            </p>
+            <p className="font-[family-name:var(--font-instrument)] font-bold text-2xl leading-tight truncate text-[var(--on-forest)] mt-0.5">
               {data.displayName}
             </p>
           </div>
@@ -169,7 +194,7 @@ export default function HomePage() {
           {isEngaged && (
             <button
               onClick={() => setIsFullScreen(true)}
-              className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-text-secondary hover:bg-forest-green-50 hover:text-forest-green transition-colors"
+              className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors"
               aria-label="Expand to full chat"
             >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5">
@@ -180,10 +205,10 @@ export default function HomePage() {
 
           <Link
             href="/settings"
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center hover:bg-forest-green-50 transition-colors"
+            className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors"
             aria-label="Settings"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text-secondary">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.32 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
             </svg>
@@ -192,27 +217,35 @@ export default function HomePage() {
 
         {/* Chat area */}
         {!isEngaged ? (
-          /* Proactive Porter bubble */
-          <div className="flex gap-2.5 items-start mb-3">
+          /* Proactive Porter bubble — teal orb + glass bubble on graphite */
+          <div className="relative flex gap-2.5 items-start mb-4">
             <div
-              className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold font-[family-name:var(--font-instrument)] select-none"
-              style={{ background: "linear-gradient(135deg, #4a8a3e 0%, #2D5A27 100%)" }}
+              className="relative flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{ background: "radial-gradient(circle at 35% 28%, var(--teal-bright), var(--teal-dark))" }}
             >
-              P
+              <span className="porter-orb-ring absolute inset-0 rounded-lg" style={{ border: "1.5px solid var(--teal-bright)" }} />
+              <svg viewBox="0 0 24 24" fill="white" className="h-3.5 w-3.5">
+                <path d="M12 3l1.7 5L19 9.7l-5.3 1.6L12 17l-1.7-5.7L5 9.7 10.3 8z" />
+              </svg>
             </div>
             <div
-              className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-text-primary max-w-[85%] sm:max-w-sm"
-              style={{ background: "var(--forest-green-50)", border: "1px solid rgba(45,90,39,0.15)" }}
+              className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-[var(--on-forest)] max-w-[85%] sm:max-w-sm"
+              style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)" }}
             >
               {getProactiveMessage(data)}
             </div>
           </div>
         ) : (
-          /* Active chat messages */
+          /* Active chat messages — opaque elevated surface so it reads on the graphite hero */
           <div
             ref={chatContainerRef}
-            className="mb-3 overflow-y-auto space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3.5"
-            style={{ maxHeight: "clamp(240px, 40vh, 400px)" }}
+            className="relative mb-3 overflow-y-auto space-y-3 rounded-2xl p-3.5"
+            style={{
+              maxHeight: "clamp(240px, 40vh, 400px)",
+              background: "var(--surface)",
+              border: "1px solid rgba(255,255,255,0.16)",
+              boxShadow: "var(--shadow-elevated)",
+            }}
           >
             {porter.messages.map((msg, i) => (
               <StreamingMessage
@@ -232,9 +265,9 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Action pills — above input, shown when not engaged */}
+        {/* Action pills — teal-tinted via local --forest-green override */}
         {!isEngaged && (
-          <div className="mb-2.5">
+          <div className="relative mb-3 [--forest-green:var(--teal-bright)]">
             <ActionPills
               pills={[
                 ...(data.pendingShipments.length > 0
@@ -251,29 +284,55 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Input bar — text + send only */}
-        <div className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+        {/* Ask card — glass control; orange mic (push-to-talk) / send */}
+        <div
+          className="relative flex items-center gap-2 rounded-2xl px-3 py-2.5"
+          style={{
+            background: "var(--glass-control)",
+            border: "1px solid rgba(255,255,255,0.16)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+          }}
+        >
           <input
             type="text"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             placeholder="Ask Porter…"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--text-placeholder)] min-w-0"
+            className="flex-1 bg-transparent text-sm outline-none text-[var(--on-forest)] placeholder:text-[var(--on-forest-mute)] min-w-0"
           />
-          <button
-            onClick={handleSend}
-            disabled={!chatInput.trim() || porter.isStreaming}
-            className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--forest-green)] text-white disabled:opacity-40 transition-opacity"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-            </svg>
-          </button>
+          {chatInput.trim() ? (
+            <button
+              onClick={handleSend}
+              disabled={porter.isStreaming}
+              aria-label="Send message"
+              className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--orange)] text-white disabled:opacity-40 transition-opacity"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onPointerDown={startVoice}
+              onPointerUp={stopVoice}
+              onPointerLeave={stopVoice}
+              aria-label="Hold to talk to Porter"
+              className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl text-white transition-colors"
+              style={{ background: voice.state === "listening" ? "var(--accent-error)" : "var(--orange)" }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="22" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {porter.error && (
-          <p className="mt-1.5 text-xs text-red-500">{porter.error}</p>
+          <p className="relative mt-2 text-xs" style={{ color: "#ffb4a4" }}>{porter.error}</p>
         )}
       </div>
 
