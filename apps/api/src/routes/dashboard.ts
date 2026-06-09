@@ -4,6 +4,7 @@ import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { items, listings, orders, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
+import { mapRecentListing } from './dashboard-helpers.js';
 
 const logger = createLogger('dashboard');
 
@@ -45,6 +46,7 @@ dashboardRouter.get('/', async (req, res, next) => {
         publishedAt: listings.publishedAt,
         itemTitle: items.title,
         itemPhoto: items.photos,
+        aiConfidence: items.aiConfidenceScore,
       })
         .from(listings)
         .innerJoin(items, eq(listings.itemId, items.id))
@@ -108,22 +110,7 @@ dashboardRouter.get('/', async (req, res, next) => {
       listingCounts[row.status] = Number(row.count);
     }
 
-    const recentListings = recentListingsData.map((l) => {
-      const photos = l.itemPhoto as Array<{ url: string; isPrimary?: boolean }>;
-      const primaryPhoto = photos?.find((p) => p.isPrimary) ?? photos?.[0];
-      return {
-        id: l.id,
-        itemId: l.itemId,
-        marketplace: l.marketplace,
-        status: l.status,
-        price: l.price,
-        currency: l.currency,
-        createdAt: l.createdAt,
-        publishedAt: l.publishedAt,
-        itemTitle: l.itemTitle,
-        itemPhotoUrl: primaryPhoto?.url ?? null,
-      };
-    });
+    const recentListings = recentListingsData.map(mapRecentListing);
 
     const pendingShipments = pendingShipmentsData.map((o) => ({
       id: o.id,

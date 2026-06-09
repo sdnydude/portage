@@ -42,6 +42,7 @@
   --teal-bright: #119AA0;
   --teal-dark: #0A4A47;
   --teal-soft: #E2F0F0;        /* -soft (NOT -50) so it can't shadow Tailwind's teal-50 */
+  --orb-core: #0B6360;         /* Porter orb gradient inner — theme-independent (orb always sits on the dark hero) */
   --orange: #F77E2D;           /* primary CTA */
   --orange-bright: #FF9A52;
   --orange-dark: #C9621B;
@@ -155,7 +156,7 @@
     --on-forest-mute: #9FC9C8;
     --teal: #19A5AB;
     --teal-bright: #2DBFC4;
-    --teal-dark: #0E6E6B;        /* orb gradient inner stop — lifted off near-black for dark hero */
+    --teal-dark: #0E6E6B;        /* dark-theme value for the teal scale (orb inner now uses theme-independent --orb-core) */
     --teal-soft: rgba(17, 154, 160, 0.16);
     --orange: #FF9A52;
     --orange-bright: #FFB070;

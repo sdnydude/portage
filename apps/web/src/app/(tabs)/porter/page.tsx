@@ -41,7 +41,7 @@ export default function PorterPage() {
         <div className="flex items-center gap-2.5">
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "radial-gradient(circle at 35% 28%, var(--teal-bright), var(--teal-dark))" }}
+            style={{ background: "radial-gradient(circle at 35% 28%, var(--teal-bright), var(--orb-core))" }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4.5 w-4.5">
               <path d="M12 3l1.7 5L19 9.7l-5.3 1.6L12 17l-1.7-5.7L5 9.7 10.3 8z" />

@@ -237,7 +237,7 @@ export default function HomePage() {
           >
             <div
               className="relative flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center"
-              style={{ background: "radial-gradient(circle at 35% 28%, var(--teal-bright), var(--teal-dark))" }}
+              style={{ background: "radial-gradient(circle at 35% 28%, var(--teal-bright), var(--orb-core))" }}
             >
               <span className="porter-orb-ring absolute inset-0 rounded-full" style={{ border: "1.5px solid var(--teal-bright)" }} />
               <svg viewBox="0 0 24 24" fill="white" className="h-5 w-5">
@@ -482,6 +482,11 @@ export default function HomePage() {
                     <p className="text-xs font-medium text-text-primary truncate leading-snug">
                       {listing.itemTitle}
                     </p>
+                    {Math.round(listing.confidence * 100) > 0 && (
+                      <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--teal)] font-[family-name:var(--font-jetbrains)]">
+                        {Math.round(listing.confidence * 100)}% match
+                      </p>
+                    )}
                   </div>
                 </Link>
               ))}

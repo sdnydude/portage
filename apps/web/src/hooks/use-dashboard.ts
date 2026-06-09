@@ -15,6 +15,7 @@ interface RecentListing {
   publishedAt: string | null;
   itemTitle: string;
   itemPhotoUrl: string | null;
+  confidence: number;
 }
 
 interface PendingShipment {
