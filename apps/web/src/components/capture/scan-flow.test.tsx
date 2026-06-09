@@ -1,0 +1,221 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { ScanFlow } from "./scan-flow";
+
+// ─── Heavy children / browser-API hooks mocked; wiring under test is real ───
+
+vi.mock("@/hooks/use-auth", () => ({
+  useAuth: () => ({ token: "test-token" }),
+}));
+
+vi.mock("./camera-capture", () => ({
+  CameraCapture: () => null,
+}));
+
+vi.mock("./image-picker", () => ({
+  ImagePicker: ({
+    onSelect,
+    children,
+  }: {
+    onSelect: (files: File[]) => void;
+    children: React.ReactNode;
+  }) => (
+    <button
+      type="button"
+      onClick={() => onSelect([new File(["x"], "x.jpg", { type: "image/jpeg" })])}
+    >
+      {children}
+    </button>
+  ),
+}));
+
+vi.mock("@/hooks/use-enhance", () => ({
+  useEnhance: () => ({
+    isProcessing: false,
+    result: null,
+    error: null,
+    enhance: vi.fn(),
+    reset: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/use-bg-removal", () => ({
+  useBgRemoval: () => ({
+    isProcessing: false,
+    resultUrl: null,
+    error: null,
+    removeBackground: vi.fn(),
+    reset: vi.fn(),
+  }),
+}));
+
+vi.mock("@/components/listing-flow/crop-tool", () => ({
+  CropTool: () => null,
+}));
+
+vi.mock("@/components/image/before-after-slider", () => ({
+  BeforeAfterSlider: () => null,
+}));
+
+// Controllable stand-in for the unit-tested aspects hook.
+const scanAspectsState = {
+  resolvedCategoryId: "33034" as string | null,
+  resolvedCategoryName: "Electric Guitars" as string | null,
+  conditionIds: [] as string[],
+  isCategoryResolving: false,
+  isAspectsLoading: false,
+  aspects: {} as Record<string, { required: boolean; values: string[] | null }>,
+  aspectValues: {} as Record<string, string>,
+  setAspectValue: vi.fn(),
+  suggestions: {} as Record<string, string[]>,
+  confirmSuggestion: vi.fn(),
+  missingRequired: [] as string[],
+  buildAspects: vi.fn(() => ({}) as Record<string, string[]>),
+  aspectsBlockPublish: false,
+  resolveCategory: vi.fn(),
+};
+
+vi.mock("@/hooks/use-scan-aspects", () => ({
+  useScanAspects: () => scanAspectsState,
+}));
+
+const apiMock = vi.fn();
+vi.mock("@/lib/api", () => ({
+  API_BASE: "http://test-api",
+  api: (...args: unknown[]) => apiMock(...args),
+}));
+
+const CANDIDATE = {
+  name: "Fender Stratocaster",
+  description: "Electric guitar",
+  category: "Guitars",
+  condition: "good",
+  conditionNotes: "",
+  estimatedValueLow: 400,
+  estimatedValueHigh: 600,
+  brand: "Fender",
+  model: "Stratocaster",
+  features: [],
+  confidence: 0.9,
+};
+
+async function renderInReview() {
+  // Photo upload goes through raw fetch, not the api() wrapper.
+  global.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+  }) as unknown as typeof fetch;
+
+  apiMock.mockImplementation(async (path: string) => {
+    if (path === "/scan/refine") {
+      return { identification: CANDIDATE, detailed: { candidates: [CANDIDATE], reasoning: [] } };
+    }
+    if (path.startsWith("/items/comps/search")) throw new Error("no comps");
+    if (path === "/seller-profile") return { profile: { ebayPublishMode: "live" } };
+    if (path === "/items") return { id: "item-1" };
+    return {};
+  });
+
+  render(<ScanFlow onClose={vi.fn()} />);
+  fireEvent.click(screen.getByText("Choose from Gallery"));
+  fireEvent.click(await screen.findByText(/Scan 1 Photo with Porter/));
+  await screen.findByText("Review");
+}
+
+describe("ScanFlow review wiring", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    scanAspectsState.aspects = {};
+    scanAspectsState.missingRequired = [];
+    scanAspectsState.aspectsBlockPublish = false;
+    scanAspectsState.conditionIds = [];
+    scanAspectsState.resolvedCategoryId = "33034";
+    scanAspectsState.resolvedCategoryName = "Electric Guitars";
+    scanAspectsState.buildAspects = vi.fn(() => ({}) as Record<string, string[]>);
+  });
+
+  it("renders the eBay item specifics section in the review panel", async () => {
+    scanAspectsState.aspects = { Brand: { required: true, values: null } };
+    scanAspectsState.missingRequired = ["Brand"];
+    scanAspectsState.aspectsBlockPublish = true;
+
+    await renderInReview();
+
+    expect(screen.getByText("eBay item specifics")).toBeInTheDocument();
+    expect(screen.getByText("1 required")).toBeInTheDocument();
+  });
+
+  it("disables Save & List with a reason while required aspects are missing; Save stays enabled", async () => {
+    scanAspectsState.aspects = { Brand: { required: true, values: null } };
+    scanAspectsState.missingRequired = ["Brand"];
+    scanAspectsState.aspectsBlockPublish = true;
+
+    await renderInReview();
+
+    expect(screen.getByRole("button", { name: "Save & List" })).toBeDisabled();
+    expect(screen.getByText("Complete 1 required eBay detail first")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("Save & List posts the seller-profile-aware payload with aspects and categoryId", async () => {
+    scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
+
+    await renderInReview();
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    // Profile says live → publishMode live with aspects + categoryId attached.
+    const listingsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/listings");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect(listingsCall?.[1]).toMatchObject({
+      method: "POST",
+      body: {
+        itemId: "item-1",
+        marketplace: "ebay",
+        price: 500,
+        publishMode: "live",
+        marketplaceSpecificFields: {
+          aspects: { Brand: ["Fender"] },
+          categoryId: "33034",
+        },
+      },
+    });
+    // The legacy flag must be gone — publishMode drives behavior now.
+    expect(listingsCall?.[1].body).not.toHaveProperty("publishImmediately");
+  });
+
+  it("constrains condition pills to the category's conditionIds and snaps a disallowed selection", async () => {
+    // Category only accepts conditionId 1000 → Portage "new" only. The AI
+    // candidate said "good", so the selection must snap to New.
+    scanAspectsState.conditionIds = ["1000"];
+
+    await renderInReview();
+
+    expect(screen.getByRole("button", { name: "New" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New" }).className).toContain("bg-[var(--teal)]");
+  });
+
+  it("shows the resolved eBay category under the Category field with a re-resolve action", async () => {
+    await renderInReview();
+
+    expect(screen.getByText(/eBay category: Electric Guitars/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "change" }));
+    // Re-resolve uses the seller's edited category text (candidate.category here).
+    expect(scanAspectsState.resolveCategory).toHaveBeenCalledWith("Guitars");
+  });
+
+  it("warns instead of rendering an empty pill row when no conditionIds are recognized", async () => {
+    // getAvailablePortageConditions returns [] for unrecognized-only IDs —
+    // its contract says the UI must warn upstream.
+    scanAspectsState.conditionIds = ["9999"];
+
+    await renderInReview();
+
+    expect(screen.getByText(/condition.*captured at listing time/i)).toBeInTheDocument();
+    // The AI-suggested condition must not be silently snapped away.
+    expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
+  });
+});

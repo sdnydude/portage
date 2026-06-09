@@ -20,6 +20,30 @@ export const ALL_PORTAGE_CONDITIONS: PortageCondition[] = [
   "poor",
 ];
 
+// Nearest allowed condition by grade distance in ALL_PORTAGE_CONDITIONS order
+// (new > like_new > good > fair > poor); ties break toward the LOWER grade —
+// under-promising condition is safer than over-promising on a live listing.
+export function nearestAllowedCondition(
+  current: PortageCondition,
+  available: PortageCondition[],
+): PortageCondition {
+  if (available.includes(current)) return current;
+  const currentIdx = ALL_PORTAGE_CONDITIONS.indexOf(current);
+  let best = available[0];
+  let bestDistance = Infinity;
+  for (const candidate of available) {
+    const idx = ALL_PORTAGE_CONDITIONS.indexOf(candidate);
+    const distance = Math.abs(idx - currentIdx);
+    const lowerGradeOnTie =
+      distance === bestDistance && idx > ALL_PORTAGE_CONDITIONS.indexOf(best);
+    if (distance < bestDistance || lowerGradeOnTie) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 export function getAvailablePortageConditions(
   conditionIds: string[],
 ): PortageCondition[] {

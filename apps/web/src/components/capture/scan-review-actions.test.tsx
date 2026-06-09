@@ -27,4 +27,21 @@ describe("ScanReviewActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
     expect(onSaveAndList).toHaveBeenCalled();
   });
+
+  it("disables only Save & List with an accessible reason when canList is false", () => {
+    render(
+      <ScanReviewActions
+        {...baseProps}
+        canList={false}
+        listDisabledReason="Complete 2 required eBay details first"
+      />,
+    );
+
+    const listButton = screen.getByRole("button", { name: "Save & List" });
+    expect(listButton).toBeDisabled();
+    expect(listButton).toHaveAttribute("aria-describedby");
+    expect(screen.getByText("Complete 2 required eBay details first")).toBeInTheDocument();
+    // Save stays enabled — inventory save is never gated by eBay aspects.
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
 });

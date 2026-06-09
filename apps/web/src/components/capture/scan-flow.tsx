@@ -10,7 +10,15 @@ import { useBgRemoval } from "@/hooks/use-bg-removal";
 import { CropTool } from "@/components/listing-flow/crop-tool";
 import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 import { ScanReviewActions } from "./scan-review-actions";
+import { ScanAspectsSection } from "./scan-aspects-section";
+import { useScanAspects } from "@/hooks/use-scan-aspects";
 import { resolvePublishPrice } from "@/lib/price";
+import { buildListingPayload } from "@/lib/scan-listing-payload";
+import {
+  getAvailablePortageConditions,
+  nearestAllowedCondition,
+  type PortageCondition,
+} from "@/lib/ebay-condition-map";
 import type { RecognitionCandidate, CompResult } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -147,6 +155,37 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [listPrice, setListPrice] = useState<number | null>(null);
   const [activeTool, setActiveTool] = useState<"none" | "crop">("none");
   const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
+
+  // eBay category + required item specifics, captured at scan time so publish
+  // doesn't fail later. All logic lives in the unit-tested use-scan-aspects hook.
+  const {
+    resolvedCategoryId,
+    resolvedCategoryName,
+    resolveCategory,
+    isCategoryResolving,
+    isAspectsLoading,
+    aspects,
+    aspectValues,
+    setAspectValue,
+    suggestions,
+    confirmSuggestion,
+    missingRequired,
+    buildAspects,
+    aspectsBlockPublish,
+    conditionIds,
+  } = useScanAspects(editName, `${editName} ${editDescription}`);
+
+  // Constrain the condition pills to what the resolved eBay category accepts;
+  // empty conditionIds (no category / no metadata) fails open to all five.
+  const availableConditions = getAvailablePortageConditions(conditionIds);
+
+  // If the AI-suggested condition became disallowed after category resolution,
+  // snap to the nearest allowed grade instead of failing later at publish.
+  useEffect(() => {
+    if (availableConditions.length === 0) return;
+    if (availableConditions.includes(editCondition as PortageCondition)) return;
+    setEditCondition(nearestAllowedCondition(editCondition as PortageCondition, availableConditions));
+  }, [availableConditions, editCondition]);
 
 
 
@@ -511,7 +550,22 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           ...(selectedCandidate?.packageType ? { ebayPackageType: selectedCandidate.packageType } : {}),
         },
       });
-      await api("/listings", { method: "POST", token, body: { itemId: newItem.id, marketplace: "ebay", price: price ?? 0, publishImmediately: false } });
+      // Honor the seller's draft/live preference; a failed profile fetch falls
+      // back to draft inside buildListingPayload (never an accidental live).
+      const profile = await api<{ profile: { ebayPublishMode?: "draft" | "live" | null } }>(
+        "/seller-profile",
+        { token },
+      )
+        .then((d) => d.profile)
+        .catch(() => null);
+      await api("/listings", {
+        method: "POST",
+        token,
+        body: buildListingPayload(
+          { itemId: newItem.id, price: price ?? null, resolvedCategoryId, aspects: buildAspects() },
+          profile,
+        ),
+      });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
@@ -521,7 +575,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   }, [
     token, photos, isListingForSale, candidates, selectedCandidateIndex, reviewPrice,
     editName, editDescription, editCategory, editCondition, editConditionNotes,
-    editBrand, editModel, valueLowNum, valueHighNum, recommendedNum, onClose,
+    editBrand, editModel, valueLowNum, valueHighNum, recommendedNum,
+    resolvedCategoryId, buildAspects, onClose,
   ]);
 
   // ─── Back to capture from review ──────────────────────────────────────────
@@ -592,7 +647,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       {(state === "capture" || state === "uploading") && (
         <div className="flex-1 flex flex-col">
           {error && (
-            <div className="mx-4 mt-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300 text-center">
+            <div className="mx-4 mt-3 bg-[var(--accent-error-soft)] border border-[var(--accent-error)]/30 rounded-xl p-3 text-sm text-[var(--accent-error)] text-center">
               {error}
             </div>
           )}
@@ -600,8 +655,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           {photos.length === 0 ? (
             /* Empty state — first photo */
             <div className="flex-1 flex flex-col items-center justify-center px-4 pb-8">
-              <div className="w-24 h-24 rounded-3xl bg-forest-green-50 flex items-center justify-center mb-6">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <div className="w-24 h-24 rounded-3xl bg-[var(--teal-soft)] flex items-center justify-center mb-6">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
                   <circle cx="12" cy="13" r="4" />
                 </svg>
@@ -621,7 +676,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 <button
                   onClick={() => setShowCamera(true)}
                   disabled={state === "uploading"}
-                  className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-forest-green text-white font-semibold disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-[var(--orange)] text-white font-semibold disabled:opacity-50"
                   style={{ boxShadow: "var(--shadow-elevated)", fontSize: "var(--text-body)" }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -632,7 +687,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 </button>
 
                 <ImagePicker onSelect={handleGallerySelect} multiple>
-                  <div className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-muted text-text-primary font-semibold cursor-pointer hover:bg-forest-green-50 transition-colors" style={{ fontSize: "var(--text-body)" }}>
+                  <div className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-muted text-text-primary font-semibold cursor-pointer hover:bg-[var(--orange-soft)] transition-colors" style={{ fontSize: "var(--text-body)" }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="18" height="18" rx="2" />
                       <circle cx="8.5" cy="8.5" r="1.5" />
@@ -673,7 +728,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                       key={photo.key}
                       onClick={() => setSelectedPhotoIndex(i)}
                       className={`relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-colors ${
-                        i === selectedPhotoIndex ? "border-forest-green" : "border-transparent"
+                        i === selectedPhotoIndex ? "border-[var(--teal)]" : "border-transparent"
                       }`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -696,7 +751,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                       <button
                         onClick={() => setShowCamera(true)}
                         disabled={state === "uploading"}
-                        className="w-16 h-16 rounded-xl border-2 border-dashed border-border flex items-center justify-center text-text-secondary hover:text-forest-green hover:border-forest-green transition-colors disabled:opacity-50"
+                        className="w-16 h-16 rounded-xl border-2 border-dashed border-border flex items-center justify-center text-text-secondary hover:text-[var(--teal)] hover:border-[var(--teal)] transition-colors disabled:opacity-50"
                         aria-label="Take another photo"
                       >
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -723,7 +778,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 <button
                   onClick={handleScan}
                   disabled={photos.length === 0 || state === "uploading"}
-                  className="w-full py-4 rounded-2xl bg-forest-green text-white font-semibold disabled:opacity-50 transition-opacity"
+                  className="w-full py-4 rounded-2xl bg-[var(--orange)] text-white font-semibold disabled:opacity-50 transition-opacity"
                   style={{ boxShadow: "var(--shadow-elevated)", fontSize: "var(--text-body)" }}
                 >
                   Scan {photos.length} Photo{photos.length !== 1 ? "s" : ""} with Porter
@@ -752,7 +807,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               ))}
             </div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-12 h-12 border-3 border-forest-green border-t-transparent rounded-full animate-spin" />
+              <div className="w-12 h-12 border-3 border-[var(--teal)] border-t-transparent rounded-full animate-spin" />
             </div>
           </div>
           <p className="text-text-primary font-semibold text-lg">Porter is analyzing...</p>
@@ -824,7 +879,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 </button>
                 <button
                   onClick={handleAcceptEnhance}
-                  className="flex-1 py-2 rounded-xl bg-forest-green text-white text-sm font-semibold"
+                  className="flex-1 py-2 rounded-xl bg-[var(--orange)] text-white text-sm font-semibold"
                 >
                   Use this photo
                 </button>
@@ -839,7 +894,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 </button>
                 <button
                   onClick={handleAcceptBg}
-                  className="flex-1 py-2 rounded-xl bg-forest-green text-white text-sm font-semibold"
+                  className="flex-1 py-2 rounded-xl bg-[var(--orange)] text-white text-sm font-semibold"
                 >
                   Use this photo
                 </button>
@@ -860,7 +915,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   key={photo.key}
                   onClick={() => setSelectedPhotoIndex(i)}
                   className={`flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-colors ${
-                    i === selectedPhotoIndex ? "border-forest-green" : "border-white/20"
+                    i === selectedPhotoIndex ? "border-[var(--teal)]" : "border-white/20"
                   }`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -886,7 +941,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             <div className="w-12 h-1 rounded-full bg-border mx-auto mt-3 mb-4" />
             <div className="px-4 space-y-4">
               {error && (
-                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
+                <div className="bg-[var(--accent-error-soft)] border border-[var(--accent-error)]/30 rounded-xl p-3 text-sm text-[var(--accent-error)]">
                   {error}
                 </div>
               )}
@@ -904,7 +959,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                         onClick={() => handleSelectCandidate(i)}
                         className={`flex-shrink-0 px-3 py-2 rounded-xl text-left transition-colors border ${
                           i === selectedCandidateIndex
-                            ? "border-forest-green bg-forest-green-50"
+                            ? "border-[var(--teal)] bg-[var(--teal-soft)]"
                             : "border-border bg-surface hover:bg-muted"
                         }`}
                       >
@@ -922,11 +977,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               {reasoning.length > 0 && (
                 <button
                   onClick={() => setShowReasoning(!showReasoning)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-forest-green-50 transition-colors"
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-[var(--teal-soft)] transition-colors"
                 >
-                  <span className="text-sm font-medium text-forest-green">Why this identification?</span>
+                  <span className="text-sm font-medium text-[var(--teal)]">Why this identification?</span>
                   <svg
-                    width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="2" strokeLinecap="round"
+                    width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="2" strokeLinecap="round"
                     className={`transition-transform ${showReasoning ? "rotate-180" : ""}`}
                   >
                     <path d="M6 9l6 6 6-6" />
@@ -937,7 +992,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 <ul className="px-3 space-y-1.5">
                   {reasoning.map((r, i) => (
                     <li key={i} className="flex gap-2 text-sm text-text-secondary">
-                      <span className="text-forest-green mt-0.5">•</span>
+                      <span className="text-[var(--teal)] mt-0.5">•</span>
                       <span>{r}</span>
                     </li>
                   ))}
@@ -980,15 +1035,15 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               {/* eBay Comp Price */}
               {compsLoading ? (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface border border-border">
-                  <div className="w-4 h-4 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-[var(--teal)] border-t-transparent rounded-full animate-spin" />
                   <span className="text-xs text-text-secondary">Checking eBay comps...</span>
                 </div>
               ) : comps && comps.stats.sampleSize > 0 ? (
-                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
-                  <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">eBay Comp Price</span>
-                  <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--accent-success-soft)] border border-[var(--accent-success)]/30">
+                  <span className="text-xs font-medium text-[var(--accent-success)]">eBay Comp Price</span>
+                  <span className="text-sm font-semibold text-[var(--accent-success)]">
                     ${(comps.stats.soldMedian ?? comps.stats.activeMedian ?? 0).toFixed(0)}
-                    <span className="text-xs font-normal text-emerald-600 dark:text-emerald-500 ml-1">
+                    <span className="text-xs font-normal text-[var(--accent-success)]/70 ml-1">
                       ({comps.stats.sampleSize} sold)
                     </span>
                   </span>
@@ -1026,7 +1081,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                                     )}
                                   </div>
                                 </div>
-                                <span className="text-sm font-semibold text-forest-green flex-shrink-0">${comp.price.toFixed(0)}</span>
+                                <span className="text-sm font-semibold text-[var(--accent-success)] flex-shrink-0">${comp.price.toFixed(0)}</span>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`flex-shrink-0 text-text-secondary transition-transform ${isExpanded ? "rotate-180" : ""}`}>
                                   <path d="M6 9l6 6 6-6" />
                                 </svg>
@@ -1034,8 +1089,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                               {isExpanded && (
                                 <div className="px-2.5 pb-2.5 space-y-2 border-t border-border pt-2">
                                   <div className="flex gap-2">
-                                    <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium">Use Title</button>
-                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium">Use Condition</button>
+                                    <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Title</button>
+                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
                                   </div>
                                   <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="block text-center py-2 rounded-lg border border-border text-xs font-medium text-text-secondary">View on eBay</a>
                                 </div>
@@ -1067,7 +1122,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                                   <p className="text-sm text-text-primary truncate">{comp.title}</p>
                                   <span className="text-xs text-text-secondary">{comp.condition}</span>
                                 </div>
-                                <span className="text-sm font-semibold text-forest-green flex-shrink-0">${comp.price.toFixed(0)}</span>
+                                <span className="text-sm font-semibold text-[var(--accent-success)] flex-shrink-0">${comp.price.toFixed(0)}</span>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`flex-shrink-0 text-text-secondary transition-transform ${isExpanded ? "rotate-180" : ""}`}>
                                   <path d="M6 9l6 6 6-6" />
                                 </svg>
@@ -1075,8 +1130,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                               {isExpanded && (
                                 <div className="px-2.5 pb-2.5 space-y-2 border-t border-border pt-2">
                                   <div className="flex gap-2">
-                                    <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium">Use Title</button>
-                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-forest-green-50 text-forest-green text-xs font-medium">Use Condition</button>
+                                    <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Title</button>
+                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
                                   </div>
                                   <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="block text-center py-2 rounded-lg border border-border text-xs font-medium text-text-secondary">View on eBay</a>
                                 </div>
@@ -1093,14 +1148,19 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               {/* Condition */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Condition</label>
+                {availableConditions.length === 0 && (
+                  <p className="mb-1 text-xs text-text-secondary">
+                    This eBay category uses condition grades Portage doesn&apos;t map yet — condition will be captured at listing time.
+                  </p>
+                )}
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                  {conditionOptions.map((opt) => (
+                  {conditionOptions.filter((opt) => availableConditions.includes(opt.value)).map((opt) => (
                     <button
                       key={opt.value}
                       onClick={() => setEditCondition(opt.value)}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                         editCondition === opt.value
-                          ? "bg-forest-green text-white"
+                          ? "bg-[var(--teal)] text-white"
                           : "bg-muted text-text-secondary hover:text-text-primary"
                       }`}
                     >
@@ -1131,7 +1191,39 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   onChange={(e) => setEditCategory(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary focus:border-border-focus focus:outline-none transition-colors"
                 />
+                {/* eBay category resolution status (drives the specifics section) */}
+                {isCategoryResolving ? (
+                  <p className="mt-1 text-xs text-text-secondary">Resolving eBay category…</p>
+                ) : resolvedCategoryId !== null ? (
+                  <p className="mt-1 text-xs text-text-secondary">
+                    eBay category: {resolvedCategoryName ?? resolvedCategoryId}{" "}
+                    <button
+                      type="button"
+                      onClick={() => resolveCategory(editCategory || editName)}
+                      className="text-[var(--teal)] font-medium"
+                    >
+                      change
+                    </button>
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-text-secondary">
+                    eBay category unresolved — specifics captured at listing time.
+                  </p>
+                )}
               </div>
+
+              {/* eBay item specifics (required aspects), captured at scan time */}
+              <ScanAspectsSection
+                aspects={aspects}
+                aspectValues={aspectValues}
+                setAspectValue={setAspectValue}
+                suggestions={suggestions}
+                confirmSuggestion={confirmSuggestion}
+                missingRequired={missingRequired}
+                isCategoryResolving={isCategoryResolving}
+                isAspectsLoading={isAspectsLoading}
+                categoryResolved={resolvedCategoryId !== null}
+              />
 
               {/* Brand & Model */}
               <div className="grid grid-cols-2 gap-3">
@@ -1178,6 +1270,14 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             isSaving={isSaving}
             isListing={isListingForSale}
             canSave={!!editName.trim()}
+            canList={!aspectsBlockPublish}
+            listDisabledReason={
+              aspectsBlockPublish
+                ? missingRequired.length > 0
+                  ? `Complete ${missingRequired.length} required eBay detail${missingRequired.length === 1 ? "" : "s"} first`
+                  : "Checking eBay requirements…"
+                : null
+            }
           />
         </div>
       )}
@@ -1186,7 +1286,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       {state === "saving" && (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="w-12 h-12 border-3 border-forest-green border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <div className="w-12 h-12 border-3 border-[var(--teal)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <p className="text-text-primary font-semibold">Saving to inventory...</p>
           </div>
         </div>

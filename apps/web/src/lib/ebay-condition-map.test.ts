@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   getAvailablePortageConditions,
+  nearestAllowedCondition,
   ALL_PORTAGE_CONDITIONS,
 } from "./ebay-condition-map";
 
@@ -46,5 +47,16 @@ describe("getAvailablePortageConditions", () => {
       "fair",
       "poor",
     ]);
+  });
+});
+
+describe("nearestAllowedCondition", () => {
+  it("keeps the current condition when allowed, else picks the nearest with a lower-grade tie-break", () => {
+    // Already allowed — unchanged.
+    expect(nearestAllowedCondition("good", ["new", "good", "poor"])).toBe("good");
+    // Nearest by grade distance: like_new disallowed, good is 1 step down vs new 1 step up — tie → lower grade.
+    expect(nearestAllowedCondition("like_new", ["new", "good"])).toBe("good");
+    // Strictly nearest wins even when it's the higher grade.
+    expect(nearestAllowedCondition("fair", ["new", "good"])).toBe("good");
   });
 });
