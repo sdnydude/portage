@@ -3,7 +3,12 @@ phase: 4
 branch: feat/redesign-ship1-dhg-home
 dev_verify_url: http://10.0.0.251:3003 (HMR dev server; container untouched on :3002)
 resume_here: |
-  Phase 4 BUILD, Ship 1, at T1. T1 (globals.css DHG tokens light+dark+@theme+.glass-nav, 4 edits) is
+  Phase 4 BUILD, Ship 1. T1 ✅ DONE+VERIFIED (light authed + dark, warm-stone/graphite, de-greened darks,
+  typecheck clean, 0 console errors, Etsy collision avoided by construction). CORS: EXTRA_CORS_ORIGINS=
+  http://10.0.0.251:3003 added to docker-compose.override.yml portage-api + container recreated (verify on
+  :3003 works now). NOW AT T2 (build real (tabs)/porter/page.tsx, reuse FullChat). Then T3→T7.
+  --- (historical) ---
+  T1 (globals.css DHG tokens light+dark+@theme+.glass-nav, 4 edits) is
   WRITTEN + TYPECHECK CLEAN + light-mode verified (warm-stone bg + graphite text on login/unauth :3003).
   Etsy badge collision avoided by construction (tints named -soft, never added --color-orange-50/teal-50).
   BLOCKED on authed+dark verification: prod API CORS rejects the :3003 dev origin.
