@@ -130,6 +130,86 @@ imagesRouter.post('/enhance', async (req, res, next) => {
   }
 });
 
+const batchEnhanceSchema = z.object({
+  imageUrls: z.array(z.string().url()).min(1).max(10),
+});
+
+type BatchEnhanceResult =
+  | {
+      status: 'success';
+      sourceUrl: string;
+      image: { key: string; url: string; width: number; height: number; size: number };
+    }
+  | { status: 'error'; sourceUrl: string; error: string };
+
+imagesRouter.post('/batch-enhance', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { imageUrls } = batchEnhanceSchema.parse(req.body);
+
+    // Validate every origin up front — a single foreign URL rejects the whole
+    // batch before any fetch/enhance work begins. (Per-photo fetch failures, in
+    // contrast, are isolated below and don't fail the batch.)
+    for (const url of imageUrls) {
+      if (!isAllowedImageOrigin(url)) {
+        throw new AppError(400, 'INVALID_ORIGIN', 'Image URL must be from Portage storage');
+      }
+    }
+
+    logger.info({ userId, count: imageUrls.length }, 'Batch enhance started');
+
+    // Sequential: one bad photo must never abort the batch, and per-photo results
+    // stay in request order.
+    const results: BatchEnhanceResult[] = [];
+    for (const imageUrl of imageUrls) {
+      try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          throw new AppError(400, 'FETCH_FAILED', 'Could not fetch the image to enhance');
+        }
+
+        const contentLength = Number(response.headers.get('content-length') || 0);
+        if (contentLength > MAX_FETCH_SIZE) {
+          throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        if (arrayBuffer.byteLength > MAX_FETCH_SIZE) {
+          throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+        }
+
+        const enhanced = await enhanceImage(Buffer.from(arrayBuffer));
+        const uploaded = await uploadImage(userId, enhanced.buffer, 'image/jpeg', '_enhanced.jpg');
+
+        results.push({
+          status: 'success',
+          sourceUrl: imageUrl,
+          image: {
+            key: uploaded.key,
+            url: uploaded.url,
+            width: enhanced.width,
+            height: enhanced.height,
+            size: enhanced.size,
+          },
+        });
+      } catch (err) {
+        logger.warn({ userId, imageUrl, error: (err as Error).message }, 'Batch enhance: photo failed');
+        results.push({
+          status: 'error',
+          sourceUrl: imageUrl,
+          error: err instanceof AppError ? err.message : 'Failed to enhance image',
+        });
+      }
+    }
+
+    logger.info({ userId, count: results.length }, 'Batch enhance complete');
+
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const removeBgSchema = z.object({
   imageUrl: z.string().url(),
 });
