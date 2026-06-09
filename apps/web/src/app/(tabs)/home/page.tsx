@@ -61,9 +61,10 @@ const FILTER_LABELS: { key: ListingFilter; label: string }[] = [
 ];
 
 const STATUS_BADGE: Record<string, { bg: string; label: string }> = {
-  sold: { bg: "#059669", label: "Sold" },
-  draft: { bg: "#d97706", label: "Draft" },
-  archived: { bg: "#6b7280", label: "Archived" },
+  active: { bg: "#0F9D58", label: "Active" }, // was absent → active listings showed no badge
+  sold: { bg: "#0B6B3E", label: "Sold" },
+  draft: { bg: "#F77E2D", label: "Draft" },
+  archived: { bg: "#8A857C", label: "Archived" },
 };
 
 export default function HomePage() {
@@ -336,26 +337,34 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* ─── Stats row ─── */}
-      <div className="grid grid-cols-3 gap-2.5 sm:gap-3 mb-6">
-        {[
-          { label: "Listed", value: String(data.stats.activeListings), green: false },
-          { label: "Value", value: formatCurrency(data.portfolio.totalValueRecommended), green: true },
-          { label: "Items", value: String(data.portfolio.totalItems), green: false },
-        ].map(({ label, value, green }) => (
-          <div
-            key={label}
-            className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-3 sm:p-4 text-center"
-          >
-            <p
-              className="font-[family-name:var(--font-jetbrains)] font-bold text-base sm:text-lg leading-none mb-1 tabular-nums"
-              style={{ color: green ? "var(--forest-green)" : "var(--text-primary)" }}
-            >
-              {value}
+      {/* ─── Value band — overlaps the hero (sibling + -mt + z-30, not clipped) ─── */}
+      <div
+        className="relative z-30 -mt-6 mb-6 grid grid-cols-[1.4fr_1fr] rounded-2xl bg-[var(--surface)] border border-[var(--border)] overflow-hidden"
+        style={{ boxShadow: "var(--shadow-elevated)" }}
+      >
+        <div className="p-4">
+          <p className="font-[family-name:var(--font-jetbrains)] text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
+            Portfolio value
+          </p>
+          <p className="font-[family-name:var(--font-jetbrains)] font-bold text-[28px] leading-none mt-1.5 tabular-nums text-text-primary">
+            <span className="text-[var(--orange-dark)]">$</span>
+            {formatCurrency(data.portfolio.totalValueRecommended).slice(1)}
+          </p>
+        </div>
+        <div className="flex flex-col border-l border-[var(--border)]">
+          <div className="flex-1 px-4 py-2.5 flex flex-col justify-center">
+            <p className="font-[family-name:var(--font-jetbrains)] font-semibold text-lg leading-none tabular-nums text-text-primary">
+              {data.stats.activeListings}
             </p>
-            <p className="text-text-secondary text-xs">{label}</p>
+            <p className="font-[family-name:var(--font-jetbrains)] text-[9px] uppercase tracking-wider text-text-secondary mt-1">Listed</p>
           </div>
-        ))}
+          <div className="flex-1 px-4 py-2.5 flex flex-col justify-center border-t border-[var(--border)]">
+            <p className="font-[family-name:var(--font-jetbrains)] font-semibold text-lg leading-none tabular-nums text-text-primary">
+              {data.portfolio.totalItems}
+            </p>
+            <p className="font-[family-name:var(--font-jetbrains)] text-[9px] uppercase tracking-wider text-text-secondary mt-1">Items</p>
+          </div>
+        </div>
       </div>
 
       {/* ─── eBay Price Check ─── */}
@@ -364,8 +373,8 @@ export default function HomePage() {
         className="w-full flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3.5 mb-6 text-left hover:bg-[var(--surface-hover,var(--muted))] transition-colors"
         style={{ boxShadow: "var(--shadow-subtle)" }}
       >
-        <div className="w-9 h-9 rounded-xl bg-[color-mix(in_srgb,var(--forest-green)_12%,transparent)] flex items-center justify-center flex-shrink-0">
-          <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 text-[var(--forest-green)]">
+        <div className="w-9 h-9 rounded-xl bg-[color-mix(in_srgb,var(--teal)_12%,transparent)] flex items-center justify-center flex-shrink-0">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 text-[var(--teal)]">
             <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
           </svg>
         </div>
@@ -385,8 +394,11 @@ export default function HomePage() {
             <h2 className="font-[family-name:var(--font-instrument)] font-semibold text-text-primary text-base sm:text-lg">
               Your Listings
             </h2>
-            <Link href="/listings" className="text-[var(--forest-green)] text-sm font-medium">
+            <Link href="/listings" className="flex items-center gap-0.5 text-[var(--teal)] text-sm font-semibold">
               See all
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                <path d="M6 4l4 4-4 4" />
+              </svg>
             </Link>
           </div>
 
@@ -396,11 +408,11 @@ export default function HomePage() {
               <button
                 key={key}
                 onClick={() => setListingFilter(key)}
-                className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors"
+                className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal)]"
                 style={{
-                  background: listingFilter === key ? "var(--forest-green)" : "var(--surface)",
+                  background: listingFilter === key ? "var(--graphite)" : "transparent",
                   color: listingFilter === key ? "white" : "var(--text-secondary)",
-                  border: listingFilter === key ? "1.5px solid transparent" : "1.5px solid var(--border)",
+                  border: listingFilter === key ? "1.5px solid var(--graphite)" : "1.5px solid var(--border)",
                 }}
               >
                 {label}
@@ -437,7 +449,7 @@ export default function HomePage() {
                     )}
                     {STATUS_BADGE[listing.status] && (
                       <span
-                        className="absolute top-2 left-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold text-white"
+                        className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold text-white"
                         style={{ background: STATUS_BADGE[listing.status].bg }}
                       >
                         {STATUS_BADGE[listing.status].label}
@@ -448,7 +460,7 @@ export default function HomePage() {
                     <p className="text-xs font-medium text-text-primary truncate leading-snug">
                       {listing.itemTitle}
                     </p>
-                    <p className="text-xs font-semibold text-[var(--forest-green)] mt-0.5 font-[family-name:var(--font-jetbrains)]">
+                    <p className="text-xs font-semibold text-text-primary mt-0.5 font-[family-name:var(--font-jetbrains)]">
                       ${listing.price.toFixed(0)}
                     </p>
                   </div>
