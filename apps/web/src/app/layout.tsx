@@ -39,7 +39,9 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#2D5A27",
+  // The status bar overlays the dark graphite Porter hero in both themes
+  // (viewportFit cover + safe-area padding), so match the hero top in both.
+  themeColor: "#262A2D",
 };
 
 export default function RootLayout({

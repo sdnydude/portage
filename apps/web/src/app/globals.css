@@ -37,6 +37,7 @@
   --hero-bottom: #15181B;
   --on-forest: #EEF6F5;        /* light text on graphite/teal hero */
   --on-forest-mute: #9FC9C8;
+  --on-forest-error: #FFB4A4;  /* error text legible on the always-dark hero (both themes) */
   --teal: #0D7377;             /* AI / intelligence accent */
   --teal-bright: #119AA0;
   --teal-dark: #0A4A47;
@@ -154,9 +155,11 @@
     --on-forest-mute: #9FC9C8;
     --teal: #19A5AB;
     --teal-bright: #2DBFC4;
+    --teal-dark: #0E6E6B;        /* orb gradient inner stop — lifted off near-black for dark hero */
     --teal-soft: rgba(17, 154, 160, 0.16);
     --orange: #FF9A52;
     --orange-bright: #FFB070;
+    --orange-dark: #F59147;      /* deep-orange accent ($, Scan label) readable on dark surfaces */
     --orange-soft: rgba(247, 126, 45, 0.16);
     --glass-control: rgba(255, 255, 255, 0.07);
     --glass-nav-bg: rgba(26, 22, 18, 0.72);
@@ -326,7 +329,9 @@ select {
     backdrop-filter: none;
   }
   .glass-control {
-    background: rgba(255, 255, 255, 0.18);
+    /* always sits on the dark graphite hero → opaque warm-dark, not white (which
+       would hide the light --on-forest text in light mode) */
+    background: var(--charcoal);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }

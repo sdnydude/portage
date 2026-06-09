@@ -5,7 +5,6 @@ import { usePorter } from "@/hooks/use-porter-context";
 import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
 import { VoiceButton } from "@/components/porter/voice-button";
-import { AudioPlayback } from "@/components/porter/audio-playback";
 
 /**
  * Porter tab — the AI assistant's expanded, full-page view. Unlike the inline
@@ -33,7 +32,7 @@ export default function PorterPage() {
   return (
     // (tabs) <main> has pb-20 (5rem) clearance for the fixed tab bar; height:100%
     // doesn't resolve against the flex parent, so pin to the viewport minus that.
-    <div className="flex flex-col h-[calc(100dvh-5rem)]">
+    <div className="flex flex-col h-[calc(100dvh-var(--tab-bar-height))]">
       {/* Header — teal AI identity */}
       <header
         className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 glass-nav glass-fallback border-b border-[var(--border)]"
@@ -55,7 +54,7 @@ export default function PorterPage() {
         </div>
         <button
           onClick={porter.startNewChat}
-          className="text-sm font-semibold text-[var(--teal)] hover:opacity-80 transition-opacity"
+          className="text-sm font-semibold text-[var(--teal)] hover:opacity-80 transition-opacity rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal)]"
         >
           New chat
         </button>
@@ -93,12 +92,6 @@ export default function PorterPage() {
         {porter.isStreaming && (
           <StreamingMessage streamingBlocks={porter.streamingBlocks} isStreaming={porter.isStreaming} />
         )}
-
-        {porter.audioUrl && !porter.isStreaming && (
-          <div className="flex justify-start">
-            <AudioPlayback audioUrl={porter.audioUrl} />
-          </div>
-        )}
       </div>
 
       {/* Suggestion pills (teal-tinted via local --forest-green override) */}
@@ -124,7 +117,7 @@ export default function PorterPage() {
             onClick={handleSend}
             disabled={!porter.chatInput.trim() || porter.isStreaming}
             aria-label="Send message"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--orange)] text-white disabled:opacity-40 flex-shrink-0 transition-opacity"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--orange)] text-white disabled:opacity-40 flex-shrink-0 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--teal)] focus-visible:ring-offset-[var(--surface)]"
           >
             <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
               <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />

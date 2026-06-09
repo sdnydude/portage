@@ -102,6 +102,12 @@ export function usePorterStream(): PorterStreamState {
           try {
             event = JSON.parse(raw) as StreamEvent;
           } catch {
+            // Malformed SSE frame — skip it rather than killing the stream, but
+            // surface it in dev so a server-side bug emitting bad JSON (which
+            // would otherwise hang isStreaming silently) is diagnosable.
+            if (process.env.NODE_ENV !== "production") {
+              console.warn("[porter] dropped malformed SSE frame:", raw);
+            }
             continue;
           }
 

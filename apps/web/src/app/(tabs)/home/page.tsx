@@ -110,7 +110,11 @@ export default function HomePage() {
       porter.sendMessage(voice.transcript);
       voice.reset();
     }
-  }, [voice, setIsEngaged, porter]);
+    // Depend on the voice state/transcript only — `voice` is a fresh object each
+    // render, so depending on it would re-run reset()/stop() on unrelated renders
+    // (e.g. typing) and could kill an in-progress recording.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.state, voice.transcript]);
   const startVoice = () => { if (token) voice.start(token); };
   const stopVoice = () => voice.stop();
 
@@ -171,7 +175,7 @@ export default function HomePage() {
         style={{
           paddingTop: "max(env(safe-area-inset-top), 18px)",
           background:
-            "radial-gradient(125% 95% at 80% -12%, rgba(63,192,196,0.38), transparent 58%), linear-gradient(162deg, var(--hero-top) 0%, var(--hero-bottom) 100%)",
+            "radial-gradient(125% 95% at 80% -12%, rgba(63,192,196,0.38), transparent 58%), radial-gradient(80% 65% at 8% 6%, rgba(17,154,160,0.16), transparent 60%), linear-gradient(162deg, var(--hero-top) 0%, var(--hero-bottom) 100%)",
           boxShadow: "0 20px 44px -30px rgba(6,18,20,0.85)",
         }}
       >
@@ -185,10 +189,15 @@ export default function HomePage() {
         {/* Header row: greeting + actions */}
         <div className="relative flex items-center gap-3 mb-5">
           <div className="flex-1 min-w-0">
-            <p className="font-[family-name:var(--font-jetbrains)] text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--on-forest-mute)]">
+            <p className="flex items-center gap-1.5 font-[family-name:var(--font-jetbrains)] text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--on-forest-mute)]">
+              <span
+                aria-hidden
+                className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--teal-bright)]"
+                style={{ boxShadow: "0 0 6px 1px rgba(63,192,196,0.8)" }}
+              />
               {getGreeting()}
             </p>
-            <p className="font-[family-name:var(--font-instrument)] font-bold text-2xl leading-tight truncate text-[var(--on-forest)] mt-0.5">
+            <p className="font-[family-name:var(--font-instrument)] italic font-medium text-[32px] leading-[1.1] -tracking-[0.01em] text-[var(--orange-bright)] mt-0.5">
               {data.displayName}
             </p>
           </div>
@@ -196,7 +205,7 @@ export default function HomePage() {
           {isEngaged && (
             <button
               onClick={() => setIsFullScreen(true)}
-              className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors"
+              className="flex-shrink-0 w-11 h-11 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-bottom)]"
               aria-label="Expand to full chat"
             >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5">
@@ -205,11 +214,11 @@ export default function HomePage() {
             </button>
           )}
 
-          <ThemeToggle className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors" />
+          <ThemeToggle className="flex-shrink-0 w-11 h-11 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors" />
 
           <Link
             href="/settings"
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors"
+            className="flex-shrink-0 w-11 h-11 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-bottom)]"
             aria-label="Settings"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -221,22 +230,27 @@ export default function HomePage() {
 
         {/* Chat area */}
         {!isEngaged ? (
-          /* Proactive Porter bubble — teal orb + glass bubble on graphite */
-          <div className="relative flex gap-2.5 items-start mb-4">
+          /* Idle Porter card — prominent circular orb + PORTER·READY label + prompt */
+          <div
+            className="glass-control relative flex items-start gap-3 rounded-2xl p-4 mb-4"
+            style={{ border: "1px solid rgba(255,255,255,0.14)" }}
+          >
             <div
-              className="relative flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
+              className="relative flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center"
               style={{ background: "radial-gradient(circle at 35% 28%, var(--teal-bright), var(--teal-dark))" }}
             >
-              <span className="porter-orb-ring absolute inset-0 rounded-lg" style={{ border: "1.5px solid var(--teal-bright)" }} />
-              <svg viewBox="0 0 24 24" fill="white" className="h-3.5 w-3.5">
+              <span className="porter-orb-ring absolute inset-0 rounded-full" style={{ border: "1.5px solid var(--teal-bright)" }} />
+              <svg viewBox="0 0 24 24" fill="white" className="h-5 w-5">
                 <path d="M12 3l1.7 5L19 9.7l-5.3 1.6L12 17l-1.7-5.7L5 9.7 10.3 8z" />
               </svg>
             </div>
-            <div
-              className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-[var(--on-forest)] max-w-[85%] sm:max-w-sm"
-              style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)" }}
-            >
-              {getProactiveMessage(data)}
+            <div className="min-w-0 flex-1">
+              <p className="font-[family-name:var(--font-jetbrains)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--on-forest-mute)] mb-1">
+                Porter · Ready
+              </p>
+              <p className="text-sm leading-snug text-[var(--on-forest)]">
+                {getProactiveMessage(data)}
+              </p>
             </div>
           </div>
         ) : (
@@ -262,6 +276,7 @@ export default function HomePage() {
             ))}
             {porter.isStreaming && (
               <StreamingMessage
+                key="streaming"
                 streamingBlocks={porter.streamingBlocks}
                 isStreaming={porter.isStreaming}
               />
@@ -290,7 +305,7 @@ export default function HomePage() {
 
         {/* Ask card — glass control; orange mic (push-to-talk) / send */}
         <div
-          className="glass-control relative flex items-center gap-2 rounded-2xl px-3 py-2.5"
+          className="glass-control relative flex items-center gap-2 rounded-2xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[var(--teal-bright)]"
           style={{ border: "1px solid rgba(255,255,255,0.16)" }}
         >
           <input
@@ -306,7 +321,7 @@ export default function HomePage() {
               onClick={handleSend}
               disabled={porter.isStreaming}
               aria-label="Send message"
-              className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--orange)] text-white disabled:opacity-40 transition-opacity"
+              className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--orange)] text-white disabled:opacity-40 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-bottom)]"
             >
               <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
                 <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
@@ -317,8 +332,11 @@ export default function HomePage() {
               onPointerDown={startVoice}
               onPointerUp={stopVoice}
               onPointerLeave={stopVoice}
-              aria-label="Hold to talk to Porter"
-              className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl text-white transition-colors"
+              onKeyDown={(e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); startVoice(); } }}
+              onKeyUp={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); stopVoice(); } }}
+              aria-label="Hold to talk to Porter (or hold Space / Enter while focused)"
+              aria-pressed={voice.state === "listening"}
+              className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-bottom)]"
               style={{ background: voice.state === "listening" ? "var(--accent-error)" : "var(--orange)" }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
@@ -330,8 +348,10 @@ export default function HomePage() {
           )}
         </div>
 
-        {porter.error && (
-          <p className="relative mt-2 text-xs" style={{ color: "#ffb4a4" }}>{porter.error}</p>
+        {(voice.error || porter.error) && (
+          <p className="relative mt-2 text-xs text-[var(--on-forest-error)]" role="alert">
+            {voice.error || porter.error}
+          </p>
         )}
       </div>
 
@@ -344,7 +364,7 @@ export default function HomePage() {
           <p className="font-[family-name:var(--font-jetbrains)] text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
             Portfolio value
           </p>
-          <p className="font-[family-name:var(--font-jetbrains)] font-bold text-[28px] leading-none mt-1.5 tabular-nums text-text-primary">
+          <p className="font-[family-name:var(--font-jetbrains)] font-bold text-[32px] leading-none mt-1.5 tabular-nums text-text-primary">
             <span className="text-[var(--orange-dark)]">$</span>
             {formatCurrency(data.portfolio.totalValueRecommended).slice(1)}
           </p>
@@ -389,7 +409,7 @@ export default function HomePage() {
       {data.recentListings.length > 0 ? (
         <div className="animate-rise" style={{ animationDelay: "0.24s" }}>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-[family-name:var(--font-instrument)] font-semibold text-text-primary text-base sm:text-lg">
+            <h2 className="font-[family-name:var(--font-instrument)] font-bold -tracking-[0.02em] text-text-primary text-xl">
               Your Listings
             </h2>
             <Link href="/listings" className="flex items-center gap-0.5 text-[var(--teal)] text-sm font-semibold">
@@ -447,19 +467,20 @@ export default function HomePage() {
                     )}
                     {STATUS_BADGE[listing.status] && (
                       <span
-                        className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold text-white"
+                        className="absolute top-2 right-2 px-1.5 py-0.5 rounded-[7px] text-[10px] font-semibold text-white"
                         style={{ background: STATUS_BADGE[listing.status].bg }}
                       >
                         {STATUS_BADGE[listing.status].label}
                       </span>
                     )}
+                    {/* Price chip — dark glass overlay, bottom-left (mockup) */}
+                    <span className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded-[7px] text-[11px] font-semibold text-white font-[family-name:var(--font-jetbrains)] bg-black/55 backdrop-blur-sm border border-white/10">
+                      ${listing.price.toFixed(0)}
+                    </span>
                   </div>
                   <div className="p-2.5">
                     <p className="text-xs font-medium text-text-primary truncate leading-snug">
                       {listing.itemTitle}
-                    </p>
-                    <p className="text-xs font-semibold text-text-primary mt-0.5 font-[family-name:var(--font-jetbrains)]">
-                      ${listing.price.toFixed(0)}
                     </p>
                   </div>
                 </Link>

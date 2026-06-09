@@ -30,7 +30,8 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       type="button"
       onClick={toggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className={className}
+      aria-pressed={isDark}
+      className={`${className} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-bottom)]`}
     >
       {isDark ? (
         // Sun — currently dark, click for light

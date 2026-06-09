@@ -57,12 +57,13 @@ export function TabBar() {
               <Link
                 key={tab.name}
                 href={tab.href}
-                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors ${
+                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${
                   isActive
-                    ? "text-[var(--graphite)]"
+                    ? "text-[var(--text-primary)]"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
+                {isActive && <span aria-hidden className="absolute top-0.5 h-1 w-1 rounded-full bg-current" />}
                 <tab.icon active={isActive} />
                 <span
                   className={`text-[10px] leading-tight ${
@@ -79,7 +80,7 @@ export function TabBar() {
           <div className="flex flex-col items-center justify-center flex-1">
             <button
               onClick={handleScanOpen}
-              className="relative -mt-7 w-14 h-14 rounded-full bg-[var(--orange)] flex items-center justify-center active:scale-95 transition-transform animate-spring-in"
+              className="relative -mt-7 w-14 h-14 rounded-full bg-[var(--orange)] flex items-center justify-center active:scale-95 transition-transform animate-spring-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--orange-dark)] focus-visible:ring-offset-[var(--background)]"
               style={{
                 boxShadow: "var(--shadow-elevated), 0 0 0 3px var(--background)",
               }}
@@ -99,14 +100,15 @@ export function TabBar() {
             const colorClass = isPorter
               ? "text-[var(--teal)]"
               : isActive
-                ? "text-[var(--graphite)]"
+                ? "text-[var(--text-primary)]"
                 : "text-text-secondary hover:text-text-primary";
             return (
               <Link
                 key={tab.name}
                 href={tab.href}
-                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors ${colorClass}`}
+                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${colorClass}`}
               >
+                {isActive && <span aria-hidden className="absolute top-0.5 h-1 w-1 rounded-full bg-current" />}
                 <tab.icon active={isActive} />
                 <span
                   className={`text-[10px] leading-tight ${
@@ -125,12 +127,13 @@ export function TabBar() {
             return (
               <Link
                 href="/more"
-                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors relative ${
+                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors relative rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${
                   isActive
-                    ? "text-[var(--graphite)]"
+                    ? "text-[var(--text-primary)]"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
+                {isActive && <span aria-hidden className="absolute top-0.5 h-1 w-1 rounded-full bg-current" />}
                 <div className="relative">
                   <MoreIcon active={isActive} />
                   {unreadCount > 0 && (
@@ -263,9 +266,9 @@ function MoreIcon({ active }: { active: boolean }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" />
       <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-      <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" />
     </svg>
   );
 }
