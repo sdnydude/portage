@@ -10,6 +10,7 @@
     "*.xml",
     "*.html",
     "*.css",
-    "**/aifactory3.5/**"
+    "**/aifactory3.5/**",
+    "**/apps/web/**"
   ]
 }

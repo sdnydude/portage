@@ -1,0 +1,678 @@
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: #f7f6f3;
+    margin: 0;
+    padding: 20px;
+  }
+
+  .page-header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  .page-header h1 {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 0 0 4px;
+  }
+
+  .page-header .screen-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: #2D5A27;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+
+  .page-header p {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 0;
+  }
+
+  .screen-layout {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 48px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .annotations-left, .annotations-right {
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-top: 60px;
+  }
+
+  .annotations-right { padding-top: 200px; }
+
+  .callout {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .callout-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #2D5A27;
+    color: white;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .callout-text {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: #333;
+  }
+
+  .callout-text strong {
+    display: block;
+    font-family: 'Instrument Sans', sans-serif;
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: #1a1a1a;
+    margin-bottom: 2px;
+  }
+
+  .phone-frame {
+    width: 375px;
+    height: 780px;
+    border: 2px solid #d4d0c8;
+    border-radius: 40px;
+    overflow: hidden;
+    background: #faf9f6;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+    flex-shrink: 0;
+  }
+
+  .phone-screen {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .marker {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #2D5A27;
+    color: white;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    box-shadow: 0 2px 6px rgba(45,90,39,0.4);
+  }
+
+  .status-bar {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    background: #faf9f6;
+    flex-shrink: 0;
+  }
+
+  /* ── Full Chat Header ── */
+  .chat-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 20px 12px;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    flex-shrink: 0;
+  }
+
+  .back-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.07);
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    color: #555;
+  }
+
+  .porter-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #2D5A27 0%, #3a7a32 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-family: 'Instrument Sans', sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+    box-shadow: 0 2px 8px rgba(45,90,39,0.25);
+  }
+
+  .header-info h3 {
+    margin: 0;
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1a1a1a;
+  }
+
+  .header-info span {
+    font-size: 0.72rem;
+    color: #2D5A27;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .header-info span::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2D5A27;
+  }
+
+  .header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+  }
+
+  .header-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.07);
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    color: #555;
+  }
+
+  /* ── Messages ── */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .msg { max-width: 82%; }
+  .msg.user { align-self: flex-end; }
+  .msg.assistant { align-self: flex-start; }
+
+  .msg-bubble {
+    padding: 10px 14px;
+    font-size: 0.84rem;
+    line-height: 1.45;
+  }
+
+  .msg.user .msg-bubble {
+    background: #2D5A27;
+    color: white;
+    border-radius: 18px 18px 4px 18px;
+  }
+
+  .msg.assistant .msg-bubble {
+    background: white;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 18px 18px 18px 4px;
+    color: #1a1a1a;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+
+  .msg-time {
+    font-size: 0.62rem;
+    color: #aaa;
+    padding: 2px 4px 0;
+  }
+
+  .msg.user .msg-time { text-align: right; }
+
+  .tool-block {
+    align-self: flex-start;
+    max-width: 88%;
+    background: rgba(45,90,39,0.04);
+    border: 1px solid rgba(45,90,39,0.1);
+    border-radius: 10px;
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: #2D5A27;
+    font-weight: 500;
+  }
+
+  .tool-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(45,90,39,0.15);
+    border-top-color: #2D5A27;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Voice bubble ── */
+  .voice-bubble {
+    align-self: flex-end;
+    max-width: 82%;
+    background: #2D5A27;
+    border-radius: 18px 18px 4px 18px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: white;
+  }
+
+  .voice-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 22px;
+    flex: 1;
+  }
+
+  .waveform .bar {
+    width: 3px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.6);
+    height: var(--h, 10px);
+  }
+
+  .voice-duration {
+    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+
+  /* ── Comp table ── */
+  .comp-card {
+    align-self: flex-start;
+    max-width: 90%;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+
+  .comp-header {
+    padding: 8px 12px;
+    background: rgba(45,90,39,0.04);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #2D5A27;
+    font-family: 'Instrument Sans', sans-serif;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+  }
+
+  .comp-row {
+    display: flex;
+    padding: 7px 12px;
+    font-size: 0.72rem;
+    border-bottom: 1px solid rgba(0,0,0,0.03);
+    align-items: center;
+  }
+
+  .comp-row:last-child { border-bottom: none; }
+
+  .comp-source {
+    flex: 1;
+    color: #555;
+  }
+
+  .comp-condition {
+    flex: 1;
+    color: #888;
+    font-size: 0.68rem;
+  }
+
+  .comp-price {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    color: #1a1a1a;
+    min-width: 60px;
+    text-align: right;
+  }
+
+  .comp-price.sold {
+    color: #2D5A27;
+  }
+
+  /* ── Thinking ── */
+  .thinking {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 18px 18px 18px 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .thinking-dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .thinking-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2D5A27;
+    opacity: 0.3;
+    animation: blink 1.2s ease-in-out infinite;
+  }
+
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes blink {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 0.8; }
+  }
+
+  .action-pills {
+    display: flex;
+    gap: 6px;
+    padding: 6px 16px 4px;
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+
+  .pill {
+    padding: 6px 12px;
+    border-radius: 18px;
+    font-size: 0.73rem;
+    font-weight: 500;
+    border: 1px solid rgba(45,90,39,0.14);
+    background: white;
+    color: #2D5A27;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .chat-input {
+    padding: 6px 12px 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-top: 1px solid rgba(0,0,0,0.04);
+    flex-shrink: 0;
+  }
+
+  .input-field {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 22px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: white;
+    font-size: 0.84rem;
+    color: #bbb;
+  }
+
+  .mic-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2D5A27 0%, #3a7a32 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1rem;
+    box-shadow: 0 2px 8px rgba(45,90,39,0.3);
+    flex-shrink: 0;
+  }
+
+  .send-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ccc;
+    font-size: 0.95rem;
+    flex-shrink: 0;
+  }
+</style>
+
+<div class="page-header">
+  <div class="screen-num">Screen 3 of 5</div>
+  <h1>Full-Screen Chat</h1>
+  <p>Expanded Porter  -  deep conversation with tool use, comps, voice, and inline results.</p>
+</div>
+
+<div class="screen-layout">
+
+  <div class="annotations-left">
+    <div class="callout">
+      <div class="callout-num">1</div>
+      <div class="callout-text">
+        <strong>Back to Home</strong>
+        &larr; collapses back to home screen. Conversation persists  -  pick up where you left off.
+      </div>
+    </div>
+    <div class="callout">
+      <div class="callout-num">2</div>
+      <div class="callout-text">
+        <strong>New Chat / History</strong>
+        Start fresh conversation or browse past chats. Conversations stored server-side with full history.
+      </div>
+    </div>
+    <div class="callout">
+      <div class="callout-num">3</div>
+      <div class="callout-text">
+        <strong>Voice Message Bubble</strong>
+        When user speaks instead of typing, the message shows as a playable voice pill with waveform + duration. Transcript shown below.
+      </div>
+    </div>
+    <div class="callout">
+      <div class="callout-num">4</div>
+      <div class="callout-text">
+        <strong>Comp Data Table</strong>
+        Structured marketplace data rendered inline  -  not just text. Sold prices in green. Tappable rows link to source listings.
+      </div>
+    </div>
+  </div>
+
+  <div class="phone-frame">
+    <div class="marker" style="top:52px;left:22px;">1</div>
+    <div class="marker" style="top:52px;right:22px;">2</div>
+    <div class="marker" style="top:210px;right:18px;">3</div>
+    <div class="marker" style="top:380px;left:18px;">4</div>
+    <div class="marker" style="top:530px;left:18px;">5</div>
+    <div class="marker" style="bottom:90px;left:18px;">6</div>
+
+    <div class="phone-screen">
+      <div class="status-bar">
+        <span>9:41</span>
+        <span>●●●</span>
+      </div>
+
+      <div class="chat-header">
+        <div class="back-btn">&larr;</div>
+        <div class="porter-avatar">P</div>
+        <div class="header-info">
+          <h3>Porter</h3>
+          <span>Active</span>
+        </div>
+        <div class="header-actions">
+          <div class="header-btn">&#10227;</div>
+          <div class="header-btn">...</div>
+        </div>
+      </div>
+
+      <div class="messages">
+        <div class="msg assistant">
+          <div class="msg-bubble">Your Gibson SG got 4 watchers overnight. Want me to check current comps?</div>
+          <div class="msg-time">9:38 AM</div>
+        </div>
+
+        <div class="msg user">
+          <div class="msg-bubble">Yeah check comps on the Gibson</div>
+          <div class="msg-time">9:38 AM</div>
+        </div>
+
+        <div class="tool-block">
+          <span>🔍</span>
+          Searched eBay + Reverb comps
+          <span style="margin-left:auto;font-size:0.65rem;opacity:0.6;">1.2s</span>
+        </div>
+
+        <div class="msg assistant">
+          <div class="msg-bubble">Here's what similar Gibson SG '61 Reissues are going for:</div>
+        </div>
+
+        <div class="comp-card">
+          <div class="comp-header">Gibson SG '61 Reissue  -  Recent Sales</div>
+          <div class="comp-row">
+            <span class="comp-source">eBay</span>
+            <span class="comp-condition">Excellent</span>
+            <span class="comp-price sold">$1,925</span>
+          </div>
+          <div class="comp-row">
+            <span class="comp-source">Reverb</span>
+            <span class="comp-condition">Very Good</span>
+            <span class="comp-price sold">$1,850</span>
+          </div>
+          <div class="comp-row">
+            <span class="comp-source">eBay</span>
+            <span class="comp-condition">Excellent</span>
+            <span class="comp-price">$2,100</span>
+          </div>
+          <div class="comp-row">
+            <span class="comp-source">Reverb</span>
+            <span class="comp-condition">Mint</span>
+            <span class="comp-price">$2,250</span>
+          </div>
+        </div>
+
+        <div class="msg assistant">
+          <div class="msg-bubble">You're priced well at $1,849. Recent sold comps range $1,850-$1,925 for Excellent condition. Want me to bump the price to $1,899?</div>
+        </div>
+
+        <!-- Voice message -->
+        <div class="voice-bubble">
+          <div class="voice-icon">🎤</div>
+          <div class="waveform">
+            <div class="bar" style="--h:6px;"></div>
+            <div class="bar" style="--h:14px;"></div>
+            <div class="bar" style="--h:10px;"></div>
+            <div class="bar" style="--h:18px;"></div>
+            <div class="bar" style="--h:12px;"></div>
+            <div class="bar" style="--h:20px;"></div>
+            <div class="bar" style="--h:8px;"></div>
+            <div class="bar" style="--h:16px;"></div>
+            <div class="bar" style="--h:4px;"></div>
+            <div class="bar" style="--h:14px;"></div>
+            <div class="bar" style="--h:18px;"></div>
+            <div class="bar" style="--h:6px;"></div>
+          </div>
+          <div class="voice-duration">0:03</div>
+        </div>
+
+        <div class="tool-block">
+          <span>💰</span>
+          Updating eBay listing price...
+          <div class="tool-spinner"></div>
+        </div>
+
+        <div class="thinking">
+          <div class="thinking-dots">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="action-pills">
+        <div class="pill">Undo price change</div>
+        <div class="pill">Next listing</div>
+        <div class="pill">Show all comps</div>
+      </div>
+
+      <div class="chat-input">
+        <div class="input-field">Ask Porter anything...</div>
+        <button class="mic-btn">🎤</button>
+        <button class="send-btn">&uarr;</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="annotations-right">
+    <div class="callout">
+      <div class="callout-num">5</div>
+      <div class="callout-text">
+        <strong>Live Tool Execution</strong>
+        Spinner shows Porter actively working  -  updating a price, syncing a listing, checking inventory. Real-time feedback.
+      </div>
+    </div>
+    <div class="callout">
+      <div class="callout-num">6</div>
+      <div class="callout-text">
+        <strong>Post-Action Pills</strong>
+        After Porter takes an action (price change), pills offer "Undo" as safety net. Context-aware  -  changes with every interaction.
+      </div>
+    </div>
+  </div>
+
+</div>
