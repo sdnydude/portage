@@ -720,6 +720,29 @@ describe('EbayAdapter.updateListing — syncs inventory_item + offer', () => {
   });
 });
 
+describe('EbayAdapter.updateListing — packageWeightAndSize', () => {
+  it('sends weight and dimensions but omits packageType (symmetry with createListing — eBay rejects unsupported packageType, error 25101)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.updateListing('listing-id-999', {
+      condition: 'good',
+      ebaySku: 'portage-sku-abc',
+      ebayOfferId: 'offer-42',
+      marketplaceSpecific: {
+        weight: { value: 8, unit: 'OUNCE' },
+        dimensions: { length: 8, width: 6, height: 4, unit: 'INCH' },
+        packageType: 'MAILING_BOX',
+      },
+    });
+
+    const inventoryPut = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/portage-sku-abc'));
+    expect(inventoryPut).toBeTruthy();
+    const invBody = JSON.parse((inventoryPut![1] as RequestInit).body as string);
+    expect(invBody.packageWeightAndSize.weight).toEqual({ value: 8, unit: 'OUNCE' });
+    expect(invBody.packageWeightAndSize.dimensions).toEqual({ length: 8, width: 6, height: 4, unit: 'INCH' });
+    expect(invBody.packageWeightAndSize.packageType).toBeUndefined();
+  });
+});
+
 describe('EbayAdapter.updateListing — skips empty offer PUT', () => {
   it('does not PUT to the offer endpoint when no title, price, or description changed', async () => {
     const adapter = new EbayAdapter('user-1');
