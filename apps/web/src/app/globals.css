@@ -259,6 +259,10 @@ select {
 .porter-aurora { animation: aurora-spin 26s linear infinite; }
 .porter-orb-ring { animation: orb-breathe 3.2s cubic-bezier(0.22, 0.61, 0.36, 1) infinite; }
 
+/* Staggered entrance (home sections) */
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.animate-rise { opacity: 0; animation: rise 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+
 .animate-check-draw {
   stroke-dasharray: 48;
   stroke-dashoffset: 48;
@@ -305,12 +309,27 @@ select {
   .animate-pulse-glow,
   .animate-check-draw,
   .porter-aurora,
-  .porter-orb-ring {
+  .porter-orb-ring,
+  .animate-rise {
     animation: none !important;
     opacity: 1;
     transform: none;
   }
   .porter-orb-ring { opacity: 0; }
+}
+
+/* WCAG: reduced transparency — opaque fallback for glass chrome/controls */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-nav {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .glass-control {
+    background: rgba(255, 255, 255, 0.18);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 /* Glass utility classes */
@@ -340,6 +359,13 @@ select {
   backdrop-filter: blur(22px) saturate(175%);
   -webkit-backdrop-filter: blur(22px) saturate(175%);
   background: var(--glass-nav-bg);
+}
+
+/* Glass control on a dark hero (Porter ask card) */
+.glass-control {
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  background: var(--glass-control);
 }
 
 /* Scrollbar hiding for horizontal scroll areas */

@@ -166,7 +166,7 @@ export default function HomePage() {
 
       {/* ─── Porter hero ─── */}
       <div
-        className="relative -mx-4 px-4 pb-7 rounded-b-[32px] overflow-hidden"
+        className="animate-rise relative -mx-4 px-4 pb-7 rounded-b-[32px] overflow-hidden"
         style={{
           paddingTop: "max(env(safe-area-inset-top), 18px)",
           background:
@@ -287,13 +287,8 @@ export default function HomePage() {
 
         {/* Ask card — glass control; orange mic (push-to-talk) / send */}
         <div
-          className="relative flex items-center gap-2 rounded-2xl px-3 py-2.5"
-          style={{
-            background: "var(--glass-control)",
-            border: "1px solid rgba(255,255,255,0.16)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-          }}
+          className="glass-control relative flex items-center gap-2 rounded-2xl px-3 py-2.5"
+          style={{ border: "1px solid rgba(255,255,255,0.16)" }}
         >
           <input
             type="text"
@@ -339,8 +334,8 @@ export default function HomePage() {
 
       {/* ─── Value band — overlaps the hero (sibling + -mt + z-30, not clipped) ─── */}
       <div
-        className="relative z-30 -mt-6 mb-6 grid grid-cols-[1.4fr_1fr] rounded-2xl bg-[var(--surface)] border border-[var(--border)] overflow-hidden"
-        style={{ boxShadow: "var(--shadow-elevated)" }}
+        className="animate-rise relative z-30 -mt-6 mb-6 grid grid-cols-[1.4fr_1fr] rounded-2xl bg-[var(--surface)] border border-[var(--border)] overflow-hidden"
+        style={{ boxShadow: "var(--shadow-elevated)", animationDelay: "0.08s" }}
       >
         <div className="p-4">
           <p className="font-[family-name:var(--font-jetbrains)] text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
@@ -370,8 +365,8 @@ export default function HomePage() {
       {/* ─── eBay Price Check ─── */}
       <button
         onClick={() => setIsCompsOpen(true)}
-        className="w-full flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3.5 mb-6 text-left hover:bg-[var(--surface-hover,var(--muted))] transition-colors"
-        style={{ boxShadow: "var(--shadow-subtle)" }}
+        className="animate-rise w-full flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3.5 mb-6 text-left hover:bg-[var(--surface-hover,var(--muted))] transition-colors"
+        style={{ boxShadow: "var(--shadow-subtle)", animationDelay: "0.16s" }}
       >
         <div className="w-9 h-9 rounded-xl bg-[color-mix(in_srgb,var(--teal)_12%,transparent)] flex items-center justify-center flex-shrink-0">
           <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 text-[var(--teal)]">
@@ -389,7 +384,7 @@ export default function HomePage() {
 
       {/* ─── Listings section ─── */}
       {data.recentListings.length > 0 ? (
-        <div>
+        <div className="animate-rise" style={{ animationDelay: "0.24s" }}>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-[family-name:var(--font-instrument)] font-semibold text-text-primary text-base sm:text-lg">
               Your Listings
