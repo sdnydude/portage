@@ -43,6 +43,35 @@ function mergeItemShipping(
   return merged;
 }
 
+/**
+ * Self-heal eBay setup fields (policy IDs + inventory location) from the seller
+ * profile when the request carries none — body-provided values always win, the
+ * profile only fills gaps. Mirrors the identical block in POST /:id/publish
+ * (kept duplicated there to avoid touching that route's verified behavior).
+ */
+async function applySellerPolicyDefaults(
+  userId: string,
+  specific: Record<string, unknown> | undefined,
+): Promise<Record<string, unknown> | undefined> {
+  const ms = (specific ?? {}) as Record<string, unknown>;
+  const fp = ms.fulfillmentPolicyId as string | undefined;
+  const pp = ms.paymentPolicyId as string | undefined;
+  const rp = ms.returnPolicyId as string | undefined;
+  const loc = ms.merchantLocationKey as string | undefined;
+  if (fp && pp && rp && loc) return specific;
+  const [profile] = await db.select()
+    .from(sellerProfiles)
+    .where(eq(sellerProfiles.userId, userId))
+    .limit(1);
+  return {
+    ...ms,
+    fulfillmentPolicyId: fp || profile?.ebayFulfillmentPolicyId || undefined,
+    paymentPolicyId: pp || profile?.ebayPaymentPolicyId || undefined,
+    returnPolicyId: rp || profile?.ebayReturnPolicyId || undefined,
+    merchantLocationKey: loc || profile?.ebayMerchantLocationKey || undefined,
+  };
+}
+
 function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): MarketplaceAdapter {
   switch (marketplace) {
     case 'ebay': return new EbayAdapter(userId);
@@ -156,6 +185,14 @@ listingsRouter.post('/', async (req, res, next) => {
       const adapter = getAdapter(userId, body.marketplace);
       const photos = (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [];
 
+      // Same self-heal as POST /:id/publish: fill missing policy IDs/location from
+      // the seller profile, then merge item weight/dimensions in eBay shape.
+      let marketplaceSpecific = body.marketplaceSpecificFields;
+      if (body.marketplace === 'ebay') {
+        marketplaceSpecific = await applySellerPolicyDefaults(userId, marketplaceSpecific);
+        marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
+      }
+
       const result = await adapter.createListing({
         title: item.title,
         description: item.description,
@@ -168,9 +205,7 @@ listingsRouter.post('/', async (req, res, next) => {
         brand: item.brand,
         model: item.model,
         features: item.features as string[],
-        marketplaceSpecific: body.marketplace === 'ebay'
-          ? mergeItemShipping(item, body.marketplaceSpecificFields)
-          : body.marketplaceSpecificFields,
+        marketplaceSpecific,
       });
 
       marketplaceListingId = result.marketplaceListingId;

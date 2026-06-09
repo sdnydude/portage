@@ -14,6 +14,20 @@ import type {
 
 const logger = createLogger('ebay-adapter');
 
+// TTL caches for per-category taxonomy lookups (mirrors the Etsy shopId/taxonomy
+// cache pattern). Keyed by categoryId; only successful (HTTP ok) responses are
+// cached so a transient eBay error never poisons the cache for the TTL window.
+const validConditionsCache = new Map<string, { value: string[]; cachedAt: number }>();
+const VALID_CONDITIONS_TTL = 60 * 60 * 1000; // 1h
+const requiredAspectsCache = new Map<string, { value: Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>; cachedAt: number }>();
+const REQUIRED_ASPECTS_TTL = 24 * 60 * 60 * 1000; // 24h
+
+// Test seam: module-level caches survive across vitest tests in a file.
+export function clearEbayTaxonomyCaches(): void {
+  validConditionsCache.clear();
+  requiredAspectsCache.clear();
+}
+
 /**
  * Thrown when a listing cannot publish because one or more category-required
  * eBay item specifics (aspects) have no value. Carries the missing aspect names
@@ -932,6 +946,9 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   static async getRequiredAspects(categoryId: string): Promise<Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>> {
+    const cached = requiredAspectsCache.get(categoryId);
+    if (cached && Date.now() - cached.cachedAt < REQUIRED_ASPECTS_TTL) return cached.value;
+
     const token = await getEbayProdAppToken();
 
     const response = await fetch(
@@ -966,6 +983,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       };
     }
 
+    requiredAspectsCache.set(categoryId, { value: result, cachedAt: Date.now() });
     return result;
   }
 
@@ -973,6 +991,9 @@ export class EbayAdapter implements MarketplaceAdapter {
   // getRequiredAspects: prod app token, graceful [] on any failure so a
   // transient Metadata hiccup never blocks listing preparation.
   static async getValidConditions(categoryId: string): Promise<string[]> {
+    const cached = validConditionsCache.get(categoryId);
+    if (cached && Date.now() - cached.cachedAt < VALID_CONDITIONS_TTL) return cached.value;
+
     const token = await getEbayProdAppToken();
 
     const filter = encodeURIComponent(`categoryIds:{${categoryId}}`);
@@ -998,6 +1019,8 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
 
     const conditions = data.itemConditionPolicies?.[0]?.itemConditions ?? [];
-    return conditions.map(c => c.conditionId);
+    const result = conditions.map(c => c.conditionId);
+    validConditionsCache.set(categoryId, { value: result, cachedAt: Date.now() });
+    return result;
   }
 }

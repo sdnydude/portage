@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
-import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError } from './ebay-adapter.js';
+import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError, clearEbayTaxonomyCaches } from './ebay-adapter.js';
 
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
@@ -28,6 +28,8 @@ const baseInput = {
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   loadEnv();
+  // Module-level TTL caches survive between tests — clear so each test sees real fetches.
+  clearEbayTaxonomyCaches();
   // Fresh Response per call — a Response body can only be read once, and
   // createListing makes several requests (inventory PUT, offer POST, publish).
   fetchMock = vi.fn().mockImplementation(async () => new Response('{}', { status: 200 }));
@@ -515,6 +517,44 @@ describe('EbayAdapter.getValidConditions — Metadata API condition policies', (
   it('returns [] when the response has no condition policies', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ itemConditionPolicies: [] }), { status: 200 }));
     expect(await EbayAdapter.getValidConditions('15032')).toEqual([]);
+  });
+});
+
+describe('eBay taxonomy TTL caches', () => {
+  it('serves getValidConditions from cache within the TTL — one upstream fetch for two calls', async () => {
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      itemConditionPolicies: [{ itemConditions: [{ conditionId: '1000' }, { conditionId: '3000' }] }],
+    }), { status: 200 }));
+
+    expect(await EbayAdapter.getValidConditions('424242')).toEqual(['1000', '3000']);
+    expect(await EbayAdapter.getValidConditions('424242')).toEqual(['1000', '3000']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves getRequiredAspects from cache within the TTL — one upstream fetch for two calls', async () => {
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      aspects: [{
+        localizedAspectName: 'Brand',
+        aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' },
+      }],
+    }), { status: 200 }));
+
+    const expected = { Brand: { required: true, values: null, cardinality: 'SINGLE' } };
+    expect(await EbayAdapter.getRequiredAspects('424242')).toEqual(expected);
+    expect(await EbayAdapter.getRequiredAspects('424242')).toEqual(expected);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('never caches a failed response — a transient error must not poison the cache', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('eBay down', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        itemConditionPolicies: [{ itemConditions: [{ conditionId: '1000' }] }],
+      }), { status: 200 }));
+
+    expect(await EbayAdapter.getValidConditions('535353')).toEqual([]); // fail-open, NOT cached
+    expect(await EbayAdapter.getValidConditions('535353')).toEqual(['1000']); // refetched
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
