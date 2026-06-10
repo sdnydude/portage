@@ -57,6 +57,24 @@ describe("PhotoEditPanel", () => {
     expect(onDiscard).toHaveBeenCalled();
   });
 
+  it("close is disabled while a tool is processing (no invisible background mutations)", () => {
+    render(<PhotoEditPanel {...BASE} isProcessing processingLabel="Rotating..." />);
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeDisabled();
+  });
+
+  it("renders the host's error inside the overlay so failures are never invisible", () => {
+    render(<PhotoEditPanel {...BASE} error="Rotation failed" />);
+    expect(screen.getByText("Rotation failed")).toBeInTheDocument();
+  });
+
+  it("omits Rotate/Crop when the host provides no handlers", () => {
+    render(<PhotoEditPanel {...BASE} onRotate={undefined} onCrop={undefined} />);
+    expect(screen.queryByRole("button", { name: /rotate/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /crop/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /enhance/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /bg remove/i })).toBeInTheDocument();
+  });
+
   it("each tool shows its own icon, not a shared placeholder", () => {
     render(<PhotoEditPanel {...BASE} />);
     expect(screen.getByTestId("tool-icon-rotate")).toBeInTheDocument();

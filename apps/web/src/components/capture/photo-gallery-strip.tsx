@@ -3,8 +3,11 @@
 import { ImagePicker } from "./image-picker";
 
 interface StripPhoto {
-  key: string;
+  key?: string;
   url: string;
+  /** False while a photo can't be edited yet (e.g. a local blob: still
+   *  uploading) — the thumb renders without the edit affordance. */
+  editable?: boolean;
 }
 
 interface PhotoGalleryStripProps {
@@ -31,29 +34,44 @@ export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos 
         <span className="text-[11px] font-semibold text-[var(--orange)]">Tap to edit</span>
       </div>
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
-        {photos.map((photo, i) => (
-          <button
-            key={photo.key}
-            onClick={() => onEditPhoto(i)}
-            aria-label={`Edit photo ${i + 1}`}
-            className={`relative flex-shrink-0 w-[78px] h-[78px] rounded-[15px] overflow-hidden border-2 transition-transform active:scale-95 ${
-              i === 0 ? "border-[var(--teal)]" : "border-transparent"
-            }`}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={photo.url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
-            {i === 0 && (
-              <span className="absolute top-1 left-1 font-[family-name:var(--font-jetbrains)] text-[8px] font-bold tracking-wide px-1.5 py-0.5 rounded-[5px] bg-[var(--teal)] text-white">
-                COVER
-              </span>
-            )}
-            <span data-testid="edit-dot" className="absolute right-1 bottom-1 w-[22px] h-[22px] rounded-full bg-black/60 backdrop-blur-sm border border-white/25 grid place-items-center text-white">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
-              </svg>
-            </span>
-          </button>
-        ))}
+        {photos.map((photo, i) => {
+          const editable = photo.editable !== false;
+          const thumbClass = `relative flex-shrink-0 w-[78px] h-[78px] rounded-[15px] overflow-hidden border-2 ${
+            i === 0 ? "border-[var(--teal)]" : "border-transparent"
+          }`;
+          const contents = (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photo.url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+              {i === 0 && (
+                <span className="absolute top-1 left-1 font-[family-name:var(--font-jetbrains)] text-[8px] font-bold tracking-wide px-1.5 py-0.5 rounded-[5px] bg-[var(--teal)] text-white">
+                  COVER
+                </span>
+              )}
+              {editable && (
+                <span data-testid="edit-dot" className="absolute right-1 bottom-1 w-[22px] h-[22px] rounded-full bg-black/60 backdrop-blur-sm border border-white/25 grid place-items-center text-white">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+                  </svg>
+                </span>
+              )}
+            </>
+          );
+          return editable ? (
+            <button
+              key={photo.key ?? photo.url}
+              onClick={() => onEditPhoto(i)}
+              aria-label={`Edit photo ${i + 1}`}
+              className={`${thumbClass} transition-transform active:scale-95`}
+            >
+              {contents}
+            </button>
+          ) : (
+            <div key={photo.key ?? photo.url} className={thumbClass}>
+              {contents}
+            </div>
+          );
+        })}
 
         {onAddPhotos && photos.length < maxPhotos && (
           <ImagePicker onSelect={onAddPhotos} multiple>

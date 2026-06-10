@@ -53,13 +53,17 @@ interface PhotoEditPanelProps {
   photoIndex: number;
   photoCount: number;
   onClose: () => void;
-  onRotate: () => void;
-  onCrop: () => void;
+  /** Omit to suppress this tool in the toolbar (all current hosts wire all four). */
+  onRotate?: () => void;
+  onCrop?: () => void;
   onEnhance: () => void;
   onBgRemove: () => void;
   isProcessing: boolean;
   processingLabel: string | null;
   pendingPreview: PendingPreview | null;
+  /** Tool failure to surface inside the overlay — page-level error displays
+   *  are hidden underneath this fixed layer. */
+  error?: string | null;
 }
 
 /**
@@ -81,13 +85,14 @@ export function PhotoEditPanel({
   isProcessing,
   processingLabel,
   pendingPreview,
+  error,
 }: PhotoEditPanelProps) {
   const tools = [
     { label: "Rotate", testId: "tool-icon-rotate", icon: <RotateIcon />, onClick: onRotate },
     { label: "Crop", testId: "tool-icon-crop", icon: <CropIcon />, onClick: onCrop },
     { label: "Enhance", testId: "tool-icon-enhance", icon: <EnhanceIcon />, onClick: onEnhance },
     { label: "BG Remove", testId: "tool-icon-bg-remove", icon: <BgRemoveIcon />, onClick: onBgRemove },
-  ] as const;
+  ].filter((t): t is typeof t & { onClick: () => void } => t.onClick !== undefined);
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-[#15181b] text-white animate-slide-up-full">
@@ -99,7 +104,8 @@ export function PhotoEditPanel({
         <button
           onClick={onClose}
           aria-label="Close editor"
-          className="w-10 h-10 rounded-full grid place-items-center bg-white/10 text-white"
+          disabled={isProcessing}
+          className="w-10 h-10 rounded-full grid place-items-center bg-white/10 text-white disabled:opacity-40"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M18 6L6 18M6 6l12 12" />
@@ -132,6 +138,12 @@ export function PhotoEditPanel({
           </div>
         )}
       </div>
+
+      {error && (
+        <div className="mx-4 mb-2 rounded-xl bg-red-500/20 border border-red-400/40 px-4 py-2.5 text-sm text-red-200 text-center">
+          {error}
+        </div>
+      )}
 
       {pendingPreview ? (
         /* Accept / discard replaces the toolbar while a result is pending */

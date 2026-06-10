@@ -9,8 +9,7 @@ import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
 import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
-import { PhotoEditPanel } from "../capture/photo-edit-panel";
-import { CropTool } from "./crop-tool";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
 import { WeightDimsInputs, type WeightDimsChange } from "../listing/weight-dims-inputs";
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
@@ -565,7 +564,7 @@ function deriveMessages(
           {state.photos.length > 0 && (
             <div className="px-3 pt-3">
               <PhotoGalleryStrip
-                photos={state.photos.map((p, i) => ({ key: p.key || `photo-${i}`, url: p.url }))}
+                photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
                 onEditPhoto={handlers.onEditPhoto}
                 maxPhotos={12}
               />
@@ -776,9 +775,9 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onPublish: handlePublish,
         onConfirmShipping: handleConfirmShipping,
         onAddPhoto: () => setShowCapture(true),
-        onEditPhoto: (i) => {
-          if (!state.photos[i]?.url.startsWith("blob:")) photoEdit.openEditor(i);
-        },
+        // Blob (still-uploading) photos render without an edit affordance in
+        // the strip, so this only fires for editable photos.
+        onEditPhoto: photoEdit.openEditor,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state, effectiveLastStep]
@@ -989,35 +988,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onCancel={() => setShowCapture(false)}
       />
 
-      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && photoEdit.showCrop && (
-        <CropTool
-          imageUrl={photoEdit.editingPhoto.url}
-          imageWidth={photoEdit.editingPhoto.width ?? 1024}
-          imageHeight={photoEdit.editingPhoto.height ?? 1024}
-          onApply={photoEdit.applyCrop}
-          onCancel={photoEdit.cancelCrop}
-        />
-      )}
-
-      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && !photoEdit.showCrop && (
-        <PhotoEditPanel
-          photo={{ url: photoEdit.editingPhoto.url }}
-          photoIndex={photoEdit.editingIndex}
-          photoCount={state.photos.length}
-          onClose={photoEdit.closeEditor}
-          onRotate={photoEdit.rotate}
-          onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
-          onEnhance={photoEdit.enhanceCurrent}
-          onBgRemove={photoEdit.bgRemoveCurrent}
-          isProcessing={photoEdit.isProcessing}
-          processingLabel={photoEdit.processingLabel}
-          pendingPreview={
-            photoEdit.pendingPreview
-              ? { ...photoEdit.pendingPreview, alt: state.title || "Photo preview" }
-              : null
-          }
-        />
-      )}
+      <PhotoEditOverlay photoEdit={photoEdit} photoCount={state.photos.length} alt={state.title || "Photo preview"} />
 
       {aspectsNeeded && (
         <AspectFillSheet

@@ -30,46 +30,51 @@ export function usePhotoEdit(
 
   // Unaccepted tool results surface as a before/after preview; accept persists
   // via onPhotoUpdated, discard just resets the tool.
-  const pendingPreview =
-    enhanceResult && editingIndex !== null && editingPhoto
-      ? {
-          beforeUrl: editingPhoto.url,
-          afterUrl: enhanceResult.image.url,
-          onAccept: async () => {
-            await onPhotoUpdated(editingIndex, {
-              url: enhanceResult.image.url,
-              key: enhanceResult.image.key,
-              width: enhanceResult.image.width,
-              height: enhanceResult.image.height,
-            });
-            resetEnhance();
-          },
-          onDiscard: () => {
-            resetEnhance();
-          },
-        }
-      : bgResultUrl && editingIndex !== null && editingPhoto
-        ? {
-            beforeUrl: editingPhoto.url,
-            afterUrl: bgResultUrl,
-            onAccept: async () => {
-              await onPhotoUpdated(editingIndex, { url: bgResultUrl });
-              resetBgRemoval();
-            },
-            onDiscard: () => {
-              resetBgRemoval();
-            },
-          }
-        : null;
+  function buildPendingPreview() {
+    if (editingIndex === null || !editingPhoto) return null;
+    if (enhanceResult) {
+      return {
+        beforeUrl: editingPhoto.url,
+        afterUrl: enhanceResult.image.url,
+        onAccept: async () => {
+          await onPhotoUpdated(editingIndex, {
+            url: enhanceResult.image.url,
+            key: enhanceResult.image.key,
+            width: enhanceResult.image.width,
+            height: enhanceResult.image.height,
+          });
+          resetEnhance();
+        },
+        onDiscard: () => {
+          resetEnhance();
+        },
+      };
+    }
+    if (bgResultUrl) {
+      return {
+        beforeUrl: editingPhoto.url,
+        afterUrl: bgResultUrl,
+        onAccept: async () => {
+          await onPhotoUpdated(editingIndex, { url: bgResultUrl });
+          resetBgRemoval();
+        },
+        onDiscard: () => {
+          resetBgRemoval();
+        },
+      };
+    }
+    return null;
+  }
+  const pendingPreview = buildPendingPreview();
 
   const isProcessing = isRotating || isEnhancing || isRemovingBg;
-  const processingLabel = isRotating
-    ? "Rotating..."
-    : isEnhancing
-      ? "Enhancing..."
-      : isRemovingBg
-        ? "Removing background..."
-        : null;
+  function resolveProcessingLabel() {
+    if (isRotating) return "Rotating...";
+    if (isEnhancing) return "Enhancing...";
+    if (isRemovingBg) return "Removing background...";
+    return null;
+  }
+  const processingLabel = resolveProcessingLabel();
 
   return {
     editingIndex,
@@ -84,7 +89,7 @@ export function usePhotoEdit(
     },
     closeEditor() {
       // Closing with an unaccepted result discards it — nothing pending may
-      // silently apply.
+      // silently apply. Resets ALL active tool state; add new tool resets here.
       resetEnhance();
       resetBgRemoval();
       setEditingIndex(null);
@@ -105,6 +110,7 @@ export function usePhotoEdit(
     },
     async applyCrop(crop: { x: number; y: number; width: number; height: number }) {
       if (!token || editingIndex === null || !photos[editingIndex]) return;
+      setToolError(null);
       try {
         const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/crop", {
           method: "POST",
@@ -147,3 +153,6 @@ export function usePhotoEdit(
     },
   };
 }
+
+/** Explicit contract for the 5 hosts (listing flows, preview card, capture flow). */
+export type UsePhotoEditReturn = ReturnType<typeof usePhotoEdit>;

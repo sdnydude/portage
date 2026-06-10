@@ -378,9 +378,9 @@ export default function ItemDetailPage() {
           )}
         </div>
 
-        {/* Photo editor overlay (Enhance + BG Remove — this page has no
-            rotate/crop plumbing). BG removal keeps its own panel, hosted in
-            an overlay layer above the editor. */}
+        {/* Photo editor overlay — all 4 tools wired (rotate/crop ported from
+            scan-flow in S2.5-6). CropTool and the BG-removal panel each mount
+            in their own layer above the editor (z-[80]). */}
         {editingPhotoIndex !== null && currentPhoto && (
           showCrop ? (
             <CropTool
@@ -419,6 +419,7 @@ export default function ItemDetailPage() {
               onBgRemove={() => setShowBgRemoval(true)}
               isProcessing={isEnhancing || isRotating}
               processingLabel={isRotating ? "Rotating..." : isEnhancing ? "Enhancing..." : null}
+              error={uploadError ?? enhanceError}
               pendingPreview={
                 enhanceResult
                   ? {

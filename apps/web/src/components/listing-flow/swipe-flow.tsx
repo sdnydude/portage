@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
 import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
-import { PhotoEditPanel } from "../capture/photo-edit-panel";
-import { CropTool } from "./crop-tool";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { formatCondition } from "@/lib/format";
 import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
@@ -1240,43 +1239,13 @@ export function ReviewPhase({
       {/* Photo gallery strip — tap a thumb to open the editor overlay (S2.5-9). */}
       <div style={{ padding: "72px 20px 16px", flexShrink: 0 }}>
         <PhotoGalleryStrip
-          photos={state.photos.map((p, i) => ({ key: p.key || `photo-${i}`, url: p.url }))}
-          onEditPhoto={(i) => {
-            if (!state.photos[i]?.url.startsWith("blob:")) photoEdit.openEditor(i);
-          }}
+          photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
+          onEditPhoto={photoEdit.openEditor}
           maxPhotos={12}
         />
       </div>
 
-      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && photoEdit.showCrop && (
-        <CropTool
-          imageUrl={photoEdit.editingPhoto.url}
-          imageWidth={photoEdit.editingPhoto.width ?? 1024}
-          imageHeight={photoEdit.editingPhoto.height ?? 1024}
-          onApply={photoEdit.applyCrop}
-          onCancel={photoEdit.cancelCrop}
-        />
-      )}
-
-      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && !photoEdit.showCrop && (
-        <PhotoEditPanel
-          photo={{ url: photoEdit.editingPhoto.url }}
-          photoIndex={photoEdit.editingIndex}
-          photoCount={state.photos.length}
-          onClose={photoEdit.closeEditor}
-          onRotate={photoEdit.rotate}
-          onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
-          onEnhance={photoEdit.enhanceCurrent}
-          onBgRemove={photoEdit.bgRemoveCurrent}
-          isProcessing={photoEdit.isProcessing}
-          processingLabel={photoEdit.processingLabel}
-          pendingPreview={
-            photoEdit.pendingPreview
-              ? { ...photoEdit.pendingPreview, alt: state.title || "Photo preview" }
-              : null
-          }
-        />
-      )}
+      <PhotoEditOverlay photoEdit={photoEdit} photoCount={state.photos.length} alt={state.title || "Photo preview"} />
 
       <div
         style={{

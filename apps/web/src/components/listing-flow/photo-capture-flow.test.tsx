@@ -61,5 +61,12 @@ describe("PhotoCaptureFlow — unified editor overlay (S2.5-11)", () => {
         body: { imageUrl: "https://example.com/1.jpg", degrees: 90 },
       }));
     });
+
+    // The grid thumb must show the rotated image — a stale pre-edit
+    // thumbnailUrl may not linger after an edit.
+    fireEvent.click(screen.getByRole("button", { name: /close editor/i }));
+    await waitFor(() => {
+      expect(screen.getByAltText("Photo 1")).toHaveAttribute("src", "https://example.com/1-rot.jpg");
+    });
   });
 });

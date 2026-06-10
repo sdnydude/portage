@@ -120,6 +120,23 @@ describe("ConversationalFlow — photo editing wiring (S2.5-8)", () => {
     }
   });
 
+  it("still-uploading blob photos render in the strip without an edit affordance", () => {
+    h.lastStep = "review";
+    const original = flowState.photos;
+    flowState.photos = [
+      { url: "blob:local-1", key: "local-1" },
+      { url: "https://example.com/2.jpg", key: "k2" },
+    ];
+    try {
+      render(<ConversationalFlow />);
+      expect(screen.queryByRole("button", { name: /edit photo 1/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /edit photo 2/i })).toBeInTheDocument();
+    } finally {
+      flowState.photos = original;
+      h.lastStep = "confirmed";
+    }
+  });
+
   it("tapping Crop in the editor opens the crop overlay", () => {
     h.lastStep = "review";
     try {

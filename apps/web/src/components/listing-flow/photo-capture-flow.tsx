@@ -5,8 +5,7 @@ import { useCamera } from "@/hooks/use-camera";
 import { useAuth } from "@/hooks/use-auth";
 import { API_BASE } from "@/lib/api";
 import { PhotoGrid } from "./photo-grid";
-import { PhotoEditPanel } from "../capture/photo-edit-panel";
-import { CropTool } from "./crop-tool";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,7 +26,7 @@ export interface PhotoCaptureFlowProps {
   maxPhotos?: number;
 }
 
-type Mode = "grid" | "choose" | "camera" | "editor";
+type Mode = "grid" | "choose" | "camera";
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -322,7 +321,6 @@ export function PhotoCaptureFlow({
   const { token } = useAuth();
   const [photos, setPhotos] = useState<CapturedPhoto[]>(initialPhotos);
   const [mode, setMode] = useState<Mode>("grid");
-  const [editIndex, setEditIndex] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -396,15 +394,15 @@ export function PhotoCaptureFlow({
     setMode("choose");
   }, [photos.length, maxPhotos]);
 
-  // Edits persist into the local capture list; the shared overlay hosts the tools.
+  // Edits persist into the local capture list; the shared overlay hosts the
+  // tools. The pre-edit thumbnail is dropped so the grid falls back to the
+  // edited full image instead of a stale thumb.
   const photoEdit = usePhotoEdit(photos, (index, patch) => {
-    setPhotos((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+    setPhotos((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch, thumbnailUrl: undefined } : p)));
   });
 
   const handleEdit = useCallback((index: number) => {
     photoEdit.openEditor(index);
-    setEditIndex(index);
-    setMode("editor");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photoEdit.openEditor]);
 
@@ -457,13 +455,6 @@ export function PhotoCaptureFlow({
     [uploadBlob],
   );
 
-  // ─── Editor handlers ───────────────────────────────────────────────────────
-
-  const handleEditorCancel = useCallback(() => {
-    setEditIndex(null);
-    setMode("grid");
-  }, []);
-
   // ─── Render: Camera ────────────────────────────────────────────────────────
 
   if (mode === "camera") {
@@ -487,47 +478,19 @@ export function PhotoCaptureFlow({
     );
   }
 
-  // ─── Render: Editor ────────────────────────────────────────────────────────
-
-  if (mode === "editor" && editIndex !== null && photos[editIndex]) {
-    if (photoEdit.showCrop) {
-      return (
-        <CropTool
-          imageUrl={photos[editIndex].url}
-          imageWidth={photos[editIndex].width ?? 1024}
-          imageHeight={photos[editIndex].height ?? 1024}
-          onApply={photoEdit.applyCrop}
-          onCancel={photoEdit.cancelCrop}
-        />
-      );
-    }
-    return (
-      <PhotoEditPanel
-        photo={{ url: photos[editIndex].url }}
-        photoIndex={editIndex}
-        photoCount={photos.length}
-        onClose={() => {
-          photoEdit.closeEditor();
-          handleEditorCancel();
-        }}
-        onRotate={photoEdit.rotate}
-        onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
-        onEnhance={photoEdit.enhanceCurrent}
-        onBgRemove={photoEdit.bgRemoveCurrent}
-        isProcessing={photoEdit.isProcessing}
-        processingLabel={photoEdit.processingLabel}
-        pendingPreview={photoEdit.pendingPreview ? { ...photoEdit.pendingPreview, alt: `Photo ${editIndex + 1}` } : null}
-      />
-    );
-  }
-
-  // ─── Render: Grid (default) ────────────────────────────────────────────────
+  // ─── Render: Grid (default) — the editor overlay mounts above it ──────────
 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col"
       style={{ background: "var(--flow-bg, #F5F3EF)" }}
     >
+      <PhotoEditOverlay
+        photoEdit={photoEdit}
+        photoCount={photos.length}
+        alt={photoEdit.editingIndex !== null ? `Photo ${photoEdit.editingIndex + 1}` : "Photo"}
+      />
+
       {/* Header */}
       <div
         className="flex items-center px-4 pt-4 pb-3"

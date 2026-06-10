@@ -352,7 +352,12 @@ export function useListingFlow() {
   }, [triggerAutoSave]);
 
   // Photo-edit tools (rotate/crop/enhance/bg-remove) persist their result here.
+  // Throws on a vanished index (photo deleted mid-edit) so usePhotoEdit's
+  // catch surfaces it as a tool error instead of silently dropping the result.
   const updatePhoto = useCallback((index: number, patch: Partial<ListingFlowState['photos'][number]> & { url: string }) => {
+    if (!stateRef.current.photos[index]) {
+      throw new Error(`Photo ${index + 1} no longer exists — it may have been removed while editing.`);
+    }
     setState(prev => {
       if (!prev.photos[index]) return prev;
       const next = {

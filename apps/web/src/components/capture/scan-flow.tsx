@@ -66,11 +66,6 @@ const conditionOptions = [
   { value: "poor", label: "Poor" },
 ] as const;
 
-
-
-
-
-
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function ScanFlow({ onClose }: ScanFlowProps) {
@@ -578,23 +573,31 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   // ─── Photo editor overlay (all 4 tools; crop early-return above wins) ────
 
   if (editingPhotoIndex !== null && photos[editingPhotoIndex]) {
-    const pendingPreview = enhanceResult
-      ? {
-          beforeUrl: photos[selectedPhotoIndex]?.url,
+    // The before-image is the photo being edited — never the strip selection,
+    // even though the two indices are kept in sync on open.
+    const beforeUrl = photos[editingPhotoIndex].url;
+    const buildPendingPreview = () => {
+      if (enhanceResult) {
+        return {
+          beforeUrl,
           afterUrl: enhanceResult.image.url,
           alt: "Enhanced preview",
           onAccept: handleAcceptEnhance,
           onDiscard: handleDiscardEnhance,
-        }
-      : bgResultUrl
-        ? {
-            beforeUrl: photos[selectedPhotoIndex]?.url,
-            afterUrl: bgResultUrl,
-            alt: "Background removed preview",
-            onAccept: handleAcceptBg,
-            onDiscard: handleDiscardBg,
-          }
-        : null;
+        };
+      }
+      if (bgResultUrl) {
+        return {
+          beforeUrl,
+          afterUrl: bgResultUrl,
+          alt: "Background removed preview",
+          onAccept: handleAcceptBg,
+          onDiscard: handleDiscardBg,
+        };
+      }
+      return null;
+    };
+    const pendingPreview = buildPendingPreview();
 
     return (
       <PhotoEditPanel
@@ -616,6 +619,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         processingLabel={
           isRotating ? "Rotating..." : isEnhancing ? "Enhancing..." : isRemovingBg ? "Removing background..." : null
         }
+        error={error}
         pendingPreview={pendingPreview}
       />
     );

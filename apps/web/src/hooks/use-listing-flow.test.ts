@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 const apiMock = vi.fn();
+const debouncedSaveMock = vi.fn();
 vi.mock("@/lib/api", () => ({
   api: (...args: unknown[]) => apiMock(...args),
   ApiError: class ApiError extends Error {},
@@ -11,7 +12,7 @@ vi.mock("./use-auth", () => ({ useAuth: () => ({ token: "t" }) }));
 vi.mock("./use-drafts", () => ({
   useDrafts: () => ({
     drafts: [], isLoading: false, error: null, fetchDrafts: vi.fn(),
-    getDraft: vi.fn(), saveDraft: vi.fn(), debouncedSave: vi.fn(), deleteDraft: vi.fn(),
+    getDraft: vi.fn(), saveDraft: vi.fn(), debouncedSave: debouncedSaveMock, deleteDraft: vi.fn(),
   }),
 }));
 
@@ -50,5 +51,26 @@ describe("useListingFlow.updatePhoto", () => {
       { url: "https://example.com/1.jpg", key: "k1" },
       { url: "https://example.com/2-rot.jpg", key: "k2-rot", width: 800, height: 600 },
     ]);
+  });
+
+  it("throws on a vanished index (photo deleted mid-edit) so tool errors surface instead of leaking the R2 write", () => {
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.addPhotos([{ url: "https://example.com/1.jpg", key: "k1" }]);
+    });
+    expect(() =>
+      act(() => result.current.updatePhoto(5, { url: "https://example.com/x.jpg" })),
+    ).toThrow(/no longer exists/);
+    expect(result.current.state.photos).toEqual([{ url: "https://example.com/1.jpg", key: "k1" }]);
+  });
+
+  it("triggers the draft autosave so edits survive a browser close", () => {
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.addPhotos([{ url: "https://example.com/1.jpg", key: "k1" }]);
+    });
+    debouncedSaveMock.mockClear();
+    act(() => result.current.updatePhoto(0, { url: "https://example.com/1-rot.jpg" }));
+    expect(debouncedSaveMock).toHaveBeenCalled();
   });
 });

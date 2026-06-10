@@ -15,8 +15,7 @@ import { ShippingConfigCard } from "./shipping-config-card";
 import { PricingStrategyPicker } from "./pricing-strategy-picker";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
-import { PhotoEditPanel } from "../capture/photo-edit-panel";
-import { CropTool } from "./crop-tool";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -922,14 +921,14 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
       <style>{`@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }`}</style>
 
       {/* Photo gallery strip — tap a thumb to open the editor overlay (S2.5-8).
-          Local blob: photos aren't editable until recognition uploads them. */}
+          Local blob: photos render without the edit affordance until
+          recognition uploads them (if recognition fails they stay blob: and
+          stay non-editable — re-add via "Replace photos…"). */}
       <div style={{ ...rowStyle }}>
         <label style={labelStyle}>Photos</label>
         <PhotoGalleryStrip
-          photos={state.photos.map((p, i) => ({ key: p.key || `photo-${i}`, url: p.url }))}
-          onEditPhoto={(i) => {
-            if (!state.photos[i]?.url.startsWith("blob:")) photoEdit.openEditor(i);
-          }}
+          photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
+          onEditPhoto={photoEdit.openEditor}
           maxPhotos={12}
         />
         <div onClick={() => fileInputRef.current?.click()} style={{ fontSize: 12, color: SECONDARY, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
@@ -938,35 +937,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
       </div>
 
-      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && (
-        photoEdit.showCrop ? (
-          <CropTool
-            imageUrl={photoEdit.editingPhoto.url}
-            imageWidth={photoEdit.editingPhoto.width ?? 1024}
-            imageHeight={photoEdit.editingPhoto.height ?? 1024}
-            onApply={photoEdit.applyCrop}
-            onCancel={photoEdit.cancelCrop}
-          />
-        ) : (
-          <PhotoEditPanel
-            photo={{ url: photoEdit.editingPhoto.url }}
-            photoIndex={photoEdit.editingIndex}
-            photoCount={state.photos.length}
-            onClose={photoEdit.closeEditor}
-            onRotate={photoEdit.rotate}
-            onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
-            onEnhance={photoEdit.enhanceCurrent}
-            onBgRemove={photoEdit.bgRemoveCurrent}
-            isProcessing={photoEdit.isProcessing}
-            processingLabel={photoEdit.processingLabel}
-            pendingPreview={
-              photoEdit.pendingPreview
-                ? { ...photoEdit.pendingPreview, alt: state.title || "Photo preview" }
-                : null
-            }
-          />
-        )
-      )}
+      <PhotoEditOverlay photoEdit={photoEdit} photoCount={state.photos.length} alt={state.title || "Photo preview"} />
 
       {/* Recognition loading */}
       {state.recognition.status === "recognizing" && (

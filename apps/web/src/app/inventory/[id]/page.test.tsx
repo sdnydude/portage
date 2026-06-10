@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   },
   updateItem: vi.fn().mockResolvedValue({}),
   apiMock: vi.fn(),
+  enhanceResult: null as null | { image: { key: string; url: string; width: number; height: number; size: number } },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -29,7 +30,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   api: h.apiMock,
 }));
 vi.mock("@/hooks/use-enhance", () => ({
-  useEnhance: () => ({ isProcessing: false, result: null, error: null, enhance: vi.fn(), reset: vi.fn() }),
+  useEnhance: () => ({ isProcessing: false, result: h.enhanceResult, error: null, enhance: vi.fn(), reset: vi.fn() }),
 }));
 vi.mock("@/hooks/use-comps", () => ({
   useComps: () => ({ comps: null, isLoading: false, error: null, fetchComps: vi.fn() }),
@@ -111,6 +112,46 @@ describe("inventory detail — photo gallery strip + editor overlay", () => {
         photos: [{ url: "https://example.com/1-rot.jpg", key: "k1-rot", width: 800, height: 600 }],
       });
     });
+  });
+
+  it("accepting an enhance writes the edited photo's slot, not another photo's (multi-photo)", async () => {
+    h.item.photos = [
+      { url: "https://example.com/1.jpg", key: "k1" },
+      { url: "https://example.com/2.jpg", key: "k2" },
+    ] as never;
+    h.updateItem.mockClear();
+    h.enhanceResult = { image: { key: "k2-enh", url: "https://example.com/2-enh.jpg", width: 9, height: 9, size: 1 } };
+    try {
+      render(<ItemDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /edit photo 2/i }));
+      fireEvent.click(screen.getByRole("button", { name: /use this photo/i }));
+
+      await waitFor(() => {
+        expect(h.updateItem).toHaveBeenCalledWith({
+          photos: [
+            { url: "https://example.com/1.jpg", key: "k1" },
+            { url: "https://example.com/2-enh.jpg", key: "k2-enh" },
+          ],
+        });
+      });
+    } finally {
+      h.enhanceResult = null;
+    }
+  });
+
+  it("a failed rotate surfaces its error inside the editor overlay (page error UI sits beneath it)", async () => {
+    h.item.photos = [{ url: "https://example.com/1.jpg", key: "k1" }] as never;
+    h.apiMock.mockRejectedValueOnce(new Error("rotate exploded"));
+    render(<ItemDetailPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /rotate/i }));
+
+    // The page-body uploadError div sits beneath the fixed z-[70] overlay, so
+    // the error must render INSIDE the overlay to be visible.
+    const errorNodes = await screen.findAllByText("rotate exploded");
+    expect(errorNodes.some((n) => n.closest('[class*="z-[70]"]'))).toBe(true);
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
   });
 
   it("crop opens the crop overlay; applying posts /images/crop and persists", async () => {

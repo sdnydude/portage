@@ -47,6 +47,25 @@ describe("PhotoGalleryStrip", () => {
     expect(screen.queryByLabelText(/add photos/i)).not.toBeInTheDocument();
   });
 
+  it("non-editable photos (e.g. still-uploading blobs) render without the edit affordance", () => {
+    const onEditPhoto = vi.fn();
+    render(
+      <PhotoGalleryStrip
+        photos={[
+          { key: "k1", url: "blob:local-1", editable: false },
+          { key: "k2", url: "https://example.com/2.jpg" },
+        ]}
+        onEditPhoto={onEditPhoto}
+        maxPhotos={12}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /edit photo 1/i })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("edit-dot")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 2/i }));
+    expect(onEditPhoto).toHaveBeenCalledWith(1);
+  });
+
   it("shows an edit-dot affordance on every thumb (comp: per-thumb pencil dot)", () => {
     render(
       <PhotoGalleryStrip photos={PHOTOS} onEditPhoto={vi.fn()} onAddPhotos={vi.fn()} maxPhotos={12} />,

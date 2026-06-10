@@ -160,5 +160,26 @@ describe("usePhotoEdit", () => {
     expect(result.current.error).toBe("crop exploded");
     expect(result.current.showCrop).toBe(false);
     expect(onPhotoUpdated).not.toHaveBeenCalled();
+
+    // A new tool run clears the stale error at entry.
+    h.apiMock.mockResolvedValueOnce({
+      image: { key: "k1-c", url: "https://example.com/1-c.jpg", width: 5, height: 5 },
+    });
+    act(() => result.current.openCrop());
+    await act(() => result.current.applyCrop({ x: 0, y: 0, width: 5, height: 5 }));
+    expect(result.current.error).toBeNull();
+  });
+
+  it("enhance failures propagate through the hook's error", async () => {
+    const onPhotoUpdated = vi.fn();
+    h.apiMock.mockRejectedValueOnce(new Error("enhance exploded"));
+    const { result } = renderHook(() => usePhotoEdit(photos, onPhotoUpdated));
+
+    act(() => result.current.openEditor(0));
+    await act(() => result.current.enhanceCurrent());
+
+    expect(result.current.error).toBe("Enhancement failed");
+    expect(result.current.pendingPreview).toBeNull();
+    expect(onPhotoUpdated).not.toHaveBeenCalled();
   });
 });

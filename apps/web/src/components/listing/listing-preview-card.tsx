@@ -3,8 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { CompsPricingWidget } from "./comps-pricing-widget";
 import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
-import { PhotoEditPanel } from "../capture/photo-edit-panel";
-import { CropTool } from "../listing-flow/crop-tool";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
 import { useRequiredAspects } from "@/hooks/use-required-aspects";
 import type { PreparedListingData } from "@portage/shared";
@@ -139,40 +138,14 @@ export function ListingPreviewCard({
       <div className="p-4 space-y-4">
         {onPhotoUpdated && (
           <PhotoGalleryStrip
-            photos={photos.map((p, i) => ({ key: p.key || `photo-${i}`, url: p.url }))}
+            photos={photos}
             onEditPhoto={photoEdit.openEditor}
             maxPhotos={12}
           />
         )}
 
-        {onPhotoUpdated && photoEdit.editingIndex !== null && photoEdit.editingPhoto && (
-          photoEdit.showCrop ? (
-            <CropTool
-              imageUrl={photoEdit.editingPhoto.url}
-              imageWidth={photoEdit.editingPhoto.width ?? 1024}
-              imageHeight={photoEdit.editingPhoto.height ?? 1024}
-              onApply={photoEdit.applyCrop}
-              onCancel={photoEdit.cancelCrop}
-            />
-          ) : (
-            <PhotoEditPanel
-              photo={{ url: photoEdit.editingPhoto.url }}
-              photoIndex={photoEdit.editingIndex}
-              photoCount={photos.length}
-              onClose={photoEdit.closeEditor}
-              onRotate={photoEdit.rotate}
-              onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
-              onEnhance={photoEdit.enhanceCurrent}
-              onBgRemove={photoEdit.bgRemoveCurrent}
-              isProcessing={photoEdit.isProcessing}
-              processingLabel={photoEdit.processingLabel}
-              pendingPreview={
-                photoEdit.pendingPreview
-                  ? { ...photoEdit.pendingPreview, alt: data.title }
-                  : null
-              }
-            />
-          )
+        {onPhotoUpdated && (
+          <PhotoEditOverlay photoEdit={photoEdit} photoCount={photos.length} alt={data.title} />
         )}
 
         <h3 className="text-lg font-semibold" style={{ color: "var(--flow-text, #18191C)" }}>
