@@ -650,7 +650,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
       {/* ─── CAPTURE STATE ─────────────────────────────────────────────── */}
       {(state === "capture" || state === "uploading") && (
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
           {error && (
             <div className="mx-4 mt-3 bg-[var(--accent-error-soft)] border border-[var(--accent-error)]/30 rounded-xl p-3 text-sm text-[var(--accent-error)] text-center">
               {error}
@@ -705,7 +705,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             </div>
           ) : (
             /* Has photos — show strip + add more + scan button */
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 min-h-0 flex flex-col">
               {/* Hero preview of selected photo */}
               <div className="relative flex-1 min-h-0 bg-black flex items-center justify-center overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
