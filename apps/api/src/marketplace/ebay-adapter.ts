@@ -1,4 +1,5 @@
 import { createLogger } from '../lib/logger.js';
+import { computePriceBands } from '../lib/pricing.js';
 import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
@@ -898,6 +899,11 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     const partial = activeResult.status === 'rejected' || soldResult.status === 'rejected';
 
+    // Market-shape bands over the RAW sold pool (no condition filter) — context
+    // for the comps UI. Listing-price bands come from the prepare-listing engine.
+    const soldBands = computePriceBands(soldPrices);
+    const totalComps = sold.length + active.length;
+
     return {
       sold,
       active,
@@ -906,7 +912,11 @@ export class EbayAdapter implements MarketplaceAdapter {
         soldAvg: avg(soldPrices),
         activeMedian: median(activePrices),
         activeAvg: avg(activePrices),
-        sampleSize: sold.length + active.length,
+        sampleSize: totalComps,
+        p25: soldBands?.p25 ?? null,
+        p50: soldBands?.p50 ?? null,
+        p75: soldBands?.p75 ?? null,
+        sellThrough: totalComps > 0 ? Math.round((sold.length / totalComps) * 100) / 100 : null,
       },
       ...(partial && { partial: true }),
     };

@@ -39,6 +39,34 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('EbayAdapter.searchComps — market-shape stats', () => {
+  it('adds R-7 percentiles from the raw sold pool and sell-through to stats', async () => {
+    const summary = (price: number) => ({
+      title: `Item ${price}`,
+      price: { value: String(price), currency: 'USD' },
+      condition: 'Used',
+      itemWebUrl: 'https://ebay.com/itm/1',
+    });
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const sold = String(url).includes('soldItemsOnly');
+      return new Response(JSON.stringify({
+        itemSummaries: sold
+          ? [summary(10), summary(20), summary(30), summary(40)]
+          : [summary(99)],
+      }), { status: 200 });
+    });
+
+    const result = await EbayAdapter.searchComps('test query');
+
+    // Raw sold pool [10,20,30,40]: R-7 p25 17.5 / p50 25 / p75 32.5.
+    // sellThrough = sold / (sold + active) = 4/5 = 0.8.
+    expect(result.stats.p25).toBe(17.5);
+    expect(result.stats.p50).toBe(25);
+    expect(result.stats.p75).toBe(32.5);
+    expect(result.stats.sellThrough).toBe(0.8);
+  });
+});
+
 describe('resolveEbayCondition — Portage condition → eBay Inventory API enum', () => {
   it('maps to valid Inventory-API enums and prefers an explicit override', () => {
     expect(resolveEbayCondition('new')).toBe('NEW');

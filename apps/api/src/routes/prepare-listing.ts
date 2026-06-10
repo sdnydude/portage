@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { eq, and, sql } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
+import { computePriceBands } from '../lib/pricing.js';
 import { db } from '../db/index.js';
 import { items, sellerProfiles, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -46,6 +47,7 @@ export function computePricing(
   soldComps: Array<{ price: number; condition: string }>,
   aiCondition: string,
   currency: string,
+  opts: { suggestPercentile?: number } = {},
 ): PricingData {
   const ebayCondition = EBAY_CONDITION_MAP[aiCondition] ?? 'GOOD';
 
@@ -80,21 +82,19 @@ export function computePricing(
     };
   }
 
-  const prices = pool.map(p => p.price).sort((a, b) => a - b);
-  const mid = Math.floor(prices.length / 2);
-  const median = prices.length % 2 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
-  const p25 = prices[Math.floor(prices.length * 0.25)] ?? prices[0];
-  const p75 = prices[Math.ceil(prices.length * 0.75) - 1] ?? prices[prices.length - 1];
+  // Bands from the condition-selected pool via the shared engine (R-7,
+  // round-once, undercut-at-p50) — pool is non-empty here, so bands exist.
+  const bands = computePriceBands(pool.map(p => p.price), { suggestPercentile: opts.suggestPercentile })!;
 
   const confidence = conditionMatch === 'exact' ? 'high' : conditionMatch === 'nearby' ? 'medium' : 'low';
 
   return {
-    suggested: Math.round(median * 0.97 * 100) / 100,
-    low: Math.round(p25 * 100) / 100,
-    high: Math.round(p75 * 100) / 100,
+    suggested: bands.suggested,
+    low: bands.p25,
+    high: bands.p75,
     currency,
     confidence,
-    basedOn: pool.length,
+    basedOn: bands.basedOn,
     conditionMatch,
   };
 }
@@ -298,7 +298,9 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       price: s.price,
       condition: s.condition,
     }));
-    const pricing = computePricing(soldWithCondition, aiFields.condition, currency);
+    const pricing = computePricing(soldWithCondition, aiFields.condition, currency, {
+      suggestPercentile: profile?.pricingSuggestPercentile,
+    });
 
     if (pricing.conditionMatch === 'all' && pricing.basedOn > 0) {
       warnings.push('Limited comps at this condition — price may be less accurate');

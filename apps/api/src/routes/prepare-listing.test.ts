@@ -66,7 +66,10 @@ describe('computePricing', () => {
     expect(result.suggested).toBe(Math.round(200 * 0.97 * 100) / 100);
   });
 
-  it('computes low/high as p25/p75', () => {
+  it('computes low/high as R-7 interpolated p25/p75', () => {
+    // [100,200,300,400] R-7: p25 idx 0.75 -> 175; p75 idx 2.25 -> 325.
+    // (Old index-pluck gave 200/300 with inconsistent floor/ceil — replaced by
+    // the shared engine per Stage 2 advisor review.)
     const comps = [
       { price: 100, condition: 'GOOD' },
       { price: 200, condition: 'GOOD' },
@@ -74,8 +77,20 @@ describe('computePricing', () => {
       { price: 400, condition: 'GOOD' },
     ];
     const result = computePricing(comps, 'good', 'USD');
-    expect(result.low).toBe(200);
-    expect(result.high).toBe(300);
+    expect(result.low).toBe(175);
+    expect(result.high).toBe(325);
+  });
+
+  it('honors a seller-tuned suggest percentile (no undercut off the default 50)', () => {
+    // [100,200,300,400] p75 idx 2.25 -> 325, undercut NOT applied at non-50
+    const comps = [
+      { price: 100, condition: 'GOOD' },
+      { price: 200, condition: 'GOOD' },
+      { price: 300, condition: 'GOOD' },
+      { price: 400, condition: 'GOOD' },
+    ];
+    const result = computePricing(comps, 'good', 'USD', { suggestPercentile: 75 });
+    expect(result.suggested).toBe(325);
   });
 });
 

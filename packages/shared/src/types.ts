@@ -224,6 +224,16 @@ export interface CompStats {
   activeMedian: number | null;
   activeAvg: number | null;
   sampleSize: number;
+  /**
+   * Market-shape percentiles over the RAW sold pool (no condition filtering) —
+   * for display/context only. Listing-price bands come from the prepare-listing
+   * pricing engine, which uses a condition-selected pool; do not mix the two.
+   */
+  p25?: number | null;
+  p50?: number | null;
+  p75?: number | null;
+  /** sold / (sold + active); null when there are no comps at all. */
+  sellThrough?: number | null;
 }
 
 export interface CompResult {
