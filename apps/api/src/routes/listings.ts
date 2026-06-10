@@ -8,6 +8,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
 import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
+import { applyFooter, descriptionLimitFor } from '../lib/footer.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { env } from '../lib/env.js';
@@ -193,9 +194,14 @@ listingsRouter.post('/', async (req, res, next) => {
         marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
       }
 
+      const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
+        .from(sellerProfiles)
+        .where(eq(sellerProfiles.userId, userId))
+        .limit(1);
+
       const result = await adapter.createListing({
         title: item.title,
-        description: item.description,
+        description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(body.marketplace)),
         price: body.price,
         currency: body.currency,
         category: item.category,
@@ -293,9 +299,13 @@ listingsRouter.patch('/:id', async (req, res, next) => {
       if (item) {
         try {
           const adapter = getAdapter(userId, updated.marketplace);
+          const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
+            .from(sellerProfiles)
+            .where(eq(sellerProfiles.userId, userId))
+            .limit(1);
           await adapter.updateListing(updated.marketplaceListingId, {
             title: item.title,
-            description: item.description,
+            description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(updated.marketplace)),
             price: updated.price,
             currency: updated.currency,
             condition: item.condition,
@@ -402,9 +412,14 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
     }
 
+    const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.userId, userId))
+      .limit(1);
+
     const result = await adapter.createListing({
       title: item.title,
-      description: item.description,
+      description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(listing.marketplace)),
       price: listing.price,
       currency: listing.currency,
       category: item.category,
