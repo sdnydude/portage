@@ -545,6 +545,22 @@ describe('eBay taxonomy TTL caches', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('expires the conditions cache after its 1h TTL — a stale entry is refetched', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+        itemConditionPolicies: [{ itemConditions: [{ conditionId: '1000' }] }],
+      }), { status: 200 }));
+
+      expect(await EbayAdapter.getValidConditions('616161')).toEqual(['1000']);
+      vi.advanceTimersByTime(60 * 60 * 1000 + 1); // 1h TTL + 1ms
+      expect(await EbayAdapter.getValidConditions('616161')).toEqual(['1000']);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('never caches a failed response — a transient error must not poison the cache', async () => {
     fetchMock
       .mockResolvedValueOnce(new Response('eBay down', { status: 503 }))

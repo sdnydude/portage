@@ -14,7 +14,8 @@ interface ScanAspectsSectionProps {
   aspects: Record<string, RequiredAspect>;
   aspectValues: Record<string, string>;
   setAspectValue: (name: string, value: string) => void;
-  /** AI-seeded values per aspect name; confirmed names already excluded. */
+  /** Seeded per aspect from the item's scan text (deterministic match against
+   *  eBay-allowed values — see aspect-seeding.ts); confirmed names excluded. */
   suggestions: Record<string, string[]>;
   confirmSuggestion: (name: string, value: string) => void;
   missingRequired: string[];
@@ -50,14 +51,14 @@ export function ScanAspectsSection({
   const isLoading = isCategoryResolving || isAspectsLoading;
 
   useEffect(() => {
-    const blocked = !isCategoryResolving && !isAspectsLoading && missingRequired.length > 0;
+    const blocked = !isLoading && missingRequired.length > 0;
     if (blocked && !wasBlockedRef.current) {
       setExpanded(true);
       // jsdom has no scrollIntoView — optional call keeps tests honest.
       sectionRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     }
     wasBlockedRef.current = blocked;
-  }, [isCategoryResolving, isAspectsLoading, missingRequired.length]);
+  }, [isLoading, missingRequired.length]);
 
   if (isLoading) {
     return (

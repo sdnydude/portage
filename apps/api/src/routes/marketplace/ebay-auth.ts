@@ -53,7 +53,13 @@ ebayAuthRouter.get('/category-suggestion', async (req, res, next) => {
       res.json({ suggestion: null });
       return;
     }
-    const conditionIds = await EbayAdapter.getValidConditions(suggestion.categoryId);
+    // A conditions failure must not sink the suggestion we already have —
+    // the client treats an empty list as "constrain nothing".
+    const conditionIds = await EbayAdapter.getValidConditions(suggestion.categoryId)
+      .catch((err) => {
+        logger.warn({ err, categoryId: suggestion.categoryId }, 'getValidConditions failed; returning empty conditionIds');
+        return [] as string[];
+      });
     res.json({ suggestion: { ...suggestion, conditionIds } });
   } catch (err) {
     next(err);

@@ -79,7 +79,7 @@ export function useScanAspects(editName: string, itemText: string) {
     [setAspectValue],
   );
 
-  // Race guard (same semantics as the active flag in use-required-aspects.ts:29-35,
+  // Race guard (same semantics as the active-flag cleanup in use-required-aspects,
   // sequence-based so the manually callable resolveCategory shares it): every
   // resolution bumps the sequence; stale settlers see a newer sequence and are
   // discarded — latest wins.
@@ -113,10 +113,10 @@ export function useScanAspects(editName: string, itemText: string) {
           setConditionIds([]);
         }
       } catch {
-        if (seq !== requestSeq.current) return;
-        setResolvedCategoryId(null);
-        setResolvedCategoryName(null);
-        setConditionIds([]);
+        // Transient failure (network, 5xx): retain the previous resolution.
+        // Clearing here would cascade into the aspect-value wipe effect and
+        // destroy user-confirmed values; only a confirmed "no match"
+        // (suggestion: null) resets the resolved state.
       } finally {
         if (seq === requestSeq.current) setIsCategoryResolving(false);
       }

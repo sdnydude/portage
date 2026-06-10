@@ -9,12 +9,16 @@ const baseInput: ScanListingInput = {
 };
 
 describe("buildListingPayload", () => {
-  it("defaults to draft publishMode when the seller profile is null", () => {
+  it("defaults to draft publishMode when the seller profile is null — confirmed fields still attached", () => {
     expect(buildListingPayload(baseInput, null)).toEqual({
       itemId: "item-1",
       marketplace: "ebay",
       price: 49.99,
       publishMode: "draft",
+      marketplaceSpecificFields: {
+        categoryId: "33034",
+        aspects: { Brand: ["Fender"] },
+      },
     });
   });
 
@@ -67,17 +71,24 @@ describe("buildListingPayload", () => {
     });
   });
 
-  it("uses draft publishMode when the profile says draft", () => {
+  it("draft mode carries categoryId and aspects too — the draft row persists them so publish doesn't re-ask", () => {
     expect(buildListingPayload(baseInput, { ebayPublishMode: "draft" })).toEqual({
       itemId: "item-1",
       marketplace: "ebay",
       price: 49.99,
       publishMode: "draft",
+      marketplaceSpecificFields: {
+        categoryId: "33034",
+        aspects: { Brand: ["Fender"] },
+      },
     });
   });
 
-  it("draft payload has NO marketplaceSpecificFields key", () => {
-    const payload = buildListingPayload(baseInput, { ebayPublishMode: "draft" });
+  it("omits marketplaceSpecificFields entirely when there is no category and no usable aspects", () => {
+    const payload = buildListingPayload(
+      { ...baseInput, resolvedCategoryId: null, aspects: {} },
+      { ebayPublishMode: "draft" },
+    );
     expect("marketplaceSpecificFields" in payload).toBe(false);
   });
 
@@ -86,6 +97,10 @@ describe("buildListingPayload", () => {
       itemId: "item-1",
       marketplace: "ebay",
       publishMode: "draft",
+      marketplaceSpecificFields: {
+        categoryId: "33034",
+        aspects: { Brand: ["Fender"] },
+      },
     });
   });
 });

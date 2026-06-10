@@ -28,7 +28,7 @@
   --accent-error-soft: #FDECEA;   /* error banner / required-missing bg */
   --accent-warning: #F59E0B;
   --accent-success: #0F9D58;
-  --accent-success-soft: #E6F4EE; /* money/comps highlight bg */
+  --accent-success-soft: #E6F4EE; /* success-tinted bg: comps/money highlight, "Complete" badge */
   --accent-info: #3B82F6;
 
   /* DHG design system — accents (migrate forest-green → these per screen) */

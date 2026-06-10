@@ -186,6 +186,41 @@ describe("ScanFlow review wiring", () => {
     expect(listingsCall?.[1].body).not.toHaveProperty("publishImmediately");
   });
 
+  it("falls back to draft publishMode when the seller-profile fetch rejects — never an accidental live publish", async () => {
+    scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
+
+    await renderInReview();
+
+    // Profile endpoint starts failing AFTER review renders — Save & List must
+    // degrade to draft via the .catch(() => null) glue, not throw or go live.
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/seller-profile") throw new Error("profile service down");
+      if (path === "/items") return { id: "item-1" };
+      return {};
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    const listingsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/listings");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect(listingsCall?.[1]).toMatchObject({
+      method: "POST",
+      body: {
+        itemId: "item-1",
+        marketplace: "ebay",
+        publishMode: "draft",
+        // Confirmed specifics survive the draft fallback — the draft row
+        // persists them for the later publish step.
+        marketplaceSpecificFields: {
+          aspects: { Brand: ["Fender"] },
+          categoryId: "33034",
+        },
+      },
+    });
+  });
+
   it("constrains condition pills to the category's conditionIds and snaps a disallowed selection", async () => {
     // Category only accepts conditionId 1000 → Portage "new" only. The AI
     // candidate said "good", so the selection must snap to New.
@@ -217,5 +252,15 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByText(/condition.*captured at listing time/i)).toBeInTheDocument();
     // The AI-suggested condition must not be silently snapped away.
     expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
+
+    // ...and Save persists that untouched condition — proof the warn path
+    // doesn't corrupt the item record.
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect(itemsCall?.[1].body).toMatchObject({ condition: "good" });
   });
 });

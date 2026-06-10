@@ -17,8 +17,9 @@ export function suggestAspectValues(
   for (const [name, aspect] of Object.entries(aspects)) {
     if (aspect.values === null) continue; // free-text aspects: nothing to enumerate
     const matches = aspect.values.filter((value) =>
-      // Word-boundary match so "Red" never matches "Shredder"; lookarounds
-      // (not \b) so multi-word values like "Solid Body" match across spaces.
+      // Word-boundary match so "Red" never matches "Shredder". Lookarounds
+      // instead of \b because \b fails on values with non-alphanumeric edges
+      // (e.g. "A+": no \b between "+" and a following space).
       new RegExp(
         `(?<![A-Za-z0-9])${escapeRegex(value)}(?![A-Za-z0-9])`,
         "i",

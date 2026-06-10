@@ -13,7 +13,7 @@ export interface ScanReviewActionsProps {
   canSave: boolean;
   /** Gates only Save & List (eBay aspects); Save is never gated. Default true. */
   canList?: boolean;
-  /** Shown under the bar and linked via aria-describedby when canList is false. */
+  /** Shown below the buttons (inside the bar), linked via aria-describedby when canList is false. */
   listDisabledReason?: string | null;
 }
 

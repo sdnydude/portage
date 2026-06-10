@@ -1,5 +1,5 @@
 // SYNC: client-side copy of CONDITION_PREFERENCE_CHAINS in
-// apps/api/src/marketplace/ebay-adapter.ts (~:119-125, private — not importable).
+// apps/api/src/marketplace/ebay-adapter.ts (private — not importable).
 // If the adapter chains change, update BOTH. Vocabulary: values are eBay
 // conditionIds (Sell metadata), NOT Browse display strings (see mapEbayCondition).
 export type PortageCondition = "new" | "like_new" | "good" | "fair" | "poor";

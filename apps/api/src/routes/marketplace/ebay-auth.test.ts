@@ -186,6 +186,23 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
     expect(conditionsSpy).not.toHaveBeenCalled();
   });
 
+  it('still returns the suggestion with empty conditionIds when the Metadata lookup throws', async () => {
+    // A conditions failure must not 500 the whole route — the suggestion alone
+    // is still useful; the client treats [] as "constrain nothing".
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({ categoryId: '619', categoryName: 'Guitar Amplifiers' });
+    vi.spyOn(EbayAdapter, 'getValidConditions').mockRejectedValue(new Error('metadata token failure'));
+
+    const res = await request(app)
+      .get('/marketplace/ebay/category-suggestion')
+      .query({ q: 'fender deluxe reverb amp' })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      suggestion: { categoryId: '619', categoryName: 'Guitar Amplifiers', conditionIds: [] },
+    });
+  });
+
   it('rejects an unauthenticated request with 401', async () => {
     const res = await request(app)
       .get('/marketplace/ebay/category-suggestion')

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { api, API_BASE } from "@/lib/api";
 import { CameraCapture } from "./camera-capture";
@@ -177,10 +177,15 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
   // Constrain the condition pills to what the resolved eBay category accepts;
   // empty conditionIds (no category / no metadata) fails open to all five.
-  const availableConditions = getAvailablePortageConditions(conditionIds);
+  // Memoized so the snap effect below runs on real changes, not every render.
+  const availableConditions = useMemo(
+    () => getAvailablePortageConditions(conditionIds),
+    [conditionIds],
+  );
 
-  // If the AI-suggested condition became disallowed after category resolution,
-  // snap to the nearest allowed grade instead of failing later at publish.
+  // If the current condition (AI-suggested or comp-copied) is disallowed for
+  // the resolved category, snap to the nearest allowed grade instead of
+  // failing later at publish.
   useEffect(() => {
     if (availableConditions.length === 0) return;
     if (availableConditions.includes(editCondition as PortageCondition)) return;

@@ -257,6 +257,59 @@ describe("useScanAspects", () => {
     expect(result.current.isCategoryResolving).toBe(false);
   });
 
+  it("retains the previous resolution and confirmed values when a re-resolve fails", async () => {
+    mockRoutes();
+    const { result, rerender } = renderHook(
+      ({ name, text }) => useScanAspects(name, text),
+      { initialProps: { name: "Fender Stratocaster", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.resolvedCategoryId).toBe("33034");
+    act(() => {
+      result.current.setAspectValue("Brand", "Fender");
+    });
+
+    // Next resolution rejects (network blip); the aspects fetch keeps working.
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        return Promise.reject(new Error("network down"));
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: ASPECTS });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    rerender({ name: "Fender Stratocaster Deluxe", text: "" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    // A transient failure must not wipe the user's confirmed values — the
+    // previous resolution is retained; only a confirmed `suggestion: null`
+    // (no match) clears the resolved state.
+    expect(result.current.isCategoryResolving).toBe(false);
+    expect(result.current.resolvedCategoryId).toBe("33034");
+    expect(result.current.aspectValues).toEqual({ Brand: "Fender" });
+  });
+
+  it("a failed initial resolution degrades to unresolved with the spinner stopped", async () => {
+    apiMock.mockImplementation(() => Promise.reject(new Error("network down")));
+    const { result } = renderHook(
+      ({ name, text }) => useScanAspects(name, text),
+      { initialProps: { name: "mystery widget", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    // isCategoryResolving must never stick true — that would leave
+    // Save & List permanently disabled via aspectsBlockPublish.
+    expect(result.current.isCategoryResolving).toBe(false);
+    expect(result.current.resolvedCategoryId).toBeNull();
+    expect(result.current.conditionIds).toEqual([]);
+  });
+
   it("resolveCategory can be called manually to re-resolve (the 'change' affordance)", async () => {
     mockRoutes(null);
     const { result } = renderHook(

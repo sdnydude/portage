@@ -47,7 +47,7 @@ export const aiLatency = new client.Histogram({
 
 export const ebayTaxonomyCalls = new client.Counter({
   name: 'portage_ebay_taxonomy_calls_total',
-  help: 'Total eBay Taxonomy/Metadata API lookups by operation',
+  help: 'eBay taxonomy lookup requests by operation (route-level; upstream calls may be cache-served)',
   labelNames: ['operation'] as const,
 });
 
