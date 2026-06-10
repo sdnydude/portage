@@ -47,7 +47,7 @@ export function computePricing(
   soldComps: Array<{ price: number; condition: string }>,
   aiCondition: string,
   currency: string,
-  opts: { suggestPercentile?: number } = {},
+  opts: { suggestPercentile?: number; floorPercentile?: number } = {},
 ): PricingData {
   const ebayCondition = EBAY_CONDITION_MAP[aiCondition] ?? 'GOOD';
 
@@ -84,7 +84,10 @@ export function computePricing(
 
   // Bands from the condition-selected pool via the shared engine (R-7,
   // round-once, undercut-at-p50) — pool is non-empty here, so bands exist.
-  const bands = computePriceBands(pool.map(p => p.price), { suggestPercentile: opts.suggestPercentile })!;
+  const bands = computePriceBands(pool.map(p => p.price), {
+    suggestPercentile: opts.suggestPercentile,
+    floorPercentile: opts.floorPercentile,
+  })!;
 
   const confidence = conditionMatch === 'exact' ? 'high' : conditionMatch === 'nearby' ? 'medium' : 'low';
 
@@ -96,6 +99,7 @@ export function computePricing(
     confidence,
     basedOn: bands.basedOn,
     conditionMatch,
+    bestOfferFloor: bands.floor,
   };
 }
 
@@ -300,6 +304,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     }));
     const pricing = computePricing(soldWithCondition, aiFields.condition, currency, {
       suggestPercentile: profile?.pricingSuggestPercentile,
+      floorPercentile: profile?.pricingFloorPercentile,
     });
 
     if (pricing.conditionMatch === 'all' && pricing.basedOn > 0) {
@@ -333,6 +338,9 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       paymentPolicyId: profile?.ebayPaymentPolicyId ?? '',
       returnPolicyId: profile?.ebayReturnPolicyId ?? '',
       merchantLocationKey: profile?.ebayMerchantLocationKey ?? 'default',
+      ...(profile?.bestOfferAutoAcceptEnabled && pricing.bestOfferFloor
+        ? { bestOfferAutoAcceptPrice: pricing.bestOfferFloor }
+        : {}),
     } : null;
 
     const reverbFields = aiFields.reverb ? {

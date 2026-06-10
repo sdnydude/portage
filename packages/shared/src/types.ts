@@ -455,6 +455,12 @@ export interface PricingData {
   confidence: 'high' | 'medium' | 'low';
   basedOn: number;
   conditionMatch: 'exact' | 'nearby' | 'all';
+  /**
+   * Best-Offer auto-accept floor from the SAME comp pool as `suggested`
+   * (engine invariant — never recompute from a different pool). null/absent
+   * when the pool is too small (n<3) or the floor would invert.
+   */
+  bestOfferFloor?: number | null;
 }
 
 export interface ReverbCompListing {
@@ -491,6 +497,8 @@ export interface EbayPreparedFields {
   paymentPolicyId: string;
   returnPolicyId: string;
   merchantLocationKey: string;
+  /** Best-Offer auto-accept floor (seller opted in); flows to the adapter via marketplaceSpecific. */
+  bestOfferAutoAcceptPrice?: number;
 }
 
 export interface ReverbPreparedFields {

@@ -13,8 +13,10 @@ vi.mock('../db/index.js', () => ({
 }));
 
 vi.mock('../marketplace/ebay-adapter.js', () => ({
+  resolveEbayCategoryCondition: vi.fn().mockReturnValue({}),
   EbayAdapter: {
     getCategorySuggestion: vi.fn().mockResolvedValue(null),
+    getValidConditions: vi.fn().mockResolvedValue([]),
     searchComps: vi.fn().mockResolvedValue({
       sold: [
         { price: 100, condition: 'GOOD' },
@@ -148,5 +150,35 @@ describe('Seller-tuned pricing percentile in prepare-listing', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.pricing.suggested).toBe(242.5);
+  });
+
+  it('attaches the Best-Offer auto-accept floor to prepared eBay fields when the seller opted in', async () => {
+    const { generateListingFields } = await import('../lib/vision.js');
+    vi.mocked(generateListingFields).mockResolvedValueOnce({
+      title: 'Test Item',
+      description: 'A test item',
+      condition: 'good',
+      conditionDescription: 'Good condition',
+      brand: 'TestBrand',
+      model: 'TestModel',
+      isMusicGear: false,
+      aiConfidence: 0.9,
+      ebay: { title: 'Test Item', categoryId: '15032', categoryName: 'Guitars' },
+      reverb: null,
+    } as any);
+    // Floor = R-7 p25 of the SAME sold pool -> 175 (< suggested 242.5, kept).
+    mockDbSequence([
+      [baseItem],
+      [{ id: 'sp-1', pricingSuggestPercentile: 50, pricingFloorPercentile: 25, bestOfferAutoAcceptEnabled: true }],
+      [baseUser],
+    ]);
+
+    const res = await request(app)
+      .post('/items/item-1/prepare-listing')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetMarketplaces: ['ebay'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ebay.bestOfferAutoAcceptPrice).toBe(175);
   });
 });

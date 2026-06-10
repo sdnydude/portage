@@ -278,6 +278,28 @@ export class EbayAdapter implements MarketplaceAdapter {
     return response.json() as Promise<T>;
   }
 
+  /**
+   * Best-Offer auto-accept terms for an offer body. eBay nests bestOfferTerms
+   * under listingPolicies (NOT beside pricingSummary) and requires the
+   * autoAcceptPrice value as a STRING, mirroring pricingSummary formatting.
+   * Returns {} (spread no-op) unless the floor is a positive number below the
+   * BIN price — the inversion guard for prices edited after prepare time.
+   */
+  private static bestOfferTerms(
+    specific: Record<string, unknown>,
+    price: number,
+    currency: string,
+  ): Record<string, unknown> {
+    const floor = specific.bestOfferAutoAcceptPrice;
+    if (typeof floor !== 'number' || floor <= 0 || floor >= price) return {};
+    return {
+      bestOfferTerms: {
+        bestOfferEnabled: true,
+        autoAcceptPrice: { currency, value: String(floor) },
+      },
+    };
+  }
+
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
     const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const specific = input.marketplaceSpecific ?? {};
@@ -395,27 +417,49 @@ export class EbayAdapter implements MarketplaceAdapter {
     logger.info({ userId: this.userId, sku }, 'eBay inventory item created');
 
     // Re-publish reuses the existing offer (no duplicate); a first-time listing POSTs a new one.
+    const boTerms = EbayAdapter.bestOfferTerms(specific, input.price, input.currency);
+    const offerBody = (withBestOffer: boolean): string => JSON.stringify({
+      sku,
+      marketplaceId: 'EBAY_US',
+      format: 'FIXED_PRICE',
+      listingDescription: input.description,
+      pricingSummary: {
+        price: { value: String(input.price), currency: input.currency },
+      },
+      categoryId: fields.categoryId,
+      merchantLocationKey: fields.merchantLocationKey,
+      listingPolicies: {
+        fulfillmentPolicyId: fields.fulfillmentPolicyId,
+        paymentPolicyId: fields.paymentPolicyId,
+        returnPolicyId: fields.returnPolicyId,
+        ...(withBestOffer ? boTerms : {}),
+      },
+    });
+
+    const postOffer = async (): Promise<{ offerId: string }> => {
+      try {
+        return await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
+          method: 'POST',
+          body: offerBody(true),
+        });
+      } catch (err) {
+        // Best-Offer category support is not verifiable pre-flight — on a
+        // best-offer-specific rejection, retry once without the terms rather
+        // than failing the whole listing.
+        if (Object.keys(boTerms).length > 0 && err instanceof Error && /best\s?offer/i.test(err.message)) {
+          logger.warn({ userId: this.userId, sku, error: err.message }, 'eBay rejected bestOfferTerms — retrying offer without Best Offer');
+          return await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
+            method: 'POST',
+            body: offerBody(false),
+          });
+        }
+        throw err;
+      }
+    };
+
     const offerData: { offerId: string } = input.ebayOfferId
       ? { offerId: input.ebayOfferId }
-      : await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
-          method: 'POST',
-          body: JSON.stringify({
-            sku,
-            marketplaceId: 'EBAY_US',
-            format: 'FIXED_PRICE',
-            listingDescription: input.description,
-            pricingSummary: {
-              price: { value: String(input.price), currency: input.currency },
-            },
-            categoryId: fields.categoryId,
-            merchantLocationKey: fields.merchantLocationKey,
-            listingPolicies: {
-              fulfillmentPolicyId: fields.fulfillmentPolicyId,
-              paymentPolicyId: fields.paymentPolicyId,
-              returnPolicyId: fields.returnPolicyId,
-            },
-          }),
-        });
+      : await postOffer();
 
     // Draft mode: the unpublished offer exists on eBay (offerId + SKU) but we
     // deliberately skip /publish. This is an intentional draft, not a publish
@@ -525,11 +569,46 @@ export class EbayAdapter implements MarketplaceAdapter {
       };
     }
 
+    // Best Offer on update: only when the COMPLETE policy set is in hand —
+    // eBay's offer PUT replaces listingPolicies wholesale, so a partial block
+    // (bestOfferTerms alone) would strip the policy ids off the live offer.
+    const updateSpecific = (input.marketplaceSpecific ?? {}) as Record<string, unknown>;
+    const updateBoTerms = input.price
+      ? EbayAdapter.bestOfferTerms(updateSpecific, input.price, input.currency ?? 'USD')
+      : {};
+    const hasFullPolicies = Boolean(
+      updateSpecific.fulfillmentPolicyId && updateSpecific.paymentPolicyId && updateSpecific.returnPolicyId,
+    );
+    if (Object.keys(updateBoTerms).length > 0 && hasFullPolicies) {
+      updates.listingPolicies = {
+        fulfillmentPolicyId: updateSpecific.fulfillmentPolicyId,
+        paymentPolicyId: updateSpecific.paymentPolicyId,
+        returnPolicyId: updateSpecific.returnPolicyId,
+        ...updateBoTerms,
+      };
+    }
+
     if (Object.keys(updates).length > 0) {
-      await this.request(`/sell/inventory/v1/offer/${offerId}`, {
-        method: 'PUT',
-        body: JSON.stringify(updates),
-      });
+      try {
+        await this.request(`/sell/inventory/v1/offer/${offerId}`, {
+          method: 'PUT',
+          body: JSON.stringify(updates),
+        });
+      } catch (err) {
+        // Mirror createListing: on a best-offer-specific rejection, retry once
+        // without the listingPolicies block instead of failing the whole update.
+        if (!updates.listingPolicies || !(err instanceof Error) || !/best\s?offer/i.test(err.message)) {
+          throw err;
+        }
+        logger.warn({ userId: this.userId, offerId, error: err.message }, 'eBay rejected bestOfferTerms on update — retrying without Best Offer');
+        delete updates.listingPolicies;
+        if (Object.keys(updates).length > 0) {
+          await this.request(`/sell/inventory/v1/offer/${offerId}`, {
+            method: 'PUT',
+            body: JSON.stringify(updates),
+          });
+        }
+      }
     }
 
     logger.info({ userId: this.userId, marketplaceListingId }, 'eBay listing updated');
