@@ -7,7 +7,7 @@ sidebar_position: 0
 # Ship Log
 
 Structured records of every `/ship` workflow run for **portage**.
-Total: **41** sessions.
+Total: **42** sessions.
 
 | # | Feature | Status | PR | Deferred |
 |---|---------|--------|----|----------|
@@ -52,3 +52,4 @@ Total: **41** sessions.
 | 39 | [Voice chat interface — Porter-powered home screen with streaming, voice input, and TTS](039-voice-chat-interface-porter-powered-home-screen) | complete | [#87](https://github.com/sdnydude/portage/pull/87) | 5 |
 | 40 | [Bulk photo export — ZIP download of all photos for selected items](040-bulk-photo-export-zip-download) | complete | [#88](https://github.com/sdnydude/portage/pull/88) | 3 |
 | 41 | [Stage 1: Scan-review redesign + inline eBay aspects + dynamic conditions](041-stage1-scan-review-redesign-inline-ebay-aspects) | complete | [#104](https://github.com/sdnydude/portage/pull/104) | 6 |
+| 42 | [Stage 2: Pricing engine, Best Offer auto-accept + listing footer](042-stage2-pricing-engine-best-offer-footer) | complete | [#106](https://github.com/sdnydude/portage/pull/106) | 6 |
