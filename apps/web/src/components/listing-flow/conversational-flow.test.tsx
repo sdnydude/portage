@@ -1,12 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 
 // jsdom has no scrollIntoView; the chat thread auto-scrolls on render.
 Element.prototype.scrollIntoView = vi.fn();
+// jsdom lacks ResizeObserver; CropTool observes its stage element.
+globalThis.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 const h = vi.hoisted(() => ({
   updatePhoto: vi.fn(),
   cardProps: {} as Record<string, unknown>,
+  lastStep: "confirmed",
 }));
 
 const flowState = {
@@ -38,7 +45,7 @@ const flowState = {
 vi.mock("@/hooks/use-listing-flow", () => ({
   useListingFlow: () => ({
     state: flowState,
-    lastStep: "confirmed",
+    lastStep: h.lastStep,
     error: null,
     clearError: vi.fn(),
     saveWarning: false,
@@ -99,5 +106,30 @@ describe("ConversationalFlow — photo editing wiring (S2.5-8)", () => {
     render(<ConversationalFlow />);
     expect(screen.getByTestId("preview-card")).toBeInTheDocument();
     expect(h.cardProps.onPhotoUpdated).toBe(h.updatePhoto);
+  });
+
+  it("review card shows the gallery strip; tapping a thumb opens the editor overlay", () => {
+    h.lastStep = "review";
+    try {
+      render(<ConversationalFlow />);
+      expect(screen.getByText(/tap to edit/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+      expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+    } finally {
+      h.lastStep = "confirmed";
+    }
+  });
+
+  it("tapping Crop in the editor opens the crop overlay", () => {
+    h.lastStep = "review";
+    try {
+      render(<ConversationalFlow />);
+      fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^crop$/i }));
+      // CropTool overlay: aspect-ratio presets are its signature controls.
+      expect(screen.getByText("1:1")).toBeInTheDocument();
+    } finally {
+      h.lastStep = "confirmed";
+    }
   });
 });

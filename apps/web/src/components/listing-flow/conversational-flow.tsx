@@ -8,6 +8,10 @@ import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditPanel } from "../capture/photo-edit-panel";
+import { CropTool } from "./crop-tool";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
 import { WeightDimsInputs, type WeightDimsChange } from "../listing/weight-dims-inputs";
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
 import { WeightFillSheet } from "../listing/weight-fill-sheet";
@@ -288,6 +292,7 @@ function deriveMessages(
     onConfirmDetails: () => void;
     onConfirmShipping: () => void;
     onAddPhoto: () => void;
+    onEditPhoto: (index: number) => void;
   }
 ): FlowMessage[] {
   const msgs: FlowMessage[] = [];
@@ -557,6 +562,15 @@ function deriveMessages(
               />
             </div>
           )}
+          {state.photos.length > 0 && (
+            <div className="px-3 pt-3">
+              <PhotoGalleryStrip
+                photos={state.photos.map((p, i) => ({ key: p.key || `photo-${i}`, url: p.url }))}
+                onEditPhoto={handlers.onEditPhoto}
+                maxPhotos={12}
+              />
+            </div>
+          )}
           <div className="p-4">
             <p
               className="text-[11px] uppercase font-mono mb-1"
@@ -594,6 +608,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
   const flow = useListingFlow();
   const prepareListing = usePrepareListing();
   const { state, lastStep } = flow;
+  const photoEdit = usePhotoEdit(state.photos, flow.updatePhoto);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -761,6 +776,9 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onPublish: handlePublish,
         onConfirmShipping: handleConfirmShipping,
         onAddPhoto: () => setShowCapture(true),
+        onEditPhoto: (i) => {
+          if (!state.photos[i]?.url.startsWith("blob:")) photoEdit.openEditor(i);
+        },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state, effectiveLastStep]
@@ -970,6 +988,36 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onPhotos={(photos) => flow.startFromPhoto(photos)}
         onCancel={() => setShowCapture(false)}
       />
+
+      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && photoEdit.showCrop && (
+        <CropTool
+          imageUrl={photoEdit.editingPhoto.url}
+          imageWidth={photoEdit.editingPhoto.width ?? 1024}
+          imageHeight={photoEdit.editingPhoto.height ?? 1024}
+          onApply={photoEdit.applyCrop}
+          onCancel={photoEdit.cancelCrop}
+        />
+      )}
+
+      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && !photoEdit.showCrop && (
+        <PhotoEditPanel
+          photo={{ url: photoEdit.editingPhoto.url }}
+          photoIndex={photoEdit.editingIndex}
+          photoCount={state.photos.length}
+          onClose={photoEdit.closeEditor}
+          onRotate={photoEdit.rotate}
+          onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
+          onEnhance={photoEdit.enhanceCurrent}
+          onBgRemove={photoEdit.bgRemoveCurrent}
+          isProcessing={photoEdit.isProcessing}
+          processingLabel={photoEdit.processingLabel}
+          pendingPreview={
+            photoEdit.pendingPreview
+              ? { ...photoEdit.pendingPreview, alt: state.title || "Photo preview" }
+              : null
+          }
+        />
+      )}
 
       {aspectsNeeded && (
         <AspectFillSheet
