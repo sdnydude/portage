@@ -754,15 +754,26 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={photo.url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
-                      <button
+                      {/* span, not <button>: nesting a button inside the thumb
+                          button is invalid HTML and breaks React 19 hydration. */}
+                      <span
+                        role="button"
+                        tabIndex={0}
                         onClick={(e) => { e.stopPropagation(); handleRemovePhoto(i); }}
-                        className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent-error flex items-center justify-center"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleRemovePhoto(i);
+                          }
+                        }}
+                        className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent-error flex items-center justify-center cursor-pointer"
                         aria-label={`Remove photo ${i + 1}`}
                       >
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
                           <path d="M18 6L6 18M6 6l12 12" />
                         </svg>
-                      </button>
+                      </span>
                     </button>
                   ))}
 

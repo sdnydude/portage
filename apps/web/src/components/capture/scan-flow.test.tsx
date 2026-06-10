@@ -184,6 +184,23 @@ describe("ScanFlow review wiring", () => {
     expect(screen.queryByRole("button", { name: /rotate/i })).not.toBeInTheDocument();
   });
 
+  it("capture-stage photo strip nests no <button> inside <button> (hydration error a579ff81)", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+    apiMock.mockImplementation(async () => ({}));
+
+    const { container } = render(<ScanFlow onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Choose from Gallery"));
+    await screen.findByText(/Scan 1 Photo with Porter/);
+
+    // The remove-photo control must not be a real <button> inside the thumb
+    // <button> — React 19 hydration rejects nested interactive elements.
+    expect(container.querySelectorAll("button button")).toHaveLength(0);
+    expect(screen.getByLabelText("Remove photo 1")).toBeInTheDocument();
+  });
+
   it("editor overlay is the full PhotoEditPanel: title + all 4 tools", async () => {
     await renderInReview();
     fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
