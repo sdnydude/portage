@@ -79,6 +79,8 @@ export function computePricing(
       confidence: 'low',
       basedOn: 0,
       conditionMatch: 'all',
+      // Same "no floor" encoding as the engine path — null, never omitted.
+      bestOfferFloor: null,
     };
   }
 
@@ -87,7 +89,8 @@ export function computePricing(
   const bands = computePriceBands(pool.map(p => p.price), {
     suggestPercentile: opts.suggestPercentile,
     floorPercentile: opts.floorPercentile,
-  })!;
+  });
+  if (!bands) throw new Error('unreachable: pool verified non-empty above');
 
   const confidence = conditionMatch === 'exact' ? 'high' : conditionMatch === 'nearby' ? 'medium' : 'low';
 
@@ -330,6 +333,12 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       ? resolveEbayCategoryCondition(aiFields.condition, validConditionIds)
       : {};
     if (conditionFix.warning) warnings.push(conditionFix.warning);
+
+    // Opted-in Best Offer with no usable floor (n<3 or inversion) degrades
+    // silently at publish otherwise — tell the seller at prepare time.
+    if (aiFields.ebay && profile?.bestOfferAutoAcceptEnabled && !pricing.bestOfferFloor) {
+      warnings.push('Too few comparable sales to set a Best Offer auto-accept floor — the listing will publish without one.');
+    }
 
     const ebayFields = aiFields.ebay ? {
       ...aiFields.ebay,

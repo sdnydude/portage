@@ -48,4 +48,20 @@ describe("CompsPricingWidget — percentile bands + sell-through", () => {
     fireEvent.click(screen.getByRole("button", { name: /move it/i }));
     expect(onPriceChange).toHaveBeenCalledWith(165);
   });
+
+  it("renders NO demand badge when sellThrough is null (no spurious badge on no data)", () => {
+    render(
+      <CompsPricingWidget
+        pricing={PRICING}
+        comps={{
+          ebay: { ...EBAY_COMPS, stats: { ...EBAY_COMPS.stats, sellThrough: null } },
+          reverb: null,
+        }}
+        currentPrice={189}
+        onPriceChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/demand/i)).not.toBeInTheDocument();
+  });
 });

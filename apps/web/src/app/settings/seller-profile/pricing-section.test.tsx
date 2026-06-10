@@ -62,4 +62,41 @@ describe("Seller profile Pricing section", () => {
       }));
     });
   });
+
+  it("reverts an out-of-range percentile on blur instead of silently keeping it on screen", async () => {
+    render(<SellerProfilePage />);
+
+    const suggestInput = await screen.findByLabelText(/suggested-price percentile/i);
+    fireEvent.change(suggestInput, { target: { value: "95" } });
+    fireEvent.blur(suggestInput);
+
+    // No save fired, and the field shows the stored value again — never an
+    // unsaved value masquerading as saved.
+    expect(apiMock).not.toHaveBeenCalledWith("/seller-profile", expect.objectContaining({ method: "PATCH" }));
+    expect(suggestInput).toHaveValue(50);
+  });
+
+  it("reverts an out-of-range floor percentile on blur too", async () => {
+    render(<SellerProfilePage />);
+
+    const floorInput = await screen.findByLabelText(/auto-accept floor percentile/i);
+    fireEvent.change(floorInput, { target: { value: "95" } });
+    fireEvent.blur(floorInput);
+
+    expect(apiMock).not.toHaveBeenCalledWith("/seller-profile", expect.objectContaining({ method: "PATCH" }));
+    expect(floorInput).toHaveValue(25);
+  });
+
+  it("surfaces the server's actionable error message instead of a generic 'Failed to save'", async () => {
+    render(<SellerProfilePage />);
+
+    const floorInput = await screen.findByLabelText(/auto-accept floor percentile/i);
+    // 60 passes the client range (5–75) but violates floor < stored suggest (50)
+    // server-side — the server's PRICING_FLOOR_INVALID message must reach the user.
+    apiMock.mockRejectedValueOnce(new Error("Floor percentile must be below the suggested-price percentile."));
+    fireEvent.change(floorInput, { target: { value: "60" } });
+    fireEvent.blur(floorInput);
+
+    expect(await screen.findByText(/floor percentile must be below/i)).toBeInTheDocument();
+  });
 });

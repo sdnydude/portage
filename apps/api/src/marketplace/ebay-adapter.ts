@@ -11,6 +11,7 @@ import type {
   MarketplaceCategoryResult,
   CompListing,
   CompResult,
+  EbayPreparedFields,
 } from '@portage/shared';
 
 const logger = createLogger('ebay-adapter');
@@ -263,14 +264,20 @@ export class EbayAdapter implements MarketplaceAdapter {
       const errorBody = await response.text();
       logger.error({ status: response.status, path, body: errorBody, requestBody: typeof options.body === 'string' ? options.body : undefined }, 'eBay API error');
       let longMessage: string | undefined;
+      let ebayErrorIds: number[] | undefined;
       try {
-        const parsed = JSON.parse(errorBody) as { errors?: Array<{ longMessage?: string; message?: string }> };
-        longMessage = parsed.errors?.[0]?.longMessage ?? parsed.errors?.[0]?.message;
+        const parsed = JSON.parse(errorBody) as { errors?: Array<{ errorId?: number; longMessage?: string; message?: string }> };
+        // eBay can return several errors; keep them ALL — callers that match on
+        // the message (e.g. the best-offer retry) must not depend on array order.
+        const messages = (parsed.errors ?? []).map(e => e.longMessage ?? e.message).filter(Boolean);
+        if (messages.length > 0) longMessage = messages.join(' | ');
+        ebayErrorIds = (parsed.errors ?? []).map(e => e.errorId).filter((id): id is number => typeof id === 'number');
       } catch {
         // Non-JSON error body (e.g. an HTML 5xx page) — fall back to the generic message.
       }
       const sanitized = longMessage?.replace(/<[^>]*>/g, '') ?? `eBay API error: ${response.status} on ${path}`;
-      throw new AppError(response.status, 'EBAY_API_ERROR', sanitized);
+      throw new AppError(response.status, 'EBAY_API_ERROR', sanitized,
+        ebayErrorIds?.length ? { ebayErrorIds } : undefined);
     }
 
     if (response.status === 204) return {} as T;
@@ -285,12 +292,26 @@ export class EbayAdapter implements MarketplaceAdapter {
    * Returns {} (spread no-op) unless the floor is a positive number below the
    * BIN price — the inversion guard for prices edited after prepare time.
    */
+  /**
+   * Heuristic for "eBay rejected this because of Best Offer" — drives the
+   * retry-without-bestOfferTerms fallback. eBay publishes no stable error id
+   * for category-level Best Offer support, so this matches prose across ALL
+   * returned error messages (request() joins them) including hyphenated and
+   * auto-accept phrasings. errorIds are logged at the call sites to allow
+   * tightening this to id-based matching once real rejections are observed.
+   */
+  private static isBestOfferRejection(err: unknown): boolean {
+    return err instanceof Error && /best[\s-]?offer|auto[\s-]?accept/i.test(err.message);
+  }
+
   private static bestOfferTerms(
     specific: Record<string, unknown>,
     price: number,
     currency: string,
   ): Record<string, unknown> {
-    const floor = specific.bestOfferAutoAcceptPrice;
+    // Typed read binds the key to EbayPreparedFields.bestOfferAutoAcceptPrice —
+    // a rename/typo becomes a compile error instead of silent "no Best Offer".
+    const floor = (specific as Partial<EbayPreparedFields>).bestOfferAutoAcceptPrice;
     if (typeof floor !== 'number' || floor <= 0 || floor >= price) return {};
     return {
       bestOfferTerms: {
@@ -436,6 +457,12 @@ export class EbayAdapter implements MarketplaceAdapter {
       },
     });
 
+    // Set when the retry-without fallback fires — the seller opted into Best
+    // Offer and the listing went up without it, so the result must say so.
+    let bestOfferDowngraded = false;
+    const BEST_OFFER_DOWNGRADE_WARNING =
+      'Listed without Best Offer auto-accept — eBay rejected it for this listing.';
+
     const postOffer = async (): Promise<{ offerId: string }> => {
       try {
         return await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
@@ -446,8 +473,9 @@ export class EbayAdapter implements MarketplaceAdapter {
         // Best-Offer category support is not verifiable pre-flight — on a
         // best-offer-specific rejection, retry once without the terms rather
         // than failing the whole listing.
-        if (Object.keys(boTerms).length > 0 && err instanceof Error && /best\s?offer/i.test(err.message)) {
-          logger.warn({ userId: this.userId, sku, error: err.message }, 'eBay rejected bestOfferTerms — retrying offer without Best Offer');
+        if (Object.keys(boTerms).length > 0 && EbayAdapter.isBestOfferRejection(err)) {
+          logger.warn({ userId: this.userId, sku, error: (err as Error).message, details: err instanceof AppError ? err.details : undefined }, 'eBay rejected bestOfferTerms — retrying offer without Best Offer');
+          bestOfferDowngraded = true;
           return await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
             method: 'POST',
             body: offerBody(false),
@@ -463,7 +491,7 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     // Draft mode: the unpublished offer exists on eBay (offerId + SKU) but we
     // deliberately skip /publish. This is an intentional draft, not a publish
-    // failure, so it carries no warning.
+    // failure, so it carries no warning — except a Best Offer downgrade.
     if (input.publishMode === 'draft') {
       logger.info({ userId: this.userId, sku, offerId: offerData.offerId }, 'eBay offer saved as draft (publish skipped)');
       return {
@@ -471,6 +499,7 @@ export class EbayAdapter implements MarketplaceAdapter {
         ebayOfferId: offerData.offerId,
         ebaySku: sku,
         status: 'draft',
+        ...(bestOfferDowngraded ? { warning: BEST_OFFER_DOWNGRADE_WARNING } : {}),
       };
     }
 
@@ -494,6 +523,10 @@ export class EbayAdapter implements MarketplaceAdapter {
       status = 'draft';
       warning = 'Listing created as draft — publish to eBay failed. You can publish manually from your eBay seller hub.';
       logger.warn({ userId: this.userId, offerId: offerData.offerId, err: (err as Error).message }, 'eBay listing created as draft — publish failed');
+    }
+
+    if (bestOfferDowngraded) {
+      warning = warning ? `${warning} ${BEST_OFFER_DOWNGRADE_WARNING}` : BEST_OFFER_DOWNGRADE_WARNING;
     }
 
     return {
@@ -570,8 +603,9 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
 
     // Best Offer on update: only when the COMPLETE policy set is in hand —
-    // eBay's offer PUT replaces listingPolicies wholesale, so a partial block
-    // (bestOfferTerms alone) would strip the policy ids off the live offer.
+    // eBay's offer PUT replaces listingPolicies wholesale (per updateOffer
+    // docs: complex provided fields are replaced, not merged), so a partial
+    // block (bestOfferTerms alone) would strip the policy ids off the live offer.
     const updateSpecific = (input.marketplaceSpecific ?? {}) as Record<string, unknown>;
     const updateBoTerms = input.price
       ? EbayAdapter.bestOfferTerms(updateSpecific, input.price, input.currency ?? 'USD')
@@ -588,6 +622,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       };
     }
 
+    let updateWarning: string | undefined;
     if (Object.keys(updates).length > 0) {
       try {
         await this.request(`/sell/inventory/v1/offer/${offerId}`, {
@@ -595,12 +630,14 @@ export class EbayAdapter implements MarketplaceAdapter {
           body: JSON.stringify(updates),
         });
       } catch (err) {
-        // Mirror createListing: on a best-offer-specific rejection, retry once
-        // without the listingPolicies block instead of failing the whole update.
-        if (!updates.listingPolicies || !(err instanceof Error) || !/best\s?offer/i.test(err.message)) {
+        // Same retry-once pattern as createListing, but here the WHOLE
+        // listingPolicies block is dropped — bestOfferTerms can't be removed
+        // without resending the block, and a partial block would strip ids.
+        if (!updates.listingPolicies || !EbayAdapter.isBestOfferRejection(err)) {
           throw err;
         }
-        logger.warn({ userId: this.userId, offerId, error: err.message }, 'eBay rejected bestOfferTerms on update — retrying without Best Offer');
+        logger.warn({ userId: this.userId, offerId, error: (err as Error).message, details: err instanceof AppError ? err.details : undefined }, 'eBay rejected bestOfferTerms on update — retrying without Best Offer');
+        updateWarning = 'Updated without Best Offer auto-accept — eBay rejected it for this listing.';
         delete updates.listingPolicies;
         if (Object.keys(updates).length > 0) {
           await this.request(`/sell/inventory/v1/offer/${offerId}`, {
@@ -617,6 +654,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       marketplaceListingId,
       marketplaceUrl: `https://www.ebay.com/itm/${marketplaceListingId}`,
       status: 'active',
+      ...(updateWarning ? { warning: updateWarning } : {}),
     };
   }
 

@@ -51,6 +51,14 @@ describe('computePriceBands', () => {
     expect(bands?.suggested).toBe(38.5);
   });
 
+  it('clamps the LOWER bound too, for both percentile options', () => {
+    // suggest p1 -> clamped to 5: idx 0.15 -> 10 + 0.15*10 = 11.5 (off-50, no undercut).
+    // floor p1 -> clamped to 5 as well: 11.5, then inversion guard (floor >= suggested) nulls it.
+    const bands = computePriceBands([10, 20, 30, 40], { suggestPercentile: 1, floorPercentile: 1 });
+    expect(bands?.suggested).toBe(11.5);
+    expect(bands?.floor).toBeNull();
+  });
+
   it('rounds once at the end with the EPSILON guard', () => {
     // n=1: every percentile = 1.005, which is 100.49999... cents without EPSILON.
     // Bands must round to 1.01; suggested = 1.005 * 0.97 = 0.97485 -> 0.97.

@@ -15,6 +15,9 @@ describe('computePricing', () => {
       confidence: 'low',
       basedOn: 0,
       conditionMatch: 'all',
+      // ONE encoding of "no floor" everywhere — null, never an omitted key
+      // (the engine path also returns null; two encodings invite drift).
+      bestOfferFloor: null,
     });
   });
 
@@ -54,6 +57,16 @@ describe('computePricing', () => {
     expect(result.confidence).toBe('low');
     expect(result.currency).toBe('EUR');
     expect(result.basedOn).toBe(3);
+  });
+
+  it('reports low confidence AND a null floor on a thin n=2 pool', () => {
+    const comps = [
+      { price: 100, condition: 'GOOD' },
+      { price: 200, condition: 'GOOD' },
+    ];
+    const result = computePricing(comps, 'good', 'USD');
+    expect(result.confidence).toBe('low');
+    expect(result.bestOfferFloor).toBeNull();
   });
 
   it('computes suggested as median * 0.97', () => {

@@ -103,6 +103,60 @@ describe('POST /listings', () => {
     );
   });
 
+  it('surfaces the adapter warning (e.g. Best Offer downgrade) in the create response', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
+    mockSelectOnce([]); // footer lookup — no seller profile
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({
+      marketplaceListingId: 'ebay-1', status: 'active',
+      warning: 'Listed without Best Offer auto-accept — eBay rejected it for this listing.',
+    });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        marketplaceSpecificFields: { categoryId: '123' },
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.warning).toMatch(/best offer/i);
+  });
+
+  it('passes publishMode live explicitly to the adapter on POST /:id/publish', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: null, marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // seller profile (policy self-heal)
+    mockSelectOnce([]); // footer lookup
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 199, currency: 'USD', marketplaceListingId: 'ebay-1',
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(mockCreateListing).toHaveBeenCalledWith(
+      expect.objectContaining({ publishMode: 'live' }),
+    );
+  });
+
   it('persists ebaySku and ebayOfferId from the publish result', async () => {
     mockSelectOnce([MOCK_ITEM]);
     mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
@@ -403,6 +457,36 @@ describe('PATCH /listings/:id', () => {
     expect(mockUpdateListing).toHaveBeenCalledWith('110012345678', expect.objectContaining({
       description: 'Noise-cancelling headphones\n\nShips fast.',
     }));
+  });
+
+  it('surfaces the adapter sync warning (e.g. Best Offer downgrade) in the PATCH response', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
+    mockUpdateListing.mockResolvedValue({
+      marketplaceListingId: '110012345678', status: 'active',
+      warning: 'Updated without Best Offer auto-accept — eBay rejected it for this listing.',
+    });
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.warning).toMatch(/best offer/i);
   });
 
   it('syncs full item fields to eBay including ebaySku and ebayOfferId', async () => {

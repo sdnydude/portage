@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { PricingData, CompResult, ReverbCompResult } from "@portage/shared";
+import { demandLabel } from "@/lib/demand";
 
 interface CompsPricingWidgetProps {
   pricing: PricingData;
@@ -43,12 +44,8 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
     ? "#B8860B"
     : "#CC3333";
 
-  // Market-shape sell-through from the raw comps stats (sold / (sold + active)).
-  // Display-only context; thresholds: Hot >= 2/3, Slow < 1/3, else Normal.
-  const sellThrough = comps.ebay?.stats.sellThrough;
-  const sellThroughLabel = sellThrough == null
-    ? null
-    : sellThrough >= 2 / 3 ? "Hot" : sellThrough < 1 / 3 ? "Slow" : "Normal";
+  // Market-shape sell-through from the raw comps stats — display-only context.
+  const sellThroughLabel = demandLabel(comps.ebay?.stats.sellThrough);
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
@@ -104,8 +101,10 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
                 onClick={() => onPriceChange(band.value)}
                 className="rounded-lg px-2 py-2 text-left border transition-colors"
                 style={{
-                  borderColor: currentPrice === band.value ? "var(--flow-accent, #2D5A27)" : "rgba(0,0,0,0.1)",
-                  background: currentPrice === band.value ? "var(--flow-accent-soft, rgba(45,90,39,0.08))" : "white",
+                  // Same selected-band treatment as scan-flow's bands: teal
+                  // tokens (redesign goal — never forest green in new code).
+                  borderColor: currentPrice === band.value ? "var(--teal)" : "rgba(0,0,0,0.1)",
+                  background: currentPrice === band.value ? "var(--teal-soft)" : "white",
                 }}
               >
                 <span className="block text-[11px] font-medium" style={{ color: "rgba(0,0,0,0.5)" }}>{band.key}</span>

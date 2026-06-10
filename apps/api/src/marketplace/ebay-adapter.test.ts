@@ -64,6 +64,26 @@ describe('EbayAdapter.searchComps — market-shape stats', () => {
     expect(result.stats.p50).toBe(25);
     expect(result.stats.p75).toBe(32.5);
     expect(result.stats.sellThrough).toBe(0.8);
+
+    // Single-currency pool enforcement: every Browse call must pin EBAY_US —
+    // dropping this header would silently mix currencies into the price pool.
+    const browseCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('item_summary/search'));
+    expect(browseCalls.length).toBeGreaterThan(0);
+    for (const [, opts] of browseCalls) {
+      expect((opts as RequestInit & { headers: Record<string, string> }).headers['X-EBAY-C-MARKETPLACE-ID']).toBe('EBAY_US');
+    }
+  });
+
+  it('returns null sellThrough and null percentiles when there are no comps at all (no spurious 0/0 badge)', async () => {
+    fetchMock.mockImplementation(async () =>
+      new Response(JSON.stringify({ itemSummaries: [] }), { status: 200 }));
+
+    const result = await EbayAdapter.searchComps('no results query');
+
+    expect(result.stats.sellThrough).toBeNull();
+    expect(result.stats.p25).toBeNull();
+    expect(result.stats.p50).toBeNull();
+    expect(result.stats.p75).toBeNull();
   });
 });
 
@@ -282,6 +302,123 @@ describe('EbayAdapter.createListing — Best Offer auto-accept (bestOfferTerms)'
     expect(offerCalls).toHaveLength(2);
   });
 
+  it('retries when the best-offer rejection is hyphenated and NOT the first error in the array', async () => {
+    fetchMock.mockImplementation(async (url: any, opts: any) => {
+      const u = String(url);
+      if (u.includes('/offer') && !u.includes('/publish')) {
+        const body = JSON.parse((opts as RequestInit).body as string);
+        if (body.listingPolicies.bestOfferTerms) {
+          // eBay frequently returns multiple errors; the best-offer one is not
+          // guaranteed first, and real phrasings include the hyphenated form.
+          return new Response(JSON.stringify({ errors: [
+            { errorId: 25709, message: 'Invalid value for header Accept-Language.' },
+            { errorId: 25103, longMessage: 'Best-Offer is not available for this listing format.' },
+          ] }), { status: 400 });
+        }
+        return new Response(JSON.stringify({ offerId: 'offer-retry-2' }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      publishMode: 'draft',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
+    } as any);
+
+    expect(result.ebayOfferId).toBe('offer-retry-2');
+    const offerCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('/offer') && !String(u).includes('/publish'));
+    expect(offerCalls).toHaveLength(2);
+  });
+
+  it('surfaces a warning on the result when the Best Offer retry downgrade fires', async () => {
+    fetchMock.mockImplementation(async (url: any, opts: any) => {
+      const u = String(url);
+      if (u.includes('/offer') && !u.includes('/publish')) {
+        const body = JSON.parse((opts as RequestInit).body as string);
+        if (body.listingPolicies.bestOfferTerms) {
+          return new Response(JSON.stringify({ errors: [{ message: 'Best Offer is not supported for this category.' }] }), { status: 400 });
+        }
+        return new Response(JSON.stringify({ offerId: 'offer-retry-3' }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      publishMode: 'draft',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
+    } as any);
+
+    // The seller opted into Best Offer; the listing went up without it — they must be told.
+    expect(result.warning).toMatch(/best offer/i);
+  });
+
+  it('carries the downgrade warning through a successful LIVE publish', async () => {
+    fetchMock.mockImplementation(async (url: any, opts: any) => {
+      const u = String(url);
+      if (u.includes('/publish')) {
+        return new Response(JSON.stringify({ listingId: 'live-1' }), { status: 200 });
+      }
+      if (u.includes('/offer')) {
+        const body = JSON.parse((opts as RequestInit).body as string);
+        if (body.listingPolicies.bestOfferTerms) {
+          return new Response(JSON.stringify({ errors: [{ message: 'Best Offer is not supported for this category.' }] }), { status: 400 });
+        }
+        return new Response(JSON.stringify({ offerId: 'offer-retry-4' }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
+    } as any);
+
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/best offer/i);
+  });
+
+  it('does NOT retry when the rejection is unrelated to Best Offer — the real error surfaces', async () => {
+    fetchMock.mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes('/offer') && !u.includes('/publish')) {
+        return new Response(JSON.stringify({ errors: [{ errorId: 25002, longMessage: 'A required item specific is missing.' }] }), { status: 400 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    await expect(adapter.createListing({
+      ...baseInput,
+      publishMode: 'draft',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
+    } as any)).rejects.toThrow(/required item specific/i);
+
+    // One attempt only — the fallback must not mask non-best-offer errors.
+    const offerCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('/offer') && !String(u).includes('/publish'));
+    expect(offerCalls).toHaveLength(1);
+  });
+
+  it('updateListing omits listingPolicies entirely when the policy set is PARTIAL (eBay PUT would strip the missing ids)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.updateListing('listing-1', {
+      price: 25,
+      currency: 'USD',
+      // fulfillment id present but payment/return missing — incomplete set.
+      marketplaceSpecific: { fulfillmentPolicyId: 'fp-1', bestOfferAutoAcceptPrice: 18 },
+    } as any);
+
+    const putCall = fetchMock.mock.calls.find(([u, o]) => String(u).includes('/offer/') && (o as RequestInit).method === 'PUT');
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.listingPolicies).toBeUndefined();
+    expect(body.pricingSummary.price.value).toBe('25');
+  });
+
   it('updateListing sends bestOfferTerms inside a COMPLETE listingPolicies block (never partial — eBay PUT replaces the object)', async () => {
     const adapter = new EbayAdapter('user-1');
     await adapter.updateListing('listing-1', {
@@ -327,6 +464,57 @@ describe('EbayAdapter.createListing — Best Offer auto-accept (bestOfferTerms)'
     const retryBody = JSON.parse((putCalls[1][1] as RequestInit).body as string);
     expect(retryBody.listingPolicies).toBeUndefined();
     expect(retryBody.pricingSummary.price.value).toBe('25');
+  });
+
+  it('updateListing surfaces a warning on the result when the Best Offer retry downgrade fires', async () => {
+    fetchMock.mockImplementation(async (url: any, opts: any) => {
+      const u = String(url);
+      if (u.includes('/offer/') && (opts as RequestInit).method === 'PUT') {
+        const body = JSON.parse((opts as RequestInit).body as string);
+        if (body.listingPolicies?.bestOfferTerms) {
+          return new Response(JSON.stringify({ errors: [{ message: 'Best Offer is not supported for this category.' }] }), { status: 400 });
+        }
+        return new Response('{}', { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.updateListing('listing-1', {
+      price: 25,
+      currency: 'USD',
+      marketplaceSpecific: { ...validSetup, bestOfferAutoAcceptPrice: 18 },
+    } as any);
+
+    expect(result.warning).toMatch(/best offer/i);
+  });
+
+  it('updateListing retries when the best-offer rejection is hyphenated and not the first error', async () => {
+    fetchMock.mockImplementation(async (url: any, opts: any) => {
+      const u = String(url);
+      if (u.includes('/offer/') && (opts as RequestInit).method === 'PUT') {
+        const body = JSON.parse((opts as RequestInit).body as string);
+        if (body.listingPolicies?.bestOfferTerms) {
+          return new Response(JSON.stringify({ errors: [
+            { errorId: 25709, message: 'Invalid value for header Accept-Language.' },
+            { errorId: 25103, longMessage: 'Best-Offer is not available for this listing format.' },
+          ] }), { status: 400 });
+        }
+        return new Response('{}', { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.updateListing('listing-1', {
+      price: 25,
+      currency: 'USD',
+      marketplaceSpecific: { ...validSetup, bestOfferAutoAcceptPrice: 18 },
+    } as any);
+
+    expect(result.status).toBe('active');
+    const putCalls = fetchMock.mock.calls.filter(([u, o]) => String(u).includes('/offer/') && (o as RequestInit).method === 'PUT');
+    expect(putCalls).toHaveLength(2);
   });
 });
 

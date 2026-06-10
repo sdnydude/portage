@@ -9,13 +9,19 @@
  * - Float dollars throughout (codebase-consistent; do not half-convert to cents).
  */
 
-/** Undercut applied to the suggested price ONLY at the default percentile 50. */
+/**
+ * Undercut applied to the suggested price only when the suggest percentile is
+ * 50 — whether defaulted or explicitly chosen (the gate is on the VALUE, not
+ * on defaulting). A non-50 percentile is a deliberate seller override; no
+ * undercut. Known consequence: suggested is non-monotonic right around 50
+ * (p49 ≈ p50 > 0.97·p50) — accepted, do not "fix" by gating on undefined.
+ */
 export const SUGGEST_UNDERCUT = 0.97;
 
 export interface PriceBandsOptions {
-  /** Percentile for the suggested price. Default 50. */
+  /** Percentile for the suggested price. Default 50. Clamped to [5, 95] by the engine. */
   suggestPercentile?: number;
-  /** Percentile for the Best-Offer auto-accept floor. Default 25. */
+  /** Percentile for the Best-Offer auto-accept floor. Default 25. Clamped to [5, 95] by the engine. */
   floorPercentile?: number;
 }
 

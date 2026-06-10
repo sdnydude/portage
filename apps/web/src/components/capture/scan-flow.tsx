@@ -13,6 +13,7 @@ import { ScanReviewActions } from "./scan-review-actions";
 import { ScanAspectsSection } from "./scan-aspects-section";
 import { useScanAspects } from "@/hooks/use-scan-aspects";
 import { resolvePublishPrice } from "@/lib/price";
+import { demandLabel } from "@/lib/demand";
 import { buildListingPayload } from "@/lib/scan-listing-payload";
 import {
   getAvailablePortageConditions,
@@ -1051,9 +1052,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                       ${(comps.stats.soldMedian ?? comps.stats.activeMedian ?? 0).toFixed(0)}
                       <span className="text-xs font-normal text-[var(--accent-success)]/70 ml-1">
                         ({comps.stats.sampleSize} sold)
-                        {comps.stats.sellThrough != null && (
+                        {demandLabel(comps.stats.sellThrough) && (
                           <span className="ml-1">
-                            · {comps.stats.sellThrough >= 2 / 3 ? "Hot" : comps.stats.sellThrough < 1 / 3 ? "Slow" : "Normal"} demand
+                            · {demandLabel(comps.stats.sellThrough)} demand
                           </span>
                         )}
                       </span>

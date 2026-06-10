@@ -131,6 +131,18 @@ describe('PATCH /seller-profile', () => {
     expect(res.body.code).toBe('PRICING_FLOOR_INVALID');
   });
 
+  it('merges the OTHER direction too — suggest-only sent below the stored floor rejected', async () => {
+    mockSelectOnce([{ id: 'sp-1', pricingSuggestPercentile: 50, pricingFloorPercentile: 25 }]);
+
+    const res = await request(app)
+      .patch('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ pricingSuggestPercentile: 20 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('PRICING_FLOOR_INVALID');
+  });
+
   it('accepts bestOfferAutoAcceptEnabled and defaultListingFooter', async () => {
     mockSelectOnce([{ id: 'sp-1' }]);
     mockUpdateReturns([{ id: 'sp-1', bestOfferAutoAcceptEnabled: true, defaultListingFooter: 'Ships fast from a smoke-free studio.' }]);

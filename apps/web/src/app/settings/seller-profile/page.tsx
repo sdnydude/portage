@@ -58,8 +58,10 @@ export default function SellerProfilePage() {
       setProfile(result.profile);
       setMessage("Saved");
       setTimeout(() => setMessage(null), 2000);
-    } catch {
-      setMessage("Failed to save");
+    } catch (err) {
+      // Server messages here are actionable (e.g. PRICING_FLOOR_INVALID's
+      // "floor must be below suggest") — never collapse them to a generic.
+      setMessage(err instanceof Error && err.message ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -362,8 +364,12 @@ export default function SellerProfilePage() {
             defaultValue={profile.pricingSuggestPercentile ?? 50}
             onBlur={e => {
               const v = Math.round(Number(e.target.value));
-              if (Number.isFinite(v) && v >= 10 && v <= 90 && v !== profile.pricingSuggestPercentile) {
-                updateField("pricingSuggestPercentile", v);
+              if (Number.isFinite(v) && v >= 10 && v <= 90) {
+                if (v !== profile.pricingSuggestPercentile) updateField("pricingSuggestPercentile", v);
+              } else {
+                // Out of range: revert the (uncontrolled) input to the stored
+                // value — never leave an unsaved number on screen.
+                e.target.value = String(profile.pricingSuggestPercentile ?? 50);
               }
             }}
             className="w-full rounded-lg border px-3 py-2 text-sm"
@@ -388,8 +394,10 @@ export default function SellerProfilePage() {
             defaultValue={profile.pricingFloorPercentile ?? 25}
             onBlur={e => {
               const v = Math.round(Number(e.target.value));
-              if (Number.isFinite(v) && v >= 5 && v <= 75 && v !== profile.pricingFloorPercentile) {
-                updateField("pricingFloorPercentile", v);
+              if (Number.isFinite(v) && v >= 5 && v <= 75) {
+                if (v !== profile.pricingFloorPercentile) updateField("pricingFloorPercentile", v);
+              } else {
+                e.target.value = String(profile.pricingFloorPercentile ?? 25);
               }
             }}
             className="w-full rounded-lg border px-3 py-2 text-sm"
