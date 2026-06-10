@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditPanel } from "../capture/photo-edit-panel";
+import { CropTool } from "./crop-tool";
 import { formatCondition } from "@/lib/format";
 import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
@@ -1188,16 +1192,19 @@ function ShippingPhase({
 
 const MARKETPLACE_CYCLE: Array<"ebay" | "reverb" | "etsy"> = ["ebay", "reverb", "etsy"];
 
-function ReviewPhase({
+export function ReviewPhase({
   state,
   setField,
   onPublish,
+  updatePhoto,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   setField: ReturnType<typeof useListingFlow>["setField"];
   onPublish: (publishMode: "draft" | "live") => void;
+  updatePhoto: ReturnType<typeof useListingFlow>["updatePhoto"];
 }) {
   const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
+  const photoEdit = usePhotoEdit(state.photos, updatePhoto);
 
   function cycleMarketplace() {
     const idx = MARKETPLACE_CYCLE.indexOf(state.marketplace);
@@ -1230,37 +1237,46 @@ function ReviewPhase({
         overflow: "hidden",
       }}
     >
-      {/* Photo strip */}
-      <div
-        style={{
-          display: "flex",
-          gap: 6,
-          overflowX: "auto",
-          padding: "72px 20px 16px",
-          flexShrink: 0,
-          scrollbarWidth: "none",
-        }}
-      >
-        {state.photos.map((p, i) => (
-          <div
-            key={i}
-            style={{
-              width: 80,
-              height: 80,
-              borderRadius: 10,
-              overflow: "hidden",
-              flexShrink: 0,
-              border: i === state.primaryPhotoIndex ? "2px solid #F15A22" : "2px solid transparent",
-            }}
-          >
-            <img
-              src={p.url}
-              alt=""
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          </div>
-        ))}
+      {/* Photo gallery strip — tap a thumb to open the editor overlay (S2.5-9). */}
+      <div style={{ padding: "72px 20px 16px", flexShrink: 0 }}>
+        <PhotoGalleryStrip
+          photos={state.photos.map((p, i) => ({ key: p.key || `photo-${i}`, url: p.url }))}
+          onEditPhoto={(i) => {
+            if (!state.photos[i]?.url.startsWith("blob:")) photoEdit.openEditor(i);
+          }}
+          maxPhotos={12}
+        />
       </div>
+
+      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && photoEdit.showCrop && (
+        <CropTool
+          imageUrl={photoEdit.editingPhoto.url}
+          imageWidth={photoEdit.editingPhoto.width ?? 1024}
+          imageHeight={photoEdit.editingPhoto.height ?? 1024}
+          onApply={photoEdit.applyCrop}
+          onCancel={photoEdit.cancelCrop}
+        />
+      )}
+
+      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && !photoEdit.showCrop && (
+        <PhotoEditPanel
+          photo={{ url: photoEdit.editingPhoto.url }}
+          photoIndex={photoEdit.editingIndex}
+          photoCount={state.photos.length}
+          onClose={photoEdit.closeEditor}
+          onRotate={photoEdit.rotate}
+          onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
+          onEnhance={photoEdit.enhanceCurrent}
+          onBgRemove={photoEdit.bgRemoveCurrent}
+          isProcessing={photoEdit.isProcessing}
+          processingLabel={photoEdit.processingLabel}
+          pendingPreview={
+            photoEdit.pendingPreview
+              ? { ...photoEdit.pendingPreview, alt: state.title || "Photo preview" }
+              : null
+          }
+        />
+      )}
 
       <div
         style={{
@@ -1748,6 +1764,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
               state={state}
               setField={setField}
               onPublish={handlePublish}
+              updatePhoto={flow.updatePhoto}
             />
             {publishError && (
               <div
