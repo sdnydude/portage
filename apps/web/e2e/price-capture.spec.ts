@@ -1,8 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 
-const EMAIL = process.env.E2E_EMAIL ?? "demo@portage.app";
-const PASSWORD = process.env.E2E_PASSWORD ?? "demo1234demo1234";
 const SHOT_DIR = path.join(process.cwd(), "test-results", "proof");
 
 // Save is gated on a real change, so alternate the price each run to stay
@@ -10,11 +8,10 @@ const SHOT_DIR = path.join(process.cwd(), "test-results", "proof");
 const PRICE_A = "111";
 const PRICE_B = "222";
 
+// The session comes from auth.setup.ts via storageState — no per-test login
+// (the API auth limiter is 10-in-15min and a 7-test suite was exhausting it).
 async function login(page: Page) {
-  await page.goto("/login");
-  await page.locator('input[type="email"]').fill(EMAIL);
-  await page.locator('input[type="password"]').fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.goto("/home");
   await page.waitForURL("**/home");
 }
 

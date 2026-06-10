@@ -1,17 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 
-// Defaults target the live demo account (local/hook path). CI overrides these
-// to a register-compliant account it seeds into the ephemeral stack.
-const EMAIL = process.env.E2E_EMAIL ?? "demo@portage.app";
-const PASSWORD = process.env.E2E_PASSWORD ?? "demo1234demo1234";
 const SHOT_DIR = path.join(process.cwd(), "test-results", "proof");
 
+// The session comes from auth.setup.ts via storageState — no per-test login
+// (the API auth limiter is 10-in-15min and a 7-test suite was exhausting it).
 async function login(page: Page) {
-  await page.goto("/login");
-  await page.locator('input[type="email"]').fill(EMAIL);
-  await page.locator('input[type="password"]').fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.goto("/home");
   await page.waitForURL("**/home");
 }
 
@@ -79,18 +74,30 @@ test("listing creation: hybrid compact mode hosts the gallery strip + editor ove
 
   // Start a listing from this item — its photos seed the flow state.
   await page.goto(`/list?itemId=${itemId}`);
-  await page.getByTitle("Switch to compact mode").click();
 
-  await expect(page.getByText("Tap to edit")).toBeVisible();
-  await page.getByRole("button", { name: "Edit photo 1" }).click();
-  await expect(page.getByText(/Edit photo 1 of \d+/)).toBeVisible();
-  // Listing flows host all 4 tools.
-  await expect(page.getByText("Rotate")).toBeVisible();
-  await expect(page.getByText("Crop")).toBeVisible();
-  await page.screenshot({ path: path.join(SHOT_DIR, "pg-6-listing-compact-editor.png"), fullPage: true });
+  // The compact toggle PERSISTS to user preferences, so a prior run may have
+  // left compact mode on. Enter compact from either state; restore at the end.
+  const toCompact = page.getByTitle("Switch to compact mode");
+  const toChat = page.getByTitle("Switch to chat mode");
+  await expect(toCompact.or(toChat)).toBeVisible();
+  const wasChatMode = await toCompact.isVisible();
+  if (wasChatMode) await toCompact.click();
 
-  await page.getByRole("button", { name: "Close editor" }).click();
-  await expect(page.getByText("Tap to edit")).toBeVisible();
+  try {
+    await expect(page.getByText("Tap to edit")).toBeVisible();
+    await page.getByRole("button", { name: "Edit photo 1" }).click();
+    await expect(page.getByText(/Edit photo 1 of \d+/)).toBeVisible();
+    // Listing flows host all 4 tools.
+    await expect(page.getByText("Rotate")).toBeVisible();
+    await expect(page.getByText("Crop")).toBeVisible();
+    await page.screenshot({ path: path.join(SHOT_DIR, "pg-6-listing-compact-editor.png"), fullPage: true });
+
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.getByText("Tap to edit")).toBeVisible();
+  } finally {
+    // Leave the demo account's mode preference the way we found it.
+    if (wasChatMode) await toChat.click();
+  }
 });
 
 test.describe("dark mode", () => {

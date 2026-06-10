@@ -27,3 +27,4 @@ apps/web/playwright-report/
 !website/static/img/verification/**
 .env.backup-*
 .superpowers/
+apps/web/e2e/.auth/
