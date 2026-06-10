@@ -8,12 +8,13 @@ import { ImagePicker } from "./image-picker";
 import { useEnhance } from "@/hooks/use-enhance";
 import { useBgRemoval } from "@/hooks/use-bg-removal";
 import { CropTool } from "@/components/listing-flow/crop-tool";
-import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 import { ScanReviewActions } from "./scan-review-actions";
 import { ScanAspectsSection } from "./scan-aspects-section";
 import { useScanAspects } from "@/hooks/use-scan-aspects";
 import { resolvePublishPrice } from "@/lib/price";
 import { demandLabel } from "@/lib/demand";
+import { PhotoGalleryStrip } from "./photo-gallery-strip";
+import { PhotoEditPanel } from "./photo-edit-panel";
 import { buildListingPayload } from "@/lib/scan-listing-payload";
 import {
   getAvailablePortageConditions,
@@ -65,44 +66,10 @@ const conditionOptions = [
   { value: "poor", label: "Poor" },
 ] as const;
 
-// ─── Icons ───────────────────────────────────────────────────────────────────
 
-function RotateIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="1 4 1 10 7 10" />
-      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-    </svg>
-  );
-}
 
-function CropIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15" />
-      <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15" />
-    </svg>
-  );
-}
 
-function EnhanceIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  );
-}
 
-function BgRemoveIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-      <circle cx="12" cy="12" r="5" />
-      <line x1="3" y1="3" x2="7" y2="7" />
-      <line x1="17" y1="17" x2="21" y2="21" />
-    </svg>
-  );
-}
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
@@ -155,6 +122,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   // Seller-set sale price for the review step (null = use the resolved default).
   const [listPrice, setListPrice] = useState<number | null>(null);
   const [activeTool, setActiveTool] = useState<"none" | "crop">("none");
+  // Which photo the full-screen editor overlay is open for (null = closed).
+  const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
 
   // eBay category + required item specifics, captured at scan time so publish
@@ -606,6 +575,52 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     );
   }
 
+  // ─── Photo editor overlay (all 4 tools; crop early-return above wins) ────
+
+  if (editingPhotoIndex !== null && photos[editingPhotoIndex]) {
+    const pendingPreview = enhanceResult
+      ? {
+          beforeUrl: photos[selectedPhotoIndex]?.url,
+          afterUrl: enhanceResult.image.url,
+          alt: "Enhanced preview",
+          onAccept: handleAcceptEnhance,
+          onDiscard: handleDiscardEnhance,
+        }
+      : bgResultUrl
+        ? {
+            beforeUrl: photos[selectedPhotoIndex]?.url,
+            afterUrl: bgResultUrl,
+            alt: "Background removed preview",
+            onAccept: handleAcceptBg,
+            onDiscard: handleDiscardBg,
+          }
+        : null;
+
+    return (
+      <PhotoEditPanel
+        photo={photos[editingPhotoIndex]}
+        photoIndex={editingPhotoIndex}
+        photoCount={photos.length}
+        onClose={() => {
+          // Closing with an unaccepted result discards it — nothing pending
+          // may silently apply.
+          if (enhanceResult) handleDiscardEnhance();
+          if (bgResultUrl) handleDiscardBg();
+          setEditingPhotoIndex(null);
+        }}
+        onRotate={handleRotate}
+        onCrop={() => !isToolProcessing && setActiveTool("crop")}
+        onEnhance={handleEnhance}
+        onBgRemove={handleBgRemove}
+        isProcessing={isToolProcessing}
+        processingLabel={
+          isRotating ? "Rotating..." : isEnhancing ? "Enhancing..." : isRemovingBg ? "Removing background..." : null
+        }
+        pendingPreview={pendingPreview}
+      />
+    );
+  }
+
   // ─── Camera overlay ───────────────────────────────────────────────────────
 
   if (showCamera) {
@@ -828,122 +843,10 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       {/* ─── REVIEW STATE ──────────────────────────────────────────────── */}
       {state === "review" && photos.length > 0 && (
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Photo hero with editing toolbar */}
-          <div className="relative bg-black flex-shrink-0">
-            {/* Main photo or Before/After preview */}
-            <div className="h-56 flex items-center justify-center overflow-hidden">
-              {enhanceResult ? (
-                <div className="w-full h-full flex items-center justify-center px-2">
-                  <div className="w-56 max-w-full">
-                    <BeforeAfterSlider
-                      beforeUrl={photos[selectedPhotoIndex]?.url}
-                      afterUrl={enhanceResult.image.url}
-                      alt="Enhanced preview"
-                    />
-                  </div>
-                </div>
-              ) : bgResultUrl ? (
-                <div className="w-full h-full flex items-center justify-center px-2">
-                  <div className="w-56 max-w-full">
-                    <BeforeAfterSlider
-                      beforeUrl={photos[selectedPhotoIndex]?.url}
-                      afterUrl={bgResultUrl}
-                      alt="Background removed preview"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photos[selectedPhotoIndex]?.url}
-                    alt={editName}
-                    className="max-w-full max-h-full object-contain"
-                  />
-                  {isToolProcessing && (
-                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
-                      <div className="w-10 h-10 border-3 border-white border-t-transparent rounded-full animate-spin" />
-                      <p className="text-white text-sm mt-3 font-medium">
-                        {isRotating && "Rotating..."}
-                        {isEnhancing && "Enhancing..."}
-                        {isRemovingBg && "Removing background..."}
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Accept/discard buttons or editing toolbar */}
-            {enhanceResult ? (
-              <div className="flex gap-3 px-4 py-2 bg-black/80">
-                <button
-                  onClick={handleDiscardEnhance}
-                  className="flex-1 py-2 rounded-xl border border-white/30 text-white text-sm font-medium"
-                >
-                  Discard
-                </button>
-                <button
-                  onClick={handleAcceptEnhance}
-                  className="flex-1 py-2 rounded-xl bg-[var(--orange)] text-white text-sm font-semibold"
-                >
-                  Use this photo
-                </button>
-              </div>
-            ) : bgResultUrl ? (
-              <div className="flex gap-3 px-4 py-2 bg-black/80">
-                <button
-                  onClick={handleDiscardBg}
-                  className="flex-1 py-2 rounded-xl border border-white/30 text-white text-sm font-medium"
-                >
-                  Discard
-                </button>
-                <button
-                  onClick={handleAcceptBg}
-                  className="flex-1 py-2 rounded-xl bg-[var(--orange)] text-white text-sm font-semibold"
-                >
-                  Use this photo
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-around px-4 py-2 bg-black/80">
-                <ToolButton icon={<RotateIcon />} label="Rotate" onClick={handleRotate} disabled={isToolProcessing} />
-                <ToolButton icon={<CropIcon />} label="Crop" onClick={() => !isToolProcessing && setActiveTool("crop")} disabled={isToolProcessing} />
-                <ToolButton icon={<EnhanceIcon />} label="Enhance" onClick={handleEnhance} disabled={isToolProcessing} />
-                <ToolButton icon={<BgRemoveIcon />} label="BG Remove" onClick={handleBgRemove} disabled={isToolProcessing} />
-              </div>
-            )}
-
-            {/* Horizontal photo strip */}
-            <div className="flex gap-2 px-3 py-2 bg-black/60 overflow-x-auto scrollbar-hide">
-              {photos.map((photo, i) => (
-                <button
-                  key={photo.key}
-                  onClick={() => setSelectedPhotoIndex(i)}
-                  className={`flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-colors ${
-                    i === selectedPhotoIndex ? "border-[var(--teal)]" : "border-white/20"
-                  }`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo.url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
-                </button>
-              ))}
-
-              {/* Add more photos */}
-              {photos.length < MAX_PHOTOS && (
-                <ImagePicker onSelect={handleGallerySelect} multiple>
-                  <div className="flex-shrink-0 w-12 h-12 rounded-lg border-2 border-dashed border-white/30 flex items-center justify-center text-white/50 cursor-pointer hover:text-white/80 transition-colors">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                  </div>
-                </ImagePicker>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom sheet with editable AI results */}
-          <div className="flex-1 overflow-y-auto bg-background rounded-t-2xl -mt-2 relative z-10 pb-28">
+          {/* Full-height details panel — the always-on inline editor is gone;
+              photos live in the gallery strip above the form, editing happens
+              in the full-screen editor overlay. */}
+          <div className="flex-1 overflow-y-auto bg-background relative z-10 pb-28">
             <div className="w-12 h-1 rounded-full bg-border mx-auto mt-3 mb-4" />
             <div className="px-4 space-y-4">
               {error && (
@@ -951,6 +854,17 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   {error}
                 </div>
               )}
+
+              {/* Photo gallery strip — tap a thumb to open the editor */}
+              <PhotoGalleryStrip
+                photos={photos}
+                onEditPhoto={(i) => {
+                  setSelectedPhotoIndex(i);
+                  setEditingPhotoIndex(i);
+                }}
+                onAddPhotos={handleGallerySelect}
+                maxPhotos={MAX_PHOTOS}
+              />
 
               {/* Candidate selector */}
               {candidates.length > 1 && (
@@ -1333,22 +1247,4 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
 // ─── Tool Button ─────────────────────────────────────────────────────────────
 
-interface ToolButtonProps {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  disabled: boolean;
-}
 
-function ToolButton({ icon, label, onClick, disabled }: ToolButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="flex flex-col items-center gap-1 px-3 py-1.5 text-white disabled:opacity-40 transition-opacity active:opacity-60"
-    >
-      {icon}
-      <span className="text-[11px] font-medium">{label}</span>
-    </button>
-  );
-}

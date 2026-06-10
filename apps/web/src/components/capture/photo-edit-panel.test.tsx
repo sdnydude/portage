@@ -56,4 +56,12 @@ describe("PhotoEditPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /discard/i }));
     expect(onDiscard).toHaveBeenCalled();
   });
+
+  it("each tool shows its own icon, not a shared placeholder", () => {
+    render(<PhotoEditPanel {...BASE} />);
+    expect(screen.getByTestId("tool-icon-rotate")).toBeInTheDocument();
+    expect(screen.getByTestId("tool-icon-crop")).toBeInTheDocument();
+    expect(screen.getByTestId("tool-icon-enhance")).toBeInTheDocument();
+    expect(screen.getByTestId("tool-icon-bg-remove")).toBeInTheDocument();
+  });
 });

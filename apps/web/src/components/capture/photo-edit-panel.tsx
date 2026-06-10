@@ -2,6 +2,44 @@
 
 import { BeforeAfterSlider } from "@/components/image/before-after-slider";
 
+// Tool icons (moved from scan-flow's retired inline toolbar).
+function RotateIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </svg>
+  );
+}
+
+function CropIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15" />
+      <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15" />
+    </svg>
+  );
+}
+
+function EnhanceIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  );
+}
+
+function BgRemoveIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="12" cy="12" r="5" />
+      <line x1="3" y1="3" x2="7" y2="7" />
+      <line x1="17" y1="17" x2="21" y2="21" />
+    </svg>
+  );
+}
+
 interface PendingPreview {
   beforeUrl: string;
   afterUrl: string;
@@ -45,10 +83,10 @@ export function PhotoEditPanel({
   pendingPreview,
 }: PhotoEditPanelProps) {
   const tools = [
-    { label: "Rotate", onClick: onRotate },
-    { label: "Crop", onClick: onCrop },
-    { label: "Enhance", onClick: onEnhance },
-    { label: "BG Remove", onClick: onBgRemove },
+    { label: "Rotate", testId: "tool-icon-rotate", icon: <RotateIcon />, onClick: onRotate },
+    { label: "Crop", testId: "tool-icon-crop", icon: <CropIcon />, onClick: onCrop },
+    { label: "Enhance", testId: "tool-icon-enhance", icon: <EnhanceIcon />, onClick: onEnhance },
+    { label: "BG Remove", testId: "tool-icon-bg-remove", icon: <BgRemoveIcon />, onClick: onBgRemove },
   ] as const;
 
   return (
@@ -127,10 +165,8 @@ export function PhotoEditPanel({
               disabled={isProcessing}
               className="flex flex-col items-center gap-1.5 min-w-[60px] min-h-[60px] justify-center disabled:opacity-50"
             >
-              <span className="w-[46px] h-[46px] rounded-[15px] grid place-items-center bg-white/10 border border-white/10">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="9" opacity="0.35" />
-                </svg>
+              <span data-testid={tool.testId} className="w-[46px] h-[46px] rounded-[15px] grid place-items-center bg-white/10 border border-white/10">
+                {tool.icon}
               </span>
               <span className="text-[11px] font-semibold">{tool.label}</span>
             </button>

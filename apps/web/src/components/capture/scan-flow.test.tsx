@@ -169,6 +169,32 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByDisplayValue("165")).toBeInTheDocument();
   });
 
+  it("review shows the gallery strip (no inline editor); tapping a thumb opens the editor overlay", async () => {
+    await renderInReview();
+
+    // Gallery card replaces the always-on editor.
+    expect(screen.getByText(/photos · 1/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /close editor/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /rotate/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /close editor/i }));
+    expect(screen.queryByRole("button", { name: /rotate/i })).not.toBeInTheDocument();
+  });
+
+  it("editor overlay is the full PhotoEditPanel: title + all 4 tools", async () => {
+    await renderInReview();
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+
+    expect(screen.getByText(/edit photo 1 of 1/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /rotate/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /crop/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /enhance/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /bg remove/i })).toBeInTheDocument();
+  });
+
   it("renders the eBay item specifics section in the review panel", async () => {
     scanAspectsState.aspects = { Brand: { required: true, values: null } };
     scanAspectsState.missingRequired = ["Brand"];
