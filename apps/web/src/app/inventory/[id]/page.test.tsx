@@ -58,3 +58,24 @@ describe("inventory detail — editable price", () => {
     expect(screen.getByText("sheet-open price:75")).toBeInTheDocument();
   });
 });
+
+describe("inventory detail — photo gallery strip + editor overlay", () => {
+  it("renders the gallery strip instead of the inline tools; tapping a thumb opens the editor", () => {
+    h.item.photos = [
+      { url: "https://example.com/1.jpg", key: "k1", isPrimary: true },
+      { url: "https://example.com/2.jpg", key: "k2" },
+    ] as never;
+    render(<ItemDetailPage />);
+
+    expect(screen.getByText(/photos · 2/i)).toBeInTheDocument();
+    // The always-on tool buttons are gone from the page body.
+    expect(screen.queryByText(/auto-enhance/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /enhance/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /bg remove/i })).toBeInTheDocument();
+    // No rotate/crop plumbing on this page.
+    expect(screen.queryByRole("button", { name: /rotate/i })).not.toBeInTheDocument();
+  });
+});

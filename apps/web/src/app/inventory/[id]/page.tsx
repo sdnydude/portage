@@ -6,10 +6,10 @@ import { useItem } from "@/hooks/use-item";
 import { useAuth } from "@/hooks/use-auth";
 import { BgRemovalPanel } from "@/components/image/bg-removal-panel";
 import { useEnhance } from "@/hooks/use-enhance";
-import { BeforeAfterSlider } from "@/components/image/before-after-slider";
+import { PhotoGalleryStrip } from "@/components/capture/photo-gallery-strip";
+import { PhotoEditPanel } from "@/components/capture/photo-edit-panel";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { useComps } from "@/hooks/use-comps";
-import { ImagePicker } from "@/components/capture/image-picker";
 import { API_BASE } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
 import { formatCondition } from "@/lib/format";
@@ -51,6 +51,8 @@ export default function ItemDetailPage() {
   const { item, isLoading, error, deleteItem, updateItem } = useItem(params.id);
   const { isProcessing: isEnhancing, result: enhanceResult, error: enhanceError, enhance, reset: resetEnhance } = useEnhance();
   const [photoIndex, setPhotoIndex] = useState(0);
+  // Which photo the full-screen editor overlay is open for (null = closed).
+  const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBgRemoval, setShowBgRemoval] = useState(false);
@@ -212,9 +214,6 @@ export default function ItemDetailPage() {
     }
   };
 
-  const handlePrevPhoto = () => setPhotoIndex((i) => Math.max(0, i - 1));
-  const handleNextPhoto = () => setPhotoIndex((i) => Math.min(photos.length - 1, i + 1));
-
   const startEdit = () => {
     setEditFields(itemToEditFields(item));
     setEditError(null);
@@ -287,152 +286,85 @@ export default function ItemDetailPage() {
       </header>
 
       <div className="max-w-lg mx-auto">
-        {/* Photo Gallery */}
-        <div className="relative aspect-square bg-muted overflow-hidden">
-          {currentPhoto ? (
-            <img src={currentPhoto.url} alt={item.title} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-text-placeholder">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15l-5-5L5 21" />
-              </svg>
+        {/* Photo gallery strip — tap a thumb to open the editor overlay; the
+            always-on hero + inline tools are gone (Stage 2.5 redesign). */}
+        <div className="px-4 pt-3 space-y-2">
+          <PhotoGalleryStrip
+            photos={photos.map((p, i) => ({ key: p.key ?? `photo-${i}`, url: p.url }))}
+            onEditPhoto={(i) => {
+              setPhotoIndex(i);
+              setEditingPhotoIndex(i);
+            }}
+            onAddPhotos={handleAddPhotos}
+            maxPhotos={12}
+          />
+          {isUploading && (
+            <div className="flex items-center gap-2 text-sm text-text-secondary">
+              <div className="w-4 h-4 border-2 border-[var(--teal)] border-t-transparent rounded-full animate-spin" />
+              Uploading...
             </div>
           )}
-
-          {photos.length > 1 && (
-            <>
-              {photoIndex > 0 && (
-                <button
-                  onClick={handlePrevPhoto}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center backdrop-blur-sm"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M15 18l-6-6 6-6" />
-                  </svg>
-                </button>
-              )}
-              {photoIndex < photos.length - 1 && (
-                <button
-                  onClick={handleNextPhoto}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center backdrop-blur-sm"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M9 18l6-6-6-6" />
-                  </svg>
-                </button>
-              )}
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                {photos.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setPhotoIndex(i)}
-                    className={`w-2 h-2 rounded-full transition-colors ${i === photoIndex ? "bg-white" : "bg-white/40"}`}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Add Photos */}
-        <div className="px-4 pt-3">
-          <ImagePicker onSelect={handleAddPhotos} multiple>
-            <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-border text-text-secondary text-sm font-medium cursor-pointer hover:border-forest-green hover:text-forest-green transition-colors">
-              {isUploading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                  Add Photos ({photos.length}/12)
-                </>
-              )}
-            </div>
-          </ImagePicker>
           {uploadError && (
-            <div className="mt-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
               {uploadError}
             </div>
           )}
+          {enhanceError && (
+            <div className="space-y-2">
+              <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
+                {enhanceError}
+              </div>
+              <button onClick={resetEnhance} className="w-full py-2 rounded-xl border border-border text-sm text-text-primary">
+                Dismiss
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Photo Tools */}
-        {currentPhoto && (
-          <div className="px-4 pt-3 space-y-3">
-            {showBgRemoval ? (
-              <BgRemovalPanel
-                imageUrl={currentPhoto.url}
-                alt={item.title}
-                onSave={(url) => handleSaveEditedPhoto(url)}
-                onClose={() => setShowBgRemoval(false)}
-              />
-            ) : enhanceResult ? (
-              <div className="space-y-3">
-                <BeforeAfterSlider
-                  beforeUrl={currentPhoto.url}
-                  afterUrl={enhanceResult.image.url}
+        {/* Photo editor overlay (Enhance + BG Remove — this page has no
+            rotate/crop plumbing). BG removal keeps its own panel, hosted in
+            an overlay layer above the editor. */}
+        {editingPhotoIndex !== null && currentPhoto && (
+          showBgRemoval ? (
+            <div className="fixed inset-0 z-[80] bg-background overflow-y-auto">
+              <div className="max-w-lg mx-auto p-4">
+                <BgRemovalPanel
+                  imageUrl={currentPhoto.url}
                   alt={item.title}
+                  onSave={(url) => {
+                    handleSaveEditedPhoto(url);
+                    setShowBgRemoval(false);
+                  }}
+                  onClose={() => setShowBgRemoval(false)}
                 />
-                <div className="flex gap-3">
-                  <button
-                    onClick={resetEnhance}
-                    className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-text-primary"
-                  >
-                    Discard
-                  </button>
-                  <button
-                    onClick={() => handleSaveEditedPhoto(enhanceResult.image.url, enhanceResult.image.key)}
-                    className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium"
-                  >
-                    Use this photo
-                  </button>
-                </div>
               </div>
-            ) : enhanceError ? (
-              <div className="space-y-2">
-                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
-                  {enhanceError}
-                </div>
-                <button onClick={resetEnhance} className="w-full py-2 rounded-xl border border-border text-sm text-text-primary">
-                  Dismiss
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowBgRemoval(true)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-forest-green-50 text-forest-green text-sm font-medium hover:bg-forest-green-100 transition-colors"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M12 3a6 6 0 016 6c0 7-3 9-6 9s-6-2-6-9a6 6 0 016-6z" />
-                    <path d="M6 21h12" />
-                  </svg>
-                  Remove BG
-                </button>
-                <button
-                  onClick={() => enhance(currentPhoto.url)}
-                  disabled={isEnhancing}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-forest-green-50 text-forest-green text-sm font-medium hover:bg-forest-green-100 transition-colors disabled:opacity-50"
-                >
-                  {isEnhancing ? (
-                    <div className="w-4 h-4 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
-                      <circle cx="12" cy="12" r="4" />
-                    </svg>
-                  )}
-                  {isEnhancing ? "Enhancing..." : "Auto-Enhance"}
-                </button>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <PhotoEditPanel
+              photo={{ url: currentPhoto.url }}
+              photoIndex={editingPhotoIndex}
+              photoCount={photos.length}
+              onClose={() => {
+                if (enhanceResult) resetEnhance();
+                setEditingPhotoIndex(null);
+              }}
+              onEnhance={() => enhance(currentPhoto.url)}
+              onBgRemove={() => setShowBgRemoval(true)}
+              isProcessing={isEnhancing}
+              processingLabel={isEnhancing ? "Enhancing..." : null}
+              pendingPreview={
+                enhanceResult
+                  ? {
+                      beforeUrl: currentPhoto.url,
+                      afterUrl: enhanceResult.image.url,
+                      alt: item.title,
+                      onAccept: () => handleSaveEditedPhoto(enhanceResult.image.url, enhanceResult.image.key),
+                      onDiscard: resetEnhance,
+                    }
+                  : null
+              }
+            />
+          )
         )}
 
         {/* Item Info */}
