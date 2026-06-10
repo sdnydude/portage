@@ -43,6 +43,13 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
     ? "#B8860B"
     : "#CC3333";
 
+  // Market-shape sell-through from the raw comps stats (sold / (sold + active)).
+  // Display-only context; thresholds: Hot >= 2/3, Slow < 1/3, else Normal.
+  const sellThrough = comps.ebay?.stats.sellThrough;
+  const sellThroughLabel = sellThrough == null
+    ? null
+    : sellThrough >= 2 / 3 ? "Hot" : sellThrough < 1 / 3 ? "Slow" : "Normal";
+
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
       <div className="px-4 py-3">
@@ -77,6 +84,35 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
             <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: confidenceColor, background: `${confidenceColor}15` }}>
               {pricing.basedOn} sold comps ({confidenceLabel})
             </span>
+            {sellThroughLabel && (
+              <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ color: "var(--teal, #1A7A6D)", background: "var(--teal-soft, rgba(26,122,109,0.1))" }}>
+                {sellThroughLabel} demand
+              </span>
+            )}
+          </div>
+        )}
+
+        {pricing.basedOn > 0 && (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {([
+              { key: "Move it", value: pricing.low, pct: "25th pct" },
+              { key: "Market", value: pricing.suggested, pct: "suggested" },
+              { key: "Top dollar", value: pricing.high, pct: "75th pct" },
+            ] as const).map(band => (
+              <button
+                key={band.key}
+                onClick={() => onPriceChange(band.value)}
+                className="rounded-lg px-2 py-2 text-left border transition-colors"
+                style={{
+                  borderColor: currentPrice === band.value ? "var(--flow-accent, #2D5A27)" : "rgba(0,0,0,0.1)",
+                  background: currentPrice === band.value ? "var(--flow-accent-soft, rgba(45,90,39,0.08))" : "white",
+                }}
+              >
+                <span className="block text-[11px] font-medium" style={{ color: "rgba(0,0,0,0.5)" }}>{band.key}</span>
+                <span className="block text-sm font-bold">${band.value.toFixed(0)}</span>
+                <span className="block text-[10px]" style={{ color: "rgba(0,0,0,0.4)" }}>{band.pct}</span>
+              </button>
+            ))}
           </div>
         )}
       </div>

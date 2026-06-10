@@ -366,6 +366,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       isMusicGear: aiFields.isMusicGear,
       aiConfidence: aiFields.aiConfidence,
       warnings,
+      listingFooter: profile?.defaultListingFooter ?? null,
     };
 
     logger.info({

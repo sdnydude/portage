@@ -181,4 +181,20 @@ describe('Seller-tuned pricing percentile in prepare-listing', () => {
     expect(res.status).toBe(200);
     expect(res.body.ebay.bestOfferAutoAcceptPrice).toBe(175);
   });
+
+  it('carries the seller default footer for display-only preview', async () => {
+    mockDbSequence([
+      [baseItem],
+      [{ id: 'sp-1', pricingSuggestPercentile: 50, pricingFloorPercentile: 25, defaultListingFooter: 'Ships fast.' }],
+      [baseUser],
+    ]);
+
+    const res = await request(app)
+      .post('/items/item-1/prepare-listing')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetMarketplaces: ['ebay'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.listingFooter).toBe('Ships fast.');
+  });
 });

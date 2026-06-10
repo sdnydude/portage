@@ -58,6 +58,25 @@ const baseProps = {
   sellerProfileComplete: true,
 };
 
+describe("ListingPreviewCard — listing footer preview", () => {
+  beforeEach(() => {
+    mockUseRequiredAspects.mockReturnValue({ aspects: {}, isLoading: false });
+  });
+
+  it("renders the seller footer display-only with an added-at-publish note", () => {
+    render(
+      <ListingPreviewCard
+        {...baseProps}
+        data={{ ...data, listingFooter: "Ships fast from a smoke-free studio." }}
+        onPublish={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Ships fast from a smoke-free studio.")).toBeInTheDocument();
+    expect(screen.getByText(/added at publish/i)).toBeInTheDocument();
+  });
+});
+
 describe("ListingPreviewCard — required item specifics gating", () => {
   beforeEach(() => {
     mockUseRequiredAspects.mockReturnValue({

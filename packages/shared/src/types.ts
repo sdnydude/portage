@@ -438,6 +438,10 @@ export interface SellerProfile {
   preferredMarketplaces: MarketplaceType[];
   autoPublish: boolean;
   defaultCurrency: string;
+  pricingSuggestPercentile: number;
+  pricingFloorPercentile: number;
+  bestOfferAutoAcceptEnabled: boolean;
+  defaultListingFooter: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -533,6 +537,8 @@ export interface PreparedListingData {
   isMusicGear: boolean;
   aiConfidence: number;
   warnings: string[];
+  /** Seller's default footer — display-only in previews; appended server-side at publish. */
+  listingFooter?: string | null;
 }
 
 export interface EbayPolicy {
