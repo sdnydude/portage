@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({
   item: {
@@ -9,6 +9,8 @@ const h = vi.hoisted(() => ({
     price: null as number | null,
     aiConfidenceScore: 0, quantity: 1, createdAt: "2026-01-01", updatedAt: "2026-01-01",
   },
+  updateItem: vi.fn().mockResolvedValue({}),
+  apiMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -19,8 +21,12 @@ vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true, to
 vi.mock("@/hooks/use-item", () => ({
   useItem: () => ({
     item: h.item,
-    isLoading: false, error: null, deleteItem: vi.fn(), updateItem: vi.fn().mockResolvedValue({}),
+    isLoading: false, error: null, deleteItem: vi.fn(), updateItem: h.updateItem,
   }),
+}));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  api: h.apiMock,
 }));
 vi.mock("@/hooks/use-enhance", () => ({
   useEnhance: () => ({ isProcessing: false, result: null, error: null, enhance: vi.fn(), reset: vi.fn() }),
@@ -32,6 +38,11 @@ vi.mock("@/hooks/use-listings", () => ({ useListings: () => ({ createListing: vi
 vi.mock("@/components/image/bg-removal-panel", () => ({ BgRemovalPanel: () => null }));
 vi.mock("@/components/image/before-after-slider", () => ({ BeforeAfterSlider: () => null }));
 vi.mock("@/components/capture/image-picker", () => ({ ImagePicker: () => null }));
+vi.mock("@/components/listing-flow/crop-tool", () => ({
+  CropTool: ({ onApply }: { onApply: (c: { x: number; y: number; width: number; height: number }) => void }) => (
+    <button onClick={() => onApply({ x: 1, y: 2, width: 30, height: 40 })}>apply-crop</button>
+  ),
+}));
 vi.mock("@/components/listing/create-listing-sheet", () => ({
   CreateListingSheet: ({ suggestedPrice }: { suggestedPrice?: number }) => (
     <div>sheet-open price:{suggestedPrice ?? "none"}</div>
@@ -75,7 +86,54 @@ describe("inventory detail — photo gallery strip + editor overlay", () => {
     expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /enhance/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /bg remove/i })).toBeInTheDocument();
-    // No rotate/crop plumbing on this page.
-    expect(screen.queryByRole("button", { name: /rotate/i })).not.toBeInTheDocument();
+    // S2.5-6: item detail hosts all 4 tools (rotate/crop plumbing ported from scan-flow).
+    expect(screen.getByRole("button", { name: /rotate/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /crop/i })).toBeInTheDocument();
+  });
+
+  it("rotate posts /images/rotate and persists the rotated photo entry", async () => {
+    h.item.photos = [{ url: "https://example.com/1.jpg", key: "k1" }] as never;
+    h.updateItem.mockClear();
+    h.apiMock.mockResolvedValueOnce({
+      image: { key: "k1-rot", url: "https://example.com/1-rot.jpg", width: 800, height: 600 },
+    });
+    render(<ItemDetailPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /rotate/i }));
+
+    await waitFor(() => {
+      expect(h.apiMock).toHaveBeenCalledWith("/images/rotate", expect.objectContaining({
+        method: "POST",
+        body: { imageUrl: "https://example.com/1.jpg", degrees: 90 },
+      }));
+      expect(h.updateItem).toHaveBeenCalledWith({
+        photos: [{ url: "https://example.com/1-rot.jpg", key: "k1-rot", width: 800, height: 600 }],
+      });
+    });
+  });
+
+  it("crop opens the crop overlay; applying posts /images/crop and persists", async () => {
+    h.item.photos = [{ url: "https://example.com/1.jpg", key: "k1" }] as never;
+    h.updateItem.mockClear();
+    h.apiMock.mockClear();
+    h.apiMock.mockResolvedValueOnce({
+      image: { key: "k1-crop", url: "https://example.com/1-crop.jpg", width: 30, height: 40 },
+    });
+    render(<ItemDetailPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^crop$/i }));
+    fireEvent.click(screen.getByText("apply-crop"));
+
+    await waitFor(() => {
+      expect(h.apiMock).toHaveBeenCalledWith("/images/crop", expect.objectContaining({
+        method: "POST",
+        body: { imageUrl: "https://example.com/1.jpg", crop: { x: 1, y: 2, width: 30, height: 40 } },
+      }));
+      expect(h.updateItem).toHaveBeenCalledWith({
+        photos: [{ url: "https://example.com/1-crop.jpg", key: "k1-crop", width: 30, height: 40 }],
+      });
+    });
   });
 });

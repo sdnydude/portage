@@ -9,8 +9,9 @@ import { useEnhance } from "@/hooks/use-enhance";
 import { PhotoGalleryStrip } from "@/components/capture/photo-gallery-strip";
 import { PhotoEditPanel } from "@/components/capture/photo-edit-panel";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
+import { CropTool } from "@/components/listing-flow/crop-tool";
 import { useComps } from "@/hooks/use-comps";
-import { API_BASE } from "@/lib/api";
+import { api, API_BASE } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
 import { formatCondition } from "@/lib/format";
 import {
@@ -56,6 +57,8 @@ export default function ItemDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBgRemoval, setShowBgRemoval] = useState(false);
+  const [showCrop, setShowCrop] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
   const [showListingSheet, setShowListingSheet] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -132,6 +135,60 @@ export default function ItemDetailPage() {
       setShowBgRemoval(false);
     },
     [item, photoIndex, updateItem, resetEnhance],
+  );
+
+  // Rotate persists immediately (same UX as scan-flow): the server writes a
+  // new R2 image, then the item's photo entry is updated via PATCH.
+  const handleRotate = useCallback(async () => {
+    const itemPhotos = item?.photos ?? [];
+    const photo = itemPhotos[photoIndex];
+    if (!token || isRotating || isEnhancing || !photo) return;
+    setIsRotating(true);
+    setUploadError(null);
+    try {
+      const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/rotate", {
+        method: "POST",
+        body: { imageUrl: photo.url, degrees: 90 },
+        token,
+      });
+      const updatedPhotos = itemPhotos.map((p, i) =>
+        i === photoIndex
+          ? { ...p, url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height }
+          : p
+      );
+      await updateItem({ photos: updatedPhotos });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Rotation failed");
+    } finally {
+      setIsRotating(false);
+    }
+  }, [token, isRotating, isEnhancing, item, photoIndex, updateItem]);
+
+  const handleCropApply = useCallback(
+    async (crop: { x: number; y: number; width: number; height: number }) => {
+      const itemPhotos = item?.photos ?? [];
+      const photo = itemPhotos[photoIndex];
+      if (!token || !photo) return;
+      setUploadError(null);
+      try {
+        const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/crop", {
+          method: "POST",
+          body: { imageUrl: photo.url, crop },
+          token,
+        });
+        const updatedPhotos = itemPhotos.map((p, i) =>
+          i === photoIndex
+            ? { ...p, url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height }
+            : p
+        );
+        await updateItem({ photos: updatedPhotos });
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Crop failed");
+      } finally {
+        setShowCrop(false);
+      }
+    },
+    [token, item, photoIndex, updateItem],
   );
 
   const handleUseCompTitle = useCallback(
@@ -325,7 +382,15 @@ export default function ItemDetailPage() {
             rotate/crop plumbing). BG removal keeps its own panel, hosted in
             an overlay layer above the editor. */}
         {editingPhotoIndex !== null && currentPhoto && (
-          showBgRemoval ? (
+          showCrop ? (
+            <CropTool
+              imageUrl={currentPhoto.url}
+              imageWidth={currentPhoto.width ?? 1024}
+              imageHeight={currentPhoto.height ?? 1024}
+              onApply={handleCropApply}
+              onCancel={() => setShowCrop(false)}
+            />
+          ) : showBgRemoval ? (
             <div className="fixed inset-0 z-[80] bg-background overflow-y-auto">
               <div className="max-w-lg mx-auto p-4">
                 <BgRemovalPanel
@@ -348,10 +413,12 @@ export default function ItemDetailPage() {
                 if (enhanceResult) resetEnhance();
                 setEditingPhotoIndex(null);
               }}
+              onRotate={handleRotate}
+              onCrop={() => !isRotating && !isEnhancing && setShowCrop(true)}
               onEnhance={() => enhance(currentPhoto.url)}
               onBgRemove={() => setShowBgRemoval(true)}
-              isProcessing={isEnhancing}
-              processingLabel={isEnhancing ? "Enhancing..." : null}
+              isProcessing={isEnhancing || isRotating}
+              processingLabel={isRotating ? "Rotating..." : isEnhancing ? "Enhancing..." : null}
               pendingPreview={
                 enhanceResult
                   ? {
