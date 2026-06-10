@@ -2,6 +2,10 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { CompsPricingWidget } from "./comps-pricing-widget";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditPanel } from "../capture/photo-edit-panel";
+import { CropTool } from "../listing-flow/crop-tool";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
 import { useRequiredAspects } from "@/hooks/use-required-aspects";
 import type { PreparedListingData } from "@portage/shared";
 
@@ -15,6 +19,9 @@ interface ListingPreviewCardProps {
   onPublish: (marketplace: "ebay" | "reverb", publishMode: "draft" | "live", aspects?: Record<string, string[]>) => void;
   isPublishing: boolean;
   sellerProfileComplete: boolean;
+  /** When provided, the card shows the photo gallery strip and hosts the
+   *  full-screen editor overlay (all 4 tools); edits persist through this. */
+  onPhotoUpdated?: (index: number, patch: { url: string; key?: string; width?: number; height?: number }) => void;
 }
 
 function InlineEdit({ value, field, onSave }: { value: string; field: string; onSave: (field: string, value: string) => void }) {
@@ -52,9 +59,11 @@ export function ListingPreviewCard({
   onPublish,
   isPublishing,
   sellerProfileComplete,
+  onPhotoUpdated,
 }: ListingPreviewCardProps) {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
+  const photoEdit = usePhotoEdit(photos, (index, patch) => onPhotoUpdated?.(index, patch));
 
   const handleFieldSave = useCallback((field: string, value: string) => {
     onFieldChange(field, value);
@@ -128,6 +137,44 @@ export function ListingPreviewCard({
       </div>
 
       <div className="p-4 space-y-4">
+        {onPhotoUpdated && (
+          <PhotoGalleryStrip
+            photos={photos.map((p, i) => ({ key: p.key || `photo-${i}`, url: p.url }))}
+            onEditPhoto={photoEdit.openEditor}
+            maxPhotos={12}
+          />
+        )}
+
+        {onPhotoUpdated && photoEdit.editingIndex !== null && photoEdit.editingPhoto && (
+          photoEdit.showCrop ? (
+            <CropTool
+              imageUrl={photoEdit.editingPhoto.url}
+              imageWidth={photoEdit.editingPhoto.width ?? 1024}
+              imageHeight={photoEdit.editingPhoto.height ?? 1024}
+              onApply={photoEdit.applyCrop}
+              onCancel={photoEdit.cancelCrop}
+            />
+          ) : (
+            <PhotoEditPanel
+              photo={{ url: photoEdit.editingPhoto.url }}
+              photoIndex={photoEdit.editingIndex}
+              photoCount={photos.length}
+              onClose={photoEdit.closeEditor}
+              onRotate={photoEdit.rotate}
+              onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
+              onEnhance={photoEdit.enhanceCurrent}
+              onBgRemove={photoEdit.bgRemoveCurrent}
+              isProcessing={photoEdit.isProcessing}
+              processingLabel={photoEdit.processingLabel}
+              pendingPreview={
+                photoEdit.pendingPreview
+                  ? { ...photoEdit.pendingPreview, alt: data.title }
+                  : null
+              }
+            />
+          )
+        )}
+
         <h3 className="text-lg font-semibold" style={{ color: "var(--flow-text, #18191C)" }}>
           <InlineEdit value={data.title} field="title" onSave={handleFieldSave} />
         </h3>

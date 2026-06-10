@@ -40,6 +40,13 @@ describe("PhotoGalleryStrip", () => {
     expect(screen.queryByLabelText(/add photos/i)).not.toBeInTheDocument();
   });
 
+  it("hides the add tile when no onAddPhotos handler is provided (hosts without an upload path)", () => {
+    render(
+      <PhotoGalleryStrip photos={PHOTOS} onEditPhoto={vi.fn()} maxPhotos={12} />,
+    );
+    expect(screen.queryByLabelText(/add photos/i)).not.toBeInTheDocument();
+  });
+
   it("shows an edit-dot affordance on every thumb (comp: per-thumb pencil dot)", () => {
     render(
       <PhotoGalleryStrip photos={PHOTOS} onEditPhoto={vi.fn()} onAddPhotos={vi.fn()} maxPhotos={12} />,

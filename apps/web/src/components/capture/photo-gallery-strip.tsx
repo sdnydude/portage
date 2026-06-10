@@ -10,7 +10,8 @@ interface StripPhoto {
 interface PhotoGalleryStripProps {
   photos: StripPhoto[];
   onEditPhoto: (index: number) => void;
-  onAddPhotos: (files: File[]) => void;
+  /** Omit in hosts that have no photo-upload path — the add tile is hidden. */
+  onAddPhotos?: (files: File[]) => void;
   maxPhotos: number;
 }
 
@@ -54,7 +55,7 @@ export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos 
           </button>
         ))}
 
-        {photos.length < maxPhotos && (
+        {onAddPhotos && photos.length < maxPhotos && (
           <ImagePicker onSelect={onAddPhotos} multiple>
             <div
               aria-label="Add photos"

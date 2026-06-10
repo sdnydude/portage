@@ -351,6 +351,19 @@ export function useListingFlow() {
     });
   }, [triggerAutoSave]);
 
+  // Photo-edit tools (rotate/crop/enhance/bg-remove) persist their result here.
+  const updatePhoto = useCallback((index: number, patch: Partial<ListingFlowState['photos'][number]> & { url: string }) => {
+    setState(prev => {
+      if (!prev.photos[index]) return prev;
+      const next = {
+        ...prev,
+        photos: prev.photos.map((p, i) => (i === index ? { ...p, ...patch } : p)),
+      };
+      triggerAutoSave(next);
+      return next;
+    });
+  }, [triggerAutoSave]);
+
   const publish = useCallback(async (
     options?: PublishOptions,
   ): Promise<{ success: boolean; listingId?: string; error?: string; aspectsRequired?: AspectRequirement[]; weightRequired?: boolean }> => {
@@ -551,6 +564,7 @@ export function useListingFlow() {
     fetchComps,
     applyPricingStrategy,
     addPhotos,
+    updatePhoto,
     publish,
     cancel,
     reset,

@@ -893,6 +893,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
                 }}
                 isPublishing={state.publishStatus === "publishing"}
                 sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
+                onPhotoUpdated={flow.updatePhoto}
               />
             </div>
           </div>

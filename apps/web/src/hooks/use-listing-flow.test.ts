@@ -33,3 +33,22 @@ describe("useListingFlow.startFromItem — price seed", () => {
     expect(result.current.state.price).toBe(175);
   });
 });
+
+describe("useListingFlow.updatePhoto", () => {
+  it("replaces a single photo's fields in place (photo-edit tools persist through this)", () => {
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.addPhotos([
+        { url: "https://example.com/1.jpg", key: "k1" },
+        { url: "https://example.com/2.jpg", key: "k2" },
+      ]);
+    });
+    act(() => {
+      result.current.updatePhoto(1, { url: "https://example.com/2-rot.jpg", key: "k2-rot", width: 800, height: 600 });
+    });
+    expect(result.current.state.photos).toEqual([
+      { url: "https://example.com/1.jpg", key: "k1" },
+      { url: "https://example.com/2-rot.jpg", key: "k2-rot", width: 800, height: 600 },
+    ]);
+  });
+});

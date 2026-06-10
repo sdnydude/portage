@@ -744,6 +744,7 @@ function ChatMode({
             }}
             isPublishing={state.publishStatus === "publishing"}
             sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
+            onPhotoUpdated={flow.updatePhoto}
           />
         </div>
       )}
