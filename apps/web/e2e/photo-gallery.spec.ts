@@ -53,7 +53,7 @@ test("item detail: gallery strip opens editor overlay, close returns, strip surv
   await expect(page.getByText("BG Remove")).toBeVisible();
   await expect(page.getByText("Rotate")).toBeVisible();
   await expect(page.getByText("Crop")).toBeVisible();
-  await page.screenshot({ path: path.join(SHOT_DIR, "pg-2-editor-overlay.png"), fullPage: true });
+  await page.screenshot({ path: path.join(SHOT_DIR, "pg-2-editor-overlay.png") });
 
   // Close discards and returns to the detail page with the strip intact.
   await page.getByRole("button", { name: "Close editor" }).click();
@@ -90,7 +90,7 @@ test("listing creation: hybrid compact mode hosts the gallery strip + editor ove
     // Listing flows host all 4 tools.
     await expect(page.getByText("Rotate")).toBeVisible();
     await expect(page.getByText("Crop")).toBeVisible();
-    await page.screenshot({ path: path.join(SHOT_DIR, "pg-6-listing-compact-editor.png"), fullPage: true });
+    await page.screenshot({ path: path.join(SHOT_DIR, "pg-6-listing-compact-editor.png") });
 
     await page.getByRole("button", { name: "Close editor" }).click();
     await expect(page.getByText("Tap to edit")).toBeVisible();
@@ -112,7 +112,7 @@ test.describe("dark mode", () => {
 
     await page.getByRole("button", { name: "Edit photo 1" }).click();
     await expect(page.getByText(/Edit photo 1 of \d+/)).toBeVisible();
-    await page.screenshot({ path: path.join(SHOT_DIR, "pg-5-editor-dark.png"), fullPage: true });
+    await page.screenshot({ path: path.join(SHOT_DIR, "pg-5-editor-dark.png") });
 
     await page.getByRole("button", { name: "Close editor" }).click();
     await expect(page.getByText("Tap to edit")).toBeVisible();
