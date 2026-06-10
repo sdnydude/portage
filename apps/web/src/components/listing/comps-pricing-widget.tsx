@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { PricingData, CompResult, ReverbCompResult } from "@portage/shared";
+import { demandLabel } from "@/lib/demand";
 
 interface CompsPricingWidgetProps {
   pricing: PricingData;
@@ -43,6 +44,9 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
     ? "#B8860B"
     : "#CC3333";
 
+  // Market-shape sell-through from the raw comps stats — display-only context.
+  const sellThroughLabel = demandLabel(comps.ebay?.stats.sellThrough);
+
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
       <div className="px-4 py-3">
@@ -77,6 +81,37 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
             <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: confidenceColor, background: `${confidenceColor}15` }}>
               {pricing.basedOn} sold comps ({confidenceLabel})
             </span>
+            {sellThroughLabel && (
+              <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ color: "var(--teal, #1A7A6D)", background: "var(--teal-soft, rgba(26,122,109,0.1))" }}>
+                {sellThroughLabel} demand
+              </span>
+            )}
+          </div>
+        )}
+
+        {pricing.basedOn > 0 && (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {([
+              { key: "Move it", value: pricing.low, pct: "25th pct" },
+              { key: "Market", value: pricing.suggested, pct: "suggested" },
+              { key: "Top dollar", value: pricing.high, pct: "75th pct" },
+            ] as const).map(band => (
+              <button
+                key={band.key}
+                onClick={() => onPriceChange(band.value)}
+                className="rounded-lg px-2 py-2 text-left border transition-colors"
+                style={{
+                  // Same selected-band treatment as scan-flow's bands: teal
+                  // tokens (redesign goal — never forest green in new code).
+                  borderColor: currentPrice === band.value ? "var(--teal)" : "rgba(0,0,0,0.1)",
+                  background: currentPrice === band.value ? "var(--teal-soft)" : "white",
+                }}
+              >
+                <span className="block text-[11px] font-medium" style={{ color: "rgba(0,0,0,0.5)" }}>{band.key}</span>
+                <span className="block text-sm font-bold">${band.value.toFixed(0)}</span>
+                <span className="block text-[10px]" style={{ color: "rgba(0,0,0,0.4)" }}>{band.pct}</span>
+              </button>
+            ))}
           </div>
         )}
       </div>

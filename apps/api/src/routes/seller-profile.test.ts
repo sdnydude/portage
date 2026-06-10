@@ -106,6 +106,55 @@ describe('PATCH /seller-profile', () => {
 
     expect(res.status).toBe(200);
   });
+
+  it('rejects floor >= suggest percentile sent together', async () => {
+    mockSelectOnce([{ id: 'sp-1', pricingSuggestPercentile: 50, pricingFloorPercentile: 25 }]);
+
+    const res = await request(app)
+      .patch('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ pricingSuggestPercentile: 50, pricingFloorPercentile: 60 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('PRICING_FLOOR_INVALID');
+  });
+
+  it('merges with the stored row when only the floor is sent (floor >= stored suggest rejected)', async () => {
+    mockSelectOnce([{ id: 'sp-1', pricingSuggestPercentile: 30, pricingFloorPercentile: 25 }]);
+
+    const res = await request(app)
+      .patch('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ pricingFloorPercentile: 40 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('PRICING_FLOOR_INVALID');
+  });
+
+  it('merges the OTHER direction too — suggest-only sent below the stored floor rejected', async () => {
+    mockSelectOnce([{ id: 'sp-1', pricingSuggestPercentile: 50, pricingFloorPercentile: 25 }]);
+
+    const res = await request(app)
+      .patch('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ pricingSuggestPercentile: 20 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('PRICING_FLOOR_INVALID');
+  });
+
+  it('accepts bestOfferAutoAcceptEnabled and defaultListingFooter', async () => {
+    mockSelectOnce([{ id: 'sp-1' }]);
+    mockUpdateReturns([{ id: 'sp-1', bestOfferAutoAcceptEnabled: true, defaultListingFooter: 'Ships fast from a smoke-free studio.' }]);
+
+    const res = await request(app)
+      .patch('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ bestOfferAutoAcceptEnabled: true, defaultListingFooter: 'Ships fast from a smoke-free studio.' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.profile.bestOfferAutoAcceptEnabled).toBe(true);
+  });
 });
 
 describe('POST /seller-profile/ebay/auto-setup', () => {

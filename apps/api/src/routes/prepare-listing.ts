@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { eq, and, sql } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
+import { computePriceBands } from '../lib/pricing.js';
 import { db } from '../db/index.js';
 import { items, sellerProfiles, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -46,6 +47,7 @@ export function computePricing(
   soldComps: Array<{ price: number; condition: string }>,
   aiCondition: string,
   currency: string,
+  opts: { suggestPercentile?: number; floorPercentile?: number } = {},
 ): PricingData {
   const ebayCondition = EBAY_CONDITION_MAP[aiCondition] ?? 'GOOD';
 
@@ -77,25 +79,30 @@ export function computePricing(
       confidence: 'low',
       basedOn: 0,
       conditionMatch: 'all',
+      // Same "no floor" encoding as the engine path — null, never omitted.
+      bestOfferFloor: null,
     };
   }
 
-  const prices = pool.map(p => p.price).sort((a, b) => a - b);
-  const mid = Math.floor(prices.length / 2);
-  const median = prices.length % 2 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
-  const p25 = prices[Math.floor(prices.length * 0.25)] ?? prices[0];
-  const p75 = prices[Math.ceil(prices.length * 0.75) - 1] ?? prices[prices.length - 1];
+  // Bands from the condition-selected pool via the shared engine (R-7,
+  // round-once, undercut-at-p50) — pool is non-empty here, so bands exist.
+  const bands = computePriceBands(pool.map(p => p.price), {
+    suggestPercentile: opts.suggestPercentile,
+    floorPercentile: opts.floorPercentile,
+  });
+  if (!bands) throw new Error('unreachable: pool verified non-empty above');
 
   const confidence = conditionMatch === 'exact' ? 'high' : conditionMatch === 'nearby' ? 'medium' : 'low';
 
   return {
-    suggested: Math.round(median * 0.97 * 100) / 100,
-    low: Math.round(p25 * 100) / 100,
-    high: Math.round(p75 * 100) / 100,
+    suggested: bands.suggested,
+    low: bands.p25,
+    high: bands.p75,
     currency,
     confidence,
-    basedOn: pool.length,
+    basedOn: bands.basedOn,
     conditionMatch,
+    bestOfferFloor: bands.floor,
   };
 }
 
@@ -298,7 +305,10 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       price: s.price,
       condition: s.condition,
     }));
-    const pricing = computePricing(soldWithCondition, aiFields.condition, currency);
+    const pricing = computePricing(soldWithCondition, aiFields.condition, currency, {
+      suggestPercentile: profile?.pricingSuggestPercentile,
+      floorPercentile: profile?.pricingFloorPercentile,
+    });
 
     if (pricing.conditionMatch === 'all' && pricing.basedOn > 0) {
       warnings.push('Limited comps at this condition — price may be less accurate');
@@ -324,6 +334,12 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       : {};
     if (conditionFix.warning) warnings.push(conditionFix.warning);
 
+    // Opted-in Best Offer with no usable floor (n<3 or inversion) degrades
+    // silently at publish otherwise — tell the seller at prepare time.
+    if (aiFields.ebay && profile?.bestOfferAutoAcceptEnabled && !pricing.bestOfferFloor) {
+      warnings.push('Too few comparable sales to set a Best Offer auto-accept floor — the listing will publish without one.');
+    }
+
     const ebayFields = aiFields.ebay ? {
       ...aiFields.ebay,
       ...(conditionFix.condition ? { condition: conditionFix.condition } : {}),
@@ -331,6 +347,9 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       paymentPolicyId: profile?.ebayPaymentPolicyId ?? '',
       returnPolicyId: profile?.ebayReturnPolicyId ?? '',
       merchantLocationKey: profile?.ebayMerchantLocationKey ?? 'default',
+      ...(profile?.bestOfferAutoAcceptEnabled && pricing.bestOfferFloor
+        ? { bestOfferAutoAcceptPrice: pricing.bestOfferFloor }
+        : {}),
     } : null;
 
     const reverbFields = aiFields.reverb ? {
@@ -356,6 +375,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       isMusicGear: aiFields.isMusicGear,
       aiConfidence: aiFields.aiConfidence,
       warnings,
+      listingFooter: profile?.defaultListingFooter ?? null,
     };
 
     logger.info({

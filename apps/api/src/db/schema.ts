@@ -298,6 +298,10 @@ export const sellerProfiles = pgTable('seller_profiles', {
   preferredMarketplaces: jsonb('preferred_marketplaces').notNull().default(['ebay']),
   autoPublish: boolean('auto_publish').notNull().default(false),
   defaultCurrency: varchar('default_currency', { length: 3 }).notNull().default('USD'),
+  pricingSuggestPercentile: integer('pricing_suggest_percentile').notNull().default(50),
+  pricingFloorPercentile: integer('pricing_floor_percentile').notNull().default(25),
+  bestOfferAutoAcceptEnabled: boolean('best_offer_auto_accept_enabled').notNull().default(false),
+  defaultListingFooter: text('default_listing_footer'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

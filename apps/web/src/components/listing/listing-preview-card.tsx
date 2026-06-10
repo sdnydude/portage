@@ -143,6 +143,13 @@ export function ListingPreviewCard({
           &quot;{data.conditionDescription}&quot;
         </p>
 
+        {data.listingFooter && (
+          <div className="rounded-lg px-3 py-2 text-sm" style={{ background: "rgba(0,0,0,0.03)", border: "1px dashed rgba(0,0,0,0.15)" }}>
+            <p style={{ color: "rgba(0,0,0,0.6)" }}>{data.listingFooter}</p>
+            <p className="text-[10px] mt-1" style={{ color: "rgba(0,0,0,0.4)" }}>Listing footer — added at publish</p>
+          </div>
+        )}
+
         <CompsPricingWidget
           pricing={data.pricing}
           comps={data.comps}

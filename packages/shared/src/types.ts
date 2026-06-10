@@ -224,6 +224,16 @@ export interface CompStats {
   activeMedian: number | null;
   activeAvg: number | null;
   sampleSize: number;
+  /**
+   * Market-shape percentiles over the RAW sold pool (no condition filtering) —
+   * for display/context only. Listing-price bands come from the prepare-listing
+   * pricing engine, which uses a condition-selected pool; do not mix the two.
+   */
+  p25?: number | null;
+  p50?: number | null;
+  p75?: number | null;
+  /** sold / (sold + active); null when there are no comps at all. */
+  sellThrough?: number | null;
 }
 
 export interface CompResult {
@@ -428,6 +438,10 @@ export interface SellerProfile {
   preferredMarketplaces: MarketplaceType[];
   autoPublish: boolean;
   defaultCurrency: string;
+  pricingSuggestPercentile: number;
+  pricingFloorPercentile: number;
+  bestOfferAutoAcceptEnabled: boolean;
+  defaultListingFooter: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -445,6 +459,12 @@ export interface PricingData {
   confidence: 'high' | 'medium' | 'low';
   basedOn: number;
   conditionMatch: 'exact' | 'nearby' | 'all';
+  /**
+   * Best-Offer auto-accept floor from the SAME comp pool as `suggested`
+   * (engine invariant — never recompute from a different pool). null/absent
+   * when the pool is too small (n<3) or the floor would invert.
+   */
+  bestOfferFloor?: number | null;
 }
 
 export interface ReverbCompListing {
@@ -481,6 +501,8 @@ export interface EbayPreparedFields {
   paymentPolicyId: string;
   returnPolicyId: string;
   merchantLocationKey: string;
+  /** Best-Offer auto-accept floor (seller opted in); flows to the adapter via marketplaceSpecific. */
+  bestOfferAutoAcceptPrice?: number;
 }
 
 export interface ReverbPreparedFields {
@@ -515,6 +537,8 @@ export interface PreparedListingData {
   isMusicGear: boolean;
   aiConfidence: number;
   warnings: string[];
+  /** Seller's default footer — display-only in previews; appended server-side at publish. */
+  listingFooter?: string | null;
 }
 
 export interface EbayPolicy {

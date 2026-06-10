@@ -58,8 +58,10 @@ export default function SellerProfilePage() {
       setProfile(result.profile);
       setMessage("Saved");
       setTimeout(() => setMessage(null), 2000);
-    } catch {
-      setMessage("Failed to save");
+    } catch (err) {
+      // Server messages here are actionable (e.g. PRICING_FLOOR_INVALID's
+      // "floor must be below suggest") — never collapse them to a generic.
+      setMessage(err instanceof Error && err.message ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -345,6 +347,78 @@ export default function SellerProfilePage() {
             className="rounded"
           />
           <span>Auto-publish listings (skip review)</span>
+        </label>
+      </section>
+
+      <section className="rounded-xl p-4 space-y-3" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
+        <h2 className="text-lg font-semibold">Pricing</h2>
+        <p className="text-xs" style={{ color: "rgba(0,0,0,0.5)" }}>
+          Suggested prices come from sold-comp percentiles. 50 = market median (with a small undercut); higher aims for top dollar, lower moves items faster.
+        </p>
+        <label className="block text-sm space-y-1">
+          <span>Suggested-price percentile (10–90)</span>
+          <input
+            type="number"
+            min={10}
+            max={90}
+            defaultValue={profile.pricingSuggestPercentile ?? 50}
+            onBlur={e => {
+              const v = Math.round(Number(e.target.value));
+              if (Number.isFinite(v) && v >= 10 && v <= 90) {
+                if (v !== profile.pricingSuggestPercentile) updateField("pricingSuggestPercentile", v);
+              } else {
+                // Out of range: revert the (uncontrolled) input to the stored
+                // value — never leave an unsaved number on screen.
+                e.target.value = String(profile.pricingSuggestPercentile ?? 50);
+              }
+            }}
+            className="w-full rounded-lg border px-3 py-2 text-sm"
+            style={{ borderColor: "rgba(0,0,0,0.12)", background: "white" }}
+          />
+        </label>
+        <label className="flex items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={profile.bestOfferAutoAcceptEnabled ?? false}
+            onChange={e => updateField("bestOfferAutoAcceptEnabled", e.target.checked)}
+            className="rounded"
+          />
+          <span>eBay Best Offer — auto-accept offers at or above your floor</span>
+        </label>
+        <label className="block text-sm space-y-1">
+          <span>Auto-accept floor percentile (5–75)</span>
+          <input
+            type="number"
+            min={5}
+            max={75}
+            defaultValue={profile.pricingFloorPercentile ?? 25}
+            onBlur={e => {
+              const v = Math.round(Number(e.target.value));
+              if (Number.isFinite(v) && v >= 5 && v <= 75) {
+                if (v !== profile.pricingFloorPercentile) updateField("pricingFloorPercentile", v);
+              } else {
+                e.target.value = String(profile.pricingFloorPercentile ?? 25);
+              }
+            }}
+            className="w-full rounded-lg border px-3 py-2 text-sm"
+            style={{ borderColor: "rgba(0,0,0,0.12)", background: "white" }}
+          />
+        </label>
+        <label className="block text-sm space-y-1">
+          <span>Default listing footer (appended to every listing at publish)</span>
+          <textarea
+            rows={3}
+            maxLength={2000}
+            defaultValue={profile.defaultListingFooter ?? ""}
+            onBlur={e => {
+              const v = e.target.value.trim();
+              const current = profile.defaultListingFooter ?? "";
+              if (v !== current) updateField("defaultListingFooter", v === "" ? null : v);
+            }}
+            placeholder="e.g. Ships within 1 business day from a smoke-free studio."
+            className="w-full rounded-lg border px-3 py-2 text-sm"
+            style={{ borderColor: "rgba(0,0,0,0.12)", background: "white" }}
+          />
         </label>
       </section>
 

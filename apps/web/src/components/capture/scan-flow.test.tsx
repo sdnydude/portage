@@ -134,6 +134,41 @@ describe("ScanFlow review wiring", () => {
     scanAspectsState.buildAspects = vi.fn(() => ({}) as Record<string, string[]>);
   });
 
+  it("renders comp percentile bands with a demand badge; picking a band sets the sale price", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/scan/refine") {
+        return { identification: CANDIDATE, detailed: { candidates: [CANDIDATE], reasoning: [] } };
+      }
+      if (path.startsWith("/items/comps/search")) {
+        return {
+          sold: [{ title: "Comp", price: 195, currency: "USD", condition: "GOOD", imageUrl: null, listingUrl: "https://ebay.com/itm/1", soldDate: null }],
+          active: [],
+          stats: {
+            soldMedian: 195, soldAvg: 195, activeMedian: null, activeAvg: null,
+            sampleSize: 12, p25: 165, p50: 195, p75: 225, sellThrough: 0.8,
+          },
+        };
+      }
+      if (path === "/seller-profile") return { profile: { ebayPublishMode: "live" } };
+      if (path === "/items") return { id: "item-1" };
+      return {};
+    });
+
+    render(<ScanFlow onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Choose from Gallery"));
+    fireEvent.click(await screen.findByText(/Scan 1 Photo with Porter/));
+    await screen.findByText("Review");
+
+    fireEvent.click(await screen.findByRole("button", { name: /move it/i }));
+    expect(screen.getByText(/hot demand/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue("165")).toBeInTheDocument();
+  });
+
   it("renders the eBay item specifics section in the review panel", async () => {
     scanAspectsState.aspects = { Brand: { required: true, values: null } };
     scanAspectsState.missingRequired = ["Brand"];

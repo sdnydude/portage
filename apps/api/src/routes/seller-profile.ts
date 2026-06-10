@@ -67,6 +67,10 @@ const updateSchema = z.object({
   preferredMarketplaces: z.array(z.enum(['ebay', 'etsy', 'reverb'])).optional(),
   autoPublish: z.boolean().optional(),
   defaultCurrency: z.string().length(3).optional(),
+  pricingSuggestPercentile: z.number().int().min(10).max(90).optional(),
+  pricingFloorPercentile: z.number().int().min(5).max(75).optional(),
+  bestOfferAutoAcceptEnabled: z.boolean().optional(),
+  defaultListingFooter: z.string().max(2000).nullable().optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field required' });
 
 sellerProfileRouter.patch('/', async (req, res, next) => {
@@ -79,10 +83,20 @@ sellerProfileRouter.patch('/', async (req, res, next) => {
       if (value !== undefined) updates[key] = value;
     }
 
-    const [existing] = await db.select({ id: sellerProfiles.id })
+    const [existing] = await db.select()
       .from(sellerProfiles)
       .where(eq(sellerProfiles.userId, userId))
       .limit(1);
+
+    // Cross-field invariant cannot live in Zod: a partial PATCH sees only one
+    // field, so merge with the stored row (or column defaults) before checking.
+    if (body.pricingSuggestPercentile !== undefined || body.pricingFloorPercentile !== undefined) {
+      const suggest = body.pricingSuggestPercentile ?? existing?.pricingSuggestPercentile ?? 50;
+      const floor = body.pricingFloorPercentile ?? existing?.pricingFloorPercentile ?? 25;
+      if (floor >= suggest) {
+        throw new AppError(400, 'PRICING_FLOOR_INVALID', 'Floor percentile must be below the suggested-price percentile');
+      }
+    }
 
     let profile;
     if (existing) {

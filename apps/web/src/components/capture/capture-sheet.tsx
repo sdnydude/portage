@@ -40,7 +40,7 @@ export function CaptureSheet({ onFiles, onClose }: CaptureSheetProps) {
     <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-lg bg-surface rounded-t-2xl border-t border-border overflow-hidden animate-slide-up"
+        className="relative w-full max-w-lg bg-surface rounded-t-2xl border-t border-border overflow-x-hidden max-h-[85dvh] overflow-y-auto animate-slide-up"
         style={{ paddingBottom: "var(--safe-area-bottom)" }}
         onClick={(e) => e.stopPropagation()}
       >

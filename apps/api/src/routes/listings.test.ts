@@ -75,6 +75,7 @@ describe('POST /listings', () => {
       { ...MOCK_ITEM, weightOz: 56, lengthIn: 10, widthIn: 8, heightIn: 4, ebayPackageType: 'MAILING_BOX' },
     ]);
     mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
+    mockSelectOnce([]); // footer lookup — no seller profile
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 
@@ -102,9 +103,64 @@ describe('POST /listings', () => {
     );
   });
 
+  it('surfaces the adapter warning (e.g. Best Offer downgrade) in the create response', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
+    mockSelectOnce([]); // footer lookup — no seller profile
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({
+      marketplaceListingId: 'ebay-1', status: 'active',
+      warning: 'Listed without Best Offer auto-accept — eBay rejected it for this listing.',
+    });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        marketplaceSpecificFields: { categoryId: '123' },
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.warning).toMatch(/best offer/i);
+  });
+
+  it('passes publishMode live explicitly to the adapter on POST /:id/publish', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: null, marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // seller profile (policy self-heal)
+    mockSelectOnce([]); // footer lookup
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 199, currency: 'USD', marketplaceListingId: 'ebay-1',
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(mockCreateListing).toHaveBeenCalledWith(
+      expect.objectContaining({ publishMode: 'live' }),
+    );
+  });
+
   it('persists ebaySku and ebayOfferId from the publish result', async () => {
     mockSelectOnce([MOCK_ITEM]);
     mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
+    mockSelectOnce([]); // footer lookup — no seller profile
     const insertValues = mockInsertCapture();
     mockCreateListing.mockResolvedValue({
       marketplaceListingId: '110012345678',
@@ -132,6 +188,7 @@ describe('POST /listings', () => {
       ebayFulfillmentPolicyId: 'fp-9', ebayPaymentPolicyId: 'pp-9',
       ebayReturnPolicyId: 'rp-9', ebayMerchantLocationKey: 'loc-9',
     }]);
+    mockSelectOnce([]); // footer lookup — no seller profile
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 
@@ -164,6 +221,7 @@ describe('POST /listings', () => {
       ebayFulfillmentPolicyId: 'fp-9', ebayPaymentPolicyId: 'pp-9',
       ebayReturnPolicyId: 'rp-9', ebayMerchantLocationKey: 'loc-9',
     }]);
+    mockSelectOnce([]); // footer lookup — no seller profile
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 
@@ -191,6 +249,7 @@ describe('POST /listings', () => {
   it('publishMode live publishes (without legacy publishImmediately) and forwards the item quantity', async () => {
     mockSelectOnce([MOCK_ITEM]);
     mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
+    mockSelectOnce([]); // footer lookup — no seller profile
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: '110', status: 'active' });
 
@@ -203,6 +262,55 @@ describe('POST /listings', () => {
   });
 });
 
+describe('POST /listings — seller listing footer', () => {
+  it('appends the seller default footer on create-and-publish', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // seller profile (policy self-heal — none)
+    // The footer select projects { footer: sellerProfiles.defaultListingFooter }.
+    mockSelectOnce([{ footer: 'Ships fast.' }]);
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '110', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live' });
+
+    expect(res.status).toBe(201);
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
+      description: 'Noise-cancelling headphones\n\nShips fast.',
+    }));
+  });
+});
+
+describe('POST /listings/:id/publish — seller listing footer', () => {
+  it('appends the seller default footer to the description sent to the marketplace', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
+      marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
+    }]);
+    mockSelectOnce([MOCK_ITEM]);
+    // The footer select projects { footer: sellerProfiles.defaultListingFooter }.
+    mockSelectOnce([{ footer: 'Ships fast from a smoke-free studio.' }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '110', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
+      description: 'Noise-cancelling headphones\n\nShips fast from a smoke-free studio.',
+    }));
+  });
+});
+
 describe('POST /listings/:id/publish', () => {
   it('reuses the stored ebaySku and ebayOfferId when re-publishing (no orphan)', async () => {
     mockSelectOnce([{
@@ -212,6 +320,7 @@ describe('POST /listings/:id/publish', () => {
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
     });
@@ -239,6 +348,7 @@ describe('POST /listings/:id/publish', () => {
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
     });
@@ -265,6 +375,7 @@ describe('POST /listings/:id/publish', () => {
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'draft' }]) }),
     });
@@ -294,6 +405,7 @@ describe('POST /listings/:id/publish', () => {
       ebayFulfillmentPolicyId: 'fp-9', ebayPaymentPolicyId: 'pp-9',
       ebayReturnPolicyId: 'rp-9', ebayMerchantLocationKey: 'loc-9',
     }]);
+    mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
     });
@@ -317,6 +429,66 @@ describe('POST /listings/:id/publish', () => {
 });
 
 describe('PATCH /listings/:id', () => {
+  it('appends the seller default footer when syncing an update to the marketplace', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    // The footer select projects { footer: sellerProfiles.defaultListingFooter }.
+    mockSelectOnce([{ footer: 'Ships fast.' }]);
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '110012345678', status: 'active' });
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateListing).toHaveBeenCalledWith('110012345678', expect.objectContaining({
+      description: 'Noise-cancelling headphones\n\nShips fast.',
+    }));
+  });
+
+  it('surfaces the adapter sync warning (e.g. Best Offer downgrade) in the PATCH response', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
+    mockUpdateListing.mockResolvedValue({
+      marketplaceListingId: '110012345678', status: 'active',
+      warning: 'Updated without Best Offer auto-accept — eBay rejected it for this listing.',
+    });
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.warning).toMatch(/best offer/i);
+  });
+
   it('syncs full item fields to eBay including ebaySku and ebayOfferId', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
@@ -334,6 +506,7 @@ describe('PATCH /listings/:id', () => {
     });
     vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
     mockUpdateListing.mockResolvedValue({ marketplaceListingId: '110012345678', status: 'active' });
 
     const res = await request(app)
@@ -367,6 +540,7 @@ describe('POST /listings/:id/publish — persistence', () => {
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
     });

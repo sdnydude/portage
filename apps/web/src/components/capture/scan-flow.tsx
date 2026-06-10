@@ -13,6 +13,7 @@ import { ScanReviewActions } from "./scan-review-actions";
 import { ScanAspectsSection } from "./scan-aspects-section";
 import { useScanAspects } from "@/hooks/use-scan-aspects";
 import { resolvePublishPrice } from "@/lib/price";
+import { demandLabel } from "@/lib/demand";
 import { buildListingPayload } from "@/lib/scan-listing-payload";
 import {
   getAvailablePortageConditions,
@@ -650,7 +651,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
       {/* ─── CAPTURE STATE ─────────────────────────────────────────────── */}
       {(state === "capture" || state === "uploading") && (
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
           {error && (
             <div className="mx-4 mt-3 bg-[var(--accent-error-soft)] border border-[var(--accent-error)]/30 rounded-xl p-3 text-sm text-[var(--accent-error)] text-center">
               {error}
@@ -705,7 +706,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             </div>
           ) : (
             /* Has photos — show strip + add more + scan button */
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 min-h-0 flex flex-col">
               {/* Hero preview of selected photo */}
               <div className="relative flex-1 min-h-0 bg-black flex items-center justify-center overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1044,14 +1045,44 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   <span className="text-xs text-text-secondary">Checking eBay comps...</span>
                 </div>
               ) : comps && comps.stats.sampleSize > 0 ? (
-                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--accent-success-soft)] border border-[var(--accent-success)]/30">
-                  <span className="text-xs font-medium text-[var(--accent-success)]">eBay Comp Price</span>
-                  <span className="text-sm font-semibold text-[var(--accent-success)]">
-                    ${(comps.stats.soldMedian ?? comps.stats.activeMedian ?? 0).toFixed(0)}
-                    <span className="text-xs font-normal text-[var(--accent-success)]/70 ml-1">
-                      ({comps.stats.sampleSize} sold)
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--accent-success-soft)] border border-[var(--accent-success)]/30">
+                    <span className="text-xs font-medium text-[var(--accent-success)]">eBay Comp Price</span>
+                    <span className="text-sm font-semibold text-[var(--accent-success)]">
+                      ${(comps.stats.soldMedian ?? comps.stats.activeMedian ?? 0).toFixed(0)}
+                      <span className="text-xs font-normal text-[var(--accent-success)]/70 ml-1">
+                        ({comps.stats.sampleSize} sold)
+                        {demandLabel(comps.stats.sellThrough) && (
+                          <span className="ml-1">
+                            · {demandLabel(comps.stats.sellThrough)} demand
+                          </span>
+                        )}
+                      </span>
                     </span>
-                  </span>
+                  </div>
+                  {comps.stats.p25 != null && comps.stats.p50 != null && comps.stats.p75 != null && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { key: "Move it", value: comps.stats.p25, pct: "25th pct" },
+                        { key: "Market", value: comps.stats.p50, pct: "median" },
+                        { key: "Top dollar", value: comps.stats.p75, pct: "75th pct" },
+                      ] as const).map(band => (
+                        <button
+                          key={band.key}
+                          onClick={() => setListPrice(band.value)}
+                          className={`rounded-xl px-2 py-2 text-left border transition-colors ${
+                            listPrice === band.value
+                              ? "border-[var(--teal)] bg-[var(--teal-soft)]"
+                              : "border-border bg-surface"
+                          }`}
+                        >
+                          <span className="block text-[11px] font-medium text-text-secondary">{band.key}</span>
+                          <span className="block text-sm font-bold text-text-primary">${band.value.toFixed(0)}</span>
+                          <span className="block text-[10px] text-text-secondary">{band.pct}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : null}
 

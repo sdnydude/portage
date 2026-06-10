@@ -8,6 +8,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
 import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
+import { applyFooter, descriptionLimitFor } from '../lib/footer.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { env } from '../lib/env.js';
@@ -176,6 +177,7 @@ listingsRouter.post('/', async (req, res, next) => {
     let ebayOfferId: string | null = null;
     let status: 'draft' | 'active' = 'draft';
     let publishedAt: Date | null = null;
+    let adapterWarning: string | undefined;
 
     // publishMode (when present) takes precedence over the legacy
     // publishImmediately flag. draft = save to DB only (no marketplace call).
@@ -193,9 +195,14 @@ listingsRouter.post('/', async (req, res, next) => {
         marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
       }
 
+      const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
+        .from(sellerProfiles)
+        .where(eq(sellerProfiles.userId, userId))
+        .limit(1);
+
       const result = await adapter.createListing({
         title: item.title,
-        description: item.description,
+        description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(body.marketplace)),
         price: body.price,
         currency: body.currency,
         category: item.category,
@@ -206,6 +213,9 @@ listingsRouter.post('/', async (req, res, next) => {
         model: item.model,
         features: item.features as string[],
         marketplaceSpecific,
+        // This branch only runs when shouldPublish — say so explicitly rather
+        // than relying on the adapter treating absent publishMode as live.
+        publishMode: 'live',
       });
 
       marketplaceListingId = result.marketplaceListingId;
@@ -213,6 +223,7 @@ listingsRouter.post('/', async (req, res, next) => {
       ebayOfferId = result.ebayOfferId ?? null;
       status = result.status === 'active' ? 'active' : 'draft';
       if (status === 'active') publishedAt = new Date();
+      adapterWarning = result.warning;
     }
 
     const [listing] = await db.insert(listings).values({
@@ -232,7 +243,9 @@ listingsRouter.post('/', async (req, res, next) => {
     logger.info({ userId, listingId: listing.id, marketplace: body.marketplace, status }, 'Listing created');
 
     const response: Record<string, unknown> = { ...listing };
-    if (body.publishImmediately && status === 'draft') {
+    if (adapterWarning) {
+      response.warning = adapterWarning;
+    } else if (body.publishImmediately && status === 'draft') {
       response.warning = 'Listing was created but could not be published. It has been saved as a draft.';
     }
 
@@ -293,9 +306,13 @@ listingsRouter.patch('/:id', async (req, res, next) => {
       if (item) {
         try {
           const adapter = getAdapter(userId, updated.marketplace);
-          await adapter.updateListing(updated.marketplaceListingId, {
+          const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
+            .from(sellerProfiles)
+            .where(eq(sellerProfiles.userId, userId))
+            .limit(1);
+          const syncResult = await adapter.updateListing(updated.marketplaceListingId, {
             title: item.title,
-            description: item.description,
+            description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(updated.marketplace)),
             price: updated.price,
             currency: updated.currency,
             condition: item.condition,
@@ -308,6 +325,8 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             ebayOfferId: updated.ebayOfferId ?? undefined,
             marketplaceSpecific: updated.marketplaceSpecificFields as Record<string, unknown> | undefined,
           });
+          // Degraded-sync warnings (e.g. Best Offer downgrade) belong to the user.
+          if (syncResult?.warning) warning = syncResult.warning;
         } catch (err) {
           if (err instanceof AppError) throw err;
           logger.warn({ listingId: updated.id, error: (err as Error).message }, 'Failed to sync update to marketplace');
@@ -402,9 +421,14 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
     }
 
+    const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.userId, userId))
+      .limit(1);
+
     const result = await adapter.createListing({
       title: item.title,
-      description: item.description,
+      description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(listing.marketplace)),
       price: listing.price,
       currency: listing.currency,
       category: item.category,
@@ -417,6 +441,8 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       marketplaceSpecific,
       ebaySku: listing.ebaySku ?? undefined,
       ebayOfferId: listing.ebayOfferId ?? undefined,
+      // POST /:id/publish is always a live publish — state it explicitly.
+      publishMode: 'live',
     });
 
     const [updated] = await db.update(listings)
