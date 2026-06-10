@@ -14,6 +14,10 @@ import { usePrepareListing } from "@/hooks/use-prepare-listing";
 import { ShippingConfigCard } from "./shipping-config-card";
 import { PricingStrategyPicker } from "./pricing-strategy-picker";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditPanel } from "../capture/photo-edit-panel";
+import { CropTool } from "./crop-tool";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -851,6 +855,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoEdit = usePhotoEdit(state.photos, flow.updatePhoto);
 
   const handlePhotoSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -916,47 +921,52 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       <style>{`@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }`}</style>
 
-      {/* Photo strip */}
+      {/* Photo gallery strip — tap a thumb to open the editor overlay (S2.5-8).
+          Local blob: photos aren't editable until recognition uploads them. */}
       <div style={{ ...rowStyle }}>
         <label style={labelStyle}>Photos</label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {state.photos.map((p, i) => (
-            <div
-              key={i}
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 8,
-                overflow: "hidden",
-                border: `2px solid ${i === state.primaryPhotoIndex ? ACCENT : CARD_BORDER}`,
-                flexShrink: 0,
-              }}
-            >
-              <img src={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            </div>
-          ))}
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 8,
-              border: `2px dashed ${CARD_BORDER}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              background: BG,
-              flexShrink: 0,
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SECONDARY} strokeWidth="2" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </div>
+        <PhotoGalleryStrip
+          photos={state.photos.map((p, i) => ({ key: p.key || `photo-${i}`, url: p.url }))}
+          onEditPhoto={(i) => {
+            if (!state.photos[i]?.url.startsWith("blob:")) photoEdit.openEditor(i);
+          }}
+          maxPhotos={12}
+        />
+        <div onClick={() => fileInputRef.current?.click()} style={{ fontSize: 12, color: SECONDARY, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+          Replace photos…
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
       </div>
+
+      {photoEdit.editingIndex !== null && photoEdit.editingPhoto && (
+        photoEdit.showCrop ? (
+          <CropTool
+            imageUrl={photoEdit.editingPhoto.url}
+            imageWidth={photoEdit.editingPhoto.width ?? 1024}
+            imageHeight={photoEdit.editingPhoto.height ?? 1024}
+            onApply={photoEdit.applyCrop}
+            onCancel={photoEdit.cancelCrop}
+          />
+        ) : (
+          <PhotoEditPanel
+            photo={{ url: photoEdit.editingPhoto.url }}
+            photoIndex={photoEdit.editingIndex}
+            photoCount={state.photos.length}
+            onClose={photoEdit.closeEditor}
+            onRotate={photoEdit.rotate}
+            onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
+            onEnhance={photoEdit.enhanceCurrent}
+            onBgRemove={photoEdit.bgRemoveCurrent}
+            isProcessing={photoEdit.isProcessing}
+            processingLabel={photoEdit.processingLabel}
+            pendingPreview={
+              photoEdit.pendingPreview
+                ? { ...photoEdit.pendingPreview, alt: state.title || "Photo preview" }
+                : null
+            }
+          />
+        )
+      )}
 
       {/* Recognition loading */}
       {state.recognition.status === "recognizing" && (

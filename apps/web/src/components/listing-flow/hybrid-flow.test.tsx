@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 
 // jsdom has no scrollIntoView; ChatMode auto-scrolls on render.
 Element.prototype.scrollIntoView = vi.fn();
@@ -7,6 +7,7 @@ Element.prototype.scrollIntoView = vi.fn();
 const h = vi.hoisted(() => ({
   updatePhoto: vi.fn(),
   cardProps: {} as Record<string, unknown>,
+  compactMode: false,
 }));
 
 const flowState = {
@@ -80,7 +81,7 @@ vi.mock("@/hooks/use-prepare-listing", () => ({
   }),
 }));
 vi.mock("@/hooks/use-user-preferences", () => ({
-  useUserPreferences: () => ({ compactMode: false, updatePrefs: vi.fn() }),
+  useUserPreferences: () => ({ compactMode: h.compactMode, updatePrefs: vi.fn() }),
 }));
 vi.mock("../listing/listing-preview-card", () => ({
   ListingPreviewCard: (props: Record<string, unknown>) => {
@@ -103,5 +104,17 @@ describe("HybridFlow — photo editing wiring (S2.5-8)", () => {
     render(<HybridFlow />);
     expect(screen.getByTestId("preview-card")).toBeInTheDocument();
     expect(h.cardProps.onPhotoUpdated).toBe(h.updatePhoto);
+  });
+
+  it("compact mode replaces the dumb photo thumbs with the gallery strip; tapping a thumb opens the editor", () => {
+    h.compactMode = true;
+    try {
+      render(<HybridFlow />);
+      expect(screen.getByText(/tap to edit/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+      expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+    } finally {
+      h.compactMode = false;
+    }
   });
 });
