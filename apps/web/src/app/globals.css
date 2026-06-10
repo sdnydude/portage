@@ -25,8 +25,10 @@
 
   --accent-warm: #D4A574;
   --accent-error: #DC3545;
+  --accent-error-soft: #FDECEA;   /* error banner / required-missing bg */
   --accent-warning: #F59E0B;
   --accent-success: #0F9D58;
+  --accent-success-soft: #E6F4EE; /* success-tinted bg: comps/money highlight, "Complete" badge */
   --accent-info: #3B82F6;
 
   /* DHG design system — accents (migrate forest-green → these per screen) */
@@ -148,7 +150,10 @@
     --forest-green-50: #1A2E1A;
     --forest-green-100: #243824;
 
+    --accent-error: #F87171;                          /* legible error fg on dark surfaces */
+    --accent-error-soft: rgba(220, 53, 69, 0.16);
     --accent-success: #2EC27E;
+    --accent-success-soft: rgba(46, 194, 126, 0.14);
 
     /* DHG accents — dark */
     --warm-stone: #1B1814;

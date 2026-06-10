@@ -74,6 +74,7 @@ describe('POST /listings', () => {
     mockSelectOnce([
       { ...MOCK_ITEM, weightOz: 56, lengthIn: 10, widthIn: 8, heightIn: 4, ebayPackageType: 'MAILING_BOX' },
     ]);
+    mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 
@@ -103,6 +104,7 @@ describe('POST /listings', () => {
 
   it('persists ebaySku and ebayOfferId from the publish result', async () => {
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
     const insertValues = mockInsertCapture();
     mockCreateListing.mockResolvedValue({
       marketplaceListingId: '110012345678',
@@ -124,8 +126,71 @@ describe('POST /listings', () => {
     }));
   });
 
+  it('self-heals eBay policy IDs from the seller profile when a live POST / publish lacks them', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([{
+      ebayFulfillmentPolicyId: 'fp-9', ebayPaymentPolicyId: 'pp-9',
+      ebayReturnPolicyId: 'rp-9', ebayMerchantLocationKey: 'loc-9',
+    }]);
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        marketplaceSpecificFields: { categoryId: '123' },
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
+      marketplaceSpecific: expect.objectContaining({
+        categoryId: '123',
+        fulfillmentPolicyId: 'fp-9',
+        paymentPolicyId: 'pp-9',
+        returnPolicyId: 'rp-9',
+        merchantLocationKey: 'loc-9',
+      }),
+    }));
+  });
+
+  it('keeps body-provided policy IDs over profile values (body wins, profile fills gaps)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([{
+      ebayFulfillmentPolicyId: 'fp-9', ebayPaymentPolicyId: 'pp-9',
+      ebayReturnPolicyId: 'rp-9', ebayMerchantLocationKey: 'loc-9',
+    }]);
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        marketplaceSpecificFields: { categoryId: '123', fulfillmentPolicyId: 'fp-body' },
+      });
+
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
+      marketplaceSpecific: expect.objectContaining({
+        fulfillmentPolicyId: 'fp-body',
+        paymentPolicyId: 'pp-9',
+        returnPolicyId: 'rp-9',
+        merchantLocationKey: 'loc-9',
+      }),
+    }));
+  });
+
   it('publishMode live publishes (without legacy publishImmediately) and forwards the item quantity', async () => {
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: '110', status: 'active' });
 

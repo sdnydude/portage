@@ -45,4 +45,10 @@ export const aiLatency = new client.Histogram({
   buckets: [0.5, 1, 2, 5, 10, 30],
 });
 
+export const ebayTaxonomyCalls = new client.Counter({
+  name: 'portage_ebay_taxonomy_calls_total',
+  help: 'eBay taxonomy lookup requests by operation (route-level; upstream calls may be cache-served)',
+  labelNames: ['operation'] as const,
+});
+
 export const metricsRegistry = client.register;

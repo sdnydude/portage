@@ -12,6 +12,7 @@ import { EbayAdapter } from '../../marketplace/ebay-adapter.js';
 import { eq, and } from 'drizzle-orm';
 import { checkMarketplaceLimit } from '../../lib/billing-utils.js';
 import { getEbayUserFlowCredentials } from '../../marketplace/ebay-credentials.js';
+import { ebayTaxonomyCalls } from '../../lib/metrics.js';
 
 const logger = createLogger('ebay-auth');
 
@@ -34,6 +35,32 @@ ebayAuthRouter.get('/category-aspects/:categoryId', async (req, res, next) => {
   try {
     const aspects = await EbayAdapter.getRequiredAspects(req.params.categoryId);
     res.json({ aspects });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Suggested leaf category for a free-text query, bundled with the category's
+// valid condition IDs so the scan-review flow gets both in one round trip.
+const suggestionQuerySchema = z.object({ q: z.string().min(1).max(200) });
+
+ebayAuthRouter.get('/category-suggestion', async (req, res, next) => {
+  try {
+    const { q } = suggestionQuerySchema.parse(req.query);
+    ebayTaxonomyCalls.inc({ operation: 'category_suggestion' });
+    const suggestion = await EbayAdapter.getCategorySuggestion(q);
+    if (!suggestion) {
+      res.json({ suggestion: null });
+      return;
+    }
+    // A conditions failure must not sink the suggestion we already have —
+    // the client treats an empty list as "constrain nothing".
+    const conditionIds = await EbayAdapter.getValidConditions(suggestion.categoryId)
+      .catch((err) => {
+        logger.warn({ err, categoryId: suggestion.categoryId }, 'getValidConditions failed; returning empty conditionIds');
+        return [] as string[];
+      });
+    res.json({ suggestion: { ...suggestion, conditionIds } });
   } catch (err) {
     next(err);
   }

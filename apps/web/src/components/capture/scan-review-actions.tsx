@@ -11,6 +11,10 @@ export interface ScanReviewActionsProps {
   isSaving: boolean;
   isListing: boolean;
   canSave: boolean;
+  /** Gates only Save & List (eBay aspects); Save is never gated. Default true. */
+  canList?: boolean;
+  /** Shown below the buttons (inside the bar), linked via aria-describedby when canList is false. */
+  listDisabledReason?: string | null;
 }
 
 /**
@@ -20,8 +24,10 @@ export interface ScanReviewActionsProps {
  */
 export function ScanReviewActions({
   price, onPriceChange, onRescan, onSave, onSaveAndList, isSaving, isListing, canSave,
+  canList = true, listDisabledReason = null,
 }: ScanReviewActionsProps) {
   const busy = isSaving || isListing;
+  const showListReason = !canList && !!listDisabledReason;
   return (
     <div
       className="fixed bottom-0 left-0 right-0 z-[70] px-4 py-3 glass-thick glass-fallback border-t border-border"
@@ -42,19 +48,25 @@ export function ScanReviewActions({
         <button
           onClick={onSave}
           disabled={!canSave || busy}
-          className="flex-1 py-3.5 rounded-2xl bg-forest-green text-white font-semibold text-sm disabled:opacity-50 transition-opacity"
+          className="flex-1 py-3.5 rounded-2xl bg-[var(--orange)] text-white font-semibold text-sm disabled:opacity-50 transition-opacity"
           style={{ boxShadow: "var(--shadow-elevated)" }}
         >
           {isSaving ? "Saving..." : "Save"}
         </button>
         <button
           onClick={onSaveAndList}
-          disabled={!canSave || busy}
-          className="flex-1 py-3.5 rounded-2xl border-2 border-forest-green text-forest-green font-semibold text-sm disabled:opacity-50 transition-opacity"
+          disabled={!canSave || !canList || busy}
+          aria-describedby={showListReason ? "scan-list-disabled-reason" : undefined}
+          className="flex-1 py-3.5 rounded-2xl border-2 border-[var(--orange)] text-[var(--orange)] font-semibold text-sm disabled:opacity-50 transition-opacity"
         >
           {isListing ? "Listing..." : "Save & List"}
         </button>
       </div>
+      {showListReason && (
+        <p id="scan-list-disabled-reason" className="mt-2 text-xs text-text-secondary text-center">
+          {listDisabledReason}
+        </p>
+      )}
     </div>
   );
 }
