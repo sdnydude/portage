@@ -5,7 +5,9 @@ import { useCamera } from "@/hooks/use-camera";
 import { useAuth } from "@/hooks/use-auth";
 import { API_BASE } from "@/lib/api";
 import { PhotoGrid } from "./photo-grid";
-import { PhotoEditor } from "./photo-editor";
+import { PhotoEditPanel } from "../capture/photo-edit-panel";
+import { CropTool } from "./crop-tool";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -394,10 +396,17 @@ export function PhotoCaptureFlow({
     setMode("choose");
   }, [photos.length, maxPhotos]);
 
+  // Edits persist into the local capture list; the shared overlay hosts the tools.
+  const photoEdit = usePhotoEdit(photos, (index, patch) => {
+    setPhotos((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+  });
+
   const handleEdit = useCallback((index: number) => {
+    photoEdit.openEditor(index);
     setEditIndex(index);
     setMode("editor");
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photoEdit.openEditor]);
 
   const handleDelete = useCallback((index: number) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
@@ -450,17 +459,6 @@ export function PhotoCaptureFlow({
 
   // ─── Editor handlers ───────────────────────────────────────────────────────
 
-  const handleEditorSave = useCallback(
-    (updated: CapturedPhoto) => {
-      if (editIndex !== null) {
-        setPhotos((prev) => prev.map((p, i) => (i === editIndex ? updated : p)));
-      }
-      setEditIndex(null);
-      setMode("grid");
-    },
-    [editIndex],
-  );
-
   const handleEditorCancel = useCallback(() => {
     setEditIndex(null);
     setMode("grid");
@@ -492,11 +490,33 @@ export function PhotoCaptureFlow({
   // ─── Render: Editor ────────────────────────────────────────────────────────
 
   if (mode === "editor" && editIndex !== null && photos[editIndex]) {
+    if (photoEdit.showCrop) {
+      return (
+        <CropTool
+          imageUrl={photos[editIndex].url}
+          imageWidth={photos[editIndex].width ?? 1024}
+          imageHeight={photos[editIndex].height ?? 1024}
+          onApply={photoEdit.applyCrop}
+          onCancel={photoEdit.cancelCrop}
+        />
+      );
+    }
     return (
-      <PhotoEditor
-        photo={photos[editIndex]}
-        onSave={handleEditorSave}
-        onCancel={handleEditorCancel}
+      <PhotoEditPanel
+        photo={{ url: photos[editIndex].url }}
+        photoIndex={editIndex}
+        photoCount={photos.length}
+        onClose={() => {
+          photoEdit.closeEditor();
+          handleEditorCancel();
+        }}
+        onRotate={photoEdit.rotate}
+        onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
+        onEnhance={photoEdit.enhanceCurrent}
+        onBgRemove={photoEdit.bgRemoveCurrent}
+        isProcessing={photoEdit.isProcessing}
+        processingLabel={photoEdit.processingLabel}
+        pendingPreview={photoEdit.pendingPreview ? { ...photoEdit.pendingPreview, alt: `Photo ${editIndex + 1}` } : null}
       />
     );
   }
