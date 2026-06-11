@@ -74,3 +74,39 @@ describe("useListingFlow.updatePhoto", () => {
     expect(debouncedSaveMock).toHaveBeenCalled();
   });
 });
+
+describe("useListingFlow.publish — draft-fallback warning", () => {
+  it("returns and stores the API warning when publish falls back to draft", async () => {
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/items/i1" && opts?.method === "PATCH") return {};
+      if (path === "/items/i1") {
+        return {
+          id: "i1", title: "Mic Kit", description: "d", category: "electronics", condition: "new",
+          brand: "", model: "", features: [], quantity: 1,
+          photos: [{ url: "https://example.com/p.jpg", key: "k1" }],
+          estimatedValueRecommended: 50, price: 65,
+          weightOz: 24, lengthIn: null, widthIn: null, heightIn: null,
+          ebayPackageType: null, weightEstimated: false,
+        };
+      }
+      if (path === "/listings") {
+        return { id: "L1", status: "draft", warning: "Listing created as draft — publish to eBay failed: account locked" };
+      }
+      // prepare-listing / seller-profile lookups are non-fatal in publish()
+      throw new Error("unavailable: " + path);
+    });
+
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => {
+      await result.current.startFromItem("i1");
+    });
+    let res: { success: boolean; warning?: string } = { success: false };
+    await act(async () => {
+      res = await result.current.publish();
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.warning).toContain("account locked");
+    expect(result.current.state.publishWarning).toContain("account locked");
+  });
+});

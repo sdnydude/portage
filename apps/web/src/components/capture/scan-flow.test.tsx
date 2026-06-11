@@ -99,7 +99,7 @@ const CANDIDATE = {
   confidence: 0.9,
 };
 
-async function renderInReview() {
+async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: unknown }) {
   // Photo upload goes through raw fetch, not the api() wrapper.
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -113,10 +113,11 @@ async function renderInReview() {
     if (path.startsWith("/items/comps/search")) throw new Error("no comps");
     if (path === "/seller-profile") return { profile: { ebayPublishMode: "live" } };
     if (path === "/items") return { id: "item-1" };
+    if (path === "/listings" && opts?.listingsResponse) return opts.listingsResponse;
     return {};
   });
 
-  render(<ScanFlow onClose={vi.fn()} />);
+  render(<ScanFlow onClose={opts?.onClose ?? vi.fn()} />);
   fireEvent.click(screen.getByText("Choose from Gallery"));
   fireEvent.click(await screen.findByText(/Scan 1 Photo with Porter/));
   await screen.findByText("Review");
@@ -277,6 +278,23 @@ describe("ScanFlow review wiring", () => {
     });
     // The legacy flag must be gone — publishMode drives behavior now.
     expect(listingsCall?.[1].body).not.toHaveProperty("publishImmediately");
+  });
+
+  it("Save & List hands the draft-fallback warning to onClose so the host can surface it", async () => {
+    const onClose = vi.fn();
+    await renderInReview({
+      onClose,
+      listingsResponse: {
+        id: "L1",
+        status: "draft",
+        warning: "Listing created as draft — publish to eBay failed: account locked",
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onClose).toHaveBeenCalledWith({ warning: expect.stringContaining("account locked") });
   });
 
   it("falls back to draft publishMode when the seller-profile fetch rejects — never an accidental live publish", async () => {

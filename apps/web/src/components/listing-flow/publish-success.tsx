@@ -11,11 +11,13 @@ interface PublishSuccessProps {
   photoUrl: string | null;
   isFirstListing: boolean;
   onListAnother: () => void;
+  // Marketplace publish fell back to draft — carries the marketplace's reason
+  warning?: string;
 }
 
 export function PublishSuccess({
   listingId, marketplace, title, price, photoUrl,
-  isFirstListing, onListAnother,
+  isFirstListing, onListAnother, warning,
 }: PublishSuccessProps) {
   const router = useRouter();
   const showDiscovery = isFirstListing;
@@ -29,8 +31,21 @@ export function PublishSuccess({
           <path d="M20 6L9 17l-5-5" />
         </svg>
       </div>
-      <h2 className="text-2xl font-bold font-[family-name:var(--font-instrument)] mb-1">Listed!</h2>
-      <p className="text-sm opacity-60 mb-6">Published on {marketplaceLabel}</p>
+      <h2 className="text-2xl font-bold font-[family-name:var(--font-instrument)] mb-1">
+        {warning ? 'Saved as draft' : 'Listed!'}
+      </h2>
+      <p className="text-sm opacity-60 mb-6">
+        {warning ? `Created on ${marketplaceLabel} as a draft` : `Published on ${marketplaceLabel}`}
+      </p>
+
+      {warning && (
+        <div
+          role="alert"
+          className="w-full max-w-xs rounded-xl p-3 mb-6 text-left text-[13px] border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-200"
+        >
+          {warning}
+        </div>
+      )}
 
       <div className="w-full max-w-xs rounded-xl p-4 mb-6" style={{ background: 'var(--flow-text)', opacity: 0.05 }}>
         {photoUrl && (

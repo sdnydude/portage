@@ -43,7 +43,9 @@ interface RefineResponse {
 }
 
 interface ScanFlowProps {
-  onClose: () => void;
+  // result.warning carries a marketplace draft-fallback reason (e.g. eBay
+  // rejected the publish) for the host to surface as a toast.
+  onClose: (result?: { warning?: string }) => void;
 }
 
 const MAX_PHOTOS = 12;
@@ -528,7 +530,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       )
         .then((d) => d.profile)
         .catch(() => null);
-      await api("/listings", {
+      const listing = await api<{ id: string; status: string; warning?: string }>("/listings", {
         method: "POST",
         token,
         body: buildListingPayload(
@@ -536,7 +538,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           profile,
         ),
       });
-      onClose();
+      onClose(listing.warning ? { warning: listing.warning } : undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
       setState("review");
@@ -643,7 +645,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-border">
         <button
-          onClick={state === "review" ? handleBackToCapture : onClose}
+          onClick={state === "review" ? handleBackToCapture : () => onClose()}
           className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
           aria-label={state === "review" ? "Back" : "Close"}
         >

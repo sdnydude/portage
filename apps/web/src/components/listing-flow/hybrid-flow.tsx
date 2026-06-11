@@ -485,6 +485,7 @@ function ChatMode({
     return (
       <PublishSuccess
         listingId={state.listingId}
+        warning={state.publishWarning ?? undefined}
         marketplace={state.marketplace}
         title={state.title}
         price={state.price ?? 0}
@@ -888,6 +889,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
     return (
       <PublishSuccess
         listingId={state.listingId}
+        warning={state.publishWarning ?? undefined}
         marketplace={state.marketplace}
         title={state.title}
         price={state.price ?? 0}

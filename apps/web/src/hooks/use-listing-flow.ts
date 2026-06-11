@@ -69,6 +69,7 @@ const INITIAL_STATE: ListingFlowState = {
   publishStatus: 'idle',
   listingId: null,
   inventoryItemId: null,
+  publishWarning: null,
 };
 
 function revokeLocalUrls(photos: ListingFlowState['photos']) {
@@ -371,7 +372,7 @@ export function useListingFlow() {
 
   const publish = useCallback(async (
     options?: PublishOptions,
-  ): Promise<{ success: boolean; listingId?: string; error?: string; aspectsRequired?: AspectRequirement[]; weightRequired?: boolean }> => {
+  ): Promise<{ success: boolean; listingId?: string; error?: string; warning?: string; aspectsRequired?: AspectRequirement[]; weightRequired?: boolean }> => {
     if (!token) return { success: false, error: 'Not authenticated' };
 
     const s = stateRef.current;
@@ -480,7 +481,7 @@ export function useListingFlow() {
               }
             : undefined;
 
-      const listing = await api<{ id: string; status: string }>('/listings', {
+      const listing = await api<{ id: string; status: string; warning?: string }>('/listings', {
         method: 'POST',
         body: {
           itemId,
@@ -502,10 +503,11 @@ export function useListingFlow() {
         publishStatus: 'published',
         listingId: listing.id,
         inventoryItemId: itemId,
+        publishWarning: listing.warning ?? null,
       }));
       setLastStep('published');
 
-      return { success: true, listingId: listing.id };
+      return { success: true, listingId: listing.id, warning: listing.warning };
     } catch (err) {
       // eBay needs category-required item specifics — surface them so the flow
       // can collect the values and retry. No listing row was created (the gate
