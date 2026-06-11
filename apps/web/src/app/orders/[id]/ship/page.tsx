@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -258,6 +259,55 @@ export default function ShipPage({ params }: { params: Promise<{ id: string }> }
           </button>
           <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-sm text-red-700 dark:text-red-300">
             {orderError ?? "Order not found"}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Stub outcome: no provider configured, no real label was purchased ──
+  if (labelSuccess && labelResult?.isStub) {
+    return (
+      <div className="min-h-dvh bg-background px-4 py-6">
+        <div className="max-w-lg mx-auto flex flex-col items-center justify-center py-16">
+          <div
+            className="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-950/40 flex items-center justify-center mb-6"
+            style={{ boxShadow: "var(--shadow-elevated)" }}
+          >
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2.5" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v4M12 16h.01" />
+            </svg>
+          </div>
+
+          <h2
+            className="font-[family-name:var(--font-instrument)] font-bold text-text-primary mb-2"
+            style={{ fontSize: "var(--text-title)" }}
+          >
+            No Label Yet
+          </h2>
+
+          <div
+            role="alert"
+            className="w-full rounded-2xl border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-200 p-4 text-sm mb-6"
+          >
+            {labelResult.message ?? "Shipping provider not configured."}
+          </div>
+
+          <div className="w-full space-y-3">
+            <Link
+              href="/settings/shipping"
+              className="flex items-center justify-center w-full py-3.5 rounded-2xl bg-forest-green text-white font-semibold text-sm"
+              style={{ boxShadow: "var(--shadow-elevated)" }}
+            >
+              Set up shipping
+            </Link>
+            <button
+              onClick={() => router.back()}
+              className="w-full py-3.5 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-sm transition-colors hover:bg-muted"
+            >
+              Back to Order
+            </button>
           </div>
         </div>
       </div>
