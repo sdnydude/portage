@@ -251,6 +251,20 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
+  it("plain Save persists the entered price to the item (same as Save & List)", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Price (USD)"), { target: { value: "65" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect((itemsCall?.[1] as { body: { price?: number } }).body.price).toBe(65);
+  });
+
   it("Save & List posts the seller-profile-aware payload with aspects and categoryId", async () => {
     scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
 

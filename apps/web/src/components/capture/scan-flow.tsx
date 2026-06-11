@@ -425,6 +425,16 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
   // ─── Save to inventory ────────────────────────────────────────────────────
 
+  // Resolve the price shown/used in the review step: the seller's edited value
+  // wins, else fall back to comps/estimate via the unit-tested helper.
+  const valueLowNum = parseFloat(editValueLow) || 0;
+  const valueHighNum = parseFloat(editValueHigh) || 0;
+  const recommendedNum = Math.round((valueLowNum + valueHighNum) / 2) || null;
+  const reviewPrice = listPrice ?? resolvePublishPrice(
+    { estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
+    comps?.stats,
+  );
+
   const handleSave = useCallback(async () => {
     if (!token || photos.length === 0) return;
 
@@ -463,6 +473,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           estimatedValueRecommended: valueRecommended,
           aiConfidenceScore: selectedCandidate?.confidence ?? 0.85,
           photos: itemPhotos,
+          // Persist the seller's price so it prefills future publishes (same as Save & List).
+          ...(reviewPrice && reviewPrice > 0 ? { price: reviewPrice } : {}),
           // Persist the scan's AI-estimated packaged weight/dimensions so the item
           // carries them for eBay Calculated shipping without re-running prepare.
           ...(selectedCandidate?.weight && selectedCandidate.weight.value > 0
@@ -482,18 +494,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   }, [
     token, photos, editName, editDescription, editCategory,
     editCondition, editConditionNotes, editValueLow, editValueHigh,
-    editBrand, editModel, candidates, selectedCandidateIndex, onClose,
+    editBrand, editModel, candidates, selectedCandidateIndex, onClose, reviewPrice,
   ]);
-
-  // Resolve the price shown/used in the review step: the seller's edited value
-  // wins, else fall back to comps/estimate via the unit-tested helper.
-  const valueLowNum = parseFloat(editValueLow) || 0;
-  const valueHighNum = parseFloat(editValueHigh) || 0;
-  const recommendedNum = Math.round((valueLowNum + valueHighNum) / 2) || null;
-  const reviewPrice = listPrice ?? resolvePublishPrice(
-    { estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
-    comps?.stats,
-  );
 
   const handleSaveAndList = useCallback(async () => {
     if (!token || photos.length === 0 || isListingForSale) return;
