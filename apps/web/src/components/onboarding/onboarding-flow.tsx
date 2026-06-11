@@ -146,7 +146,7 @@ export function OnboardingFlow({ onComplete, onSkip, isCompleting }: OnboardingF
       {/* Card container */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-safe">
         <div
-          className="w-full max-w-sm rounded-3xl overflow-hidden"
+          className="w-full max-w-sm rounded-3xl max-h-[90dvh] overflow-y-auto"
           style={{
             background: "var(--surface)",
             boxShadow: "0 24px 80px rgba(0,0,0,0.4)",

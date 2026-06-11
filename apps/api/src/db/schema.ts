@@ -37,7 +37,6 @@ export const users = pgTable('users', {
   disabledAt: timestamp('disabled_at'),
   disabledReason: text('disabled_reason'),
   lastActiveAt: timestamp('last_active_at'),
-  refreshTokenHash: text('refresh_token_hash'),
   pushSubscription: jsonb('push_subscription'),
   shipFromAddress: jsonb('ship_from_address'),
   shippingAutoMark: boolean('shipping_auto_mark').notNull().default(false),
@@ -326,6 +325,17 @@ export const ebayMessages = pgTable('ebay_messages', {
   index('idx_ebay_messages_user_id').on(t.userId),
   index('idx_ebay_messages_conversation_key').on(t.conversationKey),
   index('idx_ebay_messages_user_unread').on(t.userId, t.direction, t.readAt),
+]);
+
+export const refreshTokens = pgTable('refresh_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at'),
+}, (t) => [
+  index('idx_refresh_tokens_user_id').on(t.userId),
 ]);
 
 export const exportTokens = pgTable('export_tokens', {

@@ -4,6 +4,10 @@ const TOKEN_KEY = "portage_token";
 const REFRESH_KEY = "portage_refresh";
 const USER_KEY = "portage_user";
 
+// Dispatched on window when the session is definitively lost (refresh rejected
+// with 401/403, or no refresh token exists). AuthProvider listens for this.
+export const SESSION_LOST_EVENT = "auth:session-lost";
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -31,7 +35,15 @@ let _refreshPromise: Promise<string> | null = null;
 
 async function refreshAccessToken(): Promise<string> {
   const refreshToken = localStorage.getItem(REFRESH_KEY);
-  if (!refreshToken) throw new Error("No refresh token");
+  if (!refreshToken) {
+    // No way to recover this session — treat as definitive loss, otherwise the
+    // app sits in an authenticated-looking UI where every request 401s forever.
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    _onTokenRefreshed?.(null as unknown as string, "", null);
+    window.dispatchEvent(new CustomEvent(SESSION_LOST_EVENT));
+    throw new Error("No refresh token");
+  }
 
   const response = await fetch(`${API_BASE}/auth/refresh`, {
     method: "POST",
@@ -40,11 +52,17 @@ async function refreshAccessToken(): Promise<string> {
   });
 
   if (!response.ok) {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_KEY);
-    localStorage.removeItem(USER_KEY);
-    _onTokenRefreshed?.(null as unknown as string, "", null);
-    throw new Error("Refresh failed");
+    // Only a definitive auth rejection means the session is gone. A 429/5xx is
+    // a server hiccup — wiping a valid session for it would log the user out
+    // over a transient error.
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REFRESH_KEY);
+      localStorage.removeItem(USER_KEY);
+      _onTokenRefreshed?.(null as unknown as string, "", null);
+      window.dispatchEvent(new CustomEvent(SESSION_LOST_EVENT));
+    }
+    throw new Error(`Refresh failed (${response.status})`);
   }
 
   const data = await response.json() as { token: string; refreshToken: string; user: unknown };

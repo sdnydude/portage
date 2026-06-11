@@ -13,7 +13,7 @@ interface AuthState {
   } | null;
   isAuthenticated: boolean;
   login: (token: string, refreshToken: string, user: AuthState["user"]) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   setOnboardingCompleted: () => void;
 }
 
@@ -22,7 +22,7 @@ export const AuthContext = createContext<AuthState>({
   user: null,
   isAuthenticated: false,
   login: () => {},
-  logout: () => {},
+  logout: async () => {},
   setOnboardingCompleted: () => {},
 });
 
