@@ -11,11 +11,13 @@ interface PublishSuccessProps {
   photoUrl: string | null;
   isFirstListing: boolean;
   onListAnother: () => void;
+  // Marketplace publish fell back to draft — carries the marketplace's reason
+  warning?: string;
 }
 
 export function PublishSuccess({
   listingId, marketplace, title, price, photoUrl,
-  isFirstListing, onListAnother,
+  isFirstListing, onListAnother, warning,
 }: PublishSuccessProps) {
   const router = useRouter();
   const showDiscovery = isFirstListing;
@@ -24,13 +26,33 @@ export function PublishSuccess({
 
   return (
     <div className="flex flex-col items-center px-6 py-10 text-center" style={{ color: 'var(--flow-text)' }}>
-      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: 'var(--flow-accent)', opacity: 0.15 }}>
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--flow-accent)" strokeWidth="2.5">
-          <path d="M20 6L9 17l-5-5" />
-        </svg>
+      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: warning ? '#f59e0b' : 'var(--flow-accent)', opacity: 0.15 }}>
+        {warning ? (
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2.5" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v4M12 16h.01" />
+          </svg>
+        ) : (
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--flow-accent)" strokeWidth="2.5">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        )}
       </div>
-      <h2 className="text-2xl font-bold font-[family-name:var(--font-instrument)] mb-1">Listed!</h2>
-      <p className="text-sm opacity-60 mb-6">Published on {marketplaceLabel}</p>
+      <h2 className="text-2xl font-bold font-[family-name:var(--font-instrument)] mb-1">
+        {warning ? 'Saved as draft' : 'Listed!'}
+      </h2>
+      <p className="text-sm opacity-60 mb-6">
+        {warning ? `Created on ${marketplaceLabel} as a draft` : `Published on ${marketplaceLabel}`}
+      </p>
+
+      {warning && (
+        <div
+          role="alert"
+          className="w-full max-w-xs rounded-xl p-3 mb-6 text-left text-[13px] border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-200"
+        >
+          {warning}
+        </div>
+      )}
 
       <div className="w-full max-w-xs rounded-xl p-4 mb-6" style={{ background: 'var(--flow-text)', opacity: 0.05 }}>
         {photoUrl && (

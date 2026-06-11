@@ -16,6 +16,7 @@ import { demandLabel } from "@/lib/demand";
 import { PhotoGalleryStrip } from "./photo-gallery-strip";
 import { PhotoEditPanel } from "./photo-edit-panel";
 import { buildListingPayload } from "@/lib/scan-listing-payload";
+import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
 import {
   getAvailablePortageConditions,
   nearestAllowedCondition,
@@ -43,7 +44,9 @@ interface RefineResponse {
 }
 
 interface ScanFlowProps {
-  onClose: () => void;
+  // result.warning carries a marketplace draft-fallback reason (e.g. eBay
+  // rejected the publish) for the host to surface as a toast.
+  onClose: (result?: { warning?: string }) => void;
 }
 
 const MAX_PHOTOS = 12;
@@ -116,6 +119,14 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [isListingForSale, setIsListingForSale] = useState(false);
   // Seller-set sale price for the review step (null = use the resolved default).
   const [listPrice, setListPrice] = useState<number | null>(null);
+  // Packaged weight (decimal lb) + dims, seeded from the AI estimate; manual
+  // edits mark the metrics seller-confirmed (weightEstimated false).
+  const [weightDims, setWeightDims] = useState<WeightDimsValue>({
+    weight: null, dimLength: null, dimWidth: null, dimHeight: null, ebayPackageType: null,
+  });
+  const [weightEstimated, setWeightEstimated] = useState(false);
+  // Override search text for the eBay category control.
+  const [categorySearch, setCategorySearch] = useState("");
   const [activeTool, setActiveTool] = useState<"none" | "crop">("none");
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
@@ -147,6 +158,23 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     () => getAvailablePortageConditions(conditionIds),
     [conditionIds],
   );
+
+  // Seed Brand/Model item specifics from the seller's own fields — a
+  // deterministic copy (NOT AI prefill, which Stage 1 deliberately excluded).
+  // Only fills empty aspects, so a seller's explicit aspect edit always wins.
+  useEffect(() => {
+    const fieldSeeds: Array<[string, string]> = [
+      ["Brand", editBrand],
+      ["Model", editModel],
+    ];
+    for (const [name, value] of fieldSeeds) {
+      // Key presence (not truthiness): an explicit clear leaves "" under the
+      // key and must never be re-seeded — only never-touched aspects seed.
+      if (value && aspects[name] && !(name in aspectValues)) {
+        setAspectValue(name, value);
+      }
+    }
+  }, [aspects, aspectValues, editBrand, editModel, setAspectValue]);
 
   // If the current condition (AI-suggested or comp-copied) is disallowed for
   // the resolved category, snap to the nearest allowed grade instead of
@@ -302,6 +330,16 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     setEditValueHigh(String(candidate.estimatedValueHigh));
     setEditBrand(candidate.brand ?? "");
     setEditModel(candidate.model ?? "");
+    // Seed packaged weight/dims from the AI estimate (oz → decimal lb for the
+    // lb+oz inputs); any manual edit flips weightEstimated off.
+    setWeightDims({
+      weight: candidate.weight && candidate.weight.value > 0 ? candidate.weight.value / 16 : null,
+      dimLength: candidate.dimensions?.length ?? null,
+      dimWidth: candidate.dimensions?.width ?? null,
+      dimHeight: candidate.dimensions?.height ?? null,
+      ebayPackageType: candidate.packageType ?? null,
+    });
+    setWeightEstimated(!!(candidate.weight && candidate.weight.value > 0));
   }, []);
 
   const runScan = useCallback(async (fallbackState: ScanState) => {
@@ -423,6 +461,16 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
   // ─── Save to inventory ────────────────────────────────────────────────────
 
+  // Resolve the price shown/used in the review step: the seller's edited value
+  // wins, else fall back to comps/estimate via the unit-tested helper.
+  const valueLowNum = parseFloat(editValueLow) || 0;
+  const valueHighNum = parseFloat(editValueHigh) || 0;
+  const recommendedNum = Math.round((valueLowNum + valueHighNum) / 2) || null;
+  const reviewPrice = listPrice ?? resolvePublishPrice(
+    { estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
+    comps?.stats,
+  );
+
   const handleSave = useCallback(async () => {
     if (!token || photos.length === 0) return;
 
@@ -450,7 +498,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         body: {
           title: editName,
           description: editDescription,
-          category: editCategory,
+          // eBay taxonomy is THE category; the AI's internal string only as fallback
+          category: resolvedCategoryName ?? editCategory,
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes,
           brand: editBrand || undefined,
@@ -461,13 +510,16 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           estimatedValueRecommended: valueRecommended,
           aiConfidenceScore: selectedCandidate?.confidence ?? 0.85,
           photos: itemPhotos,
-          // Persist the scan's AI-estimated packaged weight/dimensions so the item
-          // carries them for eBay Calculated shipping without re-running prepare.
-          ...(selectedCandidate?.weight && selectedCandidate.weight.value > 0
-            ? { weightOz: selectedCandidate.weight.value, weightEstimated: true } : {}),
-          ...(selectedCandidate?.dimensions
-            ? { lengthIn: selectedCandidate.dimensions.length, widthIn: selectedCandidate.dimensions.width, heightIn: selectedCandidate.dimensions.height } : {}),
-          ...(selectedCandidate?.packageType ? { ebayPackageType: selectedCandidate.packageType } : {}),
+          // Persist the seller's price so it prefills future publishes (same as Save & List).
+          ...(reviewPrice && reviewPrice > 0 ? { price: reviewPrice } : {}),
+          // Packaged weight/dims from the review inputs (seeded from the AI
+          // estimate; weightEstimated false once the seller edits them).
+          ...(weightDims.weight && Math.round(weightDims.weight * 16) > 0
+            ? { weightOz: Math.round(weightDims.weight * 16), weightEstimated } : {}),
+          ...(weightDims.dimLength ? { lengthIn: weightDims.dimLength } : {}),
+          ...(weightDims.dimWidth ? { widthIn: weightDims.dimWidth } : {}),
+          ...(weightDims.dimHeight ? { heightIn: weightDims.dimHeight } : {}),
+          ...(weightDims.ebayPackageType ? { ebayPackageType: weightDims.ebayPackageType } : {}),
         },
       });
 
@@ -480,18 +532,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   }, [
     token, photos, editName, editDescription, editCategory,
     editCondition, editConditionNotes, editValueLow, editValueHigh,
-    editBrand, editModel, candidates, selectedCandidateIndex, onClose,
+    editBrand, editModel, candidates, selectedCandidateIndex, onClose, reviewPrice,
+    weightDims, weightEstimated, resolvedCategoryName,
   ]);
-
-  // Resolve the price shown/used in the review step: the seller's edited value
-  // wins, else fall back to comps/estimate via the unit-tested helper.
-  const valueLowNum = parseFloat(editValueLow) || 0;
-  const valueHighNum = parseFloat(editValueHigh) || 0;
-  const recommendedNum = Math.round((valueLowNum + valueHighNum) / 2) || null;
-  const reviewPrice = listPrice ?? resolvePublishPrice(
-    { estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
-    comps?.stats,
-  );
 
   const handleSaveAndList = useCallback(async () => {
     if (!token || photos.length === 0 || isListingForSale) return;
@@ -504,7 +547,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       const newItem = await api<{ id: string }>("/items", {
         method: "POST", token,
         body: {
-          title: editName, description: editDescription, category: editCategory,
+          title: editName, description: editDescription, category: resolvedCategoryName ?? editCategory,
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes, brand: editBrand || undefined, model: editModel || undefined,
           features: selectedCandidate?.features ?? [],
@@ -512,12 +555,13 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           aiConfidenceScore: selectedCandidate?.confidence ?? 0.85, photos: itemPhotos,
           // Persist the seller's price so it prefills future publishes.
           ...(price && price > 0 ? { price } : {}),
-          // Persist the scan's AI-estimated packaged weight/dimensions for Calculated shipping.
-          ...(selectedCandidate?.weight && selectedCandidate.weight.value > 0
-            ? { weightOz: selectedCandidate.weight.value, weightEstimated: true } : {}),
-          ...(selectedCandidate?.dimensions
-            ? { lengthIn: selectedCandidate.dimensions.length, widthIn: selectedCandidate.dimensions.width, heightIn: selectedCandidate.dimensions.height } : {}),
-          ...(selectedCandidate?.packageType ? { ebayPackageType: selectedCandidate.packageType } : {}),
+          // Packaged weight/dims from the review inputs (seeded from the AI estimate).
+          ...(weightDims.weight && Math.round(weightDims.weight * 16) > 0
+            ? { weightOz: Math.round(weightDims.weight * 16), weightEstimated } : {}),
+          ...(weightDims.dimLength ? { lengthIn: weightDims.dimLength } : {}),
+          ...(weightDims.dimWidth ? { widthIn: weightDims.dimWidth } : {}),
+          ...(weightDims.dimHeight ? { heightIn: weightDims.dimHeight } : {}),
+          ...(weightDims.ebayPackageType ? { ebayPackageType: weightDims.ebayPackageType } : {}),
         },
       });
       // Honor the seller's draft/live preference; a failed profile fetch falls
@@ -528,7 +572,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       )
         .then((d) => d.profile)
         .catch(() => null);
-      await api("/listings", {
+      const listing = await api<{ id: string; status: string; warning?: string }>("/listings", {
         method: "POST",
         token,
         body: buildListingPayload(
@@ -536,7 +580,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           profile,
         ),
       });
-      onClose();
+      onClose(listing.warning ? { warning: listing.warning } : undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
       setState("review");
@@ -546,7 +590,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     token, photos, isListingForSale, candidates, selectedCandidateIndex, reviewPrice,
     editName, editDescription, editCategory, editCondition, editConditionNotes,
     editBrand, editModel, valueLowNum, valueHighNum, recommendedNum,
-    resolvedCategoryId, buildAspects, onClose,
+    resolvedCategoryId, resolvedCategoryName, buildAspects, onClose, weightDims, weightEstimated,
   ]);
 
   // ─── Back to capture from review ──────────────────────────────────────────
@@ -643,7 +687,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-border">
         <button
-          onClick={state === "review" ? handleBackToCapture : onClose}
+          onClick={state === "review" ? handleBackToCapture : () => onClose()}
           className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
           aria-label={state === "review" ? "Back" : "Close"}
         >
@@ -1147,30 +1191,50 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 />
               </div>
 
-              {/* Category */}
+              {/* Packaged weight + dimensions (lb + oz; required for eBay Calculated shipping) */}
+              <div>
+                <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Weight &amp; Size</label>
+                <WeightDimsInputs
+                  value={weightDims}
+                  estimated={weightEstimated}
+                  onChange={(patch) => {
+                    setWeightDims((prev) => ({ ...prev, ...patch }));
+                    setWeightEstimated(false);
+                  }}
+                />
+              </div>
+
+              {/* Category — eBay taxonomy is THE category (the old 13-value
+                  internal list is deprecated). Auto-resolved from the item
+                  name; the search overrides with any eBay leaf category. */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Category</label>
-                <input
-                  type="text"
-                  value={editCategory}
-                  onChange={(e) => setEditCategory(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary focus:border-border-focus focus:outline-none transition-colors"
-                />
-                {/* eBay category resolution status (drives the specifics section) */}
-                {isCategoryResolving ? (
-                  <p className="mt-1 text-xs text-text-secondary">Resolving eBay category…</p>
-                ) : resolvedCategoryId !== null ? (
-                  <p className="mt-1 text-xs text-text-secondary">
-                    eBay category: {resolvedCategoryName ?? resolvedCategoryId}{" "}
-                    <button
-                      type="button"
-                      onClick={() => resolveCategory(editCategory || editName)}
-                      className="text-[var(--teal)] font-medium"
-                    >
-                      change
-                    </button>
-                  </p>
-                ) : (
+                <div className="px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary text-sm">
+                  {isCategoryResolving
+                    ? "Resolving eBay category…"
+                    : resolvedCategoryId !== null
+                      ? (resolvedCategoryName ?? resolvedCategoryId)
+                      : "Not matched yet — search below"}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="text"
+                    value={categorySearch}
+                    onChange={(e) => setCategorySearch(e.target.value)}
+                    placeholder="Search eBay categories…"
+                    aria-label="Search eBay category"
+                    className="flex-1 px-3 py-2 rounded-xl bg-surface border border-border text-sm text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { if (categorySearch.trim()) void resolveCategory(categorySearch.trim()); }}
+                    disabled={isCategoryResolving || categorySearch.trim() === ""}
+                    className="px-3 py-2 rounded-xl text-sm font-medium bg-muted text-text-primary disabled:opacity-50"
+                  >
+                    Find category
+                  </button>
+                </div>
+                {!isCategoryResolving && resolvedCategoryId === null && (
                   <p className="mt-1 text-xs text-text-secondary">
                     eBay category unresolved — specifics captured at listing time.
                   </p>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { ScanFlow } from "@/components/capture/scan-flow";
 import { FloatingMic } from "@/components/porter/floating-mic";
 import { useUnreadCount } from "@/hooks/use-messages";
@@ -19,14 +19,27 @@ const tabs = [
 export function TabBar() {
   const pathname = usePathname();
   const [showScan, setShowScan] = useState(false);
+  const [scanWarning, setScanWarning] = useState<string | null>(null);
+  const warningTimer = useRef<number | null>(null);
   const { count: unreadCount } = useUnreadCount();
 
   const handleScanOpen = useCallback(() => {
     setShowScan(true);
   }, []);
 
-  const handleScanClose = useCallback(() => {
+  const handleScanClose = useCallback((result?: { warning?: string }) => {
     setShowScan(false);
+    // Marketplace draft-fallback reason (e.g. eBay rejected the publish) —
+    // ScanFlow has unmounted, so the host surfaces it.
+    if (result?.warning) {
+      setScanWarning(result.warning);
+      if (warningTimer.current !== null) window.clearTimeout(warningTimer.current);
+      warningTimer.current = window.setTimeout(() => setScanWarning(null), 8000);
+    }
+  }, []);
+
+  useEffect(() => () => {
+    if (warningTimer.current !== null) window.clearTimeout(warningTimer.current);
   }, []);
 
   const isHome = pathname.startsWith("/home");
@@ -155,6 +168,17 @@ export function TabBar() {
 
       {/* Scan flow modal */}
       {showScan && <ScanFlow onClose={handleScanClose} />}
+
+      {/* Save & List draft-fallback warning (marketplace's actual reason) */}
+      {scanWarning && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-24 left-4 right-4 z-50 mx-auto max-w-md px-4 py-3 rounded-xl text-sm font-medium shadow-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/90 dark:border-amber-800 dark:text-amber-200 animate-in fade-in slide-in-from-bottom-2 duration-200"
+        >
+          {scanWarning}
+        </div>
+      )}
 
       {/* Floating mic — suppressed where Porter chat already exists inline:
           /home (inline Porter card) and /porter (the full Porter page). */}

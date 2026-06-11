@@ -99,7 +99,7 @@ const CANDIDATE = {
   confidence: 0.9,
 };
 
-async function renderInReview() {
+async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: unknown }) {
   // Photo upload goes through raw fetch, not the api() wrapper.
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -113,10 +113,11 @@ async function renderInReview() {
     if (path.startsWith("/items/comps/search")) throw new Error("no comps");
     if (path === "/seller-profile") return { profile: { ebayPublishMode: "live" } };
     if (path === "/items") return { id: "item-1" };
+    if (path === "/listings" && opts?.listingsResponse) return opts.listingsResponse;
     return {};
   });
 
-  render(<ScanFlow onClose={vi.fn()} />);
+  render(<ScanFlow onClose={opts?.onClose ?? vi.fn()} />);
   fireEvent.click(screen.getByText("Choose from Gallery"));
   fireEvent.click(await screen.findByText(/Scan 1 Photo with Porter/));
   await screen.findByText("Review");
@@ -250,6 +251,105 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
+  it("plain Save persists the entered price to the item (same as Save & List)", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Price (USD)"), { target: { value: "65" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect((itemsCall?.[1] as { body: { price?: number } }).body.price).toBe(65);
+  });
+
+  it("review captures lb+oz weight and Save persists seller-confirmed weightOz", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Pounds"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Ounces"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { weightOz?: number; weightEstimated?: boolean } }).body;
+    expect(body.weightOz).toBe(24);
+    expect(body.weightEstimated).toBe(false);
+  });
+
+  it("eBay taxonomy is THE category: free-text input gone, search re-resolves, Save persists the eBay name", async () => {
+    await renderInReview();
+
+    // the deprecated internal free-text category input is gone
+    // (it used to render with the candidate's category as its value)
+    expect(screen.queryByDisplayValue("Guitars")).not.toBeInTheDocument();
+
+    // searching re-resolves against eBay's full taxonomy
+    fireEvent.change(screen.getByLabelText("Search eBay category"), {
+      target: { value: "studio microphones" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Find category" }));
+    expect(scanAspectsState.resolveCategory).toHaveBeenCalledWith("studio microphones");
+
+    // Save persists the resolved eBay category name as the item's category
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect((itemsCall?.[1] as { body: { category?: string } }).body.category).toBe("Electric Guitars");
+  });
+
+  it("seeds Brand/Model aspects from the item fields (deterministic copy, not AI)", async () => {
+    scanAspectsState.aspects = {
+      Brand: { required: true, values: null },
+      Model: { required: false, values: null },
+    };
+    scanAspectsState.aspectValues = {};
+
+    await renderInReview();
+
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Brand", "Fender");
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Model", "Stratocaster");
+  });
+
+  it("never re-seeds an aspect the seller explicitly cleared or already set", async () => {
+    scanAspectsState.aspects = {
+      Brand: { required: true, values: null },
+      Model: { required: false, values: null },
+    };
+    // Brand cleared by the seller (empty string under the key); Model set by hand.
+    scanAspectsState.aspectValues = { Brand: "", Model: "Custom Shop" };
+
+    await renderInReview();
+
+    expect(scanAspectsState.setAspectValue).not.toHaveBeenCalledWith("Brand", expect.anything());
+    expect(scanAspectsState.setAspectValue).not.toHaveBeenCalledWith("Model", expect.anything());
+  });
+
+  it("Save & List persists the lb+oz weight to the item (duplicated payload path)", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Pounds"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Ounces"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { weightOz?: number; weightEstimated?: boolean } }).body;
+    expect(body.weightOz).toBe(24);
+    expect(body.weightEstimated).toBe(false);
+  });
+
   it("Save & List posts the seller-profile-aware payload with aspects and categoryId", async () => {
     scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
 
@@ -277,6 +377,23 @@ describe("ScanFlow review wiring", () => {
     });
     // The legacy flag must be gone — publishMode drives behavior now.
     expect(listingsCall?.[1].body).not.toHaveProperty("publishImmediately");
+  });
+
+  it("Save & List hands the draft-fallback warning to onClose so the host can surface it", async () => {
+    const onClose = vi.fn();
+    await renderInReview({
+      onClose,
+      listingsResponse: {
+        id: "L1",
+        status: "draft",
+        warning: "Listing created as draft — publish to eBay failed: account locked",
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onClose).toHaveBeenCalledWith({ warning: expect.stringContaining("account locked") });
   });
 
   it("falls back to draft publishMode when the seller-profile fetch rejects — never an accidental live publish", async () => {
@@ -323,16 +440,20 @@ describe("ScanFlow review wiring", () => {
 
     expect(screen.getByRole("button", { name: "New" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New" }).className).toContain("bg-[var(--teal)]");
+    // The snap happens in a useEffect after render — await the re-render
+    // instead of asserting synchronously (flaked twice on slow CI runners).
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "New" }).className).toContain("bg-[var(--teal)]"),
+    );
   });
 
-  it("shows the resolved eBay category under the Category field with a re-resolve action", async () => {
+  it("shows the resolved eBay category as THE category value", async () => {
     await renderInReview();
 
-    expect(screen.getByText(/eBay category: Electric Guitars/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "change" }));
-    // Re-resolve uses the seller's edited category text (candidate.category here).
-    expect(scanAspectsState.resolveCategory).toHaveBeenCalledWith("Guitars");
+    // The resolved eBay leaf name renders as the category itself (not a hint line)
+    expect(screen.getByText("Electric Guitars")).toBeInTheDocument();
+    // Find is disabled until the seller types a search
+    expect(screen.getByRole("button", { name: "Find category" })).toBeDisabled();
   });
 
   it("warns instead of rendering an empty pill row when no conditionIds are recognized", async () => {

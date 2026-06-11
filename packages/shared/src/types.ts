@@ -393,6 +393,9 @@ export interface ListingFlowState {
   publishStatus: 'idle' | 'publishing' | 'published' | 'failed';
   listingId: string | null;
   inventoryItemId: string | null;
+  // Set when the listing row was created but the marketplace publish fell back
+  // to draft (e.g. eBay rejected it) — carries the marketplace's actual reason.
+  publishWarning: string | null;
 }
 
 export interface ListingDraft {
