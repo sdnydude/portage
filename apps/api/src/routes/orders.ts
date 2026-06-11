@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, desc, and, isNotNull } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { orders, listings } from '../db/schema.js';
+import { orders, listings, items } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
@@ -61,7 +61,14 @@ ordersRouter.get('/:id', async (req, res, next) => {
 
     if (!order) throw new AppError(404, 'NOT_FOUND', 'Order not found');
 
-    res.json(order);
+    // The order detail + ship pages render the item's title and photos —
+    // include them (null when the item was deleted after the sale).
+    const [item] = await db.select({ id: items.id, title: items.title, photos: items.photos })
+      .from(items)
+      .where(eq(items.id, order.itemId))
+      .limit(1);
+
+    res.json({ ...order, item: item ?? null });
   } catch (err) {
     next(err);
   }

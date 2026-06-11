@@ -26,12 +26,13 @@ interface OrderDetail {
   shippingLabelUrl: string | null;
   soldAt: string;
   shippedAt: string | null;
+  // null when the item was deleted after the sale
   item: {
     id: string;
     title: string;
     photos: Array<{ url: string; isPrimary?: boolean }>;
     category: string;
-  };
+  } | null;
 }
 
 type PackageType = "box" | "envelope" | "poly_mailer";
@@ -412,7 +413,7 @@ export default function ShipPage({ params }: { params: Promise<{ id: string }> }
 
   // ── Main shipping flow ──
   const badge = getMarketplaceBadge(order.marketplace);
-  const primaryPhoto = order.item.photos?.find((p) => p.isPrimary) ?? order.item.photos?.[0];
+  const primaryPhoto = order.item?.photos?.find((p) => p.isPrimary) ?? order.item?.photos?.[0];
 
   return (
     <div className="min-h-dvh bg-background">
@@ -448,7 +449,7 @@ export default function ShipPage({ params }: { params: Promise<{ id: string }> }
                 <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
                   <img
                     src={primaryPhoto.url}
-                    alt={order.item.title}
+                    alt={order.item?.title ?? "Item"}
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -465,7 +466,7 @@ export default function ShipPage({ params }: { params: Promise<{ id: string }> }
               {/* Item info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-text-primary truncate">{order.item.title}</h3>
+                  <h3 className="text-sm font-semibold text-text-primary truncate">{order.item?.title ?? "Item"}</h3>
                   <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${badge.bg} ${badge.text}`}>
                     {badge.label}
                   </span>
