@@ -521,7 +521,10 @@ export class EbayAdapter implements MarketplaceAdapter {
     } catch (err) {
       listingId = offerData.offerId;
       status = 'draft';
-      warning = 'Listing created as draft — publish to eBay failed. You can publish manually from your eBay seller hub.';
+      // request() already parsed eBay's error body into a sanitized message —
+      // surface the actual reason (account lock, missing weight, …), not just
+      // the generic fallback line.
+      warning = `Listing created as draft — publish to eBay failed: ${(err as Error).message}`;
       logger.warn({ userId: this.userId, offerId: offerData.offerId, err: (err as Error).message }, 'eBay listing created as draft — publish failed');
     }
 

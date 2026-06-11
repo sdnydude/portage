@@ -546,6 +546,37 @@ describe('EbayAdapter.createListing — draft vs live publish mode', () => {
     expect(result.warning).toBeUndefined();
   });
 
+  it('publish failure falls back to draft with eBay actual reason in the warning', async () => {
+    fetchMock.mockImplementation(async (url: any, opts: any) => {
+      const u = String(url);
+      if (u.includes('/publish')) {
+        return new Response(JSON.stringify({
+          errors: [{
+            errorId: 25019,
+            domain: 'API_INVENTORY',
+            message: 'Cannot revise listing. The item cannot be listed or modified. The listing or seller may be in violation of eBay policy.',
+          }],
+        }), { status: 400 });
+      }
+      if (u.includes('/offer') && opts?.method === 'POST') {
+        return new Response(JSON.stringify({ offerId: 'offer-locked' }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      publishMode: 'live',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+
+    expect(result.status).toBe('draft');
+    expect(result.warning).toContain('Listing created as draft');
+    // the generic line alone is not enough — the seller must see eBay's reason
+    expect(result.warning).toContain('Cannot revise listing');
+  });
+
   it('live mode publishes the offer and returns the listing id, offer id and SKU', async () => {
     fetchMock.mockImplementation(async (url: any) => {
       const u = String(url);
