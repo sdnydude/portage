@@ -5,6 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
 import { useAuth } from "@/hooks/use-auth";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
+import { PriceField } from "@/components/listing/price-field";
+import { useScanAspects } from "@/hooks/use-scan-aspects";
+import { getAvailablePortageConditions } from "@/lib/ebay-condition-map";
 
 const conditions = [
   { value: "new", label: "New" },
@@ -14,10 +17,6 @@ const conditions = [
   { value: "poor", label: "Poor" },
 ];
 
-const categories = [
-  "electronics", "clothing", "furniture", "collectibles", "sports",
-  "home", "books", "toys", "tools", "jewelry", "art", "music", "other",
-];
 
 export default function EditItemPage() {
   const params = useParams<{ id: string }>();
@@ -37,6 +36,8 @@ export default function EditItemPage() {
     weight: null, dimLength: null, dimWidth: null, dimHeight: null, ebayPackageType: null,
   });
   const [weightEstimated, setWeightEstimated] = useState(false);
+  const [price, setPrice] = useState<number | null>(null);
+  const [categorySearch, setCategorySearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -59,6 +60,7 @@ export default function EditItemPage() {
         ebayPackageType: item.ebayPackageType ?? null,
       });
       setWeightEstimated(item.weightEstimated ?? false);
+      setPrice(item.price ?? null);
     }
   }, [item]);
 
@@ -67,6 +69,20 @@ export default function EditItemPage() {
     setWeightDims((prev) => ({ ...prev, ...patch }));
     setWeightEstimated(false);
   };
+
+  // eBay taxonomy is THE category (the static internal list is deprecated).
+  // Auto-resolves from the title; the search box overrides with any leaf.
+  const {
+    resolvedCategoryId,
+    resolvedCategoryName,
+    resolveCategory,
+    isCategoryResolving,
+    conditionIds,
+  } = useScanAspects(title, `${title} ${description}`);
+  const availableConditions = getAvailablePortageConditions(conditionIds);
+  const conditionOptions = availableConditions.length > 0
+    ? conditions.filter((c) => (availableConditions as readonly string[]).includes(c.value))
+    : conditions;
 
   useEffect(() => {
     if (!isAuthenticated) router.replace("/inventory");
@@ -110,12 +126,14 @@ export default function EditItemPage() {
       await updateItem({
         title: title.trim(),
         description: description.trim(),
-        category,
+        // eBay taxonomy is THE category; the stored string only as fallback
+        category: resolvedCategoryName ?? category,
         condition,
         conditionNotes: conditionNotes.trim(),
         brand: brand.trim(),
         model: model.trim(),
         quantity,
+        ...(price && price > 0 ? { price } : {}),
         weightOz: rawOz > 0 ? rawOz : undefined,
         lengthIn: weightDims.dimLength ?? undefined,
         widthIn: weightDims.dimWidth ?? undefined,
@@ -133,6 +151,8 @@ export default function EditItemPage() {
   const hasChanges =
     title !== item.title ||
     description !== item.description ||
+    price !== (item.price ?? null) ||
+    (resolvedCategoryName !== null && resolvedCategoryName !== item.category) ||
     category !== item.category ||
     condition !== item.condition ||
     conditionNotes !== item.conditionNotes ||
@@ -197,31 +217,50 @@ export default function EditItemPage() {
         </FieldGroup>
 
         <div className="grid grid-cols-2 gap-3">
-          <FieldGroup label="Category">
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
-            >
-              <option value="">None</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-              ))}
-            </select>
-          </FieldGroup>
-
           <FieldGroup label="Condition">
             <select
               value={condition}
               onChange={(e) => setCondition(e.target.value)}
               className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
             >
-              {conditions.map((c) => (
+              {conditionOptions.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
           </FieldGroup>
+
+          <FieldGroup label="Price">
+            <PriceField value={price} onChange={setPrice} />
+          </FieldGroup>
         </div>
+
+        <FieldGroup label="Category">
+          <div className="px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary">
+            {isCategoryResolving
+              ? "Resolving eBay category…"
+              : resolvedCategoryId !== null
+                ? (resolvedCategoryName ?? resolvedCategoryId)
+                : "Not matched yet — search below"}
+          </div>
+          <div className="mt-2 flex gap-2">
+            <input
+              type="text"
+              value={categorySearch}
+              onChange={(e) => setCategorySearch(e.target.value)}
+              placeholder="Search eBay categories…"
+              aria-label="Search eBay category"
+              className="flex-1 px-3 py-2 bg-muted rounded-xl text-sm text-text-primary placeholder:text-text-placeholder border border-transparent focus:border-border-focus focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => { if (categorySearch.trim()) void resolveCategory(categorySearch.trim()); }}
+              disabled={isCategoryResolving || categorySearch.trim() === ""}
+              className="px-3 py-2 rounded-xl text-sm font-medium bg-surface border border-border text-text-primary disabled:opacity-50"
+            >
+              Find category
+            </button>
+          </div>
+        </FieldGroup>
 
         <FieldGroup label="Condition Notes">
           <textarea
