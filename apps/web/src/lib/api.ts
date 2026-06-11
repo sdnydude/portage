@@ -44,6 +44,7 @@ async function refreshAccessToken(): Promise<string> {
     localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(USER_KEY);
     _onTokenRefreshed?.(null as unknown as string, "", null);
+    window.dispatchEvent(new CustomEvent("auth:session-lost"));
     throw new Error("Refresh failed");
   }
 

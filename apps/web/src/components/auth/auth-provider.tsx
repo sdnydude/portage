@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AuthContext } from "@/hooks/use-auth";
-import { setOnTokenRefreshed } from "@/lib/api";
+import { setOnTokenRefreshed, API_BASE } from "@/lib/api";
 
 interface AuthUser {
   id: string;
@@ -47,7 +47,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(newUser as AuthUser);
     });
 
-    return () => setOnTokenRefreshed(null);
+    // Central auth-loss handler: api.ts fires this when a refresh attempt fails.
+    // Storage is already cleared there — clear React state and land on home immediately.
+    const onSessionLost = () => {
+      setToken(null);
+      setUser(null);
+      window.location.href = "/home";
+    };
+    window.addEventListener("auth:session-lost", onSessionLost);
+
+    return () => {
+      setOnTokenRefreshed(null);
+      window.removeEventListener("auth:session-lost", onSessionLost);
+    };
   }, []);
 
   const login = useCallback((newToken: string, refreshToken: string, newUser: AuthUser | null) => {
@@ -58,7 +70,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (newUser) localStorage.setItem(USER_KEY, JSON.stringify(newUser));
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Revoke this device's session server-side before discarding it locally —
+    // otherwise the refresh token stays valid on the server until it expires.
+    const accessToken = localStorage.getItem(TOKEN_KEY);
+    const refreshToken = localStorage.getItem(REFRESH_KEY);
+    if (accessToken && refreshToken) {
+      try {
+        await fetch(`${API_BASE}/auth/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch {
+        // Network failure must not block local logout
+      }
+    }
     setToken(null);
     setUser(null);
     localStorage.removeItem(TOKEN_KEY);
