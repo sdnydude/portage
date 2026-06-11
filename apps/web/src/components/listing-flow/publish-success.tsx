@@ -66,9 +66,16 @@ export function PublishSuccess({
 
       <div className="flex flex-col gap-3 w-full max-w-xs">
         <button
-          onClick={() => router.push(`/listings/${listingId}`)}
+          onClick={() => router.push('/inventory')}
           className="w-full py-3 rounded-xl font-semibold text-white text-[15px]"
           style={{ background: 'var(--flow-accent)' }}
+        >
+          Back to Inventory
+        </button>
+        <button
+          onClick={() => router.push(`/listings/${listingId}`)}
+          className="w-full py-3 rounded-xl font-semibold text-[15px] border"
+          style={{ color: 'var(--flow-accent)', borderColor: 'var(--flow-accent)' }}
         >
           View Listing
         </button>

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, desc, and, isNotNull } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { orders, listings } from '../db/schema.js';
+import { orders, listings, items } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
@@ -61,7 +61,22 @@ ordersRouter.get('/:id', async (req, res, next) => {
 
     if (!order) throw new AppError(404, 'NOT_FOUND', 'Order not found');
 
-    res.json(order);
+    // The order detail + ship pages render the item's title and photos.
+    // The FK (onDelete: restrict) means the item should always exist; the
+    // null path is purely defensive (transient DB error / future soft-delete)
+    // and must not take down the whole order view.
+    let item: { id: string; title: string; photos: unknown } | null = null;
+    try {
+      const [row] = await db.select({ id: items.id, title: items.title, photos: items.photos })
+        .from(items)
+        .where(eq(items.id, order.itemId))
+        .limit(1);
+      item = row ?? null;
+    } catch (itemErr) {
+      logger.warn({ orderId: order.id, err: itemErr instanceof Error ? itemErr.message : String(itemErr) }, 'Order item fetch failed — returning order without item');
+    }
+
+    res.json({ ...order, item });
   } catch (err) {
     next(err);
   }

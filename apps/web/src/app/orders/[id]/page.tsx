@@ -161,7 +161,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   const badge = getMarketplaceBadge(order.marketplace);
-  const primaryPhoto = order.item.photos?.find((p) => p.isPrimary) ?? order.item.photos?.[0];
+  const primaryPhoto = order.item?.photos?.find((p) => p.isPrimary) ?? order.item?.photos?.[0];
   const currentStatusIndex = getStatusIndex(order.status);
   const profit = order.salePrice - order.shippingCost - order.marketplaceFees;
 
@@ -190,7 +190,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             <div className="flex gap-3">
               {primaryPhoto ? (
                 <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
-                  <img src={primaryPhoto.url} alt={order.item.title} className="w-full h-full object-cover" />
+                  <img src={primaryPhoto.url} alt={order.item?.title ?? "Item"} className="w-full h-full object-cover" />
                 </div>
               ) : (
                 <div className="w-20 h-20 rounded-xl bg-muted flex items-center justify-center flex-shrink-0">
@@ -203,7 +203,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-text-primary line-clamp-2">{order.item.title}</h3>
+                  <h3 className="text-sm font-semibold text-text-primary line-clamp-2">{order.item?.title ?? "Item"}</h3>
                   <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${badge.bg} ${badge.text}`}>
                     {badge.label}
                   </span>

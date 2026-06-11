@@ -106,6 +106,17 @@ describe("HybridFlow — photo editing wiring (S2.5-8)", () => {
     expect(h.cardProps.onPhotoUpdated).toBe(h.updatePhoto);
   });
 
+  it("collapses the editable Item Details card while the review card is visible (no duplicate fields)", () => {
+    render(<HybridFlow />);
+    // review/preview is on screen…
+    expect(screen.getByTestId("preview-card")).toBeInTheDocument();
+    // …so the editable Item Details inputs are collapsed away
+    expect(screen.queryByPlaceholderText("Item title")).not.toBeInTheDocument();
+    // and can be expanded back on demand
+    fireEvent.click(screen.getByRole("button", { name: /edit details/i }));
+    expect(screen.getByPlaceholderText("Item title")).toBeInTheDocument();
+  });
+
   it("compact mode replaces the dumb photo thumbs with the gallery strip; tapping a thumb opens the editor", () => {
     h.compactMode = true;
     try {

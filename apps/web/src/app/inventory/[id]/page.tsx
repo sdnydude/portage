@@ -822,7 +822,8 @@ export default function ItemDetailPage() {
           suggestedPrice={resolvePublishPrice(item, comps?.stats) ?? undefined}
           onCreated={() => {
             setShowListingSheet(false);
-            router.push("/listings");
+            // Save-redirect contract: land on inventory, not listings
+            router.push("/inventory");
           }}
           onClose={() => setShowListingSheet(false)}
         />
