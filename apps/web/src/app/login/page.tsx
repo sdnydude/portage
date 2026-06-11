@@ -17,6 +17,7 @@ export default function LoginPage() {
   const { login, isAuthenticated } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +33,7 @@ export default function LoginPage() {
     try {
       const data = await api<LoginResponse>("/auth/login", {
         method: "POST",
-        body: { email, password },
+        body: { email, password, stayLoggedIn },
       });
       login(data.token, data.refreshToken, data.user);
       router.replace("/home");
@@ -91,6 +92,16 @@ export default function LoginPage() {
               className="w-full px-4 py-2.5 bg-muted rounded-xl text-base text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
             />
           </div>
+
+          <label className="flex items-center gap-2.5 text-sm text-text-secondary select-none">
+            <input
+              type="checkbox"
+              checked={stayLoggedIn}
+              onChange={(e) => setStayLoggedIn(e.target.checked)}
+              className="w-4 h-4 rounded accent-[var(--forest-green)]"
+            />
+            Stay logged in
+          </label>
 
           <button
             type="submit"
