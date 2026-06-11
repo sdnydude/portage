@@ -12,13 +12,16 @@ export interface JwtPayload {
 
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '30d';
+export const STAY_LOGGED_IN_EXPIRY = '365d';
+export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const STAY_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 export function signAccessToken(payload: JwtPayload): string {
   return jwt.sign(payload, env().JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 }
 
-export function signRefreshToken(payload: JwtPayload): string {
-  return jwt.sign({ ...payload, type: 'refresh' }, env().JWT_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
+export function signRefreshToken(payload: JwtPayload, expiresIn: string = REFRESH_TOKEN_EXPIRY): string {
+  return jwt.sign({ ...payload, type: 'refresh' }, env().JWT_SECRET, { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] });
 }
 
 export function verifyAccessToken(token: string): JwtPayload {

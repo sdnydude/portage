@@ -5,6 +5,9 @@ import {
   verifyAccessToken,
   verifyRefreshToken,
   hashToken,
+  STAY_LOGGED_IN_EXPIRY,
+  REFRESH_TTL_MS,
+  STAY_TTL_MS,
   type JwtPayload,
 } from './jwt.js';
 import { env } from './env.js';
@@ -58,6 +61,23 @@ describe('jwt', () => {
     it('rejects an access token used as refresh token', () => {
       const accessToken = signAccessToken(testPayload);
       expect(() => verifyRefreshToken(accessToken)).toThrow('Invalid refresh token');
+    });
+
+    it('default refresh token expires in 30 days', () => {
+      const token = signRefreshToken(testPayload);
+      const decoded = jwt.decode(token) as { iat: number; exp: number };
+      expect(decoded.exp - decoded.iat).toBe(REFRESH_TTL_MS / 1000);
+    });
+
+    it('stay-logged-in refresh token expires in 365 days', () => {
+      const token = signRefreshToken(testPayload, STAY_LOGGED_IN_EXPIRY);
+      const decoded = jwt.decode(token) as { iat: number; exp: number };
+      expect(decoded.exp - decoded.iat).toBe(STAY_TTL_MS / 1000);
+    });
+
+    it('TTL constants match their durations', () => {
+      expect(REFRESH_TTL_MS).toBe(30 * 24 * 60 * 60 * 1000);
+      expect(STAY_TTL_MS).toBe(365 * 24 * 60 * 60 * 1000);
     });
   });
 
