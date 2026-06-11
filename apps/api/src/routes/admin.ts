@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { users, items, listings, orders, conversations, marketplaceAccounts, adminAuditLog, appSettings } from '../db/schema.js';
+import { users, items, listings, orders, conversations, marketplaceAccounts, adminAuditLog, appSettings, refreshTokens } from '../db/schema.js';
 import { eq, sql, desc, count, sum, and, isNull, isNotNull, ilike, or, inArray, gte } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
@@ -249,6 +249,8 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
     if (disabled === true) {
       updates.disabledAt = new Date();
       updates.disabledReason = disabledReason || null;
+      // Disabled users must not be able to keep refreshing — revoke every session
+      await db.delete(refreshTokens).where(eq(refreshTokens.userId, targetId));
       await logAuditAction(adminUser.sub, 'disable_user', 'user', targetId, { reason: disabledReason });
     } else if (disabled === false) {
       updates.disabledAt = null;
