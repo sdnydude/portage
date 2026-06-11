@@ -58,6 +58,43 @@ describe("AuthProvider session loss", () => {
     expect(localStorage.getItem("portage_refresh")).toBeNull();
   });
 
+  it("logout with an expired access token refreshes and retries the revocation (not a silent no-op)", async () => {
+    localStorage.setItem("portage_token", "expired-access");
+    localStorage.setItem("portage_refresh", "refresh-t");
+    localStorage.setItem("portage_user", JSON.stringify({ id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" }));
+
+    const fetchMock = vi.fn()
+      // 1st logout attempt: expired Bearer -> 401
+      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ error: "expired", code: "UNAUTHORIZED" }) })
+      // auto-refresh: succeeds
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ token: "new-at", refreshToken: "new-rt", user: { id: "u1" } }) })
+      // retried logout with fresh token: succeeds
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ loggedOut: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { useAuth } = await import("@/hooks/use-auth");
+    function LogoutButton() {
+      const { logout } = useAuth();
+      return <button onClick={() => logout()}>out</button>;
+    }
+
+    const { getByText } = render(
+      <AuthProvider>
+        <LogoutButton />
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      getByText("out").click();
+    });
+
+    const logoutCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/auth/logout"));
+    const refreshCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/auth/refresh"));
+    expect(refreshCalls.length).toBe(1);
+    expect(logoutCalls.length).toBe(2);
+    expect(logoutCalls[1][1].headers.Authorization).toBe("Bearer new-at");
+  });
+
   it("redirects to /home the moment auth:session-lost fires", async () => {
     localStorage.setItem("portage_token", "t");
     localStorage.setItem("portage_user", JSON.stringify({ id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" }));

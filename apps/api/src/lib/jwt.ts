@@ -11,8 +11,8 @@ export interface JwtPayload {
 }
 
 const ACCESS_TOKEN_EXPIRY = '15m';
-const REFRESH_TOKEN_EXPIRY = '30d';
-export const STAY_LOGGED_IN_EXPIRY = '365d';
+// Single source of truth for refresh-session durations: milliseconds.
+// JWT exp and refresh_tokens.expires_at both derive from the same ttlMs.
 export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const STAY_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
@@ -20,8 +20,12 @@ export function signAccessToken(payload: JwtPayload): string {
   return jwt.sign(payload, env().JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 }
 
-export function signRefreshToken(payload: JwtPayload, expiresIn: string = REFRESH_TOKEN_EXPIRY): string {
-  return jwt.sign({ ...payload, type: 'refresh' }, env().JWT_SECRET, { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] });
+export function signRefreshToken(payload: JwtPayload, ttlMs: number = REFRESH_TTL_MS): string {
+  // jti guarantees uniqueness — without it, two logins in the same second
+  // produce byte-identical JWTs and collide on the refresh_tokens.token_hash
+  // unique constraint. expiresIn in seconds derives from the same ttlMs the
+  // caller uses for the DB expires_at, so the two cannot drift.
+  return jwt.sign({ ...payload, type: 'refresh', jti: crypto.randomUUID() }, env().JWT_SECRET, { expiresIn: Math.floor(ttlMs / 1000) });
 }
 
 export function verifyAccessToken(token: string): JwtPayload {

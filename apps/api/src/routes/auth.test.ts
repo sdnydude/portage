@@ -224,7 +224,7 @@ describe('POST /auth/login', () => {
     expect(inserted.expiresAt).toBeInstanceOf(Date);
 
     // The legacy single-hash column must no longer be written — the session
-    // table is the sole storage (users.refreshTokenHash is being dropped)
+    // table is the sole storage (users.refreshTokenHash was removed from the schema)
     const updateResult = vi.mocked(db.update).mock.results[0]?.value;
     const setPayload = updateResult.set.mock.calls[0][0];
     expect(setPayload).not.toHaveProperty('refreshTokenHash');
@@ -310,7 +310,7 @@ describe('POST /auth/logout', () => {
   it('deletes the session row for the provided refresh token', async () => {
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
-    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    const whereSpy = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'session-1' }]) });
     vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
     mockUpdateReturns();
 
@@ -323,5 +323,55 @@ describe('POST /auth/logout', () => {
     expect(res.body.loggedOut).toBe(true);
     expect(db.delete).toHaveBeenCalledTimes(1);
     expect(whereSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to revoking all sessions when the scoped delete matches nothing', async () => {
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+    // scoped delete matches 0 rows (token already rotated by another tab)
+    vi.mocked(db.delete)
+      .mockReturnValueOnce({
+        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+      } as any)
+      .mockReturnValueOnce({
+        where: vi.fn().mockResolvedValue(undefined),
+      } as any);
+
+    const res = await request(app)
+      .post('/auth/logout')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ refreshToken });
+
+    expect(res.status).toBe(200);
+    expect(db.delete).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns 400 for a malformed (non-string) refreshToken instead of nuking all sessions', async () => {
+    const accessToken = signAccessToken(payload);
+    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
+
+    const res = await request(app)
+      .post('/auth/logout')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ refreshToken: 12345 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(db.delete).not.toHaveBeenCalled();
+  });
+
+  it('revokes ALL sessions when no refreshToken is provided', async () => {
+    const accessToken = signAccessToken(payload);
+    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
+
+    const res = await request(app)
+      .post('/auth/logout')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(db.delete).toHaveBeenCalledTimes(1);
   });
 });

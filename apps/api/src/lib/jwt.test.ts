@@ -5,7 +5,6 @@ import {
   verifyAccessToken,
   verifyRefreshToken,
   hashToken,
-  STAY_LOGGED_IN_EXPIRY,
   REFRESH_TTL_MS,
   STAY_TTL_MS,
   type JwtPayload,
@@ -70,9 +69,15 @@ describe('jwt', () => {
     });
 
     it('stay-logged-in refresh token expires in 365 days', () => {
-      const token = signRefreshToken(testPayload, STAY_LOGGED_IN_EXPIRY);
+      const token = signRefreshToken(testPayload, STAY_TTL_MS);
       const decoded = jwt.decode(token) as { iat: number; exp: number };
       expect(decoded.exp - decoded.iat).toBe(STAY_TTL_MS / 1000);
+    });
+
+    it('two refresh tokens for the same payload are never identical', () => {
+      const a = signRefreshToken(testPayload);
+      const b = signRefreshToken(testPayload);
+      expect(a).not.toBe(b);
     });
 
     it('TTL constants match their durations', () => {

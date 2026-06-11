@@ -249,7 +249,8 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
     if (disabled === true) {
       updates.disabledAt = new Date();
       updates.disabledReason = disabledReason || null;
-      // Disabled users must not be able to keep refreshing — revoke every session
+      // Defense-in-depth: refresh already 403s on disabledAt; deleting the rows
+      // also ensures old sessions stay dead if the account is later re-enabled.
       await db.delete(refreshTokens).where(eq(refreshTokens.userId, targetId));
       await logAuditAction(adminUser.sub, 'disable_user', 'user', targetId, { reason: disabledReason });
     } else if (disabled === false) {

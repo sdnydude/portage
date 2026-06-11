@@ -98,7 +98,7 @@ export default function LoginPage() {
               type="checkbox"
               checked={stayLoggedIn}
               onChange={(e) => setStayLoggedIn(e.target.checked)}
-              className="w-4 h-4 rounded accent-[var(--forest-green)]"
+              className="w-4 h-4 rounded accent-forest-green"
             />
             Stay logged in
           </label>

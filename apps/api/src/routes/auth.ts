@@ -6,7 +6,7 @@ import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { users, refreshTokens } from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
-import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken, REFRESH_TTL_MS, STAY_TTL_MS, STAY_LOGGED_IN_EXPIRY } from '../lib/jwt.js';
+import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken, REFRESH_TTL_MS, STAY_TTL_MS } from '../lib/jwt.js';
 import { AppError } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -39,6 +39,10 @@ const loginSchema = z.object({
 
 const refreshSchema = z.object({
   refreshToken: z.string(),
+});
+
+const logoutSchema = z.object({
+  refreshToken: z.string().optional(),
 });
 
 export const authRouter = Router();
@@ -144,7 +148,7 @@ authRouter.post('/login', authLimiter, async (req, res, next) => {
     };
     const accessToken = signAccessToken(jwtPayload);
     const sessionTtlMs = body.stayLoggedIn ? STAY_TTL_MS : REFRESH_TTL_MS;
-    const refreshToken = signRefreshToken(jwtPayload, body.stayLoggedIn ? STAY_LOGGED_IN_EXPIRY : undefined);
+    const refreshToken = signRefreshToken(jwtPayload, sessionTtlMs);
 
     await db.update(users)
       .set({ lastActiveAt: new Date() })
@@ -231,14 +235,29 @@ authRouter.post('/refresh', authLimiter, async (req, res, next) => {
     const accessToken = signAccessToken(jwtPayload);
     // Sliding window: the rotated session keeps its original duration (30d default, 365d stay-logged-in)
     const sessionDurationMs = session.expiresAt.getTime() - session.createdAt.getTime();
-    const newRefreshToken = signRefreshToken(jwtPayload, `${Math.round(sessionDurationMs / 1000)}s`);
+    const newRefreshToken = signRefreshToken(jwtPayload, sessionDurationMs);
 
-    await db.delete(refreshTokens).where(eq(refreshTokens.id, session.id));
-    await db.insert(refreshTokens).values({
-      userId: user.id,
-      tokenHash: hashToken(newRefreshToken),
-      expiresAt: new Date(Date.now() + sessionDurationMs),
+    // Atomic rotation: claim (delete) and replace in one transaction. The
+    // .returning() claim check makes concurrent refreshes of the same token
+    // lose cleanly with a 401 instead of minting a duplicate session, and a
+    // failed insert rolls the delete back instead of destroying the session.
+    const rotated = await db.transaction(async (tx) => {
+      const claimed = await tx.delete(refreshTokens)
+        .where(eq(refreshTokens.id, session.id))
+        .returning({ id: refreshTokens.id });
+      if (claimed.length === 0) return false;
+      await tx.insert(refreshTokens).values({
+        userId: user.id,
+        tokenHash: hashToken(newRefreshToken),
+        expiresAt: new Date(Date.now() + sessionDurationMs),
+      });
+      return true;
     });
+
+    if (!rotated) {
+      logger.warn({ userId: user.id }, 'Refresh race lost — session row already rotated by a concurrent request');
+      throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token has been revoked');
+    }
 
     logger.info({ userId: user.id }, 'Token refreshed');
 
@@ -268,13 +287,19 @@ authRouter.post('/refresh', authLimiter, async (req, res, next) => {
 authRouter.post('/logout', requireAuth, async (req, res, next) => {
   try {
     const userId = req.user!.sub;
-    const refreshToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : null;
+    const { refreshToken } = logoutSchema.parse(req.body ?? {});
 
     if (refreshToken) {
       // Revoke this device's session only
-      await db.delete(refreshTokens).where(
-        and(eq(refreshTokens.userId, userId), eq(refreshTokens.tokenHash, hashToken(refreshToken))),
-      );
+      const deleted = await db.delete(refreshTokens)
+        .where(and(eq(refreshTokens.userId, userId), eq(refreshTokens.tokenHash, hashToken(refreshToken))))
+        .returning({ id: refreshTokens.id });
+      if (deleted.length === 0) {
+        // Token was already rotated (e.g. by another tab) — the user asked to
+        // log out, so fail safe and revoke everything rather than nothing.
+        logger.warn({ userId }, 'Scoped logout matched no session — revoking all sessions');
+        await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
+      }
     } else {
       // No token provided — revoke every session for the user
       await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));

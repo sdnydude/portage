@@ -9,11 +9,13 @@ vi.mock('../db/index.js', () => ({
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    transaction: vi.fn(),
   },
 }));
 
-// Queue successive db.select chains — refresh does two selects:
+// Queue successive db.select chains — refresh does up to two selects:
 // 1) refresh_tokens row by tokenHash, 2) users row by session.userId
+// (early 401 exits stop after the first)
 function queueSelects(...rowSets: unknown[][]) {
   for (const rows of rowSets) {
     vi.mocked(db.select).mockReturnValueOnce({
@@ -32,10 +34,21 @@ function mockInsertReturns() {
   } as any);
 }
 
-function mockDeleteReturns() {
+function mockDeleteReturns(claimedRows: unknown[] = [{ id: 'session-1' }]) {
   vi.mocked(db.delete).mockReturnValue({
-    where: vi.fn().mockResolvedValue(undefined),
+    where: vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue(claimedRows),
+      // expired-row cleanup awaits .where() directly (no .returning())
+      then: (resolve: (v: unknown) => void) => resolve(undefined),
+    }),
   } as any);
+}
+
+// The rotation runs inside db.transaction — route through the same db mocks
+// so per-test delete/insert assertions keep working.
+function mockTransaction() {
+  vi.mocked(db.transaction).mockImplementation((async (fn: (tx: unknown) => Promise<unknown>) =>
+    fn({ delete: db.delete, insert: db.insert, select: db.select, update: db.update })) as any);
 }
 
 const testPayload: JwtPayload = {
@@ -83,6 +96,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockTransaction();
 });
 
 describe('POST /auth/refresh', () => {
@@ -123,7 +137,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('preserves the session duration on rotation (365d stay-logged-in session stays 365d)', async () => {
-    const refreshToken = signRefreshToken(testPayload, '365d');
+    const refreshToken = signRefreshToken(testPayload, 365 * DAY_MS);
     const YEAR_MS = 365 * DAY_MS;
     queueSelects(
       [mockSessionRow(refreshToken, {
@@ -142,6 +156,38 @@ describe('POST /auth/refresh', () => {
     const newDurationMs = inserted.expiresAt.getTime() - Date.now();
     expect(newDurationMs).toBeGreaterThan(YEAR_MS - 60_000);
     expect(newDurationMs).toBeLessThanOrEqual(YEAR_MS + 60_000);
+  });
+
+  it('returns 401 and mints no session when the row was already rotated away (concurrent refresh)', async () => {
+    const refreshToken = signRefreshToken(testPayload);
+    queueSelects([mockSessionRow(refreshToken)], [mockUserRow()]);
+    mockInsertReturns();
+    mockDeleteReturns([]); // another request claimed (deleted) the row first
+
+    const res = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken });
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('INVALID_REFRESH_TOKEN');
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 with no tokens when the rotation insert fails (transaction aborts)', async () => {
+    const refreshToken = signRefreshToken(testPayload);
+    queueSelects([mockSessionRow(refreshToken)], [mockUserRow()]);
+    mockDeleteReturns();
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockRejectedValue(new Error('connection reset')),
+    } as any);
+
+    const res = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken });
+
+    expect(res.status).toBe(500);
+    expect(res.body.token).toBeUndefined();
+    expect(res.body.refreshToken).toBeUndefined();
   });
 
   it('returns 401 for expired refresh token', async () => {
