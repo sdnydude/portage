@@ -67,13 +67,11 @@ beforeEach(() => {
 });
 
 describe("EditItemPage — eBay taxonomy category + price", () => {
-  it("replaces the static category list with the eBay category and saves price + eBay name", async () => {
+  it("price-only save keeps the STORED category (auto-resolution never silently overwrites)", async () => {
     render(<EditItemPage />);
 
     // The deprecated 13-value static list is gone
     expect(screen.queryByRole("option", { name: "Furniture" })).not.toBeInTheDocument();
-    // The resolved eBay category is THE category
-    expect(screen.getByText("Microphones & Wireless Systems")).toBeInTheDocument();
 
     // Price is editable
     const price = screen.getByLabelText("Price (USD)");
@@ -86,6 +84,26 @@ describe("EditItemPage — eBay taxonomy category + price", () => {
     expect(updateItemMock).toHaveBeenCalledWith(
       expect.objectContaining({
         price: 80,
+        // user never touched the category — the stored value survives
+        category: "electronics",
+      }),
+    );
+  });
+
+  it("saves the eBay category only after the seller explicitly resolves it", async () => {
+    render(<EditItemPage />);
+
+    fireEvent.change(screen.getByLabelText("Search eBay category"), {
+      target: { value: "studio microphones" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Find category" }));
+    expect(scanAspectsState.resolveCategory).toHaveBeenCalledWith("studio microphones");
+
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(updateItemMock).toHaveBeenCalledTimes(1));
+    expect(updateItemMock).toHaveBeenCalledWith(
+      expect.objectContaining({
         category: "Microphones & Wireless Systems",
       }),
     );

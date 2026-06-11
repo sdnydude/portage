@@ -319,6 +319,37 @@ describe("ScanFlow review wiring", () => {
     expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Model", "Stratocaster");
   });
 
+  it("never re-seeds an aspect the seller explicitly cleared or already set", async () => {
+    scanAspectsState.aspects = {
+      Brand: { required: true, values: null },
+      Model: { required: false, values: null },
+    };
+    // Brand cleared by the seller (empty string under the key); Model set by hand.
+    scanAspectsState.aspectValues = { Brand: "", Model: "Custom Shop" };
+
+    await renderInReview();
+
+    expect(scanAspectsState.setAspectValue).not.toHaveBeenCalledWith("Brand", expect.anything());
+    expect(scanAspectsState.setAspectValue).not.toHaveBeenCalledWith("Model", expect.anything());
+  });
+
+  it("Save & List persists the lb+oz weight to the item (duplicated payload path)", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Pounds"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Ounces"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { weightOz?: number; weightEstimated?: boolean } }).body;
+    expect(body.weightOz).toBe(24);
+    expect(body.weightEstimated).toBe(false);
+  });
+
   it("Save & List posts the seller-profile-aware payload with aspects and categoryId", async () => {
     scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
 

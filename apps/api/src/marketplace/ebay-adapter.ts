@@ -524,7 +524,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       // request() already parsed eBay's error body into a sanitized message —
       // surface the actual reason (account lock, missing weight, …), not just
       // the generic fallback line.
-      warning = `Listing created as draft — publish to eBay failed: ${(err as Error).message}`;
+      warning = `Listing created as draft — publish to eBay failed: ${err instanceof Error ? err.message : String(err)}`;
       logger.warn({ userId: this.userId, offerId: offerData.offerId, err: (err as Error).message }, 'eBay listing created as draft — publish failed');
     }
 

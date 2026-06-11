@@ -168,7 +168,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       ["Model", editModel],
     ];
     for (const [name, value] of fieldSeeds) {
-      if (value && aspects[name] && !aspectValues[name]) {
+      // Key presence (not truthiness): an explicit clear leaves "" under the
+      // key and must never be re-seeded — only never-touched aspects seed.
+      if (value && aspects[name] && !(name in aspectValues)) {
         setAspectValue(name, value);
       }
     }
@@ -512,7 +514,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           ...(reviewPrice && reviewPrice > 0 ? { price: reviewPrice } : {}),
           // Packaged weight/dims from the review inputs (seeded from the AI
           // estimate; weightEstimated false once the seller edits them).
-          ...(weightDims.weight && weightDims.weight > 0
+          ...(weightDims.weight && Math.round(weightDims.weight * 16) > 0
             ? { weightOz: Math.round(weightDims.weight * 16), weightEstimated } : {}),
           ...(weightDims.dimLength ? { lengthIn: weightDims.dimLength } : {}),
           ...(weightDims.dimWidth ? { widthIn: weightDims.dimWidth } : {}),
@@ -554,7 +556,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           // Persist the seller's price so it prefills future publishes.
           ...(price && price > 0 ? { price } : {}),
           // Packaged weight/dims from the review inputs (seeded from the AI estimate).
-          ...(weightDims.weight && weightDims.weight > 0
+          ...(weightDims.weight && Math.round(weightDims.weight * 16) > 0
             ? { weightOz: Math.round(weightDims.weight * 16), weightEstimated } : {}),
           ...(weightDims.dimLength ? { lengthIn: weightDims.dimLength } : {}),
           ...(weightDims.dimWidth ? { widthIn: weightDims.dimWidth } : {}),

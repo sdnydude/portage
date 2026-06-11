@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { ScanFlow } from "@/components/capture/scan-flow";
 import { FloatingMic } from "@/components/porter/floating-mic";
 import { useUnreadCount } from "@/hooks/use-messages";
@@ -20,6 +20,7 @@ export function TabBar() {
   const pathname = usePathname();
   const [showScan, setShowScan] = useState(false);
   const [scanWarning, setScanWarning] = useState<string | null>(null);
+  const warningTimer = useRef<number | null>(null);
   const { count: unreadCount } = useUnreadCount();
 
   const handleScanOpen = useCallback(() => {
@@ -32,8 +33,13 @@ export function TabBar() {
     // ScanFlow has unmounted, so the host surfaces it.
     if (result?.warning) {
       setScanWarning(result.warning);
-      window.setTimeout(() => setScanWarning(null), 8000);
+      if (warningTimer.current !== null) window.clearTimeout(warningTimer.current);
+      warningTimer.current = window.setTimeout(() => setScanWarning(null), 8000);
     }
+  }, []);
+
+  useEffect(() => () => {
+    if (warningTimer.current !== null) window.clearTimeout(warningTimer.current);
   }, []);
 
   const isHome = pathname.startsWith("/home");
