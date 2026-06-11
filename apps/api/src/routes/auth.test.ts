@@ -2,12 +2,14 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { hashPassword } from '../lib/password.js';
+import { hashToken, signAccessToken, signRefreshToken } from '../lib/jwt.js';
 
 vi.mock('../db/index.js', () => ({
   db: {
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
@@ -27,6 +29,13 @@ function mockInsertReturns(rows: unknown[]) {
       returning: vi.fn().mockResolvedValue(rows),
     }),
   } as any);
+}
+
+// The refresh_tokens session insert: .values(...) awaited directly, no .returning()
+function mockSessionInsert() {
+  const values = vi.fn().mockResolvedValue(undefined);
+  vi.mocked(db.insert).mockReturnValueOnce({ values } as any);
+  return values;
 }
 
 function mockUpdateReturns() {
@@ -69,6 +78,35 @@ describe('POST /auth/register', () => {
     expect(res.body.refreshToken).toBeDefined();
     expect(res.body.user.email).toBe('new@example.com');
     expect(res.body.user.id).toBe('user-1');
+  });
+
+  it('creates a per-session refresh_tokens row on registration', async () => {
+    mockSelectReturns([]);
+    // First insert: users row (values().returning()); second insert: session row (values() awaited)
+    vi.mocked(db.insert).mockReturnValueOnce({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{
+          id: 'user-1',
+          email: 'new@example.com',
+          subscriptionTier: 'free',
+          role: 'user',
+          onboardingCompleted: false,
+          createdAt: new Date('2026-01-01'),
+        }]),
+      }),
+    } as any);
+    const sessionValues = mockSessionInsert();
+    mockUpdateReturns();
+
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ email: 'new@example.com', password: 'SecurePassword123' });
+
+    expect(res.status).toBe(201);
+    expect(sessionValues).toHaveBeenCalledTimes(1);
+    const inserted = sessionValues.mock.calls[0][0];
+    expect(inserted.tokenHash).toBe(hashToken(res.body.refreshToken));
+    expect(inserted.userId).toBe('user-1');
   });
 
   it('returns 409 for duplicate email', async () => {
@@ -166,6 +204,7 @@ describe('POST /auth/login', () => {
   it('returns 200 with token and user on success', async () => {
     mockSelectReturns([mockUserRow()]);
     mockUpdateReturns();
+    const sessionValues = mockSessionInsert();
 
     const res = await request(app)
       .post('/auth/login')
@@ -176,6 +215,30 @@ describe('POST /auth/login', () => {
     expect(res.body.refreshToken).toBeDefined();
     expect(res.body.user.email).toBe('user@example.com');
     expect(res.body.user.subscriptionTier).toBe('pro');
+
+    // Login creates a per-session refresh_tokens row for this device
+    expect(sessionValues).toHaveBeenCalledTimes(1);
+    const inserted = sessionValues.mock.calls[0][0];
+    expect(inserted.tokenHash).toBe(hashToken(res.body.refreshToken));
+    expect(inserted.userId).toBe('user-1');
+    expect(inserted.expiresAt).toBeInstanceOf(Date);
+  });
+
+  it('stayLoggedIn:true creates a 365-day session instead of 30-day', async () => {
+    mockSelectReturns([mockUserRow()]);
+    mockUpdateReturns();
+    const sessionValues = mockSessionInsert();
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ email: 'user@example.com', password, stayLoggedIn: true });
+
+    expect(res.status).toBe(200);
+    const inserted = sessionValues.mock.calls[0][0];
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const durationMs = inserted.expiresAt.getTime() - Date.now();
+    expect(durationMs).toBeGreaterThan(364 * DAY_MS);
+    expect(durationMs).toBeLessThanOrEqual(366 * DAY_MS);
   });
 
   it('returns billing fields in login response', async () => {
@@ -186,6 +249,7 @@ describe('POST /auth/login', () => {
       aiListingCredits: 7,
     })]);
     mockUpdateReturns();
+    mockSessionInsert();
 
     const res = await request(app)
       .post('/auth/login')
@@ -232,4 +296,26 @@ describe('POST /auth/login', () => {
     expect(res.body.code).toBe('ACCOUNT_DISABLED');
   });
 
+});
+
+describe('POST /auth/logout', () => {
+  const payload = { sub: 'user-1', email: 'user@example.com', tier: 'pro' as const, role: 'user' as const };
+
+  it('deletes the session row for the provided refresh token', async () => {
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
+    mockUpdateReturns();
+
+    const res = await request(app)
+      .post('/auth/logout')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ refreshToken });
+
+    expect(res.status).toBe(200);
+    expect(res.body.loggedOut).toBe(true);
+    expect(db.delete).toHaveBeenCalledTimes(1);
+    expect(whereSpy).toHaveBeenCalledTimes(1);
+  });
 });
