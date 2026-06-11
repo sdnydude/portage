@@ -169,6 +169,64 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByDisplayValue("165")).toBeInTheDocument();
   });
 
+  it("review shows the gallery strip (no inline editor); tapping a thumb opens the editor overlay", async () => {
+    await renderInReview();
+
+    // Gallery card replaces the always-on editor.
+    expect(screen.getByText(/photos · 1/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /close editor/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /rotate/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /close editor/i }));
+    expect(screen.queryByRole("button", { name: /rotate/i })).not.toBeInTheDocument();
+  });
+
+  it("capture-stage photo strip nests no <button> inside <button> (hydration error a579ff81)", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+    apiMock.mockImplementation(async () => ({}));
+
+    const { container } = render(<ScanFlow onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Choose from Gallery"));
+    await screen.findByText(/Scan 1 Photo with Porter/);
+
+    // The remove-photo control must not be a real <button> inside the thumb
+    // <button> — React 19 hydration rejects nested interactive elements.
+    expect(container.querySelectorAll("button button")).toHaveLength(0);
+    expect(screen.getByLabelText("Remove photo 1")).toBeInTheDocument();
+  });
+
+  it("editor overlay is the full PhotoEditPanel: title + all 4 tools", async () => {
+    await renderInReview();
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+
+    expect(screen.getByText(/edit photo 1 of 1/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /rotate/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /crop/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /enhance/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /bg remove/i })).toBeInTheDocument();
+  });
+
+  it("a failed rotate surfaces its error inside the editor overlay (page error UI is unmounted while editing)", async () => {
+    await renderInReview();
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/images/rotate") throw new Error("rotate exploded");
+      return {};
+    });
+    fireEvent.click(screen.getByRole("button", { name: /rotate/i }));
+
+    expect(await screen.findByText("rotate exploded")).toBeInTheDocument();
+    // Still inside the editor — the error rendered within the overlay.
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+  });
+
   it("renders the eBay item specifics section in the review panel", async () => {
     scanAspectsState.aspects = { Brand: { required: true, values: null } };
     scanAspectsState.missingRequired = ["Brand"];

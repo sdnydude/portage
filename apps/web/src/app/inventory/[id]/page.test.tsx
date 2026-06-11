@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({
   item: {
@@ -9,6 +9,9 @@ const h = vi.hoisted(() => ({
     price: null as number | null,
     aiConfidenceScore: 0, quantity: 1, createdAt: "2026-01-01", updatedAt: "2026-01-01",
   },
+  updateItem: vi.fn().mockResolvedValue({}),
+  apiMock: vi.fn(),
+  enhanceResult: null as null | { image: { key: string; url: string; width: number; height: number; size: number } },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -19,11 +22,15 @@ vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true, to
 vi.mock("@/hooks/use-item", () => ({
   useItem: () => ({
     item: h.item,
-    isLoading: false, error: null, deleteItem: vi.fn(), updateItem: vi.fn().mockResolvedValue({}),
+    isLoading: false, error: null, deleteItem: vi.fn(), updateItem: h.updateItem,
   }),
 }));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  api: h.apiMock,
+}));
 vi.mock("@/hooks/use-enhance", () => ({
-  useEnhance: () => ({ isProcessing: false, result: null, error: null, enhance: vi.fn(), reset: vi.fn() }),
+  useEnhance: () => ({ isProcessing: false, result: h.enhanceResult, error: null, enhance: vi.fn(), reset: vi.fn() }),
 }));
 vi.mock("@/hooks/use-comps", () => ({
   useComps: () => ({ comps: null, isLoading: false, error: null, fetchComps: vi.fn() }),
@@ -32,6 +39,11 @@ vi.mock("@/hooks/use-listings", () => ({ useListings: () => ({ createListing: vi
 vi.mock("@/components/image/bg-removal-panel", () => ({ BgRemovalPanel: () => null }));
 vi.mock("@/components/image/before-after-slider", () => ({ BeforeAfterSlider: () => null }));
 vi.mock("@/components/capture/image-picker", () => ({ ImagePicker: () => null }));
+vi.mock("@/components/listing-flow/crop-tool", () => ({
+  CropTool: ({ onApply }: { onApply: (c: { x: number; y: number; width: number; height: number }) => void }) => (
+    <button onClick={() => onApply({ x: 1, y: 2, width: 30, height: 40 })}>apply-crop</button>
+  ),
+}));
 vi.mock("@/components/listing/create-listing-sheet", () => ({
   CreateListingSheet: ({ suggestedPrice }: { suggestedPrice?: number }) => (
     <div>sheet-open price:{suggestedPrice ?? "none"}</div>
@@ -56,5 +68,113 @@ describe("inventory detail — editable price", () => {
     expect(screen.queryByText("List for Sale")).toBeNull();
     fireEvent.click(screen.getByText("List on Marketplace"));
     expect(screen.getByText("sheet-open price:75")).toBeInTheDocument();
+  });
+});
+
+describe("inventory detail — photo gallery strip + editor overlay", () => {
+  it("renders the gallery strip instead of the inline tools; tapping a thumb opens the editor", () => {
+    h.item.photos = [
+      { url: "https://example.com/1.jpg", key: "k1", isPrimary: true },
+      { url: "https://example.com/2.jpg", key: "k2" },
+    ] as never;
+    render(<ItemDetailPage />);
+
+    expect(screen.getByText(/photos · 2/i)).toBeInTheDocument();
+    // The always-on tool buttons are gone from the page body.
+    expect(screen.queryByText(/auto-enhance/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /enhance/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /bg remove/i })).toBeInTheDocument();
+    // S2.5-6: item detail hosts all 4 tools (rotate/crop plumbing ported from scan-flow).
+    expect(screen.getByRole("button", { name: /rotate/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /crop/i })).toBeInTheDocument();
+  });
+
+  it("rotate posts /images/rotate and persists the rotated photo entry", async () => {
+    h.item.photos = [{ url: "https://example.com/1.jpg", key: "k1" }] as never;
+    h.updateItem.mockClear();
+    h.apiMock.mockResolvedValueOnce({
+      image: { key: "k1-rot", url: "https://example.com/1-rot.jpg", width: 800, height: 600 },
+    });
+    render(<ItemDetailPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /rotate/i }));
+
+    await waitFor(() => {
+      expect(h.apiMock).toHaveBeenCalledWith("/images/rotate", expect.objectContaining({
+        method: "POST",
+        body: { imageUrl: "https://example.com/1.jpg", degrees: 90 },
+      }));
+      expect(h.updateItem).toHaveBeenCalledWith({
+        photos: [{ url: "https://example.com/1-rot.jpg", key: "k1-rot", width: 800, height: 600 }],
+      });
+    });
+  });
+
+  it("accepting an enhance writes the edited photo's slot, not another photo's (multi-photo)", async () => {
+    h.item.photos = [
+      { url: "https://example.com/1.jpg", key: "k1" },
+      { url: "https://example.com/2.jpg", key: "k2" },
+    ] as never;
+    h.updateItem.mockClear();
+    h.enhanceResult = { image: { key: "k2-enh", url: "https://example.com/2-enh.jpg", width: 9, height: 9, size: 1 } };
+    try {
+      render(<ItemDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /edit photo 2/i }));
+      fireEvent.click(screen.getByRole("button", { name: /use this photo/i }));
+
+      await waitFor(() => {
+        expect(h.updateItem).toHaveBeenCalledWith({
+          photos: [
+            { url: "https://example.com/1.jpg", key: "k1" },
+            { url: "https://example.com/2-enh.jpg", key: "k2-enh" },
+          ],
+        });
+      });
+    } finally {
+      h.enhanceResult = null;
+    }
+  });
+
+  it("a failed rotate surfaces its error inside the editor overlay (page error UI sits beneath it)", async () => {
+    h.item.photos = [{ url: "https://example.com/1.jpg", key: "k1" }] as never;
+    h.apiMock.mockRejectedValueOnce(new Error("rotate exploded"));
+    render(<ItemDetailPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /rotate/i }));
+
+    // The page-body uploadError div sits beneath the fixed z-[70] overlay, so
+    // the error must render INSIDE the overlay to be visible.
+    const errorNodes = await screen.findAllByText("rotate exploded");
+    expect(errorNodes.some((n) => n.closest('[class*="z-[70]"]'))).toBe(true);
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+  });
+
+  it("crop opens the crop overlay; applying posts /images/crop and persists", async () => {
+    h.item.photos = [{ url: "https://example.com/1.jpg", key: "k1" }] as never;
+    h.updateItem.mockClear();
+    h.apiMock.mockClear();
+    h.apiMock.mockResolvedValueOnce({
+      image: { key: "k1-crop", url: "https://example.com/1-crop.jpg", width: 30, height: 40 },
+    });
+    render(<ItemDetailPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^crop$/i }));
+    fireEvent.click(screen.getByText("apply-crop"));
+
+    await waitFor(() => {
+      expect(h.apiMock).toHaveBeenCalledWith("/images/crop", expect.objectContaining({
+        method: "POST",
+        body: { imageUrl: "https://example.com/1.jpg", crop: { x: 1, y: 2, width: 30, height: 40 } },
+      }));
+      expect(h.updateItem).toHaveBeenCalledWith({
+        photos: [{ url: "https://example.com/1-crop.jpg", key: "k1-crop", width: 30, height: 40 }],
+      });
+    });
   });
 });

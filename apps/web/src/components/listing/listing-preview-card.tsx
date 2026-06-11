@@ -2,6 +2,9 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { CompsPricingWidget } from "./comps-pricing-widget";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
 import { useRequiredAspects } from "@/hooks/use-required-aspects";
 import type { PreparedListingData } from "@portage/shared";
 
@@ -15,6 +18,9 @@ interface ListingPreviewCardProps {
   onPublish: (marketplace: "ebay" | "reverb", publishMode: "draft" | "live", aspects?: Record<string, string[]>) => void;
   isPublishing: boolean;
   sellerProfileComplete: boolean;
+  /** When provided, the card shows the photo gallery strip and hosts the
+   *  full-screen editor overlay (all 4 tools); edits persist through this. */
+  onPhotoUpdated?: (index: number, patch: { url: string; key?: string; width?: number; height?: number }) => void;
 }
 
 function InlineEdit({ value, field, onSave }: { value: string; field: string; onSave: (field: string, value: string) => void }) {
@@ -52,9 +58,11 @@ export function ListingPreviewCard({
   onPublish,
   isPublishing,
   sellerProfileComplete,
+  onPhotoUpdated,
 }: ListingPreviewCardProps) {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
+  const photoEdit = usePhotoEdit(photos, (index, patch) => onPhotoUpdated?.(index, patch));
 
   const handleFieldSave = useCallback((field: string, value: string) => {
     onFieldChange(field, value);
@@ -128,6 +136,18 @@ export function ListingPreviewCard({
       </div>
 
       <div className="p-4 space-y-4">
+        {onPhotoUpdated && (
+          <PhotoGalleryStrip
+            photos={photos}
+            onEditPhoto={photoEdit.openEditor}
+            maxPhotos={12}
+          />
+        )}
+
+        {onPhotoUpdated && (
+          <PhotoEditOverlay photoEdit={photoEdit} photoCount={photos.length} alt={data.title} />
+        )}
+
         <h3 className="text-lg font-semibold" style={{ color: "var(--flow-text, #18191C)" }}>
           <InlineEdit value={data.title} field="title" onSave={handleFieldSave} />
         </h3>

@@ -58,6 +58,30 @@ const baseProps = {
   sellerProfileComplete: true,
 };
 
+describe("ListingPreviewCard — photo gallery strip + editor overlay (S2.5-8)", () => {
+  beforeEach(() => {
+    mockUseRequiredAspects.mockReturnValue({ aspects: {}, isLoading: false });
+  });
+
+  it("renders the gallery strip when onPhotoUpdated is provided; tapping a thumb opens the editor with all 4 tools", () => {
+    render(
+      <ListingPreviewCard
+        {...baseProps}
+        onPublish={() => {}}
+        onPhotoUpdated={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/photos · 1/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /rotate/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^crop$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /enhance/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /bg remove/i })).toBeInTheDocument();
+  });
+});
+
 describe("ListingPreviewCard — listing footer preview", () => {
   beforeEach(() => {
     mockUseRequiredAspects.mockReturnValue({ aspects: {}, isLoading: false });

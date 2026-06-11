@@ -8,6 +8,9 @@ import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
 import { WeightDimsInputs, type WeightDimsChange } from "../listing/weight-dims-inputs";
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
 import { WeightFillSheet } from "../listing/weight-fill-sheet";
@@ -288,6 +291,7 @@ function deriveMessages(
     onConfirmDetails: () => void;
     onConfirmShipping: () => void;
     onAddPhoto: () => void;
+    onEditPhoto: (index: number) => void;
   }
 ): FlowMessage[] {
   const msgs: FlowMessage[] = [];
@@ -557,6 +561,15 @@ function deriveMessages(
               />
             </div>
           )}
+          {state.photos.length > 0 && (
+            <div className="px-3 pt-3">
+              <PhotoGalleryStrip
+                photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
+                onEditPhoto={handlers.onEditPhoto}
+                maxPhotos={12}
+              />
+            </div>
+          )}
           <div className="p-4">
             <p
               className="text-[11px] uppercase font-mono mb-1"
@@ -594,6 +607,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
   const flow = useListingFlow();
   const prepareListing = usePrepareListing();
   const { state, lastStep } = flow;
+  const photoEdit = usePhotoEdit(state.photos, flow.updatePhoto);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -761,6 +775,9 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onPublish: handlePublish,
         onConfirmShipping: handleConfirmShipping,
         onAddPhoto: () => setShowCapture(true),
+        // Blob (still-uploading) photos render without an edit affordance in
+        // the strip, so this only fires for editable photos.
+        onEditPhoto: photoEdit.openEditor,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state, effectiveLastStep]
@@ -893,6 +910,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
                 }}
                 isPublishing={state.publishStatus === "publishing"}
                 sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
+                onPhotoUpdated={flow.updatePhoto}
               />
             </div>
           </div>
@@ -969,6 +987,8 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onPhotos={(photos) => flow.startFromPhoto(photos)}
         onCancel={() => setShowCapture(false)}
       />
+
+      <PhotoEditOverlay photoEdit={photoEdit} photoCount={state.photos.length} alt={state.title || "Photo preview"} />
 
       {aspectsNeeded && (
         <AspectFillSheet

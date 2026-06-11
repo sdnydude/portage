@@ -345,7 +345,7 @@ export type ShippingMethod = 'calculated' | 'flat' | 'free';
 export type PackageSize = 'small' | 'medium' | 'large' | 'custom';
 
 export interface ListingFlowState {
-  photos: Array<{ url: string; key: string; width?: number; height?: number; isPrimary?: boolean }>;
+  photos: ItemPhoto[];
   primaryPhotoIndex: number;
 
   recognition: {

@@ -14,6 +14,9 @@ import { usePrepareListing } from "@/hooks/use-prepare-listing";
 import { ShippingConfigCard } from "./shipping-config-card";
 import { PricingStrategyPicker } from "./pricing-strategy-picker";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -744,6 +747,7 @@ function ChatMode({
             }}
             isPublishing={state.publishStatus === "publishing"}
             sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
+            onPhotoUpdated={flow.updatePhoto}
           />
         </div>
       )}
@@ -850,6 +854,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoEdit = usePhotoEdit(state.photos, flow.updatePhoto);
 
   const handlePhotoSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -915,47 +920,24 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       <style>{`@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }`}</style>
 
-      {/* Photo strip */}
+      {/* Photo gallery strip — tap a thumb to open the editor overlay (S2.5-8).
+          Local blob: photos render without the edit affordance until
+          recognition uploads them (if recognition fails they stay blob: and
+          stay non-editable — re-add via "Replace photos…"). */}
       <div style={{ ...rowStyle }}>
         <label style={labelStyle}>Photos</label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {state.photos.map((p, i) => (
-            <div
-              key={i}
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 8,
-                overflow: "hidden",
-                border: `2px solid ${i === state.primaryPhotoIndex ? ACCENT : CARD_BORDER}`,
-                flexShrink: 0,
-              }}
-            >
-              <img src={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            </div>
-          ))}
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 8,
-              border: `2px dashed ${CARD_BORDER}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              background: BG,
-              flexShrink: 0,
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SECONDARY} strokeWidth="2" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </div>
+        <PhotoGalleryStrip
+          photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
+          onEditPhoto={photoEdit.openEditor}
+          maxPhotos={12}
+        />
+        <div onClick={() => fileInputRef.current?.click()} style={{ fontSize: 12, color: SECONDARY, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+          Replace photos…
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
       </div>
+
+      <PhotoEditOverlay photoEdit={photoEdit} photoCount={state.photos.length} alt={state.title || "Photo preview"} />
 
       {/* Recognition loading */}
       {state.recognition.status === "recognizing" && (
