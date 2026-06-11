@@ -2,8 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PublishSuccess } from "./publish-success";
 
+const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
 }));
 
 const baseProps = {
@@ -28,6 +29,14 @@ describe("PublishSuccess draft-fallback warning", () => {
     expect(screen.getByText(/account locked/)).toBeInTheDocument();
     expect(screen.getByText("Saved as draft")).toBeInTheDocument();
     expect(screen.queryByText("Listed!")).not.toBeInTheDocument();
+  });
+
+  it("offers Back to Inventory as the primary CTA and routes there", () => {
+    render(<PublishSuccess {...baseProps} />);
+
+    const back = screen.getByRole("button", { name: "Back to Inventory" });
+    back.click();
+    expect(pushMock).toHaveBeenCalledWith("/inventory");
   });
 
   it("keeps the clean success state when there is no warning", () => {
