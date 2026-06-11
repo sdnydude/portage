@@ -282,6 +282,30 @@ describe("ScanFlow review wiring", () => {
     expect(body.weightEstimated).toBe(false);
   });
 
+  it("eBay taxonomy is THE category: free-text input gone, search re-resolves, Save persists the eBay name", async () => {
+    await renderInReview();
+
+    // the deprecated internal free-text category input is gone
+    // (it used to render with the candidate's category as its value)
+    expect(screen.queryByDisplayValue("Guitars")).not.toBeInTheDocument();
+
+    // searching re-resolves against eBay's full taxonomy
+    fireEvent.change(screen.getByLabelText("Search eBay category"), {
+      target: { value: "studio microphones" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Find category" }));
+    expect(scanAspectsState.resolveCategory).toHaveBeenCalledWith("studio microphones");
+
+    // Save persists the resolved eBay category name as the item's category
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect((itemsCall?.[1] as { body: { category?: string } }).body.category).toBe("Electric Guitars");
+  });
+
   it("Save & List posts the seller-profile-aware payload with aspects and categoryId", async () => {
     scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
 
@@ -375,13 +399,13 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByRole("button", { name: "New" }).className).toContain("bg-[var(--teal)]");
   });
 
-  it("shows the resolved eBay category under the Category field with a re-resolve action", async () => {
+  it("shows the resolved eBay category as THE category value", async () => {
     await renderInReview();
 
-    expect(screen.getByText(/eBay category: Electric Guitars/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "change" }));
-    // Re-resolve uses the seller's edited category text (candidate.category here).
-    expect(scanAspectsState.resolveCategory).toHaveBeenCalledWith("Guitars");
+    // The resolved eBay leaf name renders as the category itself (not a hint line)
+    expect(screen.getByText("Electric Guitars")).toBeInTheDocument();
+    // Find is disabled until the seller types a search
+    expect(screen.getByRole("button", { name: "Find category" })).toBeDisabled();
   });
 
   it("warns instead of rendering an empty pill row when no conditionIds are recognized", async () => {

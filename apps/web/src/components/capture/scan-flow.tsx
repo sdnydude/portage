@@ -125,6 +125,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     weight: null, dimLength: null, dimWidth: null, dimHeight: null, ebayPackageType: null,
   });
   const [weightEstimated, setWeightEstimated] = useState(false);
+  // Override search text for the eBay category control.
+  const [categorySearch, setCategorySearch] = useState("");
   const [activeTool, setActiveTool] = useState<"none" | "crop">("none");
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
@@ -479,7 +481,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         body: {
           title: editName,
           description: editDescription,
-          category: editCategory,
+          // eBay taxonomy is THE category; the AI's internal string only as fallback
+          category: resolvedCategoryName ?? editCategory,
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes,
           brand: editBrand || undefined,
@@ -513,7 +516,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     token, photos, editName, editDescription, editCategory,
     editCondition, editConditionNotes, editValueLow, editValueHigh,
     editBrand, editModel, candidates, selectedCandidateIndex, onClose, reviewPrice,
-    weightDims, weightEstimated,
+    weightDims, weightEstimated, resolvedCategoryName,
   ]);
 
   const handleSaveAndList = useCallback(async () => {
@@ -527,7 +530,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       const newItem = await api<{ id: string }>("/items", {
         method: "POST", token,
         body: {
-          title: editName, description: editDescription, category: editCategory,
+          title: editName, description: editDescription, category: resolvedCategoryName ?? editCategory,
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes, brand: editBrand || undefined, model: editModel || undefined,
           features: selectedCandidate?.features ?? [],
@@ -570,7 +573,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     token, photos, isListingForSale, candidates, selectedCandidateIndex, reviewPrice,
     editName, editDescription, editCategory, editCondition, editConditionNotes,
     editBrand, editModel, valueLowNum, valueHighNum, recommendedNum,
-    resolvedCategoryId, buildAspects, onClose, weightDims, weightEstimated,
+    resolvedCategoryId, resolvedCategoryName, buildAspects, onClose, weightDims, weightEstimated,
   ]);
 
   // ─── Back to capture from review ──────────────────────────────────────────
@@ -1184,30 +1187,37 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 />
               </div>
 
-              {/* Category */}
+              {/* Category — eBay taxonomy is THE category (the old 13-value
+                  internal list is deprecated). Auto-resolved from the item
+                  name; the search overrides with any eBay leaf category. */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Category</label>
-                <input
-                  type="text"
-                  value={editCategory}
-                  onChange={(e) => setEditCategory(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary focus:border-border-focus focus:outline-none transition-colors"
-                />
-                {/* eBay category resolution status (drives the specifics section) */}
-                {isCategoryResolving ? (
-                  <p className="mt-1 text-xs text-text-secondary">Resolving eBay category…</p>
-                ) : resolvedCategoryId !== null ? (
-                  <p className="mt-1 text-xs text-text-secondary">
-                    eBay category: {resolvedCategoryName ?? resolvedCategoryId}{" "}
-                    <button
-                      type="button"
-                      onClick={() => resolveCategory(editCategory || editName)}
-                      className="text-[var(--teal)] font-medium"
-                    >
-                      change
-                    </button>
-                  </p>
-                ) : (
+                <div className="px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary text-sm">
+                  {isCategoryResolving
+                    ? "Resolving eBay category…"
+                    : resolvedCategoryId !== null
+                      ? (resolvedCategoryName ?? resolvedCategoryId)
+                      : "Not matched yet — search below"}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="text"
+                    value={categorySearch}
+                    onChange={(e) => setCategorySearch(e.target.value)}
+                    placeholder="Search eBay categories…"
+                    aria-label="Search eBay category"
+                    className="flex-1 px-3 py-2 rounded-xl bg-surface border border-border text-sm text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { if (categorySearch.trim()) void resolveCategory(categorySearch.trim()); }}
+                    disabled={isCategoryResolving || categorySearch.trim() === ""}
+                    className="px-3 py-2 rounded-xl text-sm font-medium bg-muted text-text-primary disabled:opacity-50"
+                  >
+                    Find category
+                  </button>
+                </div>
+                {!isCategoryResolving && resolvedCategoryId === null && (
                   <p className="mt-1 text-xs text-text-secondary">
                     eBay category unresolved — specifics captured at listing time.
                   </p>
