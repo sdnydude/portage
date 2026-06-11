@@ -83,10 +83,6 @@ authRouter.post('/register', authLimiter, async (req, res, next) => {
     const accessToken = signAccessToken(jwtPayload);
     const refreshToken = signRefreshToken(jwtPayload);
 
-    await db.update(users)
-      .set({ refreshTokenHash: hashToken(refreshToken) })
-      .where(eq(users.id, user.id));
-
     await db.insert(refreshTokens).values({
       userId: user.id,
       tokenHash: hashToken(refreshToken),
@@ -151,7 +147,7 @@ authRouter.post('/login', authLimiter, async (req, res, next) => {
     const refreshToken = signRefreshToken(jwtPayload, body.stayLoggedIn ? STAY_LOGGED_IN_EXPIRY : undefined);
 
     await db.update(users)
-      .set({ refreshTokenHash: hashToken(refreshToken), lastActiveAt: new Date() })
+      .set({ lastActiveAt: new Date() })
       .where(eq(users.id, user.id));
 
     await db.insert(refreshTokens).values({

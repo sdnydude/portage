@@ -37,7 +37,6 @@ export const users = pgTable('users', {
   disabledAt: timestamp('disabled_at'),
   disabledReason: text('disabled_reason'),
   lastActiveAt: timestamp('last_active_at'),
-  refreshTokenHash: text('refresh_token_hash'),
   pushSubscription: jsonb('push_subscription'),
   shipFromAddress: jsonb('ship_from_address'),
   shippingAutoMark: boolean('shipping_auto_mark').notNull().default(false),

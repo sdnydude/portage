@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
-import { refreshTokens } from './schema.js';
+import { refreshTokens, users } from './schema.js';
 
 describe('refreshTokens schema', () => {
+  it('users table no longer carries the legacy single-hash column', () => {
+    expect(getTableColumns(users)).not.toHaveProperty('refreshTokenHash');
+  });
+
   it('defines a per-session table with hash lookup and expiry', () => {
     const cols = getTableColumns(refreshTokens);
 

@@ -222,6 +222,12 @@ describe('POST /auth/login', () => {
     expect(inserted.tokenHash).toBe(hashToken(res.body.refreshToken));
     expect(inserted.userId).toBe('user-1');
     expect(inserted.expiresAt).toBeInstanceOf(Date);
+
+    // The legacy single-hash column must no longer be written — the session
+    // table is the sole storage (users.refreshTokenHash is being dropped)
+    const updateResult = vi.mocked(db.update).mock.results[0]?.value;
+    const setPayload = updateResult.set.mock.calls[0][0];
+    expect(setPayload).not.toHaveProperty('refreshTokenHash');
   });
 
   it('stayLoggedIn:true creates a 365-day session instead of 30-day', async () => {
