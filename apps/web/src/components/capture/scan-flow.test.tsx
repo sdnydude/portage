@@ -306,6 +306,19 @@ describe("ScanFlow review wiring", () => {
     expect((itemsCall?.[1] as { body: { category?: string } }).body.category).toBe("Electric Guitars");
   });
 
+  it("seeds Brand/Model aspects from the item fields (deterministic copy, not AI)", async () => {
+    scanAspectsState.aspects = {
+      Brand: { required: true, values: null },
+      Model: { required: false, values: null },
+    };
+    scanAspectsState.aspectValues = {};
+
+    await renderInReview();
+
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Brand", "Fender");
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Model", "Stratocaster");
+  });
+
   it("Save & List posts the seller-profile-aware payload with aspects and categoryId", async () => {
     scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
 

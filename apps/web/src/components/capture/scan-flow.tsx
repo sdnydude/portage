@@ -159,6 +159,21 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     [conditionIds],
   );
 
+  // Seed Brand/Model item specifics from the seller's own fields — a
+  // deterministic copy (NOT AI prefill, which Stage 1 deliberately excluded).
+  // Only fills empty aspects, so a seller's explicit aspect edit always wins.
+  useEffect(() => {
+    const fieldSeeds: Array<[string, string]> = [
+      ["Brand", editBrand],
+      ["Model", editModel],
+    ];
+    for (const [name, value] of fieldSeeds) {
+      if (value && aspects[name] && !aspectValues[name]) {
+        setAspectValue(name, value);
+      }
+    }
+  }, [aspects, aspectValues, editBrand, editModel, setAspectValue]);
+
   // If the current condition (AI-suggested or comp-copied) is disallowed for
   // the resolved category, snap to the nearest allowed grade instead of
   // failing later at publish.
