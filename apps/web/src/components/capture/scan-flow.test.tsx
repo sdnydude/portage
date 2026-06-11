@@ -440,7 +440,11 @@ describe("ScanFlow review wiring", () => {
 
     expect(screen.getByRole("button", { name: "New" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New" }).className).toContain("bg-[var(--teal)]");
+    // The snap happens in a useEffect after render — await the re-render
+    // instead of asserting synchronously (flaked twice on slow CI runners).
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "New" }).className).toContain("bg-[var(--teal)]"),
+    );
   });
 
   it("shows the resolved eBay category as THE category value", async () => {
