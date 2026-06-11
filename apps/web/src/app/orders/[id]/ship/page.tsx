@@ -26,7 +26,7 @@ interface OrderDetail {
   shippingLabelUrl: string | null;
   soldAt: string;
   shippedAt: string | null;
-  // null when the item was deleted after the sale
+  // null only defensively (FK restrict prevents deletion today)
   item: {
     id: string;
     title: string;

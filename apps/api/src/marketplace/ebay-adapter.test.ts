@@ -196,6 +196,28 @@ describe('EbayAdapter.createListing — required item aspects', () => {
   });
 });
 
+describe('EbayAdapter.createListing — aspect value normalization', () => {
+  it('accepts single-string aspect values (prepare-listing AI emits them) instead of crashing', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      publishMode: 'live',
+      marketplaceSpecific: {
+        categoryId: '29946',
+        ...validSetup,
+        // string, not array — exactly what generateListingFields produced live
+        aspects: { 'Form Factor': 'Shotgun Microphone', 'Number of Channels': 2 },
+      },
+    } as any);
+
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    const sent = JSON.parse((putCall![1] as RequestInit).body as string).product.aspects;
+    expect(sent['Form Factor']).toEqual(['Shotgun Microphone']);
+    // numeric AI values coerce rather than vanish into a fake "missing aspect"
+    expect(sent['Number of Channels']).toEqual(['2']);
+  });
+});
+
 describe('EbayAdapter.createListing — required-aspect publish gate', () => {
   const mockRequiredAspects = (aspects: unknown[]) => {
     fetchMock.mockImplementation(async (url: unknown) => {

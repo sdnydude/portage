@@ -400,6 +400,11 @@ function ChatMode({
   // to a one-line summary (the visible duplication confused sellers); this
   // re-expands it on demand.
   const [detailsExpanded, setDetailsExpanded] = useState(false);
+  // ChatMode stays mounted across "List Another" (flow.reset) — re-collapse
+  // for the next item or the feature silently dies after one expansion.
+  useEffect(() => {
+    if (lastStep === "idle") setDetailsExpanded(false);
+  }, [lastStep]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

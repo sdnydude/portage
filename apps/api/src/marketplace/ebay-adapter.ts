@@ -357,7 +357,23 @@ export class EbayAdapter implements MarketplaceAdapter {
     // legacy product.brand/mpn fields), so a missing Brand aspect fails publish
     // with error 25002. Surface Brand/Model here, but let explicit AI-prepared
     // aspects win — curated values are authoritative over the derived fallbacks.
-    const aspects: Record<string, string[]> = { ...(specific.aspects as Record<string, string[]> | undefined ?? {}) };
+    // Normalize aspect values to eBay's array-of-strings shape — the
+    // prepare-listing AI sometimes emits a single string per aspect, which
+    // previously crashed the publish path (.filter on a string).
+    const rawAspects = (specific.aspects as Record<string, unknown> | undefined) ?? {};
+    const aspects: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(rawAspects)) {
+      const arr = (Array.isArray(v) ? v : [v])
+        .map((x) => (typeof x === 'number' || typeof x === 'boolean' ? String(x) : x))
+        .filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+      if (arr.length > 0) {
+        aspects[k] = arr;
+      } else {
+        // Dropping silently would resurface as a misleading "missing aspect"
+        // error at the publish gate — make the discard observable.
+        logger.warn({ aspect: k }, 'Discarded non-string aspect value from marketplaceSpecific.aspects');
+      }
+    }
     if (input.brand && !aspects.Brand) aspects.Brand = [input.brand];
     if (input.model && !aspects.Model) aspects.Model = [input.model];
 
