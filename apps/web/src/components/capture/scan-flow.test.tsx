@@ -265,6 +265,23 @@ describe("ScanFlow review wiring", () => {
     expect((itemsCall?.[1] as { body: { price?: number } }).body.price).toBe(65);
   });
 
+  it("review captures lb+oz weight and Save persists seller-confirmed weightOz", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Pounds"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Ounces"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { weightOz?: number; weightEstimated?: boolean } }).body;
+    expect(body.weightOz).toBe(24);
+    expect(body.weightEstimated).toBe(false);
+  });
+
   it("Save & List posts the seller-profile-aware payload with aspects and categoryId", async () => {
     scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
 

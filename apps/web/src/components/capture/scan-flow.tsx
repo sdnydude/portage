@@ -16,6 +16,7 @@ import { demandLabel } from "@/lib/demand";
 import { PhotoGalleryStrip } from "./photo-gallery-strip";
 import { PhotoEditPanel } from "./photo-edit-panel";
 import { buildListingPayload } from "@/lib/scan-listing-payload";
+import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
 import {
   getAvailablePortageConditions,
   nearestAllowedCondition,
@@ -118,6 +119,12 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [isListingForSale, setIsListingForSale] = useState(false);
   // Seller-set sale price for the review step (null = use the resolved default).
   const [listPrice, setListPrice] = useState<number | null>(null);
+  // Packaged weight (decimal lb) + dims, seeded from the AI estimate; manual
+  // edits mark the metrics seller-confirmed (weightEstimated false).
+  const [weightDims, setWeightDims] = useState<WeightDimsValue>({
+    weight: null, dimLength: null, dimWidth: null, dimHeight: null, ebayPackageType: null,
+  });
+  const [weightEstimated, setWeightEstimated] = useState(false);
   const [activeTool, setActiveTool] = useState<"none" | "crop">("none");
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
@@ -304,6 +311,16 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     setEditValueHigh(String(candidate.estimatedValueHigh));
     setEditBrand(candidate.brand ?? "");
     setEditModel(candidate.model ?? "");
+    // Seed packaged weight/dims from the AI estimate (oz → decimal lb for the
+    // lb+oz inputs); any manual edit flips weightEstimated off.
+    setWeightDims({
+      weight: candidate.weight && candidate.weight.value > 0 ? candidate.weight.value / 16 : null,
+      dimLength: candidate.dimensions?.length ?? null,
+      dimWidth: candidate.dimensions?.width ?? null,
+      dimHeight: candidate.dimensions?.height ?? null,
+      ebayPackageType: candidate.packageType ?? null,
+    });
+    setWeightEstimated(!!(candidate.weight && candidate.weight.value > 0));
   }, []);
 
   const runScan = useCallback(async (fallbackState: ScanState) => {
@@ -475,13 +492,14 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           photos: itemPhotos,
           // Persist the seller's price so it prefills future publishes (same as Save & List).
           ...(reviewPrice && reviewPrice > 0 ? { price: reviewPrice } : {}),
-          // Persist the scan's AI-estimated packaged weight/dimensions so the item
-          // carries them for eBay Calculated shipping without re-running prepare.
-          ...(selectedCandidate?.weight && selectedCandidate.weight.value > 0
-            ? { weightOz: selectedCandidate.weight.value, weightEstimated: true } : {}),
-          ...(selectedCandidate?.dimensions
-            ? { lengthIn: selectedCandidate.dimensions.length, widthIn: selectedCandidate.dimensions.width, heightIn: selectedCandidate.dimensions.height } : {}),
-          ...(selectedCandidate?.packageType ? { ebayPackageType: selectedCandidate.packageType } : {}),
+          // Packaged weight/dims from the review inputs (seeded from the AI
+          // estimate; weightEstimated false once the seller edits them).
+          ...(weightDims.weight && weightDims.weight > 0
+            ? { weightOz: Math.round(weightDims.weight * 16), weightEstimated } : {}),
+          ...(weightDims.dimLength ? { lengthIn: weightDims.dimLength } : {}),
+          ...(weightDims.dimWidth ? { widthIn: weightDims.dimWidth } : {}),
+          ...(weightDims.dimHeight ? { heightIn: weightDims.dimHeight } : {}),
+          ...(weightDims.ebayPackageType ? { ebayPackageType: weightDims.ebayPackageType } : {}),
         },
       });
 
@@ -495,6 +513,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     token, photos, editName, editDescription, editCategory,
     editCondition, editConditionNotes, editValueLow, editValueHigh,
     editBrand, editModel, candidates, selectedCandidateIndex, onClose, reviewPrice,
+    weightDims, weightEstimated,
   ]);
 
   const handleSaveAndList = useCallback(async () => {
@@ -516,12 +535,13 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           aiConfidenceScore: selectedCandidate?.confidence ?? 0.85, photos: itemPhotos,
           // Persist the seller's price so it prefills future publishes.
           ...(price && price > 0 ? { price } : {}),
-          // Persist the scan's AI-estimated packaged weight/dimensions for Calculated shipping.
-          ...(selectedCandidate?.weight && selectedCandidate.weight.value > 0
-            ? { weightOz: selectedCandidate.weight.value, weightEstimated: true } : {}),
-          ...(selectedCandidate?.dimensions
-            ? { lengthIn: selectedCandidate.dimensions.length, widthIn: selectedCandidate.dimensions.width, heightIn: selectedCandidate.dimensions.height } : {}),
-          ...(selectedCandidate?.packageType ? { ebayPackageType: selectedCandidate.packageType } : {}),
+          // Packaged weight/dims from the review inputs (seeded from the AI estimate).
+          ...(weightDims.weight && weightDims.weight > 0
+            ? { weightOz: Math.round(weightDims.weight * 16), weightEstimated } : {}),
+          ...(weightDims.dimLength ? { lengthIn: weightDims.dimLength } : {}),
+          ...(weightDims.dimWidth ? { widthIn: weightDims.dimWidth } : {}),
+          ...(weightDims.dimHeight ? { heightIn: weightDims.dimHeight } : {}),
+          ...(weightDims.ebayPackageType ? { ebayPackageType: weightDims.ebayPackageType } : {}),
         },
       });
       // Honor the seller's draft/live preference; a failed profile fetch falls
@@ -550,7 +570,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     token, photos, isListingForSale, candidates, selectedCandidateIndex, reviewPrice,
     editName, editDescription, editCategory, editCondition, editConditionNotes,
     editBrand, editModel, valueLowNum, valueHighNum, recommendedNum,
-    resolvedCategoryId, buildAspects, onClose,
+    resolvedCategoryId, buildAspects, onClose, weightDims, weightEstimated,
   ]);
 
   // ─── Back to capture from review ──────────────────────────────────────────
@@ -1148,6 +1168,19 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   onChange={(e) => setEditConditionNotes(e.target.value)}
                   placeholder="e.g. Minor scuff on left side"
                   className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors"
+                />
+              </div>
+
+              {/* Packaged weight + dimensions (lb + oz; required for eBay Calculated shipping) */}
+              <div>
+                <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Weight &amp; Size</label>
+                <WeightDimsInputs
+                  value={weightDims}
+                  estimated={weightEstimated}
+                  onChange={(patch) => {
+                    setWeightDims((prev) => ({ ...prev, ...patch }));
+                    setWeightEstimated(false);
+                  }}
                 />
               </div>
 
