@@ -63,6 +63,7 @@ jobs:
       - name: Run e2e against ephemeral app
         env:
           E2E_BASE_URL: http://10.0.0.251:3998
+          E2E_API_URL: http://10.0.0.251:8998
           E2E_EMAIL: e2e@portage.app
           E2E_PASSWORD: Demo1234demo1234
         run: npm run test:e2e -w apps/web
