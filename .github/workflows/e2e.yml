@@ -58,7 +58,7 @@ jobs:
           curl -fsS -X POST http://10.0.0.251:8998/items \
             -H "Authorization: Bearer $TOKEN" \
             -H 'Content-Type: application/json' \
-            -d '{"title":"E2E Seed Item","condition":"good","brand":"SeedBrand"}'
+            -d '{"title":"E2E Seed Item","condition":"good","brand":"SeedBrand","photos":[{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==","key":"e2e-seed-photo"}]}'
 
       - name: Run e2e against ephemeral app
         env:

@@ -22,9 +22,11 @@ async function openItemWithPhotos(page: Page) {
 
   for (const href of hrefs.slice(0, 8)) {
     await page.goto(href);
-    const strip = page.getByText("Tap to edit");
+    // The strip header renders even with zero photos — only an actual thumb
+    // proves the item has photos.
+    const firstThumb = page.getByRole("button", { name: "Edit photo 1" });
     try {
-      await strip.waitFor({ state: "visible", timeout: 4000 });
+      await firstThumb.waitFor({ state: "visible", timeout: 4000 });
       return; // this item has photos
     } catch {
       // no photos on this item — try the next one
