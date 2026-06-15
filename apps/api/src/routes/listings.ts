@@ -187,10 +187,13 @@ listingsRouter.post('/', async (req, res, next) => {
       const adapter = getAdapter(userId, body.marketplace);
       const photos = (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [];
 
-      // Same self-heal as POST /:id/publish: fill missing policy IDs/location from
-      // the seller profile, then merge item weight/dimensions in eBay shape.
+      // Same self-heal as POST /:id/publish: resolve the eBay leaf category, fill
+      // missing policy IDs/location from the seller profile, then merge item
+      // weight/dimensions in eBay shape.
       let marketplaceSpecific = body.marketplaceSpecificFields;
       if (body.marketplace === 'ebay') {
+        const cat = await resolveEbayCategoryId(marketplaceSpecific, item);
+        if (cat.categoryId) marketplaceSpecific = { ...(marketplaceSpecific ?? {}), categoryId: cat.categoryId };
         marketplaceSpecific = await applySellerPolicyDefaults(userId, marketplaceSpecific);
         marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
       }

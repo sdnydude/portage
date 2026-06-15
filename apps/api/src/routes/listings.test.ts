@@ -103,6 +103,34 @@ describe('POST /listings', () => {
     );
   });
 
+  it('self-heals the eBay leaf category from the item cache when a live create omits categoryId', async () => {
+    mockSelectOnce([MOCK_ITEM]); // item lookup
+    mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
+    mockSelectOnce([]); // footer lookup — no seller profile
+    mockInsertCapture();
+    // The item has a cached eBay category; the request body carries none.
+    mockResolveEbayCategoryId.mockResolvedValue({ categoryId: '175669', categoryName: 'Solid State Drives', newlyResolved: false });
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 219,
+        publishMode: 'live',
+        // no marketplaceSpecificFields.categoryId — the create route must self-heal it
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockCreateListing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketplaceSpecific: expect.objectContaining({ categoryId: '175669' }),
+      }),
+    );
+  });
+
   it('surfaces the adapter warning (e.g. Best Offer downgrade) in the create response', async () => {
     mockSelectOnce([MOCK_ITEM]);
     mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
