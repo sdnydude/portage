@@ -332,6 +332,32 @@ describe('PATCH /items/:id', () => {
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('NOT_FOUND');
   });
+
+  it('persists marketplaceData.ebay.categoryId so publish can resolve the eBay leaf category', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const mp = { ebay: { categoryId: '33034', categoryName: 'Electric Guitars' } };
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, marketplaceData: mp }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ marketplaceData: mp });
+
+    expect(res.status).toBe(200);
+    // The resolved eBay category must reach the DB write (not be stripped by Zod),
+    // so resolveEbayCategoryId finds item.marketplaceData.ebay.categoryId at publish.
+    // Server normalizes the entry (title null, cachedAt stamped), so assert the
+    // meaningful fields rather than exact equality.
+    const written = setSpy.mock.calls[0][0].marketplaceData;
+    expect(written.ebay.categoryId).toBe('33034');
+    expect(written.ebay.categoryName).toBe('Electric Guitars');
+    expect(res.body.marketplaceData.ebay.categoryId).toBe('33034');
+  });
 });
 
 describe('DELETE /items/:id', () => {

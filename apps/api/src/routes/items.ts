@@ -24,6 +24,26 @@ const photoSchema = z.object({
 
 const validConditions = ['new', 'like_new', 'good', 'fair', 'poor'] as const;
 
+// Per-marketplace resolved category cache (items.marketplaceData JSONB). The
+// eBay leaf categoryId persisted here is what resolveEbayCategoryId reads at
+// publish — without it, publish falls back to a title guess and can fail with
+// EBAY_CATEGORY_REQUIRED. title/cachedAt optional: the edit flow only resolves
+// category, and the column is JSONB so partial entries are valid at rest.
+const marketplaceCacheEntrySchema = z.object({
+  categoryId: z.string().nullable(),
+  categoryName: z.string().nullable(),
+  // Normalized so the stored entry is a well-formed MarketplaceCacheEntry even
+  // when the edit flow only resolved a category: title defaults null, cachedAt
+  // is stamped server-side.
+  title: z.string().nullable().default(null),
+  cachedAt: z.string().default(() => new Date().toISOString()),
+});
+const marketplaceDataSchema = z.object({
+  ebay: marketplaceCacheEntrySchema.optional(),
+  etsy: marketplaceCacheEntrySchema.optional(),
+  reverb: marketplaceCacheEntrySchema.optional(),
+});
+
 const createItemSchema = z.object({
   title: z.string().min(1).max(500),
   description: z.string().max(2000).optional(),
@@ -48,6 +68,7 @@ const createItemSchema = z.object({
   ebayPackageType: z.string().max(50).optional(),
   weightEstimated: z.boolean().optional(),
   photos: z.array(photoSchema).optional(),
+  marketplaceData: marketplaceDataSchema.optional(),
 });
 
 const updateItemSchema = createItemSchema.partial();
@@ -305,6 +326,7 @@ itemsRouter.post('/', async (req, res, next) => {
       ebayPackageType: body.ebayPackageType ?? null,
       weightEstimated: body.weightEstimated ?? false,
       photos: body.photos ?? [],
+      marketplaceData: body.marketplaceData ?? null,
     }).returning();
 
     logger.info({ userId, itemId: item.id, title: item.title }, 'Item created');
