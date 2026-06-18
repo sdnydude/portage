@@ -460,18 +460,22 @@ export function useListingFlow() {
         }
       }
 
-      // Merge user-supplied item specifics (from the aspect sheet on a prior
-      // EBAY_ASPECTS_REQUIRED) into the prepared fields before publishing.
-      if (options?.aspects && ebayPreparedFields) {
-        ebayPreparedFields = {
-          ...ebayPreparedFields,
-          aspects: { ...(ebayPreparedFields.aspects ?? {}), ...options.aspects },
+      // Build the eBay specifics as a record (not strict EbayPreparedFields) so
+      // user-supplied aspects from the aspect sheet (a retry after
+      // EBAY_ASPECTS_REQUIRED) survive even when prepare-listing yielded nothing
+      // — otherwise they were silently dropped and the publish re-demanded them.
+      // categoryId is self-healed server-side from item.marketplaceData.
+      const ebaySpecific: Record<string, unknown> = ebayPreparedFields ? { ...ebayPreparedFields } : {};
+      if (options?.aspects) {
+        ebaySpecific.aspects = {
+          ...((ebaySpecific.aspects as Record<string, string[]> | undefined) ?? {}),
+          ...options.aspects,
         };
       }
 
       const marketplaceSpecificFields =
-        s.marketplace === 'ebay' && ebayPreparedFields
-          ? { ...ebayPreparedFields }
+        s.marketplace === 'ebay' && Object.keys(ebaySpecific).length > 0
+          ? ebaySpecific
           : s.marketplace === 'reverb'
             ? {
                 make: s.brand,
