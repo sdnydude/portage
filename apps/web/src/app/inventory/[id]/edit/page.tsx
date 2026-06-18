@@ -77,6 +77,7 @@ export default function EditItemPage() {
   // eBay taxonomy is THE category (the static internal list is deprecated).
   // Auto-resolves from the title; the search box overrides with any leaf.
   const {
+    resolvedCategoryId,
     resolvedCategoryName,
     resolveCategory,
     isCategoryResolving,
@@ -132,6 +133,12 @@ export default function EditItemPage() {
         description: description.trim(),
         // eBay name persists only when the seller explicitly resolved it
         category: categoryUserResolved && resolvedCategoryName ? resolvedCategoryName : category,
+        // ...and the resolved LEAF id is cached on the item so publish can find
+        // it (resolveEbayCategoryId reads marketplaceData.ebay.categoryId);
+        // the name alone would force a title-guess fallback at publish.
+        ...(categoryUserResolved && resolvedCategoryId
+          ? { marketplaceData: { ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } } }
+          : {}),
         condition,
         conditionNotes: conditionNotes.trim(),
         brand: brand.trim(),

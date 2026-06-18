@@ -303,7 +303,11 @@ describe("ScanFlow review wiring", () => {
       expect(call).toBeDefined();
       return call;
     });
-    expect((itemsCall?.[1] as { body: { category?: string } }).body.category).toBe("Electric Guitars");
+    const body = (itemsCall?.[1] as { body: { category?: string; marketplaceData?: { ebay?: { categoryId?: string } } } }).body;
+    expect(body.category).toBe("Electric Guitars");
+    // ...and the resolved LEAF id is cached on the item so publish can resolve
+    // the category instead of falling back to a title guess.
+    expect(body.marketplaceData?.ebay?.categoryId).toBe("33034");
   });
 
   it("seeds Brand/Model aspects from the item fields (deterministic copy, not AI)", async () => {
