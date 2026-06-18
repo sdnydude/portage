@@ -1,10 +1,33 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+
+const h = vi.hoisted(() => {
+  class ApiError extends Error {
+    status: number;
+    code: string;
+    details?: unknown;
+    constructor(status: number, code: string, message: string, details?: unknown) {
+      super(message);
+      this.status = status;
+      this.code = code;
+      this.details = details;
+    }
+  }
+  return { apiMock: vi.fn(), ApiError };
+});
 
 vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ token: "t" }) }));
-vi.mock("./disclaimer-sheet", () => ({ DisclaimerSheet: () => null }));
+vi.mock("@/lib/api", () => ({ api: h.apiMock, ApiError: h.ApiError }));
+// Disclaimer just needs to expose its accept action for the publish path.
+vi.mock("./disclaimer-sheet", () => ({
+  DisclaimerSheet: ({ onAccept }: { onAccept: () => void }) => (
+    <button onClick={onAccept}>accept-terms</button>
+  ),
+}));
 
 import { CreateListingSheet } from "./create-listing-sheet";
+
+beforeEach(() => h.apiMock.mockReset());
 
 describe("CreateListingSheet — price prefill", () => {
   it("keeps the price input in sync when suggestedPrice resolves after mount", () => {
@@ -15,8 +38,49 @@ describe("CreateListingSheet — price prefill", () => {
     const input = screen.getByPlaceholderText("0.00") as HTMLInputElement;
     expect(input.value).toBe("10");
 
-    // comps resolve later → suggestedPrice changes; the field must follow.
     rerender(<CreateListingSheet itemId="i1" suggestedPrice={20} onCreated={noop} onClose={noop} />);
     expect(input.value).toBe("20");
+  });
+});
+
+describe("CreateListingSheet — required aspects are collectable, not a dead-end", () => {
+  it("shows the aspect-fill sheet when publish needs item specifics, then retries with them filled", async () => {
+    const onCreated = vi.fn();
+    let listingsCalls = 0;
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") {
+        listingsCalls += 1;
+        bodies.push(opts?.body ?? {});
+        if (listingsCalls === 1) {
+          throw new h.ApiError(400, "EBAY_ASPECTS_REQUIRED", "eBay needs these item specifics filled in: Type", [
+            { name: "Type", values: ["Dynamic", "Condenser"] },
+          ]);
+        }
+        return { id: "L1", status: "active" };
+      }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={onCreated} onClose={vi.fn()} />);
+
+    // the toggle's onClick is on an inner div (not the label text)
+    const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms"));
+
+    // the dead-end is gone: the aspect-fill sheet appears with the missing "Type"
+    expect(await screen.findByText("Complete eBay details")).toBeInTheDocument();
+    expect(screen.getByText("Type")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dynamic" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save & publish" }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(listingsCalls).toBe(2);
+    expect((bodies[1].marketplaceSpecificFields as { aspects?: Record<string, string[]> })?.aspects).toEqual({
+      Type: ["Dynamic"],
+    });
   });
 });
