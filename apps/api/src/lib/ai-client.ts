@@ -400,6 +400,14 @@ export type PorterStreamEvent =
   | { type: 'tool_result'; toolId: string; toolName: string; structured?: unknown }
   | { type: 'done'; model: string; inputTokens: number; outputTokens: number };
 
+/** Flatten Anthropic message content to plain text (Porter sends text-only history). */
+function messageContentToText(content: Anthropic.MessageParam['content']): string {
+  if (typeof content === 'string') return content;
+  return content
+    .map(block => (block.type === 'text' ? block.text : ''))
+    .join('');
+}
+
 export async function chatStream(
   messages: Anthropic.MessageParam[],
   systemPrompt: string,
@@ -408,18 +416,49 @@ export async function chatStream(
   onEvent: (event: PorterStreamEvent) => void,
   options?: AIOptions,
 ): Promise<void> {
-  const c = env();
-  if (!c.ANTHROPIC_API_KEY) {
-    throw new AppError(503, 'AI_UNAVAILABLE', 'Streaming requires Anthropic API key');
+  const chain = chatChain();
+  if (chain.length === 0) {
+    throw new AppError(503, 'AI_UNAVAILABLE', 'No chat providers configured — check CHAT_PROVIDERS and API keys.');
   }
 
-  const client = getAnthropicClient({
-    name: 'anthropic',
-    type: 'anthropic',
-    apiKey: c.ANTHROPIC_API_KEY,
-    visionModel: 'claude-sonnet-4-6',
-    chatModel: 'claude-sonnet-4-6',
-  });
+  // Once any token reaches the client, a mid-stream failure must NOT fall back —
+  // re-streaming a second provider would double-emit. Fall back only before the
+  // first event (auth/connection failures).
+  let started = false;
+  const guardedEvent = (event: PorterStreamEvent) => {
+    started = true;
+    onEvent(event);
+  };
+
+  const startTime = Date.now();
+  for (let i = 0; i < chain.length; i++) {
+    const config = chain[i];
+    try {
+      if (config.type === 'openai') {
+        await chatStreamOpenAI(config, messages, systemPrompt, tools, executeTool, guardedEvent, options);
+      } else {
+        await chatStreamAnthropic(config, messages, systemPrompt, tools, executeTool, guardedEvent, options);
+      }
+      logger.info({ provider: config.name, elapsed: Date.now() - startTime, fallbacks: i }, 'Chat stream complete');
+      return;
+    } catch (err) {
+      if (started) throw err; // mid-stream — surface to the client, no fallback
+      logger.warn({ provider: config.name, error: (err as Error).message }, 'Chat stream provider failed, trying next');
+      if (i === chain.length - 1) throw err;
+    }
+  }
+}
+
+async function chatStreamAnthropic(
+  config: ProviderConfig,
+  messages: Anthropic.MessageParam[],
+  systemPrompt: string,
+  tools: ToolDef[],
+  executeTool: (name: string, input: Record<string, unknown>) => Promise<StreamToolResult>,
+  onEvent: (event: PorterStreamEvent) => void,
+  options?: AIOptions,
+): Promise<void> {
+  const client = getAnthropicClient(config);
 
   const anthropicTools: Anthropic.Tool[] = tools.map(t => ({
     name: t.name,
@@ -433,7 +472,7 @@ export async function chatStream(
     const toolUseBlocks: Anthropic.ToolUseBlock[] = [];
 
     const stream = client.messages.stream({
-      model: 'claude-sonnet-4-6',
+      model: config.chatModel,
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
       system: systemPrompt,
@@ -478,6 +517,107 @@ export async function chatStream(
 
     currentMessages.push({ role: 'assistant', content: message.content });
     currentMessages.push({ role: 'user', content: toolResults });
+  }
+}
+
+async function chatStreamOpenAI(
+  config: ProviderConfig,
+  messages: Anthropic.MessageParam[],
+  systemPrompt: string,
+  tools: ToolDef[],
+  executeTool: (name: string, input: Record<string, unknown>) => Promise<StreamToolResult>,
+  onEvent: (event: PorterStreamEvent) => void,
+  options?: AIOptions,
+): Promise<void> {
+  const client = getOpenAIClient(config);
+
+  const openaiTools: OpenAI.ChatCompletionTool[] = tools.map(t => ({
+    type: 'function' as const,
+    function: { name: t.name, description: t.description, parameters: t.parameters },
+  }));
+
+  const convMsgs: OpenAI.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    ...messages.map((m): OpenAI.ChatCompletionMessageParam => ({
+      role: m.role,
+      content: messageContentToText(m.content),
+    })),
+  ];
+
+  const maxTokens = options?.maxTokens ?? 4096;
+
+  for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+    const stream = await client.chat.completions.create({
+      model: config.chatModel,
+      max_tokens: maxTokens,
+      ...(options?.temperature !== undefined && { temperature: options.temperature }),
+      ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort as 'low' } : {}),
+      tools: openaiTools,
+      messages: convMsgs,
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+
+    // Tool calls arrive as indexed deltas (id / name / argument fragments) that
+    // must be concatenated by index across chunks.
+    const toolAcc: Record<number, { id: string; name: string; args: string }> = {};
+    let assistantText = '';
+    let finishReason: string | null = null;
+    let model = config.chatModel;
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    for await (const chunk of stream) {
+      if (chunk.model) model = chunk.model;
+      if (chunk.usage) {
+        inputTokens = chunk.usage.prompt_tokens;
+        outputTokens = chunk.usage.completion_tokens;
+      }
+      const choice = chunk.choices[0];
+      if (!choice) continue;
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+      const delta = choice.delta;
+      if (delta?.content) {
+        assistantText += delta.content;
+        onEvent({ type: 'text_delta', text: delta.content });
+      }
+      for (const tc of delta?.tool_calls ?? []) {
+        const idx = tc.index;
+        if (!toolAcc[idx]) toolAcc[idx] = { id: tc.id ?? '', name: '', args: '' };
+        if (tc.id) toolAcc[idx].id = tc.id;
+        if (tc.function?.name) toolAcc[idx].name += tc.function.name;
+        if (tc.function?.arguments) toolAcc[idx].args += tc.function.arguments;
+      }
+    }
+
+    const toolCalls = Object.values(toolAcc);
+    if (finishReason !== 'tool_calls' || toolCalls.length === 0) {
+      onEvent({ type: 'done', model, inputTokens, outputTokens });
+      return;
+    }
+
+    if (iteration + 1 >= MAX_TOOL_ITERATIONS) {
+      logger.error({ iterations: iteration + 1, model }, 'chatStream (openai) tool-use loop hit iteration cap');
+      throw new AppError(500, 'AI_LOOP_CAP', 'The AI assistant got stuck in a loop. Please try rephrasing your question.');
+    }
+
+    convMsgs.push({
+      role: 'assistant',
+      content: assistantText || null,
+      tool_calls: toolCalls.map(t => ({
+        id: t.id,
+        type: 'function' as const,
+        function: { name: t.name, arguments: t.args },
+      })),
+    });
+
+    for (const t of toolCalls) {
+      onEvent({ type: 'tool_start', toolId: t.id, toolName: t.name });
+      const input = t.args ? (JSON.parse(t.args) as Record<string, unknown>) : {};
+      const result = await executeTool(t.name, input);
+      onEvent({ type: 'tool_result', toolId: t.id, toolName: t.name, structured: result.structured });
+      convMsgs.push({ role: 'tool', tool_call_id: t.id, content: result.text });
+    }
   }
 }
 
