@@ -5,6 +5,10 @@ import SellerProfilePage from "./page";
 vi.mock("@/hooks/use-auth", () => ({
   useAuth: () => ({ token: "test-token" }),
 }));
+// The page now has a back-to-inventory header that uses useRouter.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+}));
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/api", () => ({ api: apiMock }));

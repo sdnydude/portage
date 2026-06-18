@@ -93,8 +93,8 @@ function resolveProvider(name: string): ProviderConfig | null {
         name: 'anthropic',
         type: 'anthropic',
         apiKey: c.ANTHROPIC_API_KEY,
-        visionModel: 'claude-sonnet-4-20250514',
-        chatModel: 'claude-sonnet-4-20250514',
+        visionModel: 'claude-sonnet-4-6',
+        chatModel: 'claude-sonnet-4-6',
       };
     default:
       logger.warn({ provider: name }, 'Unknown provider, skipping');
@@ -417,8 +417,8 @@ export async function chatStream(
     name: 'anthropic',
     type: 'anthropic',
     apiKey: c.ANTHROPIC_API_KEY,
-    visionModel: 'claude-sonnet-4-20250514',
-    chatModel: 'claude-sonnet-4-20250514',
+    visionModel: 'claude-sonnet-4-6',
+    chatModel: 'claude-sonnet-4-6',
   });
 
   const anthropicTools: Anthropic.Tool[] = tools.map(t => ({
@@ -433,7 +433,7 @@ export async function chatStream(
     const toolUseBlocks: Anthropic.ToolUseBlock[] = [];
 
     const stream = client.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
       system: systemPrompt,
