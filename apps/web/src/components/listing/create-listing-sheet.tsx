@@ -77,15 +77,19 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
 
   const handleAspectsSave = async (aspects: Record<string, string[]>) => {
     const priceNum = parseFloat(price);
+    // Drive the AspectFillSheet busy state (saving={isCreating}) so its Save button
+    // disables during the retry and a second tap can't fire a duplicate POST /listings.
+    setIsCreating(true);
     setAspectError(null);
     try {
       await submitListing(priceNum, aspects);
-      onCreated();
+      onCreated(); // unmounts the sheet — no need to clear isCreating on success
     } catch (err) {
       // Still missing something — keep the sheet open with eBay's message.
       if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
         setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);
         setAspectError(err.message);
+        setIsCreating(false); // reopen for another try
         return;
       }
       setAspectMissing(null);

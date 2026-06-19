@@ -203,6 +203,35 @@ describe('EbayAdapter.createListing — idempotent offer (reuse by SKU)', () => 
 
     expect(result.ebayOfferId).toBe('existing-offer-1'); // reused, not a hard failure
   });
+
+  it('overwrites the existing offer with the current body on 25002 recovery (so publish uses the seller\'s current price, not stale terms)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      const u = String(url);
+      if (u.endsWith('/sell/inventory/v1/offer') && (opts as RequestInit)?.method === 'POST') {
+        return new Response(JSON.stringify({ errors: [{ errorId: 25002, message: 'An offer entity already exists for this SKU.' }] }), { status: 400 });
+      }
+      if (u.includes('/sell/inventory/v1/offer?sku=')) {
+        return new Response(JSON.stringify({ offers: [{ offerId: 'existing-offer-1' }] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    await adapter.createListing({
+      ...baseInput,
+      price: 150, // a price the seller bumped between the prior attempt and this retry
+      publishMode: 'draft',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+
+    // The existing offer (carrying the PRIOR price) must be PUT-overwritten with the
+    // fresh body before reuse — otherwise /publish activates the stale offer.
+    const putCall = fetchMock.mock.calls.find(([url, opts]) =>
+      String(url).includes('/sell/inventory/v1/offer/existing-offer-1') && (opts as RequestInit)?.method === 'PUT');
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.pricingSummary.price.value).toBe('150');
+  });
 });
 
 describe('EbayAdapter.createListing — packageWeightAndSize', () => {

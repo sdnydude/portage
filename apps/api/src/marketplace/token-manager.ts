@@ -5,16 +5,11 @@ import { eq, and } from 'drizzle-orm';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { env } from '../lib/env.js';
 import { getEbayUserFlowCredentials } from './ebay-credentials.js';
+import { EBAY_USER_AGENT } from './ebay-constants.js';
 
 const logger = createLogger('token-manager');
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
-
-// Identifies Portage as a registered eBay application on every API/OAuth call.
-// An anonymous Node `fetch` (no User-Agent) reads as a script to eBay's bot/ATO
-// layer. Canonical home is here (the lowest-level eBay module) so the adapter can
-// import it without a circular dependency.
-export const EBAY_USER_AGENT = 'PortageApp/1.0 (+https://portage.digitalharmonyai.com)';
 
 export async function getEbayAccessToken(userId: string): Promise<string> {
   const [account] = await db.select()

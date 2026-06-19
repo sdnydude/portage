@@ -241,6 +241,39 @@ describe('POST /listings', () => {
     );
   });
 
+  it('publish reuses a legacy draft\'s own SKU rather than minting a new one (no orphaned eBay inventory)', async () => {
+    // A draft created before the stable-SKU change: it carries the legacy SKU,
+    // but the item column was never backfilled. Minting a fresh SKU here would PUT
+    // a brand-new inventory_item yet activate the OLD offer — orphaning the new one.
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: null, ebaySku: 'portage-1737000000-ab12cd', ebayOfferId: 'offer-1',
+      marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    mockSelectOnce([{ ...MOCK_ITEM, ebaySku: null }]); // item never backfilled
+    mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // footer
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 199, currency: 'USD', marketplaceListingId: 'ebay-1',
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active', ebaySku: 'portage-1737000000-ab12cd' });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(mockCreateListing).toHaveBeenCalledWith(
+      expect.objectContaining({ ebaySku: 'portage-1737000000-ab12cd' }),
+    );
+  });
+
   it('persists ebaySku and ebayOfferId from the publish result', async () => {
     mockSelectOnce([MOCK_ITEM]);
     mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)

@@ -450,11 +450,14 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       model: item.model,
       features: item.features as string[],
       marketplaceSpecific,
-      // Reuse the item's stable serialized SKU (minting one if this is its first
-      // eBay publish) rather than the per-listing column — a draft created
-      // without an adapter call has no SKU, and minting a fresh one here would
-      // churn a new inventory item on every retry (an ATO signal).
-      ebaySku: listing.marketplace === 'ebay' ? await ensureItemEbaySku(item) : (listing.ebaySku ?? undefined),
+      // Prefer the listing's own SKU when it already has one (a legacy draft whose
+      // item column was never backfilled) — minting a fresh one would PUT a new
+      // inventory_item but publish the OLD offer bound to the OLD SKU, orphaning
+      // the new item. Only mint (via the item's stable SKU) when the listing has
+      // none, so retries reuse it instead of churning inventory (an ATO signal).
+      ebaySku: listing.marketplace === 'ebay'
+        ? (listing.ebaySku ?? await ensureItemEbaySku(item))
+        : (listing.ebaySku ?? undefined),
       ebayOfferId: listing.ebayOfferId ?? undefined,
       // POST /:id/publish is always a live publish — state it explicitly.
       publishMode: 'live',

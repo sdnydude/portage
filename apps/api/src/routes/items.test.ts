@@ -358,6 +358,36 @@ describe('PATCH /items/:id', () => {
     expect(written.ebay.categoryName).toBe('Electric Guitars');
     expect(res.body.marketplaceData.ebay.categoryId).toBe('33034');
   });
+
+  it('merges marketplaceData — a category-only edit preserves the AI title and sibling entries', async () => {
+    // Existing item already carries an AI-optimized eBay title (csv-export reads it)
+    // and a sibling etsy entry. A category-only edit must not wipe either.
+    const existingMd = {
+      ebay: { categoryId: '33034', categoryName: 'Electric Guitars', title: 'Fender Strat — AI optimized', cachedAt: '2026-01-01T00:00:00.000Z' },
+      etsy: { categoryId: 'etsy-7', categoryName: 'Guitars', title: null, cachedAt: '2026-01-01T00:00:00.000Z' },
+    };
+    mockSelectReturnOnce([{ id: 'item-1', marketplaceData: existingMd }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, marketplaceData: existingMd }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    // Edit flow sends only the resolved eBay category — no title, no etsy.
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ marketplaceData: { ebay: { categoryId: '99999', categoryName: 'Acoustic Guitars' } } });
+
+    expect(res.status).toBe(200);
+    const written = setSpy.mock.calls[0][0].marketplaceData;
+    expect(written.ebay.categoryId).toBe('99999');
+    // The AI title survives the category-only write...
+    expect(written.ebay.title).toBe('Fender Strat — AI optimized');
+    // ...and the etsy sibling is not wiped.
+    expect(written.etsy.categoryId).toBe('etsy-7');
+  });
 });
 
 describe('DELETE /items/:id', () => {

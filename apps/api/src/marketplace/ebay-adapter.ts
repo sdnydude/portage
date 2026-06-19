@@ -3,6 +3,7 @@ import { computePriceBands } from '../lib/pricing.js';
 import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
+import { EBAY_USER_AGENT } from './ebay-constants.js';
 import type {
   MarketplaceAdapter,
   MarketplaceListingInput,
@@ -232,12 +233,6 @@ export async function resolveEbayCategoryId(
     newlyResolved: !!suggestion?.categoryId,
   };
 }
-
-// Identifies Portage as a registered eBay application on every API call. An
-// anonymous Node `fetch` (no User-Agent) reads as a script to eBay's bot/ATO
-// layer; a descriptive UA removes that signal. Used by request() and the direct
-// Browse/Taxonomy fetches alike.
-export const EBAY_USER_AGENT = 'PortageApp/1.0 (+https://portage.digitalharmonyai.com)';
 
 export class EbayAdapter implements MarketplaceAdapter {
   readonly marketplace = 'ebay' as const;
@@ -526,7 +521,30 @@ export class EbayAdapter implements MarketplaceAdapter {
             { method: 'GET' },
           );
           const existingOfferId = existing.offers?.[0]?.offerId;
-          if (existingOfferId) return { offerId: existingOfferId };
+          if (existingOfferId) {
+            // The existing offer still carries the PRIOR attempt's price/policies/Best
+            // Offer. PUT the freshly-built body so the subsequent /publish activates the
+            // seller's CURRENT intent rather than stale terms — mirroring updateListing's
+            // retry-without-Best-Offer fallback.
+            try {
+              await this.request(`/sell/inventory/v1/offer/${existingOfferId}`, {
+                method: 'PUT',
+                body: offerBody(true),
+              });
+            } catch (putErr) {
+              if (Object.keys(boTerms).length > 0 && EbayAdapter.isBestOfferRejection(putErr)) {
+                logger.warn({ userId: this.userId, sku, offerId: existingOfferId, error: (putErr as Error).message }, 'eBay rejected bestOfferTerms on offer-exists recovery — retrying without Best Offer');
+                bestOfferDowngraded = true;
+                await this.request(`/sell/inventory/v1/offer/${existingOfferId}`, {
+                  method: 'PUT',
+                  body: offerBody(false),
+                });
+              } else {
+                throw putErr;
+              }
+            }
+            return { offerId: existingOfferId };
+          }
         }
         throw err;
       }

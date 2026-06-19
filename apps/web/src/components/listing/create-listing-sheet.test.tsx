@@ -83,4 +83,39 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
       Type: ["Dynamic"],
     });
   });
+
+  it("disables Save & publish while the aspect-fill retry POST is in flight (no duplicate listing)", async () => {
+    let listingsCalls = 0;
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/listings") {
+        listingsCalls += 1;
+        if (listingsCalls === 1) {
+          throw new h.ApiError(400, "EBAY_ASPECTS_REQUIRED", "eBay needs these item specifics filled in: Type", [
+            { name: "Type", values: ["Dynamic"] },
+          ]);
+        }
+        // Retry: never resolves, so the in-flight busy state stays observable.
+        return new Promise(() => {});
+      }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms"));
+
+    await screen.findByText("Complete eBay details");
+    fireEvent.click(screen.getByRole("button", { name: "Dynamic" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save & publish" }));
+
+    // The retry is in flight: the button must flip to the busy, disabled state so a
+    // second tap can't fire another POST /listings.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Publishing…" })).toBeDisabled(),
+    );
+    expect(listingsCalls).toBe(2);
+  });
 });
