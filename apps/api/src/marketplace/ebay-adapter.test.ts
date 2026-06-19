@@ -179,6 +179,32 @@ describe('EbayAdapter — request hygiene (User-Agent)', () => {
   });
 });
 
+describe('EbayAdapter.createListing — idempotent offer (reuse by SKU)', () => {
+  it('recovers from eBay 25002 (offer already exists for the SKU) by reusing the existing offer instead of failing', async () => {
+    const adapter = new EbayAdapter('user-1');
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      const u = String(url);
+      // A stable SKU whose prior attempt already created an offer: the POST is
+      // rejected with 25002, and the by-SKU lookup finds the existing offer.
+      if (u.endsWith('/sell/inventory/v1/offer') && (opts as RequestInit)?.method === 'POST') {
+        return new Response(JSON.stringify({ errors: [{ errorId: 25002, message: 'An offer entity already exists for this SKU.' }] }), { status: 400 });
+      }
+      if (u.includes('/sell/inventory/v1/offer?sku=')) {
+        return new Response(JSON.stringify({ offers: [{ offerId: 'existing-offer-1' }] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const result = await adapter.createListing({
+      ...baseInput,
+      publishMode: 'draft',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+
+    expect(result.ebayOfferId).toBe('existing-offer-1'); // reused, not a hard failure
+  });
+});
+
 describe('EbayAdapter.createListing — packageWeightAndSize', () => {
   it('sends weight and dimensions but omits packageType (eBay rejects unsupported packageType — error 25101)', async () => {
     const adapter = new EbayAdapter('user-1');

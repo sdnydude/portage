@@ -311,6 +311,18 @@ export class EbayAdapter implements MarketplaceAdapter {
     return err instanceof Error && /best[\s-]?offer|auto[\s-]?accept/i.test(err.message);
   }
 
+  /**
+   * "eBay rejected this offer POST because one already exists for the SKU"
+   * (error 25002). Drives the reuse-existing-offer recovery so a stable-SKU
+   * retry doesn't fail or churn a duplicate offer.
+   */
+  private static isOfferExistsError(err: unknown): boolean {
+    // eBay reuses errorId 25002 for several distinct "user errors" (e.g. a
+    // missing item specific), so match the duplicate-offer phrasing rather than
+    // the id — matching the id would false-positive and swallow a real error.
+    return err instanceof AppError && /already exists/i.test(err.message);
+  }
+
   private static bestOfferTerms(
     specific: Record<string, unknown>,
     price: number,
@@ -503,6 +515,18 @@ export class EbayAdapter implements MarketplaceAdapter {
             method: 'POST',
             body: offerBody(false),
           });
+        }
+        // Stable SKU: a prior attempt (that later failed at publish) may have
+        // already created this offer. eBay rejects the duplicate with error 25002;
+        // recover by reusing the existing offer instead of failing the publish —
+        // and without churning a second offer (an ATO signal).
+        if (EbayAdapter.isOfferExistsError(err)) {
+          const existing = await this.request<{ offers?: Array<{ offerId: string }> }>(
+            `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=EBAY_US`,
+            { method: 'GET' },
+          );
+          const existingOfferId = existing.offers?.[0]?.offerId;
+          if (existingOfferId) return { offerId: existingOfferId };
         }
         throw err;
       }
