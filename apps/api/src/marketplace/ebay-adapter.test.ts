@@ -155,6 +155,30 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
   });
 });
 
+describe('EbayAdapter — request hygiene (User-Agent)', () => {
+  it('sends a descriptive User-Agent on the inventory PUT — an anonymous fetch reads as a bot to eBay ATO', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    expect(putCall).toBeTruthy();
+    const headers = (putCall![1] as RequestInit).headers as Record<string, string>;
+    expect(headers['User-Agent']).toBe('PortageApp/1.0 (+https://portage.digitalharmonyai.com)');
+  });
+
+  it('sends the User-Agent on direct Browse calls too', async () => {
+    fetchMock.mockImplementation(async () =>
+      new Response(JSON.stringify({ itemSummaries: [] }), { status: 200 }));
+    await EbayAdapter.searchComps('guitar');
+    const browseCall = fetchMock.mock.calls.find(([u]) => String(u).includes('item_summary/search'));
+    expect(browseCall).toBeTruthy();
+    const headers = (browseCall![1] as RequestInit).headers as Record<string, string>;
+    expect(headers['User-Agent']).toBe('PortageApp/1.0 (+https://portage.digitalharmonyai.com)');
+  });
+});
+
 describe('EbayAdapter.createListing — packageWeightAndSize', () => {
   it('sends weight and dimensions but omits packageType (eBay rejects unsupported packageType — error 25101)', async () => {
     const adapter = new EbayAdapter('user-1');

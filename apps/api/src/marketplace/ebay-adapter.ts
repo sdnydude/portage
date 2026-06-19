@@ -233,6 +233,12 @@ export async function resolveEbayCategoryId(
   };
 }
 
+// Identifies Portage as a registered eBay application on every API call. An
+// anonymous Node `fetch` (no User-Agent) reads as a script to eBay's bot/ATO
+// layer; a descriptive UA removes that signal. Used by request() and the direct
+// Browse/Taxonomy fetches alike.
+export const EBAY_USER_AGENT = 'PortageApp/1.0 (+https://portage.digitalharmonyai.com)';
+
 export class EbayAdapter implements MarketplaceAdapter {
   readonly marketplace = 'ebay' as const;
 
@@ -251,6 +257,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       ...options,
       headers: {
         'Authorization': `Bearer ${token}`,
+        'User-Agent': EBAY_USER_AGENT,
         'Content-Type': 'application/json',
         'Content-Language': 'en-US',
         // eBay's Inventory API validates Accept-Language on inventory_item/offer
@@ -970,6 +977,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       const response = await fetch(`https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'User-Agent': EBAY_USER_AGENT,
           'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
         },
       });
@@ -1066,6 +1074,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'User-Agent': EBAY_USER_AGENT,
           'Accept': 'application/json',
         },
       },
@@ -1102,6 +1111,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'User-Agent': EBAY_USER_AGENT,
           'Accept': 'application/json',
         },
       },
@@ -1148,6 +1158,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'User-Agent': EBAY_USER_AGENT,
           'Accept': 'application/json',
         },
       },

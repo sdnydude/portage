@@ -10,6 +10,12 @@ const logger = createLogger('token-manager');
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
+// Identifies Portage as a registered eBay application on every API/OAuth call.
+// An anonymous Node `fetch` (no User-Agent) reads as a script to eBay's bot/ATO
+// layer. Canonical home is here (the lowest-level eBay module) so the adapter can
+// import it without a circular dependency.
+export const EBAY_USER_AGENT = 'PortageApp/1.0 (+https://portage.digitalharmonyai.com)';
+
 export async function getEbayAccessToken(userId: string): Promise<string> {
   const [account] = await db.select()
     .from(marketplaceAccounts)
@@ -50,6 +56,7 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Authorization': `Basic ${credentials}`,
+      'User-Agent': EBAY_USER_AGENT,
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
@@ -162,6 +169,7 @@ async function fetchEbayAppToken(forceProd: boolean): Promise<string> {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Authorization': `Basic ${credentials}`,
+      'User-Agent': EBAY_USER_AGENT,
     },
     body: new URLSearchParams({
       grant_type: 'client_credentials',
