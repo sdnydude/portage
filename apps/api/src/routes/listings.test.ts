@@ -35,6 +35,8 @@ const MOCK_ITEM = {
   features: [],
   photos: [{ url: 'https://portage-images.digitalharmonyai.com/p.jpg' }],
   quantity: 3,
+  // Stable per-item SKU already minted — publish paths reuse it (no re-mint).
+  ebaySku: 'PRT-000001',
 };
 
 function mockSelectOnce(rows: unknown[]) {
@@ -100,6 +102,30 @@ describe('POST /listings', () => {
           packageType: 'MAILING_BOX',
         }),
       }),
+    );
+  });
+
+  it('passes the item\'s stable serialized SKU to the eBay adapter instead of a fresh random one', async () => {
+    mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'PRT-000007' }]); // item already carries a stable SKU
+    mockSelectOnce([]); // seller profile (policy self-heal)
+    mockSelectOnce([]); // footer lookup
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active', ebaySku: 'PRT-000007' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        marketplaceSpecificFields: { categoryId: '123' },
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockCreateListing).toHaveBeenCalledWith(
+      expect.objectContaining({ ebaySku: 'PRT-000007' }),
     );
   });
 
@@ -182,6 +208,36 @@ describe('POST /listings', () => {
     expect(res.status).toBe(200);
     expect(mockCreateListing).toHaveBeenCalledWith(
       expect.objectContaining({ publishMode: 'live' }),
+    );
+  });
+
+  it('publish reuses the item\'s stable serialized SKU even when the draft listing has none', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: null, ebaySku: null, ebayOfferId: null,
+      marketplaceSpecificFields: { categoryId: '15032' },
+    }]); // draft listing carries NO sku
+    mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'PRT-000009' }]); // item holds the stable sku
+    mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // footer
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 199, currency: 'USD', marketplaceListingId: 'ebay-1',
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active', ebaySku: 'PRT-000009' });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(mockCreateListing).toHaveBeenCalledWith(
+      expect.objectContaining({ ebaySku: 'PRT-000009' }),
     );
   });
 
@@ -347,7 +403,9 @@ describe('POST /listings/:id/publish', () => {
       ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
-    mockSelectOnce([MOCK_ITEM]);
+    // Post-backfill invariant: the item carries the same SKU the listing was
+    // published under, so re-publish reuses it (no orphaned inventory item).
+    mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'portage-sku-1' }]);
     mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),

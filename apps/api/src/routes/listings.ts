@@ -7,6 +7,7 @@ import { listings, items, sellerProfiles } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
+import { ensureItemEbaySku } from '../marketplace/ebay-sku.js';
 import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
 import { applyFooter, descriptionLimitFor } from '../lib/footer.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
@@ -191,11 +192,17 @@ listingsRouter.post('/', async (req, res, next) => {
       // missing policy IDs/location from the seller profile, then merge item
       // weight/dimensions in eBay shape.
       let marketplaceSpecific = body.marketplaceSpecificFields;
+      // Stable, serialized SKU minted once per item and reused on every publish.
+      // Resolved BEFORE the adapter call so it persists even if publish throws —
+      // the next attempt reuses it instead of churning a new inventory item (an
+      // ATO "rapid listing" signal).
+      let stableSku: string | undefined;
       if (body.marketplace === 'ebay') {
         const cat = await resolveEbayCategoryId(marketplaceSpecific, item);
         if (cat.categoryId) marketplaceSpecific = { ...(marketplaceSpecific ?? {}), categoryId: cat.categoryId };
         marketplaceSpecific = await applySellerPolicyDefaults(userId, marketplaceSpecific);
         marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
+        stableSku = await ensureItemEbaySku(item);
       }
 
       const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
@@ -216,6 +223,7 @@ listingsRouter.post('/', async (req, res, next) => {
         model: item.model,
         features: item.features as string[],
         marketplaceSpecific,
+        ebaySku: stableSku,
         // This branch only runs when shouldPublish — say so explicitly rather
         // than relying on the adapter treating absent publishMode as live.
         publishMode: 'live',
@@ -442,7 +450,11 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       model: item.model,
       features: item.features as string[],
       marketplaceSpecific,
-      ebaySku: listing.ebaySku ?? undefined,
+      // Reuse the item's stable serialized SKU (minting one if this is its first
+      // eBay publish) rather than the per-listing column — a draft created
+      // without an adapter call has no SKU, and minting a fresh one here would
+      // churn a new inventory item on every retry (an ATO signal).
+      ebaySku: listing.marketplace === 'ebay' ? await ensureItemEbaySku(item) : (listing.ebaySku ?? undefined),
       ebayOfferId: listing.ebayOfferId ?? undefined,
       // POST /:id/publish is always a live publish — state it explicitly.
       publishMode: 'live',
