@@ -1,4 +1,5 @@
 ---
+id: redesign-ship-1-phase6
 title: "Redesign Ship 1 — DHG design system + Porter home + tab bar + /porter page + theme toggle (Phase 6 review + fixes + PR)"
 sidebar_label: "Redesign Ship 1 — DHG design system + Porter home "
 sidebar_position: 51
