@@ -41,6 +41,23 @@ describe("CreateListingSheet — price prefill", () => {
     rerender(<CreateListingSheet itemId="i1" suggestedPrice={20} onCreated={noop} onClose={noop} />);
     expect(input.value).toBe("20");
   });
+
+  it("does not overwrite a user-edited price when a later suggestedPrice arrives", () => {
+    const noop = () => {};
+    const { rerender } = render(
+      <CreateListingSheet itemId="i1" suggestedPrice={10} onCreated={noop} onClose={noop} />,
+    );
+    const input = screen.getByPlaceholderText("0.00") as HTMLInputElement;
+    expect(input.value).toBe("10");
+
+    // User types their own price — now authoritative.
+    fireEvent.change(input, { target: { value: "99" } });
+    expect(input.value).toBe("99");
+
+    // A late AI/comps suggestion must NOT clobber the user's edit.
+    rerender(<CreateListingSheet itemId="i1" suggestedPrice={20} onCreated={noop} onClose={noop} />);
+    expect(input.value).toBe("99");
+  });
 });
 
 describe("CreateListingSheet — required aspects are collectable, not a dead-end", () => {
