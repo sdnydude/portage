@@ -6,6 +6,7 @@ import { resetEnv, loadEnv } from '../../lib/env.js';
 import { db } from '../../db/index.js';
 import { EbayAdapter } from '../../marketplace/ebay-adapter.js';
 import * as metrics from '../../lib/metrics.js';
+import { EBAY_USER_AGENT } from '../../marketplace/ebay-constants.js';
 
 vi.mock('../../db/index.js', () => ({
   db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn() },
@@ -128,6 +129,25 @@ describe('POST /marketplace/ebay/callback identity capture', () => {
     const [tokenUrl, tokenInit] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(tokenUrl).toContain('https://api.ebay.com/identity/v1/oauth2/token');
     expect(tokenInit.headers).toMatchObject({ Authorization: expectedAuth });
+  });
+
+  it('sends a descriptive User-Agent on the auth-code exchange (anonymous reconnect is an ATO signal)', async () => {
+    vi.mocked(db.update).mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) } as any);
+
+    const state = await getValidState();
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 7200 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ userId: 'u' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await request(app)
+      .post('/marketplace/ebay/callback')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ code: 'auth-code', state });
+
+    const [, tokenInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((tokenInit.headers as Record<string, string>)['User-Agent']).toBe(EBAY_USER_AGENT);
   });
 
   it('still connects when the Identity API fails, leaving marketplaceUserId null', async () => {
