@@ -10,6 +10,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
+import type { MarketplaceCacheEntry } from '@portage/shared';
 import { isAllowedImageOrigin } from './images.js';
 
 const logger = createLogger('items');
@@ -23,6 +24,26 @@ const photoSchema = z.object({
 });
 
 const validConditions = ['new', 'like_new', 'good', 'fair', 'poor'] as const;
+
+// Per-marketplace resolved category cache (items.marketplaceData JSONB). The
+// eBay leaf categoryId persisted here is what resolveEbayCategoryId reads at
+// publish — without it, publish falls back to a title guess and can fail with
+// EBAY_CATEGORY_REQUIRED. title/cachedAt optional: the edit flow only resolves
+// category, and the column is JSONB so partial entries are valid at rest.
+const marketplaceCacheEntrySchema = z.object({
+  categoryId: z.string().nullable(),
+  categoryName: z.string().nullable(),
+  // Normalized so the stored entry is a well-formed MarketplaceCacheEntry even
+  // when the edit flow only resolved a category: title defaults null, cachedAt
+  // is stamped server-side.
+  title: z.string().nullable().default(null),
+  cachedAt: z.string().default(() => new Date().toISOString()),
+});
+const marketplaceDataSchema = z.object({
+  ebay: marketplaceCacheEntrySchema.optional(),
+  etsy: marketplaceCacheEntrySchema.optional(),
+  reverb: marketplaceCacheEntrySchema.optional(),
+});
 
 const createItemSchema = z.object({
   title: z.string().min(1).max(500),
@@ -48,6 +69,7 @@ const createItemSchema = z.object({
   ebayPackageType: z.string().max(50).optional(),
   weightEstimated: z.boolean().optional(),
   photos: z.array(photoSchema).optional(),
+  marketplaceData: marketplaceDataSchema.optional(),
 });
 
 const updateItemSchema = createItemSchema.partial();
@@ -305,6 +327,7 @@ itemsRouter.post('/', async (req, res, next) => {
       ebayPackageType: body.ebayPackageType ?? null,
       weightEstimated: body.weightEstimated ?? false,
       photos: body.photos ?? [],
+      marketplaceData: body.marketplaceData ?? null,
     }).returning();
 
     logger.info({ userId, itemId: item.id, title: item.title }, 'Item created');
@@ -319,7 +342,7 @@ itemsRouter.patch('/:id', async (req, res, next) => {
     const userId = req.user!.sub;
     const body = updateItemSchema.parse(req.body);
 
-    const [existing] = await db.select({ id: items.id }).from(items)
+    const [existing] = await db.select({ id: items.id, marketplaceData: items.marketplaceData }).from(items)
       .where(and(eq(items.id, req.params.id), eq(items.userId, userId)))
       .limit(1);
 
@@ -327,8 +350,29 @@ itemsRouter.patch('/:id', async (req, res, next) => {
       throw new AppError(404, 'NOT_FOUND', 'Item not found');
     }
 
+    // marketplaceData is a per-marketplace JSONB cache; a partial PATCH must merge,
+    // not wholesale-replace. A category-only edit (the only thing the edit flow sends)
+    // would otherwise wipe sibling marketplace entries and null the AI-optimized eBay
+    // title that csv-export reads. Mirror the publish-time read-merge in listings.ts.
+    const updates: Record<string, unknown> = { ...body, updatedAt: new Date() };
+    if (body.marketplaceData) {
+      const current = (existing.marketplaceData as Record<string, MarketplaceCacheEntry> | null) ?? {};
+      const merged: Record<string, MarketplaceCacheEntry> = { ...current };
+      for (const [mk, entry] of Object.entries(body.marketplaceData)) {
+        const prev = current[mk];
+        merged[mk] = {
+          ...prev,
+          ...entry,
+          // The edit flow never sends a title, so Zod's null default must not clobber
+          // a previously cached one.
+          title: entry.title ?? prev?.title ?? null,
+        };
+      }
+      updates.marketplaceData = merged;
+    }
+
     const [updated] = await db.update(items)
-      .set({ ...body, updatedAt: new Date() })
+      .set(updates)
       .where(eq(items.id, req.params.id))
       .returning();
 

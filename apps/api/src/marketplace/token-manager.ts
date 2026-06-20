@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { env } from '../lib/env.js';
 import { getEbayUserFlowCredentials } from './ebay-credentials.js';
+import { EBAY_USER_AGENT } from './ebay-constants.js';
 
 const logger = createLogger('token-manager');
 
@@ -50,6 +51,7 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Authorization': `Basic ${credentials}`,
+      'User-Agent': EBAY_USER_AGENT,
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
@@ -162,6 +164,7 @@ async function fetchEbayAppToken(forceProd: boolean): Promise<string> {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Authorization': `Basic ${credentials}`,
+      'User-Agent': EBAY_USER_AGENT,
     },
     body: new URLSearchParams({
       grant_type: 'client_credentials',

@@ -500,6 +500,12 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           description: editDescription,
           // eBay taxonomy is THE category; the AI's internal string only as fallback
           category: resolvedCategoryName ?? editCategory,
+          // Cache the resolved eBay LEAF id on the item so a later publish can
+          // resolve the category (resolveEbayCategoryId reads marketplaceData.
+          // ebay.categoryId) instead of falling back to a title guess.
+          ...(resolvedCategoryId
+            ? { marketplaceData: { ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } } }
+            : {}),
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes,
           brand: editBrand || undefined,
@@ -553,6 +559,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           features: selectedCandidate?.features ?? [],
           estimatedValueMin: valueLowNum, estimatedValueMax: valueHighNum, estimatedValueRecommended: recommendedNum ?? 0,
           aiConfidenceScore: selectedCandidate?.confidence ?? 0.85, photos: itemPhotos,
+          // Cache the resolved eBay leaf id on the item too (not just the listing
+          // payload) so a re-list from inventory resolves the category.
+          ...(resolvedCategoryId
+            ? { marketplaceData: { ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } } }
+            : {}),
           // Persist the seller's price so it prefills future publishes.
           ...(price && price > 0 ? { price } : {}),
           // Packaged weight/dims from the review inputs (seeded from the AI estimate).

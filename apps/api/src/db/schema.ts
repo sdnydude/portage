@@ -1,5 +1,10 @@
-import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, doublePrecision, jsonb, pgEnum, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, doublePrecision, jsonb, pgEnum, pgSequence, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+
+// Serialized eBay SKU source (PRT-000123). Minted once per item and persisted on
+// items.ebaySku so retried publishes reuse the same SKU — keeping eBay's
+// inventory_item PUT idempotent and out of the "rapid listing" ATO heuristic.
+export const ebaySkuSeq = pgSequence('portage_ebay_sku_seq', { startWith: 1 });
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
 export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro']);
@@ -79,6 +84,11 @@ export const items = pgTable('items', {
   // true when AI-populated the metrics; flips false on seller edit.
   weightEstimated: boolean('weight_estimated').notNull().default(false),
   marketplaceData: jsonb('marketplace_data').$type<import('@portage/shared').MarketplaceData>(),
+  // Stable serialized eBay SKU (PRT-000123), minted once per item from
+  // ebaySkuSeq and reused across every (re)publish so eBay's inventory_item PUT
+  // stays idempotent — no churning SKUs that trip ATO. Nullable (existing rows;
+  // minted lazily on first eBay publish).
+  ebaySku: varchar('ebay_sku', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [

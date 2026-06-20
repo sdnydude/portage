@@ -3,6 +3,7 @@ import { computePriceBands } from '../lib/pricing.js';
 import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
+import { EBAY_USER_AGENT } from './ebay-constants.js';
 import type {
   MarketplaceAdapter,
   MarketplaceListingInput,
@@ -251,6 +252,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       ...options,
       headers: {
         'Authorization': `Bearer ${token}`,
+        'User-Agent': EBAY_USER_AGENT,
         'Content-Type': 'application/json',
         'Content-Language': 'en-US',
         // eBay's Inventory API validates Accept-Language on inventory_item/offer
@@ -302,6 +304,18 @@ export class EbayAdapter implements MarketplaceAdapter {
    */
   private static isBestOfferRejection(err: unknown): boolean {
     return err instanceof Error && /best[\s-]?offer|auto[\s-]?accept/i.test(err.message);
+  }
+
+  /**
+   * "eBay rejected this offer POST because one already exists for the SKU"
+   * (error 25002). Drives the reuse-existing-offer recovery so a stable-SKU
+   * retry doesn't fail or churn a duplicate offer.
+   */
+  private static isOfferExistsError(err: unknown): boolean {
+    // eBay reuses errorId 25002 for several distinct "user errors" (e.g. a
+    // missing item specific), so match the duplicate-offer phrasing rather than
+    // the id — matching the id would false-positive and swallow a real error.
+    return err instanceof AppError && /already exists/i.test(err.message);
   }
 
   private static bestOfferTerms(
@@ -496,6 +510,41 @@ export class EbayAdapter implements MarketplaceAdapter {
             method: 'POST',
             body: offerBody(false),
           });
+        }
+        // Stable SKU: a prior attempt (that later failed at publish) may have
+        // already created this offer. eBay rejects the duplicate with error 25002;
+        // recover by reusing the existing offer instead of failing the publish —
+        // and without churning a second offer (an ATO signal).
+        if (EbayAdapter.isOfferExistsError(err)) {
+          const existing = await this.request<{ offers?: Array<{ offerId: string }> }>(
+            `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=EBAY_US`,
+            { method: 'GET' },
+          );
+          const existingOfferId = existing.offers?.[0]?.offerId;
+          if (existingOfferId) {
+            // The existing offer still carries the PRIOR attempt's price/policies/Best
+            // Offer. PUT the freshly-built body so the subsequent /publish activates the
+            // seller's CURRENT intent rather than stale terms — mirroring updateListing's
+            // retry-without-Best-Offer fallback.
+            try {
+              await this.request(`/sell/inventory/v1/offer/${existingOfferId}`, {
+                method: 'PUT',
+                body: offerBody(true),
+              });
+            } catch (putErr) {
+              if (Object.keys(boTerms).length > 0 && EbayAdapter.isBestOfferRejection(putErr)) {
+                logger.warn({ userId: this.userId, sku, offerId: existingOfferId, error: (putErr as Error).message }, 'eBay rejected bestOfferTerms on offer-exists recovery — retrying without Best Offer');
+                bestOfferDowngraded = true;
+                await this.request(`/sell/inventory/v1/offer/${existingOfferId}`, {
+                  method: 'PUT',
+                  body: offerBody(false),
+                });
+              } else {
+                throw putErr;
+              }
+            }
+            return { offerId: existingOfferId };
+          }
         }
         throw err;
       }
@@ -970,6 +1019,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       const response = await fetch(`https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'User-Agent': EBAY_USER_AGENT,
           'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
         },
       });
@@ -1066,6 +1116,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'User-Agent': EBAY_USER_AGENT,
           'Accept': 'application/json',
         },
       },
@@ -1102,6 +1153,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'User-Agent': EBAY_USER_AGENT,
           'Accept': 'application/json',
         },
       },
@@ -1148,6 +1200,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'User-Agent': EBAY_USER_AGENT,
           'Accept': 'application/json',
         },
       },

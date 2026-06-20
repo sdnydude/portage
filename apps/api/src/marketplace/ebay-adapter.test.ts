@@ -155,6 +155,85 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
   });
 });
 
+describe('EbayAdapter — request hygiene (User-Agent)', () => {
+  it('sends a descriptive User-Agent on the inventory PUT — an anonymous fetch reads as a bot to eBay ATO', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    expect(putCall).toBeTruthy();
+    const headers = (putCall![1] as RequestInit).headers as Record<string, string>;
+    expect(headers['User-Agent']).toBe('PortageApp/1.0 (+https://portage.digitalharmonyai.com)');
+  });
+
+  it('sends the User-Agent on direct Browse calls too', async () => {
+    fetchMock.mockImplementation(async () =>
+      new Response(JSON.stringify({ itemSummaries: [] }), { status: 200 }));
+    await EbayAdapter.searchComps('guitar');
+    const browseCall = fetchMock.mock.calls.find(([u]) => String(u).includes('item_summary/search'));
+    expect(browseCall).toBeTruthy();
+    const headers = (browseCall![1] as RequestInit).headers as Record<string, string>;
+    expect(headers['User-Agent']).toBe('PortageApp/1.0 (+https://portage.digitalharmonyai.com)');
+  });
+});
+
+describe('EbayAdapter.createListing — idempotent offer (reuse by SKU)', () => {
+  it('recovers from eBay 25002 (offer already exists for the SKU) by reusing the existing offer instead of failing', async () => {
+    const adapter = new EbayAdapter('user-1');
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      const u = String(url);
+      // A stable SKU whose prior attempt already created an offer: the POST is
+      // rejected with 25002, and the by-SKU lookup finds the existing offer.
+      if (u.endsWith('/sell/inventory/v1/offer') && (opts as RequestInit)?.method === 'POST') {
+        return new Response(JSON.stringify({ errors: [{ errorId: 25002, message: 'An offer entity already exists for this SKU.' }] }), { status: 400 });
+      }
+      if (u.includes('/sell/inventory/v1/offer?sku=')) {
+        return new Response(JSON.stringify({ offers: [{ offerId: 'existing-offer-1' }] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const result = await adapter.createListing({
+      ...baseInput,
+      publishMode: 'draft',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+
+    expect(result.ebayOfferId).toBe('existing-offer-1'); // reused, not a hard failure
+  });
+
+  it('overwrites the existing offer with the current body on 25002 recovery (so publish uses the seller\'s current price, not stale terms)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      const u = String(url);
+      if (u.endsWith('/sell/inventory/v1/offer') && (opts as RequestInit)?.method === 'POST') {
+        return new Response(JSON.stringify({ errors: [{ errorId: 25002, message: 'An offer entity already exists for this SKU.' }] }), { status: 400 });
+      }
+      if (u.includes('/sell/inventory/v1/offer?sku=')) {
+        return new Response(JSON.stringify({ offers: [{ offerId: 'existing-offer-1' }] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    await adapter.createListing({
+      ...baseInput,
+      price: 150, // a price the seller bumped between the prior attempt and this retry
+      publishMode: 'draft',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+
+    // The existing offer (carrying the PRIOR price) must be PUT-overwritten with the
+    // fresh body before reuse — otherwise /publish activates the stale offer.
+    const putCall = fetchMock.mock.calls.find(([url, opts]) =>
+      String(url).includes('/sell/inventory/v1/offer/existing-offer-1') && (opts as RequestInit)?.method === 'PUT');
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.pricingSummary.price.value).toBe('150');
+  });
+});
+
 describe('EbayAdapter.createListing — packageWeightAndSize', () => {
   it('sends weight and dimensions but omits packageType (eBay rejects unsupported packageType — error 25101)', async () => {
     const adapter = new EbayAdapter('user-1');

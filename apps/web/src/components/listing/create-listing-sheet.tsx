@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { DisclaimerSheet } from "./disclaimer-sheet";
+import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 
 interface CreateListingSheetProps {
   itemId: string;
@@ -25,6 +26,26 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
+  // eBay can reject a live publish for missing item specifics; collect them in a
+  // sheet and retry rather than dead-ending on the raw error message.
+  const [aspectMissing, setAspectMissing] = useState<AspectRequirement[] | null>(null);
+  const [aspectError, setAspectError] = useState<string | null>(null);
+
+  // Single create-and-publish call; `aspects` carries seller-filled item
+  // specifics on a retry after EBAY_ASPECTS_REQUIRED.
+  const submitListing = async (priceNum: number, aspects?: Record<string, string[]>) => {
+    await api("/listings", {
+      method: "POST",
+      body: {
+        itemId,
+        marketplace,
+        price: priceNum,
+        publishMode: publishNow ? "live" : "draft",
+        ...(aspects ? { marketplaceSpecificFields: { aspects } } : {}),
+      },
+      token: token!,
+    });
+  };
 
   const handleCreate = async () => {
     const priceNum = parseFloat(price);
@@ -37,18 +58,41 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
     setError(null);
 
     try {
-      await api("/listings", {
-        method: "POST",
-        body: {
-          itemId,
-          marketplace,
-          price: priceNum,
-          publishImmediately: publishNow,
-        },
-        token: token!,
-      });
+      await submitListing(priceNum);
       onCreated();
     } catch (err) {
+      // Required item specifics: open the fill sheet instead of dead-ending.
+      // The gate throws before any listing row is created, so the retry won't
+      // duplicate.
+      if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
+        setShowDisclaimer(false); // hand off from the terms sheet to the aspect sheet
+        setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);
+        setIsCreating(false);
+        return;
+      }
+      setError(err instanceof ApiError ? err.message : "Failed to create listing");
+      setIsCreating(false);
+    }
+  };
+
+  const handleAspectsSave = async (aspects: Record<string, string[]>) => {
+    const priceNum = parseFloat(price);
+    // Drive the AspectFillSheet busy state (saving={isCreating}) so its Save button
+    // disables during the retry and a second tap can't fire a duplicate POST /listings.
+    setIsCreating(true);
+    setAspectError(null);
+    try {
+      await submitListing(priceNum, aspects);
+      onCreated(); // unmounts the sheet — no need to clear isCreating on success
+    } catch (err) {
+      // Still missing something — keep the sheet open with eBay's message.
+      if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
+        setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);
+        setAspectError(err.message);
+        setIsCreating(false); // reopen for another try
+        return;
+      }
+      setAspectMissing(null);
       setError(err instanceof ApiError ? err.message : "Failed to create listing");
       setIsCreating(false);
     }
@@ -132,6 +176,19 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
               await handleCreate();
             }}
             onCancel={() => setShowDisclaimer(false)}
+          />
+        )}
+
+        {aspectMissing && (
+          <AspectFillSheet
+            missing={aspectMissing}
+            saving={isCreating}
+            error={aspectError}
+            onCancel={() => {
+              setAspectMissing(null);
+              setAspectError(null);
+            }}
+            onSave={handleAspectsSave}
           />
         )}
 
