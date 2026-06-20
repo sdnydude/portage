@@ -43,7 +43,9 @@ test("price persists through the item editor and prefills the publish sheet (edi
   await page.reload();
   await page.getByRole("button", { name: "Edit item" }).click();
   await expect(page.getByLabel("Price (USD)")).toHaveValue(target);
-  await page.getByRole("button", { name: "Cancel" }).click();
+  // "Edit item" now routes to the /edit page (Gap B removed the inline detail
+  // editor and its Cancel); return to the detail page to reach "List on Marketplace".
+  await page.goto(href!);
 
   // Publish path: the sheet must open prefilled from the set price AND be editable.
   await page.getByRole("button", { name: "List on Marketplace" }).click();
