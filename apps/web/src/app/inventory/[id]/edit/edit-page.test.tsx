@@ -105,6 +105,11 @@ describe("EditItemPage — eBay taxonomy category + price", () => {
     expect(updateItemMock).toHaveBeenCalledWith(
       expect.objectContaining({
         category: "Microphones & Wireless Systems",
+        // The resolved eBay LEAF id must persist too — name alone doesn't let
+        // publish resolve the category (it would fall back to a title guess).
+        marketplaceData: {
+          ebay: { categoryId: "29946", categoryName: "Microphones & Wireless Systems" },
+        },
       }),
     );
   });

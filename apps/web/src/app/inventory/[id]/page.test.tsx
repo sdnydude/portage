@@ -57,11 +57,13 @@ vi.mock("@/components/listing/create-listing-sheet", () => ({
 import ItemDetailPage from "./page";
 
 describe("inventory detail — editable price", () => {
-  it("shows the editable Price field when editing the item", () => {
-    h.item.price = null;
+  it("routes Edit to the canonical /edit page (no inline static-category editor)", () => {
     render(<ItemDetailPage />);
     fireEvent.click(screen.getByLabelText("Edit item"));
-    expect(screen.getByLabelText("Price (USD)")).toBeInTheDocument();
+    // Editing now navigates to the eBay-taxonomy edit page; the deprecated inline
+    // editor (static category/condition lists, no persisted categoryId) is gone.
+    expect(pushMock).toHaveBeenCalledWith("/inventory/i1/edit");
+    expect(screen.queryByLabelText("Price (USD)")).not.toBeInTheDocument();
   });
 
   it("has no silent quick-list button and opens the publish sheet prefilled from the item price", () => {

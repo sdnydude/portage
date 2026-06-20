@@ -2,6 +2,8 @@ import { chatStream, type PorterStreamEvent } from './ai-client.js';
 import type Anthropic from '@anthropic-ai/sdk';
 
 process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+// chatStream now routes through CHAT_PROVIDERS; these tests exercise the Anthropic path.
+process.env.CHAT_PROVIDERS = 'anthropic';
 
 // ─── Mock helpers ─────────────────────────────────────────
 
