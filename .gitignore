@@ -28,3 +28,8 @@ apps/web/playwright-report/
 .env.backup-*
 .superpowers/
 apps/web/e2e/.auth/
+
+# Session-local / regenerable tooling artifacts
+graphify-out/
+.claude/tdd-guard/data/
+.claude/rules/00-daemon-live-briefing.md
