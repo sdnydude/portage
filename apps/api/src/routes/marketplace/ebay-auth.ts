@@ -13,6 +13,7 @@ import { eq, and } from 'drizzle-orm';
 import { checkMarketplaceLimit } from '../../lib/billing-utils.js';
 import { getEbayUserFlowCredentials } from '../../marketplace/ebay-credentials.js';
 import { ebayTaxonomyCalls } from '../../lib/metrics.js';
+import { EBAY_USER_AGENT } from '../../marketplace/ebay-constants.js';
 
 const logger = createLogger('ebay-auth');
 
@@ -151,6 +152,7 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${credentials}`,
+        'User-Agent': EBAY_USER_AGENT,
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',

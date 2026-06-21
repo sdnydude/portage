@@ -11,6 +11,7 @@ vi.mock('../lib/env.js', () => ({
 }));
 
 import { callTradingApi, parseGetMemberMessages, buildReplyXml } from './ebay-trading-client.js';
+import { EBAY_USER_AGENT } from './ebay-constants.js';
 
 function xmlResponse(body: string, status = 200) {
   return Promise.resolve({
@@ -39,6 +40,15 @@ describe('ebay-trading-client', () => {
       expect(options.headers['X-EBAY-API-CALL-NAME']).toBe('GetMemberMessages');
       expect(options.headers['X-EBAY-API-SITEID']).toBe('0');
       expect(options.headers['Content-Type']).toBe('text/xml');
+    });
+
+    it('sends a descriptive User-Agent (anonymous eBay calls are an ATO signal)', async () => {
+      mockFetch.mockReturnValue(xmlResponse('<Response><Ack>Success</Ack></Response>'));
+
+      await callTradingApi('GetMemberMessages', '<TestRequest/>', 'test-token-123');
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['User-Agent']).toBe(EBAY_USER_AGENT);
     });
 
     it('sends a valid X-EBAY-API-COMPATIBILITY-LEVEL header (eBay rejects calls without it)', async () => {
