@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { DisclaimerSheet } from "./disclaimer-sheet";
@@ -17,9 +17,17 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
   const { token } = useAuth();
   const [marketplace, setMarketplace] = useState<"ebay" | "etsy">("ebay");
   const [price, setPrice] = useState(suggestedPrice?.toString() ?? "");
-  // Keep the prefill in sync if suggestedPrice resolves after mount (e.g. comps
-  // load asynchronously). The user can still edit freely afterward.
+  // Once the user types their own price it is authoritative — a late-arriving AI
+  // suggestion (comps resolve async after mount) must never overwrite it. Adopt
+  // the prefill only while the field is still untouched.
+  const userEditedPrice = useRef(false);
+  // A new item gets its own suggestion — clear the edit guard so the sheet doesn't
+  // carry the previous item's typed price if it's reused without remounting.
   useEffect(() => {
+    userEditedPrice.current = false;
+  }, [itemId]);
+  useEffect(() => {
+    if (userEditedPrice.current) return;
     setPrice(suggestedPrice?.toString() ?? "");
   }, [suggestedPrice]);
   const [publishNow, setPublishNow] = useState(false);
@@ -142,7 +150,10 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
             <input
               type="number"
               value={price}
-              onChange={(e) => setPrice(e.target.value)}
+              onChange={(e) => {
+                userEditedPrice.current = true;
+                setPrice(e.target.value);
+              }}
               placeholder="0.00"
               min="0.01"
               step="0.01"

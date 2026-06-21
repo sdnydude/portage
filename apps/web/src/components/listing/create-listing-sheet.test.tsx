@@ -41,6 +41,37 @@ describe("CreateListingSheet — price prefill", () => {
     rerender(<CreateListingSheet itemId="i1" suggestedPrice={20} onCreated={noop} onClose={noop} />);
     expect(input.value).toBe("20");
   });
+
+  it("does not overwrite a user-edited price when a later suggestedPrice arrives", () => {
+    const noop = () => {};
+    const { rerender } = render(
+      <CreateListingSheet itemId="i1" suggestedPrice={10} onCreated={noop} onClose={noop} />,
+    );
+    const input = screen.getByPlaceholderText("0.00") as HTMLInputElement;
+    expect(input.value).toBe("10");
+
+    // User types their own price — now authoritative.
+    fireEvent.change(input, { target: { value: "99" } });
+    expect(input.value).toBe("99");
+
+    // A late AI/comps suggestion must NOT clobber the user's edit.
+    rerender(<CreateListingSheet itemId="i1" suggestedPrice={20} onCreated={noop} onClose={noop} />);
+    expect(input.value).toBe("99");
+  });
+
+  it("re-adopts the suggestion when the sheet is reused for a different item", () => {
+    const noop = () => {};
+    const { rerender } = render(
+      <CreateListingSheet itemId="item-a" suggestedPrice={10} onCreated={noop} onClose={noop} />,
+    );
+    const input = screen.getByPlaceholderText("0.00") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "99" } }); // user edits item A
+    expect(input.value).toBe("99");
+
+    // Sheet reused for a NEW item — the edit guard must reset so item B's suggestion applies.
+    rerender(<CreateListingSheet itemId="item-b" suggestedPrice={20} onCreated={noop} onClose={noop} />);
+    expect(input.value).toBe("20");
+  });
 });
 
 describe("CreateListingSheet — required aspects are collectable, not a dead-end", () => {

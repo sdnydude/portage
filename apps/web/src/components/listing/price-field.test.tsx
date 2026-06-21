@@ -34,4 +34,31 @@ describe("PriceField", () => {
     fireEvent.change(input, { target: { value: "75" } });
     expect(input.value).toBe("75");
   });
+
+  it("does not re-sync from the prop while focused (iOS caret-jump guard)", () => {
+    // On iOS WebKit, re-setting a controlled input's value mid-edit bumps the
+    // caret to the end — which is what blocked single-digit deletes. While the
+    // field is focused the sync effect must leave the in-progress text alone.
+    const { rerender } = render(<PriceField value={50} onChange={() => {}} />);
+    const input = screen.getByLabelText("Price (USD)") as HTMLInputElement;
+    expect(input.value).toBe("50");
+
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "5" } }); // user deletes the first digit
+
+    // An external prop change arrives while editing — must NOT overwrite the edit.
+    rerender(<PriceField value={88} onChange={() => {}} />);
+    expect(input.value).toBe("5");
+  });
+
+  it("still syncs an external prop change once the field is blurred", () => {
+    const { rerender } = render(<PriceField value={50} onChange={() => {}} />);
+    const input = screen.getByLabelText("Price (USD)") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.blur(input);
+
+    rerender(<PriceField value={88} onChange={() => {}} />);
+    expect(input.value).toBe("88"); // not editing → external prefill applies
+  });
 });
