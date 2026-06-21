@@ -21,6 +21,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
   // suggestion (comps resolve async after mount) must never overwrite it. Adopt
   // the prefill only while the field is still untouched.
   const userEditedPrice = useRef(false);
+  // A new item gets its own suggestion — clear the edit guard so the sheet doesn't
+  // carry the previous item's typed price if it's reused without remounting.
+  useEffect(() => {
+    userEditedPrice.current = false;
+  }, [itemId]);
   useEffect(() => {
     if (userEditedPrice.current) return;
     setPrice(suggestedPrice?.toString() ?? "");
