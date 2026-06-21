@@ -95,7 +95,7 @@ export function PublishSuccess({
             You used Hybrid mode. There are two other listing styles — check them out in Settings.
           </p>
           <button
-            onClick={() => router.push('/settings')}
+            onClick={() => router.push('/more')}
             className="text-[12px] font-semibold"
             style={{ color: 'var(--flow-accent)' }}
           >
