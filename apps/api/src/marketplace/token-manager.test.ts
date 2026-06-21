@@ -49,12 +49,12 @@ function mockUpdateSets() {
   } as any);
 }
 
-function mockFetch(data: unknown, ok = true) {
+function mockFetch(data: unknown, ok = true, status?: number, bodyText?: string) {
   const fetchMock = vi.fn().mockResolvedValue({
     ok,
-    status: ok ? 200 : 401,
+    status: status ?? (ok ? 200 : 401),
     json: vi.fn().mockResolvedValue(data),
-    text: vi.fn().mockResolvedValue(ok ? '' : 'Unauthorized'),
+    text: vi.fn().mockResolvedValue(bodyText ?? (ok ? '' : 'Unauthorized')),
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
@@ -109,14 +109,14 @@ describe('getEbayAccessToken', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('throws when no eBay account is connected', async () => {
+  it('throws typed EBAY_SETUP_REQUIRED (400) when no eBay account is connected', async () => {
     mockSelectReturnsAccount(null);
 
     await expect(getEbayAccessToken('user-with-no-account'))
-      .rejects.toThrow('No eBay account connected');
+      .rejects.toMatchObject({ code: 'EBAY_SETUP_REQUIRED', statusCode: 400 });
   });
 
-  it('throws when eBay token refresh fails (non-OK response)', async () => {
+  it('throws typed EBAY_RECONNECT_REQUIRED (409) when refresh token is invalid_grant (revoked/locked)', async () => {
     const pastExpiry = new Date(Date.now() - 60 * 1000).toISOString();
     mockSelectReturnsAccount({
       id: 'account-1',
@@ -127,10 +127,30 @@ describe('getEbayAccessToken', () => {
       tokenExpiresAt: pastExpiry,
     });
     vi.mocked(decrypt).mockReturnValueOnce('decrypted-refresh-token');
-    mockFetch({}, false);
+    mockFetch({}, false, 400, JSON.stringify({
+      error: 'invalid_grant',
+      error_description: 'the provided authorization refresh token is invalid or was issued to another client',
+    }));
 
     await expect(getEbayAccessToken('user-1'))
-      .rejects.toThrow('Failed to refresh eBay access token');
+      .rejects.toMatchObject({ code: 'EBAY_RECONNECT_REQUIRED', statusCode: 409 });
+  });
+
+  it('throws typed EBAY_UNAVAILABLE (502) when refresh fails for a transient reason', async () => {
+    const pastExpiry = new Date(Date.now() - 60 * 1000).toISOString();
+    mockSelectReturnsAccount({
+      id: 'account-1',
+      userId: 'user-1',
+      marketplace: 'ebay',
+      accessTokenEncrypted: 'encrypted-old',
+      refreshTokenEncrypted: 'encrypted-refresh',
+      tokenExpiresAt: pastExpiry,
+    });
+    vi.mocked(decrypt).mockReturnValueOnce('decrypted-refresh-token');
+    mockFetch({}, false, 503, 'Service Unavailable');
+
+    await expect(getEbayAccessToken('user-1'))
+      .rejects.toMatchObject({ code: 'EBAY_UNAVAILABLE', statusCode: 502 });
   });
 });
 

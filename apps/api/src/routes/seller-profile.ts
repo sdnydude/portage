@@ -9,6 +9,7 @@ import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken } from '../marketplace/token-manager.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { env } from '../lib/env.js';
+import { EBAY_USER_AGENT } from '../marketplace/ebay-constants.js';
 
 const logger = createLogger('seller-profile');
 
@@ -139,6 +140,7 @@ sellerProfileRouter.get('/ebay-policies', async (req, res, next) => {
     const headers = {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
+      'User-Agent': EBAY_USER_AGENT,
     };
 
     const [fulfillmentRes, paymentRes, returnRes] = await Promise.allSettled([
@@ -182,7 +184,7 @@ sellerProfileRouter.post('/ebay/auto-setup', async (req, res, next) => {
     }
 
     const token = await getEbayAccessToken(userId);
-    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': EBAY_USER_AGENT };
     const base = env().EBAY_SANDBOX ? 'https://api.sandbox.ebay.com' : 'https://api.ebay.com';
 
     // GET-first idempotency: reuse a "Portage Standard" policy by name, else create it.

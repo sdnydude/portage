@@ -4,6 +4,7 @@ import { loadEnv } from '../lib/env.js';
 import { db } from '../db/index.js';
 import { getEbayAccessToken } from '../marketplace/token-manager.js';
 import { createTestToken } from '../test/helpers.js';
+import { EBAY_USER_AGENT } from '../marketplace/ebay-constants.js';
 
 vi.mock('../db/index.js', () => ({
   db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn() },
@@ -167,6 +168,27 @@ describe('POST /seller-profile/ebay/auto-setup', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('EBAY_NOT_CONNECTED');
+  });
+
+  it('sends a User-Agent on every eBay call (anonymous requests are an ATO signal)', async () => {
+    mockSelectOnce([{ id: 'acc-1' }]); // connected
+    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: SHIP_FROM, ebayMerchantLocationKey: null }]);
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'sp-1' }]) }) }),
+    } as any);
+
+    const fetchMock = routedFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await request(app)
+      .post('/seller-profile/ebay/auto-setup')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    const ebayCalls = fetchMock.mock.calls.filter(([u]: [any, any]) => String(u).includes('ebay.com'));
+    expect(ebayCalls.length).toBeGreaterThan(0);
+    for (const [, opts] of ebayCalls) {
+      expect((opts?.headers as Record<string, string>)?.['User-Agent']).toBe(EBAY_USER_AGENT);
+    }
   });
 
   it('creates the 3 Portage Standard policies + inventory location, persists, and returns setup', async () => {

@@ -3,6 +3,7 @@ import sanitizeHtml from 'sanitize-html';
 import type { MessageDirection, EbayMessageType } from '@portage/shared';
 import { env } from '../lib/env.js';
 import { createLogger } from '../lib/logger.js';
+import { EBAY_USER_AGENT } from './ebay-constants.js';
 
 const logger = createLogger('ebay-trading');
 
@@ -66,6 +67,7 @@ export async function callTradingApi(
       'X-EBAY-API-CALL-NAME': callName,
       'X-EBAY-API-SITEID': '0',
       'Content-Type': 'text/xml',
+      'User-Agent': EBAY_USER_AGENT,
     },
     body: xmlBody,
   });
