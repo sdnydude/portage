@@ -32,6 +32,17 @@ describe("ScanAspectsSection", () => {
     expect(screen.getByText("1 required")).toBeInTheDocument();
   });
 
+  it("tags an AI-sourced aspect with [AI]", () => {
+    const props = baseProps();
+    props.aspects = { Color: { required: true, values: ["Red", "Blue"] } };
+    props.missingRequired = ["Color"];
+    props.suggestions = { Color: ["Red"] };
+
+    render(<ScanAspectsSection {...props} aiSuggestedNames={["Color"]} />);
+
+    expect(screen.getByText("[AI]")).toBeInTheDocument();
+  });
+
   it("renders a text input with AI suggestion chips for free-text aspects and confirms via confirmSuggestion", () => {
     const props = baseProps();
     props.aspects = { Brand: { required: true, values: null } };

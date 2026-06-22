@@ -144,12 +144,18 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     aspectValues,
     setAspectValue,
     suggestions,
+    aiSuggestedNames,
     confirmSuggestion,
     missingRequired,
     buildAspects,
     aspectsBlockPublish,
     conditionIds,
-  } = useScanAspects(editName, `${editName} ${editDescription}`);
+  } = useScanAspects(
+    editName,
+    `${editName} ${editDescription}`,
+    // Phase A AI-filled specifics from the selected candidate → surfaced as [AI] chips.
+    candidates[selectedCandidateIndex]?.aspects,
+  );
 
   // Constrain the condition pills to what the resolved eBay category accepts;
   // empty conditionIds (no category / no metadata) fails open to all five.
@@ -1264,6 +1270,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 aspectValues={aspectValues}
                 setAspectValue={setAspectValue}
                 suggestions={suggestions}
+                aiSuggestedNames={aiSuggestedNames}
                 confirmSuggestion={confirmSuggestion}
                 missingRequired={missingRequired}
                 isCategoryResolving={isCategoryResolving}

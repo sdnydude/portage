@@ -178,6 +178,26 @@ describe("useScanAspects", () => {
     expect(result.current.suggestions).toEqual({ Color: ["Black"] });
   });
 
+  it("surfaces AI-filled aspects (Phase A) as suggestions, flagged in aiSuggestedNames", async () => {
+    mockRoutes(); // ASPECTS = Brand, Color
+    const { result } = renderHook(
+      ({ name, text, ai }) => useScanAspects(name, text, ai),
+      {
+        initialProps: {
+          name: "Sony headphones",
+          text: "Sony headphones", // no enumerated text match for Brand/Color
+          ai: { Color: ["Red"] } as Record<string, string[]>,
+        },
+      },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    // Color comes from the AI scan; Brand has neither an AI fill nor a text match.
+    expect(result.current.suggestions).toEqual({ Color: ["Red"] });
+    expect(result.current.aiSuggestedNames).toEqual(["Color"]);
+  });
+
   it("lists required aspect names with no confirmed value in missingRequired", async () => {
     mockRoutes(SUGGESTION, {
       Brand: { required: true, values: ["Fender"] },

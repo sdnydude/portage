@@ -344,7 +344,7 @@ itemsRouter.patch('/:id', async (req, res, next) => {
     const userId = req.user!.sub;
     const body = updateItemSchema.parse(req.body);
 
-    const [existing] = await db.select({ id: items.id, marketplaceData: items.marketplaceData }).from(items)
+    const [existing] = await db.select({ id: items.id, marketplaceData: items.marketplaceData, aspects: items.aspects }).from(items)
       .where(and(eq(items.id, req.params.id), eq(items.userId, userId)))
       .limit(1);
 
@@ -371,6 +371,14 @@ itemsRouter.patch('/:id', async (req, res, next) => {
         };
       }
       updates.marketplaceData = merged;
+    }
+
+    // aspects is JSONB like marketplaceData — a partial PATCH must read-merge,
+    // not wholesale-replace, or scan-captured specifics absent from this payload
+    // are silently wiped. Incoming keys win; existing keys are preserved.
+    if (body.aspects) {
+      const current = (existing.aspects as Record<string, string[]> | null) ?? {};
+      updates.aspects = { ...current, ...body.aspects };
     }
 
     const [updated] = await db.update(items)

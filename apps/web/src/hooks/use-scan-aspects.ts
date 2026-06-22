@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "./use-auth";
 import { useRequiredAspects } from "./use-required-aspects";
-import { suggestAspectValues } from "@/lib/aspect-seeding";
+import { suggestAspectValues, mergeAspectSuggestions } from "@/lib/aspect-seeding";
 
 interface CategorySuggestion {
   categoryId: string;
@@ -12,7 +12,11 @@ interface CategorySuggestion {
   conditionIds: string[];
 }
 
-export function useScanAspects(editName: string, itemText: string) {
+export function useScanAspects(
+  editName: string,
+  itemText: string,
+  aiAspects?: Record<string, string[]>,
+) {
   const { token } = useAuth();
   const [resolvedCategoryId, setResolvedCategoryId] = useState<string | null>(null);
   const [resolvedCategoryName, setResolvedCategoryName] = useState<string | null>(null);
@@ -35,14 +39,11 @@ export function useScanAspects(editName: string, itemText: string) {
 
   // Suggestions recompute whenever the schema (new category) or item text
   // changes; aspect names already confirmed in aspectValues are excluded.
-  const suggestions = useMemo(() => {
+  const { suggestions, aiSuggestedNames } = useMemo(() => {
     const seeded = suggestAspectValues(itemText, aspects);
-    const remaining: Record<string, string[]> = {};
-    for (const [name, values] of Object.entries(seeded)) {
-      if ((aspectValues[name] ?? "").trim() === "") remaining[name] = values;
-    }
-    return remaining;
-  }, [itemText, aspects, aspectValues]);
+    const merged = mergeAspectSuggestions(aiAspects, seeded, aspects, aspectValues);
+    return { suggestions: merged.suggestions, aiSuggestedNames: merged.aiNames };
+  }, [itemText, aspects, aspectValues, aiAspects]);
 
   // Ref-backed so buildAspects keeps a stable identity across renders while
   // always reading the latest confirmed values.
@@ -153,6 +154,7 @@ export function useScanAspects(editName: string, itemText: string) {
     aspectValues,
     setAspectValue,
     suggestions,
+    aiSuggestedNames,
     confirmSuggestion,
     missingRequired,
     buildAspects,

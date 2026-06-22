@@ -29,3 +29,38 @@ export function suggestAspectValues(
   }
   return suggestions;
 }
+
+export interface MergedSuggestions {
+  /** name → suggested values, for unconfirmed required aspects only. */
+  suggestions: Record<string, string[]>;
+  /** subset of suggestion names whose values came from the AI scan (Phase A). */
+  aiNames: string[];
+}
+
+/**
+ * Merge the AI's scan-filled aspects (Phase A `candidate.aspects`, category-aware)
+ * with the deterministic text-matched seeds. AI values win per aspect and are
+ * flagged in `aiNames` so the UI can tag them `[AI]`. Only unconfirmed required
+ * aspects (present in the schema, empty in aspectValues) are surfaced.
+ */
+export function mergeAspectSuggestions(
+  aiAspects: Record<string, string[]> | undefined,
+  seeded: Record<string, string[]>,
+  aspects: Record<string, RequiredAspect>,
+  aspectValues: Record<string, string>,
+): MergedSuggestions {
+  const suggestions: Record<string, string[]> = {};
+  const aiNames: string[] = [];
+  for (const name of Object.keys(aspects)) {
+    if ((aspectValues[name] ?? "").trim() !== "") continue; // already confirmed
+    const raw = aiAspects?.[name];
+    const ai = (Array.isArray(raw) ? raw : []).filter((v) => v.trim() !== "");
+    if (ai.length > 0) {
+      suggestions[name] = ai;
+      aiNames.push(name);
+    } else if (seeded[name]) {
+      suggestions[name] = seeded[name];
+    }
+  }
+  return { suggestions, aiNames };
+}
