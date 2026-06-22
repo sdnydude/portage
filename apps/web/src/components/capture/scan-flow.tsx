@@ -511,6 +511,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           brand: editBrand || undefined,
           model: editModel || undefined,
           features: selectedCandidate?.features ?? [],
+          // Persist the eBay item specifics captured at scan so a later publish
+          // carries them and the aspect pop-up never re-asks (Phase C carry-through).
+          aspects: buildAspects(),
           estimatedValueMin: valueLow,
           estimatedValueMax: valueHigh,
           estimatedValueRecommended: valueRecommended,
@@ -539,7 +542,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     token, photos, editName, editDescription, editCategory,
     editCondition, editConditionNotes, editValueLow, editValueHigh,
     editBrand, editModel, candidates, selectedCandidateIndex, onClose, reviewPrice,
-    weightDims, weightEstimated, resolvedCategoryName,
+    weightDims, weightEstimated, resolvedCategoryName, buildAspects,
   ]);
 
   const handleSaveAndList = useCallback(async () => {
@@ -557,6 +560,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes, brand: editBrand || undefined, model: editModel || undefined,
           features: selectedCandidate?.features ?? [],
+          // Persist captured eBay specifics on the item too (the listing payload
+          // below already carries them) — so a later re-list also has them.
+          aspects: buildAspects(),
           estimatedValueMin: valueLowNum, estimatedValueMax: valueHighNum, estimatedValueRecommended: recommendedNum ?? 0,
           aiConfidenceScore: selectedCandidate?.confidence ?? 0.85, photos: itemPhotos,
           // Cache the resolved eBay leaf id on the item too (not just the listing
