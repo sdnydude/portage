@@ -323,6 +323,8 @@ export interface RecognitionCandidate {
   conditionNotes: string;
   brand: string | null;
   model: string | null;
+  mpn?: string | null;
+  aspects?: Record<string, string[]>;
   features: string[];
   estimatedValueLow: number;
   estimatedValueHigh: number;

@@ -56,6 +56,8 @@ const CandidateSchema = z.object({
   conditionNotes: z.string().optional().default(''),
   brand: z.string().nullable(),
   model: z.string().nullable(),
+  mpn: z.string().nullable().optional(),
+  aspects: z.record(z.string(), z.array(z.string())).optional().default({}),
   features: z.array(z.string()).optional().default([]),
   estimatedValueLow: z.number(),
   estimatedValueHigh: z.number(),
@@ -88,7 +90,15 @@ const ListingFieldsOutputSchema = z.object({
     categoryName: z.string().optional().default(''),
     condition: z.string().optional().default(''),
     conditionDescription: z.string().optional().default(''),
-    aspects: z.record(z.string(), z.unknown()).optional().default({}),
+    // Coerce scalar-string aspect values (some models return "Sony" instead of
+    // ["Sony"]) to arrays so they match Record<string, string[]>. Keep the
+    // default so a malformed aspects bag degrades to {} rather than throwing —
+    // generateListingFields throws on schema failure and prepare-listing does not
+    // wrap it in a non-fatal guard.
+    aspects: z.record(
+      z.string(),
+      z.union([z.string().transform((v) => [v]), z.array(z.string())]),
+    ).optional().default({}),
     upc: z.string().nullable().optional().default(null),
     epid: z.string().nullable().optional().default(null),
     weight: z.object({ value: z.number(), unit: z.string() }).optional().default({ value: 0, unit: 'oz' }),
@@ -187,6 +197,10 @@ Analyze the image and return a JSON object with:
 - candidates: array of 1-3 possible matches, each with:
   - name, description, category, condition, conditionNotes
   - brand (string|null), model (string|null), features (string[])
+  - mpn (string|null): the Manufacturer Part Number — the real part/SKU number printed on
+    the item's label, box, plate, or sticker (e.g. "WH1000XM4/B", "DSR-PD170"). This is NOT
+    the model name. If no genuine part number is visible, return null. Never put the model
+    name here.
   - estimatedValueLow (int), estimatedValueHigh (int)
   - confidence (float 0-1, your confidence this is the correct identification)
   - weight: { value, unit:"oz" } — the realistic PACKAGED shipping weight (item + box
@@ -275,6 +289,10 @@ export interface ListingFieldsInput {
     description: string;
   };
   photoUrls: string[];
+  // Pre-fetched images (e.g. the in-memory scan buffer). When present, these are
+  // used directly and photoUrls is not fetched — keeps the vision path (JSON-mode)
+  // instead of the text-only fallback.
+  images?: ImageInput[];
   ebayCategorySuggestion: { categoryId: string; categoryName: string } | null;
   requiredAspects: Record<string, { required: boolean; values: string[] | null }>;
   soldComps: Array<{ title: string; price: number; condition: string; soldDate: string | null }>;
@@ -404,7 +422,9 @@ SELLER DEFAULTS: ${JSON.stringify(input.sellerDefaults)}
 
 Generate all listing fields as JSON.`;
 
-  const images = await fetchPhotosAsBase64(input.photoUrls, 5);
+  const images = input.images?.length
+    ? input.images
+    : await fetchPhotosAsBase64(input.photoUrls, 5);
 
   let text: string;
   if (images.length > 0) {

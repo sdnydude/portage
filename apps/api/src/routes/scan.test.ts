@@ -18,7 +18,32 @@ vi.mock('../lib/vision.js', () => ({
   fetchPhotosAsBase64: vi.fn(),
 }));
 
-import { identifyItemsMulti, fetchPhotosAsBase64 } from '../lib/vision.js';
+vi.mock('../lib/aspect-prefill.js', () => ({
+  prefillCandidateAspects: vi.fn(),
+}));
+
+vi.mock('../lib/image.js', () => ({
+  processImage: vi.fn(),
+  generateThumbnail: vi.fn(),
+}));
+
+vi.mock('../lib/storage.js', () => ({
+  uploadImage: vi.fn(),
+}));
+
+import { identifyItemsMulti, fetchPhotosAsBase64, identifyItemDetailed } from '../lib/vision.js';
+import { prefillCandidateAspects } from '../lib/aspect-prefill.js';
+import { processImage, generateThumbnail } from '../lib/image.js';
+import { uploadImage } from '../lib/storage.js';
+
+function candidate(overrides: Record<string, unknown> = {}) {
+  return {
+    name: 'Sony WH-1000XM4', description: 'd', category: 'electronics',
+    condition: 'good' as const, conditionNotes: '', brand: 'Sony', model: 'WH-1000XM4',
+    features: [], estimatedValueLow: 150, estimatedValueHigh: 200, confidence: 0.9,
+    ...overrides,
+  };
+}
 
 const R2_PUBLIC_URL = 'https://images.portage.test';
 process.env.R2_PUBLIC_URL = R2_PUBLIC_URL;
@@ -56,6 +81,37 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe('POST /scan?detail=full', () => {
+  it('prefills aspects on the top candidate and returns them in identification', async () => {
+    mockUserSelect();
+    mockUpdateReturns();
+
+    vi.mocked(processImage).mockResolvedValue({ buffer: Buffer.from('img'), width: 800, height: 600 } as any);
+    vi.mocked(generateThumbnail).mockResolvedValue(Buffer.from('thumb'));
+    vi.mocked(uploadImage).mockResolvedValue({ key: 'k', url: 'https://images.portage.test/k.jpg' });
+
+    vi.mocked(identifyItemDetailed).mockResolvedValue({
+      candidates: [candidate({ aspects: {} })],
+      reasoning: [],
+    } as any);
+    vi.mocked(prefillCandidateAspects).mockImplementation(async (cands: any) =>
+      cands.map((c: any, i: number) => (i === 0 ? { ...c, aspects: { Brand: ['Sony'] } } : c)),
+    );
+
+    const res = await request(app)
+      .post('/scan?detail=full')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('image', Buffer.from('fake-image-bytes'), 'photo.jpg');
+
+    expect(res.status).toBe(201);
+    expect(prefillCandidateAspects).toHaveBeenCalledTimes(1);
+    // base64 of the processImage mock buffer Buffer.from('img') === 'aW1n'
+    expect(prefillCandidateAspects).toHaveBeenCalledWith(expect.anything(), 'aW1n');
+    expect(res.body.identification.aspects).toEqual({ Brand: ['Sony'] });
+    expect(res.body.detailed.candidates[0].aspects).toEqual({ Brand: ['Sony'] });
+  });
 });
 
 describe('POST /scan/refine', () => {
