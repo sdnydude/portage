@@ -68,6 +68,9 @@ export interface Item {
   brand: string;
   model: string;
   features: string[];
+  // eBay item specifics keyed → string[] (Brand, MPN, category aspects). Filled at
+  // scan, carried into publish. Defaults to {} for existing rows.
+  aspects?: Record<string, string[]>;
   estimatedValueMin?: number;
   estimatedValueMax?: number;
   estimatedValueRecommended?: number;

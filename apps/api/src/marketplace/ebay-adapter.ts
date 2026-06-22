@@ -363,7 +363,9 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
 
     if (input.brand) product.brand = input.brand;
-    if (input.model) product.mpn = input.model;
+    // MPN is the real part number (input.mpn), NEVER the model name — eBay rejects
+    // a model name in the MPN field with error 25002.
+    if (input.mpn) product.mpn = input.mpn;
     if (specific.upc) product.upc = [specific.upc as string];
     if (specific.epid) product.epid = specific.epid;
 
@@ -390,6 +392,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
     if (input.brand && !aspects.Brand) aspects.Brand = [input.brand];
     if (input.model && !aspects.Model) aspects.Model = [input.model];
+    if (input.mpn && !aspects.MPN) aspects.MPN = [input.mpn];
 
     // Publish gate: eBay rejects publish (error 25002) when a category-required
     // item specific has no value. Check here — before any inventory/offer write
@@ -625,7 +628,8 @@ export class EbayAdapter implements MarketplaceAdapter {
       if (input.description) product.description = input.description;
       if (input.photos) product.imageUrls = input.photos.map((p) => p.url);
       if (input.brand) product.brand = input.brand;
-      if (input.model) product.mpn = input.model;
+      // Real part number only — never the model name (eBay error 25002).
+      if (input.mpn) product.mpn = input.mpn;
       if (specific.upc) product.upc = [specific.upc as string];
       if (specific.epid) product.epid = specific.epid;
       if (specific.aspects) product.aspects = specific.aspects;

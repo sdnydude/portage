@@ -273,6 +273,34 @@ describe('EbayAdapter.createListing — required item aspects', () => {
     expect(aspectsFromPut().Brand).toEqual(['Cloud Microphones']);
     expect(aspectsFromPut().Model).toEqual(['CL-1']);
   });
+
+  it('sets product.mpn from input.mpn (real part number) and seeds aspects.MPN — never the model name (eBay rejects model-as-MPN, 25002)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Sony',
+      model: 'WH-1000XM4',
+      mpn: 'WH1000XM4/B',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
+    expect(product.mpn).toBe('WH1000XM4/B');
+    expect(product.aspects.MPN).toEqual(['WH1000XM4/B']);
+  });
+
+  it('leaves product.mpn unset (never the model name) when no real mpn is provided', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Sony',
+      model: 'WH-1000XM4',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
+    expect(product.mpn).toBeUndefined();
+  });
 });
 
 describe('EbayAdapter.createListing — aspect value normalization', () => {
@@ -1207,6 +1235,7 @@ describe('EbayAdapter.updateListing — syncs inventory_item + offer', () => {
       photos: [{ url: 'https://portage-images.digitalharmonyai.com/updated.jpg' }],
       brand: 'Sony',
       model: 'XM5',
+      mpn: 'WH1000XM5/B',
       ebaySku: 'portage-sku-abc',
       ebayOfferId: 'offer-42',
     });
@@ -1219,7 +1248,8 @@ describe('EbayAdapter.updateListing — syncs inventory_item + offer', () => {
     expect(invBody.product.title).toBe('Updated Headphones');
     expect(invBody.product.imageUrls).toEqual(['https://portage-images.digitalharmonyai.com/updated.jpg']);
     expect(invBody.product.brand).toBe('Sony');
-    expect(invBody.product.mpn).toBe('XM5');
+    // MPN is the real part number (input.mpn), never the model name.
+    expect(invBody.product.mpn).toBe('WH1000XM5/B');
 
     const offerPut = fetchMock.mock.calls.find(([u]) => String(u).includes('/offer/offer-42'));
     expect(offerPut).toBeTruthy();

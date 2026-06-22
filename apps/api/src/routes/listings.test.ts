@@ -105,6 +105,56 @@ describe('POST /listings', () => {
     );
   });
 
+  it('carries item.aspects into marketplaceSpecific on publish, client aspects winning per key', async () => {
+    mockSelectOnce([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'], Color: ['Black'] } }]);
+    mockSelectOnce([]); // seller profile (policy self-heal)
+    mockSelectOnce([]); // footer lookup
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        // Client overrides Color; Brand is only on the stored item.
+        marketplaceSpecificFields: { categoryId: '123', aspects: { Color: ['Red'] } },
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockCreateListing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketplaceSpecific: expect.objectContaining({
+          aspects: { Brand: ['Sony'], Color: ['Red'] },
+        }),
+      }),
+    );
+  });
+
+  it('derives input.mpn from the merged aspects MPN and passes it to the adapter', async () => {
+    mockSelectOnce([{ ...MOCK_ITEM, aspects: { MPN: ['WH1000XM4/B'] } }]);
+    mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // footer
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        marketplaceSpecificFields: { categoryId: '123' },
+      });
+
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({ mpn: 'WH1000XM4/B' }));
+  });
+
   it('passes the item\'s stable serialized SKU to the eBay adapter instead of a fresh random one', async () => {
     mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'PRT-000007' }]); // item already carries a stable SKU
     mockSelectOnce([]); // seller profile (policy self-heal)
@@ -209,6 +259,63 @@ describe('POST /listings', () => {
     expect(mockCreateListing).toHaveBeenCalledWith(
       expect.objectContaining({ publishMode: 'live' }),
     );
+  });
+
+  it('carries item.aspects into the adapter on POST /:id/publish, client aspects winning', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD', marketplaceListingId: null,
+      marketplaceSpecificFields: { categoryId: '15032', aspects: { Color: ['Red'] } },
+    }]);
+    mockSelectOnce([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'], Color: ['Black'] } }]);
+    mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // footer
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 199, currency: 'USD', marketplaceListingId: 'ebay-1',
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(mockCreateListing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketplaceSpecific: expect.objectContaining({ aspects: { Brand: ['Sony'], Color: ['Red'] } }),
+      }),
+    );
+  });
+
+  it('derives input.mpn from aspects on POST /:id/publish', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD', marketplaceListingId: null,
+      marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    mockSelectOnce([{ ...MOCK_ITEM, aspects: { MPN: ['ABC-123'] } }]);
+    mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // footer
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 199, currency: 'USD', marketplaceListingId: 'ebay-1',
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({ mpn: 'ABC-123' }));
   });
 
   it('publish reuses the item\'s stable serialized SKU even when the draft listing has none', async () => {
@@ -575,6 +682,34 @@ describe('PATCH /listings/:id', () => {
     expect(res.status).toBe(200);
     expect(mockUpdateListing).toHaveBeenCalledWith('110012345678', expect.objectContaining({
       description: 'Noise-cancelling headphones\n\nShips fast.',
+    }));
+  });
+
+  it('carries item.aspects into the adapter on PATCH /:id sync', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'] } }]);
+    mockSelectOnce([]); // footer lookup
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '110012345678', status: 'active' });
+
+    await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(mockUpdateListing).toHaveBeenCalledWith('110012345678', expect.objectContaining({
+      marketplaceSpecific: expect.objectContaining({ aspects: { Brand: ['Sony'] } }),
     }));
   });
 
