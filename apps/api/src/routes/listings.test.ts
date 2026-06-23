@@ -900,6 +900,30 @@ describe('POST /listings — disclaimer consent (F3a)', () => {
     expect(res.status).toBe(201);
     expect(inserts.find((v) => 'disclaimerVersion' in v)).toBeUndefined();
   });
+
+  it('sets a 7-day disclaimer suppression on the user when suppress7d on a live publish', async () => {
+    mockSelectOnce([{ ...MOCK_ITEM }]);
+    mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // footer
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) })),
+    } as any);
+    const setMock = vi.fn((_v: Record<string, unknown>) => ({ where: vi.fn().mockResolvedValue(undefined) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 100, publishMode: 'live', disclaimerAccepted: true, suppress7d: true });
+
+    expect(res.status).toBe(201);
+    expect(setMock).toHaveBeenCalledTimes(1);
+    const arg = setMock.mock.calls[0][0] as Record<string, unknown> as { disclaimerSuppressUntil?: Date; disclaimerSuppressVersion?: number };
+    expect(arg.disclaimerSuppressVersion).toBe(1);
+    expect(arg.disclaimerSuppressUntil).toBeInstanceOf(Date);
+    expect(arg.disclaimerSuppressUntil!.getTime()).toBeGreaterThan(Date.now());
+  });
 });
 
 describe('POST /bulk/activate', () => {

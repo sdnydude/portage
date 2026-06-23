@@ -50,6 +50,12 @@ export const users = pgTable('users', {
   listingForkPref: text('listing_fork_pref').notNull().default('ask'),
   listingForkCount: integer('listing_fork_count').notNull().default(0),
   listingCompactMode: boolean('listing_compact_mode').notNull().default(false),
+  // F3b: display-only suppression of the publish terms sheet ("don't show for 7
+  // days"). NOT a consent record — that lives in disclaimerAcceptances. Suppressed
+  // only when suppressUntil > now AND suppressVersion === CURRENT_DISCLAIMER_VERSION
+  // (a version bump voids it). Null = never suppressed.
+  disclaimerSuppressUntil: timestamp('disclaimer_suppress_until'),
+  disclaimerSuppressVersion: integer('disclaimer_suppress_version'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, desc, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { listings, items, sellerProfiles, disclaimerAcceptances } from '../db/schema.js';
+import { listings, items, sellerProfiles, disclaimerAcceptances, users } from '../db/schema.js';
 import { CURRENT_DISCLAIMER_VERSION } from '@portage/shared';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
@@ -122,6 +122,9 @@ const createListingSchema = z.object({
   // The disclaimer version is stamped server-side (CURRENT) — never trusted from
   // the client — so the legal record reflects the terms actually in force.
   disclaimerAccepted: z.boolean().default(false),
+  // F3b: the seller ticked "don't show the terms sheet for 7 days" — a display
+  // preference only; consent is still recorded per-listing above.
+  suppress7d: z.boolean().default(false),
 });
 
 const updateListingSchema = z.object({
@@ -320,6 +323,18 @@ listingsRouter.post('/', async (req, res, next) => {
         disclaimerVersion: CURRENT_DISCLAIMER_VERSION,
         ipAddress: ipAddress?.slice(0, 45) ?? null,
       });
+
+      // F3b: opt-in display suppression — skip the terms sheet for 7 days. Stamped
+      // with the current version so a disclaimer bump voids it. Display-only; the
+      // acceptance above is the consent record.
+      if (body.suppress7d) {
+        await db.update(users)
+          .set({
+            disclaimerSuppressUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            disclaimerSuppressVersion: CURRENT_DISCLAIMER_VERSION,
+          })
+          .where(eq(users.id, userId));
+      }
     }
 
     const response: Record<string, unknown> = { ...listing };
