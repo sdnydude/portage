@@ -247,11 +247,17 @@ phase_F_todo: |
            [x] F3a DONE (commit 69727d0): POST /listings now records a disclaimer_acceptances row against
                the REAL new listing id on live publish (disclaimerAccepted flag); version stamped server-side
                from shared CURRENT_DISCLAIMER_VERSION; de-duped the shipping.ts shadow constant. api 529/web 204.
-           [ ] F3b display-only 7-day suppression — STILL NEEDS SCHEMA (disclaimer_suppressions OR a
-               user-pref column) → PAUSE before db:push. REVIEW MANDATES: do NOT record implicit/suppressed
-               publishes as fresh consent (suppress only the re-PROMPT); strict === version check (void on
-               bump); fixed (non-sliding) window; server-derived userId; add a re-view/"stop hiding" path;
-               plain timestamp (not timestamptz). Reviewers split table-vs-column (1:1 either way).
+           [~] F3b display-only 7-day suppression.
+               [x] BACKEND DONE (commit edf7460): 2 nullable users columns (disclaimer_suppress_until/version,
+                   db:push APPLIED, verified) — architect picked users-table pref columns over table/sellerProfiles.
+                   POST /listings sets a 7-day version-stamped window on suppress7d (live publish only); GET
+                   /users/me/preferences returns disclaimerSuppressed (open window AND version===CURRENT → void
+                   on bump). Display-only; consent still per-listing (F3a). api 531 green, typecheck clean.
+                   tdd-guard schema-column bypass (compile prereq) flagged for review.
+               [ ] WEB WIRING (next): DisclaimerSheet unchecked "don't show 7 days" checkbox → suppress7d;
+                   CreateListingSheet fetches disclaimerSuppressed + skips the sheet when suppressed (still
+                   sends disclaimerAccepted); suppressed-path microcopy "Terms apply — view on the About page"
+                   → /about. NEEDS run-the-app verify. DEP: /about page must ship with terms links (flagged).
   [ ] F4   Two-state publish RESULT screen: success vs draft-saved-with-the-verbatim-eBay-reason.
   Done when: both paths show price + terms, eBay-draft works, 7-day dismiss works + resets on version bump,
   result screen distinguishes success from draft-saved.
