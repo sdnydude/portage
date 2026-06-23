@@ -202,23 +202,33 @@ handoff_2026_06_23: |
   - Price model: items.price (asking) vs listings.price (per-marketplace) kept SEPARATE by user decision.
 
 phase_F_todo: |
-  PHASE F — Unify publish + price & terms panels (design agreed; see docs/incomplete-work-backlog.md)
+  PHASE F — Unify publish + price & terms panels + eBay-draft (branch feat/phase-f-publish-unification)
   Goal: ONE publish-confirm sheet for BOTH paths (item-detail CreateListingSheet AND scan Save & List),
-  carrying price + terms + a truthful publish result.
+  carrying price + terms + a truthful result, with an eBay-draft option.
 
-  [ ] F-GATE  Live re-publish verify (PR #132 merge gate): MPN item-specific shows on eBay; Type/quantity/
-              scroll all correct. BLOCKS merge of PR #132.
-  [ ] F1  Route both publish paths through a single publish-confirm sheet (kill the divergence where panels
-          appear on item-detail but the scan Save & List publishes with no panels).
-  [ ] F2  Price panel — confirm/edit price on every publish (prefill from items.price → comps → estimate).
-  [ ] F3  Terms panel (DisclaimerSheet) with opt-in "don't show for 7 days":
-            - unchecked by default (never auto-suppress legal terms),
-            - version-scoped — voided when CURRENT_DISCLAIMER_VERSION bumps,
-            - server-side via disclaimer_acceptances + a suppress_until timestamp (holds across devices),
-            - first acceptance still recorded; the TTL only suppresses the re-prompt.
-  [ ] F4  Two-state publish RESULT screen: success vs draft-saved-with-the-verbatim-eBay-reason.
-  Done when: both publish paths show price + terms, the 7-day dismiss works and resets on version bump,
-  and the result screen distinguishes success from draft-saved.
+  [x] F0   eBay-draft backend — POST /listings publishMode='ebay_draft' → adapter draft mode → unpublished
+           eBay offer + persist sku/offerId, status draft. DONE (commit 8b44c5b, api 520 green).
+  [ ] F0b  eBay-draft TOGGLE on BOTH publish panels → sends publishMode 'ebay_draft':
+             - CreateListingSheet (create-listing-sheet.tsx:51): publishNow→live/draft becomes 3-way
+               (live / eBay-draft / local-draft) for the eBay marketplace. TDD the mapping.
+             - Scan Save & List: thread the eBay-draft choice through buildListingPayload
+               (scan-listing-payload.ts) + a toggle in ScanReviewActions. TDD.
+  [ ] F-GATE  Verify via Playwright: drive an eBay-draft publish on BOTH panels → confirm the eBay offer +
+              aspects.MPN through an IN-APP eBay-read route (standalone tsx deadlocks on token refresh).
+              Doubles as PR #132's MPN merge-gate proof (MPN now lands on the eBay offer). BLOCKS PR #132 merge.
+  [ ] F-ORPHAN  Orphan cleanup — deleting a Portage listing (or a failed publish) must withdraw/delete the
+                eBay offer, or reuse it; today they orphan as eBay drafts (e.g. PRT-000008 / item 5117769708900).
+  [ ] F1   Route both publish paths through a single publish-confirm sheet (kills the panels-on-one-path-only divergence).
+  [ ] F2   Price panel — confirm/edit price on every publish (prefill items.price → comps → estimate).
+  [ ] F3   Terms panel (DisclaimerSheet) with opt-in "don't show for 7 days": unchecked default; version-scoped
+           (void on CURRENT_DISCLAIMER_VERSION bump); server-side — needs a SCHEMA CHANGE (suppress_until,
+           user-level; current disclaimer_acceptances is per-listing) → pause for explicit go before db:push;
+           first acceptance still recorded, TTL suppresses only the re-prompt.
+  [ ] F4   Two-state publish RESULT screen: success vs draft-saved-with-the-verbatim-eBay-reason.
+  Done when: both paths show price + terms, eBay-draft works, 7-day dismiss works + resets on version bump,
+  result screen distinguishes success from draft-saved.
 
-  SUBSEQUENT PHASES (not F): E-panel (AiIdentificationPanel summary), G (Save & List lists live, not a silent
-  draft), H (orders sync — broken weeks), I (remove in-app carriers → eBay shipping policy). See backlog doc.
+  CARRY-OVER DEFERRED (registry; not Phase F core): Type AI auto-pick on high-cardinality aspects (best-effort
+  prompt shipped); duplicate listings-row on republish (idempotency); SKU Seller-Hub Custom-label check.
+  SUBSEQUENT PHASES (not F): E-panel (AiIdentificationPanel), G (Save & List lists live not silent draft),
+  H (orders sync — broken weeks), I (remove in-app carriers → eBay shipping policy). See backlog doc.
