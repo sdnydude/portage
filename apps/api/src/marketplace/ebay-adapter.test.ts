@@ -1473,3 +1473,58 @@ describe('createListing — calculated-shipping weight gate (eBay error 25020)',
     ).resolves.toBeDefined();
   });
 });
+
+describe('EbayAdapter.getEbayItemVerification — F-GATE read-back of live eBay state', () => {
+  it('reads the inventory_item + offer for a SKU and returns aspects.MPN, offerId and status', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes('/inventory_item/PRT-000009')) {
+        return new Response(JSON.stringify({
+          sku: 'PRT-000009',
+          product: {
+            title: 'Sennheiser HD 600',
+            brand: 'Sennheiser',
+            mpn: 'HD600',
+            aspects: { Brand: ['Sennheiser'], MPN: ['HD600'], Type: ['Over-Ear'] },
+          },
+        }), { status: 200 });
+      }
+      if (u.includes('/offer?sku=PRT-000009')) {
+        return new Response(JSON.stringify({
+          offers: [{ offerId: '9988776655', status: 'UNPUBLISHED', listing: { listingId: '307019237500' } }],
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.getEbayItemVerification('PRT-000009');
+
+    expect(result.found).toBe(true);
+    expect(result.sku).toBe('PRT-000009');
+    expect(result.aspects.MPN).toEqual(['HD600']);
+    expect(result.mpn).toBe('HD600');
+    expect(result.brand).toBe('Sennheiser');
+    expect(result.offerId).toBe('9988776655');
+    expect(result.status).toBe('UNPUBLISHED');
+    expect(result.listingId).toBe('307019237500');
+  });
+
+  it('returns found:false with null fields when the inventory_item does not exist (404)', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes('/inventory_item/')) {
+        return new Response(JSON.stringify({ errors: [{ errorId: 25001, message: 'not found' }] }), { status: 404 });
+      }
+      return new Response(JSON.stringify({ offers: [] }), { status: 200 });
+    });
+
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.getEbayItemVerification('PRT-NOPE');
+
+    expect(result.found).toBe(false);
+    expect(result.aspects).toEqual({});
+    expect(result.mpn).toBeNull();
+    expect(result.offerId).toBeNull();
+  });
+});

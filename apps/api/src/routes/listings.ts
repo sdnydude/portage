@@ -184,6 +184,27 @@ listingsRouter.get('/:id', async (req, res, next) => {
   }
 });
 
+// F-GATE: read back the live eBay state (item specifics incl. MPN + the offer) for a
+// listing's SKU, so a publish / eBay-draft can be verified in-app. A standalone tsx
+// script deadlocks on token refresh, so this runs in-process under the seller's auth.
+listingsRouter.get('/:id/ebay-offer', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const [listing] = await db.select()
+      .from(listings)
+      .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
+      .limit(1);
+
+    if (!listing) throw new AppError(404, 'NOT_FOUND', 'Listing not found');
+
+    const adapter = new EbayAdapter(userId);
+    const verification = await adapter.getEbayItemVerification(listing.ebaySku!);
+    res.json(verification);
+  } catch (err) {
+    next(err);
+  }
+});
+
 listingsRouter.post('/', async (req, res, next) => {
   try {
     const userId = req.user!.sub;

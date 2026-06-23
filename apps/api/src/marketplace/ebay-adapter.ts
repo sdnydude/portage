@@ -189,6 +189,23 @@ export interface EbayListingFields {
   returnPolicyId: string;
 }
 
+/**
+ * Shape returned by the F-GATE verification read — the live eBay state for one SKU:
+ * the inventory_item's item specifics (aspects, incl. MPN) plus the offer's identity
+ * and status. Fields are optional because a never-published / orphaned offer or a
+ * missing inventory_item can each be absent independently.
+ */
+export interface EbayItemVerification {
+  sku: string;
+  found: boolean;
+  aspects: Record<string, string[]>;
+  mpn: string | null;
+  brand: string | null;
+  offerId: string | null;
+  status: string | null;
+  listingId: string | null;
+}
+
 export function validateEbayListingFields(specific: Record<string, unknown>): EbayListingFields {
   const categoryId = specific.categoryId as string | undefined;
   if (!categoryId || categoryId === '99') {
@@ -802,6 +819,45 @@ export class EbayAdapter implements MarketplaceAdapter {
     } catch {
       return 'unknown';
     }
+  }
+
+  async getEbayItemVerification(sku: string): Promise<EbayItemVerification> {
+    const encoded = encodeURIComponent(sku);
+
+    let aspects: Record<string, string[]> = {};
+    let mpn: string | null = null;
+    let brand: string | null = null;
+    let found = false;
+    try {
+      const item = await this.request<{
+        product?: { aspects?: Record<string, string[]>; mpn?: string; brand?: string };
+      }>(`/sell/inventory/v1/inventory_item/${encoded}`);
+      found = true;
+      aspects = item.product?.aspects ?? {};
+      mpn = item.product?.mpn ?? null;
+      brand = item.product?.brand ?? null;
+    } catch {
+      // Missing inventory_item (404) or read error — report not-found rather than throw.
+    }
+
+    let offerId: string | null = null;
+    let status: string | null = null;
+    let listingId: string | null = null;
+    try {
+      const data = await this.request<{
+        offers?: Array<{ offerId?: string; status?: string; listing?: { listingId?: string } }>;
+      }>(`/sell/inventory/v1/offer?sku=${encoded}&marketplace_id=EBAY_US`);
+      const offer = data.offers?.[0];
+      if (offer) {
+        offerId = offer.offerId ?? null;
+        status = offer.status ?? null;
+        listingId = offer.listing?.listingId ?? null;
+      }
+    } catch {
+      // No offer for this SKU yet — leave offer fields null.
+    }
+
+    return { sku, found, aspects, mpn, brand, offerId, status, listingId };
   }
 
   async getOrders(since?: Date): Promise<MarketplaceOrderResult[]> {

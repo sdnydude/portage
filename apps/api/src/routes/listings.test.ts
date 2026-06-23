@@ -2,11 +2,12 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
-const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId } = vi.hoisted(() => ({
+const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId, mockGetEbayItemVerification } = vi.hoisted(() => ({
   mockCreateListing: vi.fn(),
   mockUpdateListing: vi.fn(),
   mockBulkPublishOffers: vi.fn(),
   mockResolveEbayCategoryId: vi.fn(),
+  mockGetEbayItemVerification: vi.fn(),
 }));
 
 vi.mock('../db/index.js', () => ({
@@ -18,6 +19,7 @@ vi.mock('../marketplace/ebay-adapter.js', () => ({
     createListing: mockCreateListing,
     updateListing: mockUpdateListing,
     bulkPublishOffers: mockBulkPublishOffers,
+    getEbayItemVerification: mockGetEbayItemVerification,
   })),
   resolveEbayCategoryId: mockResolveEbayCategoryId,
 }));
@@ -876,5 +878,28 @@ describe('POST /bulk/activate', () => {
     expect(res.status).toBe(200);
     expect(mockBulkPublishOffers).toHaveBeenCalledWith(['offer-1', 'offer-2']);
     expect(res.body.ids).toEqual(expect.arrayContaining([LISTING_1, LISTING_2]));
+  });
+});
+
+describe('GET /listings/:id/ebay-offer — F-GATE verification read', () => {
+  const LISTING_ID = '00000000-0000-0000-0000-0000000000ef';
+
+  it('returns the live eBay verification for the listing\'s SKU', async () => {
+    mockSelectOnce([{ id: LISTING_ID, userId: 'test-user-id', marketplace: 'ebay', ebaySku: 'PRT-000009' }]);
+    mockGetEbayItemVerification.mockResolvedValue({
+      sku: 'PRT-000009', found: true,
+      aspects: { MPN: ['HD600'], Brand: ['Sennheiser'] },
+      mpn: 'HD600', brand: 'Sennheiser',
+      offerId: '9988776655', status: 'UNPUBLISHED', listingId: '307019237500',
+    });
+
+    const res = await request(app)
+      .get(`/listings/${LISTING_ID}/ebay-offer`)
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ sku: 'PRT-000009', mpn: 'HD600', offerId: '9988776655' });
+    expect(res.body.aspects.MPN).toEqual(['HD600']);
+    expect(mockGetEbayItemVerification).toHaveBeenCalledWith('PRT-000009');
   });
 });
