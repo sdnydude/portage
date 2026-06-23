@@ -75,6 +75,24 @@ describe("CreateListingSheet — price prefill", () => {
 });
 
 describe("CreateListingSheet — required aspects are collectable, not a dead-end", () => {
+  it("sends publishMode 'ebay_draft' when the eBay-draft toggle is on (not publishing now)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    // publishNow stays OFF; turn on the eBay-draft toggle, then save
+    const ebayToggle = screen.getByText("Save as eBay draft").closest("label")!.querySelector("div")!;
+    fireEvent.click(ebayToggle);
+    fireEvent.click(screen.getByText("Save eBay Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(bodies[0].publishMode).toBe("ebay_draft");
+  });
+
   it("shows the aspect-fill sheet when publish needs item specifics, then retries with them filled", async () => {
     const onCreated = vi.fn();
     let listingsCalls = 0;

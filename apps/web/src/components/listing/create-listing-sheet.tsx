@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { resolvePublishMode } from "@/lib/publish-mode";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { DisclaimerSheet } from "./disclaimer-sheet";
@@ -31,6 +32,9 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
     setPrice(suggestedPrice?.toString() ?? "");
   }, [suggestedPrice]);
   const [publishNow, setPublishNow] = useState(false);
+  // When not publishing now, optionally create an UNPUBLISHED eBay offer (Seller
+  // Hub draft) instead of a Portage-local draft. eBay marketplace only.
+  const [ebayDraft, setEbayDraft] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
@@ -48,7 +52,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
         itemId,
         marketplace,
         price: priceNum,
-        publishMode: publishNow ? "live" : "draft",
+        publishMode: resolvePublishMode({ publishNow, ebayDraft, marketplace }),
         ...(aspects ? { marketplaceSpecificFields: { aspects } } : {}),
       },
       token: token!,
@@ -178,6 +182,26 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
           <span className="text-sm text-text-primary">Publish immediately</span>
         </label>
 
+        {/* eBay-draft option — only when not publishing now and on eBay. Creates an
+            unpublished eBay offer (Seller Hub draft) rather than a Portage-local draft. */}
+        {!publishNow && marketplace === "ebay" && (
+          <label className="flex items-center gap-3 py-2 cursor-pointer">
+            <div
+              onClick={() => setEbayDraft(!ebayDraft)}
+              className={`w-10 h-6 rounded-full transition-colors flex items-center ${
+                ebayDraft ? "bg-forest-green" : "bg-muted border border-border"
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                  ebayDraft ? "translate-x-5" : "translate-x-1"
+                }`}
+              />
+            </div>
+            <span className="text-sm text-text-primary">Save as eBay draft</span>
+          </label>
+        )}
+
         {/* Disclaimer — shown when publish is toggled on */}
         {publishNow && showDisclaimer && (
           <DisclaimerSheet
@@ -222,7 +246,13 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
               disabled={isCreating || !price}
               className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium disabled:opacity-50"
             >
-              {isCreating ? "Creating..." : publishNow ? "Review Terms" : "Save Draft"}
+              {isCreating
+                ? "Creating..."
+                : publishNow
+                  ? "Review Terms"
+                  : ebayDraft && marketplace === "ebay"
+                    ? "Save eBay Draft"
+                    : "Save Draft"}
             </button>
           </div>
         )}
