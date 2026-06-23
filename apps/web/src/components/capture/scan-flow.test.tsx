@@ -386,6 +386,19 @@ describe("ScanFlow review wiring", () => {
     expect(body.weightEstimated).toBe(false);
   });
 
+  it("Save & List with the eBay-draft toggle on sends publishMode 'ebay_draft'", async () => {
+    await renderInReview();
+    fireEvent.click(screen.getByLabelText("List as eBay draft"));
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    const listingsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/listings");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect((listingsCall?.[1] as { body: { publishMode?: string } }).body.publishMode).toBe("ebay_draft");
+  });
+
   it("Save & List posts the seller-profile-aware payload with aspects and categoryId", async () => {
     scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
 

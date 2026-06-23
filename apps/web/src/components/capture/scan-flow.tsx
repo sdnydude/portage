@@ -574,7 +574,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     weightDims, weightEstimated, resolvedCategoryName, buildAspects,
   ]);
 
-  const handleSaveAndList = useCallback(async () => {
+  const handleSaveAndList = useCallback(async (ebayDraft = false) => {
     if (!token || photos.length === 0 || isListingForSale) return;
     setIsListingForSale(true);
     setState("saving");
@@ -622,7 +622,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         method: "POST",
         token,
         body: buildListingPayload(
-          { itemId: newItem.id, price: price ?? null, resolvedCategoryId, aspects: buildAspects() },
+          { itemId: newItem.id, price: price ?? null, resolvedCategoryId, aspects: buildAspects(), ebayDraft },
           profile,
         ),
       });
