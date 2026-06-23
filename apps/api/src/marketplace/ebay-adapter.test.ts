@@ -170,6 +170,19 @@ describe('EbayAdapter.createListing — BrandMPN (error 25002) handling', () => 
     expect(body.product.brand).toBe('Nextorage');
     expect(body.product.mpn).toBe('Does Not Apply');
   });
+
+  it('mirrors product.mpn into the MPN item-specific (aspects.MPN) so the eBay listing shows it', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Nextorage',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      publishMode: 'draft',
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
+    expect(product.aspects.MPN).toEqual(['Does Not Apply']);
+  });
 });
 
 describe('EbayAdapter — request hygiene (User-Agent)', () => {
@@ -566,6 +579,23 @@ describe('EbayAdapter.createListing — Best Offer auto-accept (bestOfferTerms)'
     const body = JSON.parse((putCall![1] as RequestInit).body as string);
     expect(body.listingPolicies).toBeUndefined();
     expect(body.pricingSummary.price.value).toBe('25');
+  });
+
+  it('updateListing normalizes scalar aspect values and backfills Brand/MPN (parity with createListing)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.updateListing('listing-1', {
+      brand: 'Nextorage',
+      currency: 'USD',
+      ebaySku: 'PRT-000009', // inventory-item PUT (carries product.aspects) is gated on this
+      marketplaceSpecific: { ...validSetup, aspects: { Type: 'Portable External SSD' } }, // scalar, not array
+    } as any);
+
+    const putCall = fetchMock.mock.calls.find(([u, o]) => String(u).includes('/inventory_item/') && (o as RequestInit).method === 'PUT');
+    expect(putCall).toBeTruthy();
+    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
+    expect(product.aspects.Type).toEqual(['Portable External SSD']); // scalar coerced to array
+    expect(product.aspects.Brand).toEqual(['Nextorage']);            // backfilled from input.brand
+    expect(product.aspects.MPN).toEqual(['Does Not Apply']);         // BrandMPN sentinel mirrored
   });
 
   it('updateListing sends bestOfferTerms inside a COMPLETE listingPolicies block (never partial — eBay PUT replaces the object)', async () => {
