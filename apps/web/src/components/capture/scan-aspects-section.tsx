@@ -17,9 +17,9 @@ interface ScanAspectsSectionProps {
   /** Seeded per aspect from the item's scan text (deterministic match against
    *  eBay-allowed values — see aspect-seeding.ts); confirmed names excluded. */
   suggestions: Record<string, string[]>;
-  /** Subset of suggestion names whose values came from the AI scan (Phase A) —
-   *  rendered with an [AI] tag to distinguish them from deterministic seeds. */
-  aiSuggestedNames?: string[];
+  /** Aspect names whose current value was auto-filled from the AI scan —
+   *  rendered with an [AI] tag so the seller knows it's AI-provided (and editable). */
+  aiFilledNames?: string[];
   confirmSuggestion: (name: string, value: string) => void;
   missingRequired: string[];
   isCategoryResolving: boolean;
@@ -36,7 +36,7 @@ export function ScanAspectsSection({
   aspectValues,
   setAspectValue,
   suggestions,
-  aiSuggestedNames,
+  aiFilledNames,
   confirmSuggestion,
   missingRequired,
   isCategoryResolving,
@@ -90,7 +90,7 @@ export function ScanAspectsSection({
     const value = aspectValues[name] ?? "";
     const isMissing = missingSet.has(name);
     const aspectSuggestions = suggestions[name] ?? [];
-    const isAi = aiSuggestedNames?.includes(name) ?? false;
+    const isAi = aiFilledNames?.includes(name) ?? false;
 
     return (
       <div key={name} className="space-y-1.5">

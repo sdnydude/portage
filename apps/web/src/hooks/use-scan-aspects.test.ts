@@ -178,7 +178,7 @@ describe("useScanAspects", () => {
     expect(result.current.suggestions).toEqual({ Color: ["Black"] });
   });
 
-  it("surfaces AI-filled aspects (Phase A) as suggestions, flagged in aiSuggestedNames", async () => {
+  it("auto-fills AI-scanned aspects in place (editable, [AI]-tagged), not as tap-to-confirm chips", async () => {
     mockRoutes(); // ASPECTS = Brand, Color
     const { result } = renderHook(
       ({ name, text, ai }) => useScanAspects(name, text, ai),
@@ -193,9 +193,12 @@ describe("useScanAspects", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
-    // Color comes from the AI scan; Brand has neither an AI fill nor a text match.
-    expect(result.current.suggestions).toEqual({ Color: ["Red"] });
-    expect(result.current.aiSuggestedNames).toEqual(["Color"]);
+    // AI value lands directly in the confirmed values (no tap needed)...
+    expect(result.current.aspectValues.Color).toBe("Red");
+    // ...flagged AI-sourced for the [AI] tag...
+    expect(result.current.aiFilledNames).toContain("Color");
+    // ...and no longer a pending suggestion chip.
+    expect(result.current.suggestions.Color).toBeUndefined();
   });
 
   it("lists required aspect names with no confirmed value in missingRequired", async () => {

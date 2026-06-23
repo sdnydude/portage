@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "./use-auth";
 import { useRequiredAspects } from "./use-required-aspects";
-import { suggestAspectValues, mergeAspectSuggestions } from "@/lib/aspect-seeding";
+import { suggestAspectValues, mergeAspectSuggestions, autoFillFromAi } from "@/lib/aspect-seeding";
 
 interface CategorySuggestion {
   categoryId: string;
@@ -23,6 +23,9 @@ export function useScanAspects(
   const [conditionIds, setConditionIds] = useState<string[]>([]);
   const [isCategoryResolving, setIsCategoryResolving] = useState(false);
   const [aspectValues, setAspectValues] = useState<Record<string, string>>({});
+  // Names whose current value was auto-filled from the AI scan and not yet edited
+  // by the seller — drives the [AI] provenance tag on the filled field.
+  const [aiFilledNames, setAiFilledNames] = useState<string[]>([]);
 
   // Aspect schema comes from the existing hook — no duplicate fetch here.
   const { aspects, isLoading: isAspectsLoading } = useRequiredAspects(resolvedCategoryId);
@@ -31,18 +34,22 @@ export function useScanAspects(
   // category's schema; when the resolved category changes they must be cleared.
   useEffect(() => {
     setAspectValues({});
+    setAiFilledNames([]);
   }, [resolvedCategoryId]);
 
   const setAspectValue = useCallback((name: string, value: string) => {
     setAspectValues((prev) => ({ ...prev, [name]: value }));
+    // A manual edit makes the value seller-owned — drop its [AI] tag.
+    setAiFilledNames((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : prev));
   }, []);
 
   // Suggestions recompute whenever the schema (new category) or item text
   // changes; aspect names already confirmed in aspectValues are excluded.
-  const { suggestions, aiSuggestedNames } = useMemo(() => {
+  // Deterministic text-matched seeds remain tap-to-confirm chips for aspects the
+  // AI did NOT fill (lower-confidence regex matches); AI values auto-fill above.
+  const suggestions = useMemo(() => {
     const seeded = suggestAspectValues(itemText, aspects);
-    const merged = mergeAspectSuggestions(aiAspects, seeded, aspects, aspectValues);
-    return { suggestions: merged.suggestions, aiSuggestedNames: merged.aiNames };
+    return mergeAspectSuggestions(aiAspects, seeded, aspects, aspectValues).suggestions;
   }, [itemText, aspects, aspectValues, aiAspects]);
 
   // Ref-backed so buildAspects keeps a stable identity across renders while
@@ -51,6 +58,16 @@ export function useScanAspects(
   useEffect(() => {
     aspectValuesRef.current = aspectValues;
   }, [aspectValues]);
+
+  // AI-scanned specifics fill the fields directly (editable, [AI]-tagged) rather
+  // than as tap-to-confirm chips. Idempotent: autoFillFromAi only returns names
+  // not already present, so once filled there's nothing to add and it no-ops.
+  useEffect(() => {
+    const { values, aiNames } = autoFillFromAi(aiAspects, aspects, aspectValuesRef.current);
+    if (aiNames.length === 0) return;
+    setAspectValues((prev) => ({ ...prev, ...values }));
+    setAiFilledNames((prev) => [...new Set([...prev, ...aiNames])]);
+  }, [aspects, aiAspects]);
   const buildAspects = useCallback(() => {
     const built: Record<string, string[]> = {};
     for (const [name, value] of Object.entries(aspectValuesRef.current)) {
@@ -154,7 +171,7 @@ export function useScanAspects(
     aspectValues,
     setAspectValue,
     suggestions,
-    aiSuggestedNames,
+    aiFilledNames,
     confirmSuggestion,
     missingRequired,
     buildAspects,

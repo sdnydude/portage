@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { RequiredAspect } from "@/hooks/use-required-aspects";
-import { suggestAspectValues, mergeAspectSuggestions } from "./aspect-seeding";
+import { suggestAspectValues, mergeAspectSuggestions, autoFillFromAi } from "./aspect-seeding";
 
 const aspect = (values: string[] | null, required = true): RequiredAspect => ({
   required,
@@ -93,6 +93,35 @@ describe("mergeAspectSuggestions", () => {
     );
     expect(result.suggestions).toEqual({ Color: ["Blue"] });
     expect(result.aiNames).toEqual([]);
+  });
+
+  it("fills an AI value for a schema aspect and flags it AI-sourced", () => {
+    const result = autoFillFromAi(
+      { Color: ["Red"] },
+      { Color: aspect(["Red", "Blue"]) },
+      {},
+    );
+    expect(result.values).toEqual({ Color: "Red" });
+    expect(result.aiNames).toEqual(["Color"]);
+  });
+
+  it("never clobbers an aspect that already has a value (seller- or seed-set)", () => {
+    const result = autoFillFromAi(
+      { Brand: ["Sony"] },
+      { Brand: aspect(["Sony"]) },
+      { Brand: "Bose" }, // already set — AI must not overwrite
+    );
+    expect(result.values).toEqual({});
+    expect(result.aiNames).toEqual([]);
+  });
+
+  it("ignores a malformed (non-array) AI value instead of filling it", () => {
+    const result = autoFillFromAi(
+      { Color: "Red" } as unknown as Record<string, string[]>,
+      { Color: aspect(["Red"]) },
+      {},
+    );
+    expect(result.values).toEqual({});
   });
 
   it("prefers AI over a text-matched seed and skips already-confirmed aspects", () => {

@@ -251,6 +251,24 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
+  it("blocks Save (with a reason) until required fields are complete — here, category", async () => {
+    scanAspectsState.resolvedCategoryId = null; // category required + incomplete
+    scanAspectsState.resolvedCategoryName = null;
+
+    await renderInReview();
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("names the incomplete required field(s) blocking Save", async () => {
+    scanAspectsState.resolvedCategoryId = null;
+    scanAspectsState.resolvedCategoryName = null;
+
+    await renderInReview();
+
+    expect(screen.getByText(/Complete required field/)).toHaveTextContent(/Category/);
+  });
+
   it("plain Save persists the entered price to the item (same as Save & List)", async () => {
     await renderInReview();
 
@@ -263,6 +281,20 @@ describe("ScanFlow review wiring", () => {
       return call;
     });
     expect((itemsCall?.[1] as { body: { price?: number } }).body.price).toBe(65);
+  });
+
+  it("review captures quantity and Save persists it to the item (editable from default 1)", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect((itemsCall?.[1] as { body: { quantity?: number } }).body.quantity).toBe(3);
   });
 
   it("review captures lb+oz weight and Save persists seller-confirmed weightOz", async () => {

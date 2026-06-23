@@ -43,6 +43,32 @@ export interface MergedSuggestions {
  * flagged in `aiNames` so the UI can tag them `[AI]`. Only unconfirmed required
  * aspects (present in the schema, empty in aspectValues) are surfaced.
  */
+export interface AutoFilledAspects {
+  /** name → single value to seed directly into the confirmed aspect values. */
+  values: Record<string, string>;
+  /** subset of `values` keys sourced from the AI scan, for the [AI] tag. */
+  aiNames: string[];
+}
+
+export function autoFillFromAi(
+  aiAspects: Record<string, string[]> | undefined,
+  aspects: Record<string, RequiredAspect>,
+  current: Record<string, string>,
+): AutoFilledAspects {
+  const values: Record<string, string> = {};
+  const aiNames: string[] = [];
+  for (const name of Object.keys(aspects)) {
+    if (name in current) continue; // seller- or seed-set — never overwrite
+    const raw = aiAspects?.[name];
+    const v = Array.isArray(raw) ? raw[0] : undefined;
+    if (typeof v === "string" && v.trim() !== "") {
+      values[name] = v.trim();
+      aiNames.push(name);
+    }
+  }
+  return { values, aiNames };
+}
+
 export function mergeAspectSuggestions(
   aiAspects: Record<string, string[]> | undefined,
   seeded: Record<string, string[]>,

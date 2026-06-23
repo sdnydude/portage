@@ -38,7 +38,7 @@ describe("ScanAspectsSection", () => {
     props.missingRequired = ["Color"];
     props.suggestions = { Color: ["Red"] };
 
-    render(<ScanAspectsSection {...props} aiSuggestedNames={["Color"]} />);
+    render(<ScanAspectsSection {...props} aiFilledNames={["Color"]} />);
 
     expect(screen.getByText("[AI]")).toBeInTheDocument();
   });

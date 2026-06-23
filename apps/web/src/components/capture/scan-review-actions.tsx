@@ -11,7 +11,11 @@ export interface ScanReviewActionsProps {
   isSaving: boolean;
   isListing: boolean;
   canSave: boolean;
-  /** Gates only Save & List (eBay aspects); Save is never gated. Default true. */
+  /** Why Save is disabled (required fields incomplete) — shown below the buttons. */
+  saveDisabledReason?: string | null;
+  /** Marks the Price label with a red asterisk when price is a missing required field. */
+  priceRequired?: boolean;
+  /** Gates only Save & List (eBay aspects). Default true. */
   canList?: boolean;
   /** Shown below the buttons (inside the bar), linked via aria-describedby when canList is false. */
   listDisabledReason?: string | null;
@@ -24,17 +28,23 @@ export interface ScanReviewActionsProps {
  */
 export function ScanReviewActions({
   price, onPriceChange, onRescan, onSave, onSaveAndList, isSaving, isListing, canSave,
-  canList = true, listDisabledReason = null,
+  saveDisabledReason = null, priceRequired = false, canList = true, listDisabledReason = null,
 }: ScanReviewActionsProps) {
   const busy = isSaving || isListing;
-  const showListReason = !canList && !!listDisabledReason;
+  // Save gate is the broader one (required fields) — surface it first; the List
+  // gate (eBay specifics) only matters once Save is satisfiable.
+  const showSaveReason = !canSave && !!saveDisabledReason;
+  const showListReason = canSave && !canList && !!listDisabledReason;
   return (
     <div
       className="fixed bottom-0 left-0 right-0 z-[70] px-4 py-3 glass-thick glass-fallback border-t border-border"
       style={{ paddingBottom: "calc(0.75rem + var(--safe-area-bottom))" }}
     >
       <div className="mb-2">
-        <span className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1">Price</span>
+        <span className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1">
+          Price
+          {priceRequired && <span className="text-[var(--accent-error)]"> *</span>}
+        </span>
         <PriceField value={price} onChange={onPriceChange} />
       </div>
       <div className="flex gap-2">
@@ -62,6 +72,11 @@ export function ScanReviewActions({
           {isListing ? "Listing..." : "Save & List"}
         </button>
       </div>
+      {showSaveReason && (
+        <p className="mt-2 text-xs text-[var(--accent-error)] text-center">
+          {saveDisabledReason}
+        </p>
+      )}
       {showListReason && (
         <p id="scan-list-disabled-reason" className="mt-2 text-xs text-text-secondary text-center">
           {listDisabledReason}
