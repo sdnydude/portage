@@ -558,6 +558,16 @@ listingsRouter.delete('/:id', async (req, res, next) => {
       } catch (err) {
         logger.warn({ listingId: listing.id, err: (err as Error).message }, 'Failed to delete from marketplace — removing locally');
       }
+    } else if (listing.ebayOfferId && listing.marketplace === 'ebay') {
+      // F-ORPHAN: an unpublished eBay offer (e.g. an ebay_draft) has no
+      // marketplaceListingId — withdraw it by offerId so deleting the Portage
+      // listing doesn't leave an orphaned eBay draft.
+      try {
+        const adapter = getAdapter(userId, listing.marketplace);
+        await adapter.deleteListing(listing.ebayOfferId);
+      } catch (err) {
+        logger.warn({ listingId: listing.id, err: (err as Error).message }, 'Failed to withdraw eBay offer — removing locally');
+      }
     }
 
     await db.delete(listings).where(eq(listings.id, listing.id));
@@ -581,13 +591,27 @@ listingsRouter.post('/bulk/delete', async (req, res, next) => {
     const { ids } = bulkListingIdsSchema.parse(req.body);
 
     // Verify ownership before deleting
-    const owned = await db.select({ id: listings.id, status: listings.status, marketplaceListingId: listings.marketplaceListingId, marketplace: listings.marketplace })
+    const owned = await db.select({ id: listings.id, status: listings.status, marketplaceListingId: listings.marketplaceListingId, ebayOfferId: listings.ebayOfferId, marketplace: listings.marketplace })
       .from(listings)
       .where(and(inArray(listings.id, ids), eq(listings.userId, userId)));
 
     if (owned.length !== ids.length) {
       throw new AppError(403, 'FORBIDDEN', 'One or more listings do not belong to you');
     }
+
+    // F-ORPHAN: withdraw unpublished eBay offers (ebay drafts have an ebayOfferId
+    // but no marketplaceListingId) so bulk-deleting them doesn't leave orphans.
+    await Promise.all(
+      owned
+        .filter((l) => l.status !== 'active' && l.ebayOfferId && l.marketplace === 'ebay')
+        .map(async (l) => {
+          try {
+            await getAdapter(userId, l.marketplace).deleteListing(l.ebayOfferId!);
+          } catch (err) {
+            logger.warn({ listingId: l.id, error: (err as Error).message }, 'Bulk delete: failed to withdraw eBay offer');
+          }
+        }),
+    );
 
     // Best-effort removal from marketplaces for active listings
     await Promise.all(

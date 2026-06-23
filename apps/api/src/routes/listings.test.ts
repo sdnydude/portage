@@ -2,16 +2,17 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
-const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId, mockGetEbayItemVerification } = vi.hoisted(() => ({
+const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId, mockGetEbayItemVerification, mockDeleteListing } = vi.hoisted(() => ({
   mockCreateListing: vi.fn(),
   mockUpdateListing: vi.fn(),
   mockBulkPublishOffers: vi.fn(),
   mockResolveEbayCategoryId: vi.fn(),
   mockGetEbayItemVerification: vi.fn(),
+  mockDeleteListing: vi.fn(),
 }));
 
 vi.mock('../db/index.js', () => ({
-  db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn(), transaction: vi.fn() },
 }));
 
 vi.mock('../marketplace/ebay-adapter.js', () => ({
@@ -20,6 +21,7 @@ vi.mock('../marketplace/ebay-adapter.js', () => ({
     updateListing: mockUpdateListing,
     bulkPublishOffers: mockBulkPublishOffers,
     getEbayItemVerification: mockGetEbayItemVerification,
+    deleteListing: mockDeleteListing,
   })),
   resolveEbayCategoryId: mockResolveEbayCategoryId,
 }));
@@ -878,6 +880,80 @@ describe('POST /bulk/activate', () => {
     expect(res.status).toBe(200);
     expect(mockBulkPublishOffers).toHaveBeenCalledWith(['offer-1', 'offer-2']);
     expect(res.body.ids).toEqual(expect.arrayContaining([LISTING_1, LISTING_2]));
+  });
+});
+
+describe('DELETE /listings/:id — F-ORPHAN: withdraw the eBay offer', () => {
+  const LISTING_ID = '00000000-0000-0000-0000-0000000000d1';
+
+  it('withdraws the unpublished eBay offer (by ebayOfferId) when deleting an eBay-draft listing', async () => {
+    mockSelectOnce([{
+      id: LISTING_ID, userId: 'test-user-id', marketplace: 'ebay',
+      status: 'draft', marketplaceListingId: null, ebayOfferId: '192643508011',
+    }]);
+    mockDeleteListing.mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) } as any);
+
+    const res = await request(app)
+      .delete(`/listings/${LISTING_ID}`)
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockDeleteListing).toHaveBeenCalledWith('192643508011');
+  });
+
+  it('bulk delete withdraws unpublished eBay offers (by ebayOfferId) for draft listings', async () => {
+    mockSelectBulk([
+      { id: '10000000-0000-0000-0000-0000000000a1', status: 'draft', marketplace: 'ebay', marketplaceListingId: null, ebayOfferId: '192643508011' },
+    ]);
+    mockDeleteListing.mockResolvedValue(undefined);
+    vi.mocked(db.transaction).mockImplementation(async (cb: any) =>
+      cb({ delete: () => ({ where: () => ({ returning: () => Promise.resolve([{ id: '10000000-0000-0000-0000-0000000000a1' }]) }) }) }),
+    );
+
+    const res = await request(app)
+      .post('/listings/bulk/delete')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: ['10000000-0000-0000-0000-0000000000a1'] });
+
+    expect(res.status).toBe(200);
+    expect(mockDeleteListing).toHaveBeenCalledWith('192643508011');
+  });
+
+  it('bulk delete is best-effort: a failed eBay offer withdrawal still deletes locally', async () => {
+    mockSelectBulk([
+      { id: '10000000-0000-0000-0000-0000000000a2', status: 'draft', marketplace: 'ebay', marketplaceListingId: null, ebayOfferId: '192643508011' },
+    ]);
+    mockDeleteListing.mockRejectedValue(new Error('eBay 500'));
+    const txReturning = vi.fn().mockResolvedValue([{ id: '10000000-0000-0000-0000-0000000000a2' }]);
+    vi.mocked(db.transaction).mockImplementation(async (cb: any) =>
+      cb({ delete: () => ({ where: () => ({ returning: txReturning }) }) }),
+    );
+
+    const res = await request(app)
+      .post('/listings/bulk/delete')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: ['10000000-0000-0000-0000-0000000000a2'] });
+
+    expect(res.status).toBe(200);
+    expect(txReturning).toHaveBeenCalled();
+  });
+
+  it('still deletes the listing locally when the eBay offer withdrawal fails', async () => {
+    mockSelectOnce([{
+      id: LISTING_ID, userId: 'test-user-id', marketplace: 'ebay',
+      status: 'draft', marketplaceListingId: null, ebayOfferId: '192643508011',
+    }]);
+    mockDeleteListing.mockRejectedValue(new Error('eBay 500'));
+    const whereDelete = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: whereDelete } as any);
+
+    const res = await request(app)
+      .delete(`/listings/${LISTING_ID}`)
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(whereDelete).toHaveBeenCalled();
   });
 });
 
