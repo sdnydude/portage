@@ -254,10 +254,12 @@ phase_F_todo: |
                    /users/me/preferences returns disclaimerSuppressed (open window AND version===CURRENT → void
                    on bump). Display-only; consent still per-listing (F3a). api 531 green, typecheck clean.
                    tdd-guard schema-column bypass (compile prereq) flagged for review.
-               [ ] WEB WIRING (next): DisclaimerSheet unchecked "don't show 7 days" checkbox → suppress7d;
-                   CreateListingSheet fetches disclaimerSuppressed + skips the sheet when suppressed (still
-                   sends disclaimerAccepted); suppressed-path microcopy "Terms apply — view on the About page"
-                   → /about. NEEDS run-the-app verify. DEP: /about page must ship with terms links (flagged).
+               [x] WEB WIRING DONE (commit 158b046): DisclaimerSheet "don't show 7 days" checkbox →
+                   onAccept(suppress7d); CreateListingSheet sends suppress7d + skips the sheet when
+                   useUserPreferences.disclaimerSuppressed (still records consent); suppressed-path microcopy
+                   → /about; shared UserPreferences.disclaimerSuppressed. web 210 green, typecheck/lint clean,
+                   LIVE-VERIFIED the checkbox renders (e2e f3b-terms-checkbox). HARD DEP (open): /about page
+                   must ship with terms/waiver links — microcopy link is dead until then.
   [ ] F4   Two-state publish RESULT screen: success vs draft-saved-with-the-verbatim-eBay-reason.
   Done when: both paths show price + terms, eBay-draft works, 7-day dismiss works + resets on version bump,
   result screen distinguishes success from draft-saved.
