@@ -5,6 +5,7 @@ import { resolvePublishMode } from "@/lib/publish-mode";
 import type { PublishPriceSource } from "@/lib/price";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { DisclaimerSheet } from "./disclaimer-sheet";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 
@@ -27,6 +28,8 @@ interface CreateListingSheetProps {
 
 export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialPublishNow = false, onCreated, onClose }: CreateListingSheetProps) {
   const { token } = useAuth();
+  // F3b: within the 7-day window the terms sheet is skipped (consent still recorded).
+  const { disclaimerSuppressed } = useUserPreferences();
   const [marketplace, setMarketplace] = useState<"ebay" | "etsy">("ebay");
   const [price, setPrice] = useState(suggestedPrice?.toString() ?? "");
   // Once the user types their own price it is authoritative — a late-arriving AI
@@ -56,7 +59,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
 
   // Single create-and-publish call; `aspects` carries seller-filled item
   // specifics on a retry after EBAY_ASPECTS_REQUIRED.
-  const submitListing = async (priceNum: number, aspects?: Record<string, string[]>) => {
+  const submitListing = async (priceNum: number, aspects?: Record<string, string[]>, suppress7d = false) => {
     const fields: { categoryId?: string; aspects?: Record<string, string[]> } = {};
     if (categoryId) fields.categoryId = categoryId;
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
@@ -72,13 +75,15 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         // F3a: publish-now is the only path that shows + requires the terms sheet,
         // so its acceptance is recorded server-side against the new listing.
         ...(publishNow ? { disclaimerAccepted: true } : {}),
+        // F3b: opt-in "don't show the terms sheet for 7 days" (display only).
+        ...(publishNow && suppress7d ? { suppress7d: true } : {}),
         ...(Object.keys(fields).length > 0 ? { marketplaceSpecificFields: fields } : {}),
       },
       token: token!,
     });
   };
 
-  const handleCreate = async () => {
+  const handleCreate = async (suppress7d = false) => {
     const priceNum = parseFloat(price);
     if (!priceNum || priceNum <= 0) {
       setError("Enter a valid price");
@@ -89,7 +94,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     setError(null);
 
     try {
-      await submitListing(priceNum);
+      await submitListing(priceNum, undefined, suppress7d);
       onCreated();
     } catch (err) {
       // Required item specifics: open the fill sheet instead of dead-ending.
@@ -235,8 +240,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
           <DisclaimerSheet
             listingId={itemId}
             isFirstTime={true}
-            onAccept={async () => {
-              await handleCreate();
+            onAccept={async (suppress7d: boolean) => {
+              await handleCreate(suppress7d);
             }}
             onCancel={() => setShowDisclaimer(false)}
           />
@@ -255,6 +260,14 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
           />
         )}
 
+        {/* F3b: terms are suppressed but still apply — keep them discoverable via About. */}
+        {!showDisclaimer && publishNow && disclaimerSuppressed && (
+          <p className="text-xs text-text-secondary pt-1">
+            Terms apply — view them on the{" "}
+            <a href="/about" className="underline text-forest-green">About page</a>.
+          </p>
+        )}
+
         {!showDisclaimer && (
           <div className="flex gap-3 pt-2">
             <button
@@ -265,9 +278,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
             </button>
             <button
               onClick={() => {
-                if (publishNow) {
+                if (publishNow && !disclaimerSuppressed) {
                   setShowDisclaimer(true);
                 } else {
+                  // Suppressed publish-now (or a draft save) goes straight through;
+                  // consent is still recorded server-side on the live publish.
                   handleCreate();
                 }
               }}
@@ -277,7 +292,9 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
               {isCreating
                 ? "Creating..."
                 : publishNow
-                  ? "Review Terms"
+                  ? disclaimerSuppressed
+                    ? "Publish"
+                    : "Review Terms"
                   : ebayDraft && marketplace === "ebay"
                     ? "Save eBay Draft"
                     : "Save Draft"}

@@ -422,6 +422,8 @@ export interface UserPreferences {
   listingForkPref: ListingForkPref;
   listingForkCount: number;
   listingCompactMode: boolean;
+  /** F3b: true while the publish terms sheet is suppressed (7-day window, current version). */
+  disclaimerSuppressed?: boolean;
 }
 
 export type ItemCondition = 'new' | 'like_new' | 'good' | 'fair' | 'poor';

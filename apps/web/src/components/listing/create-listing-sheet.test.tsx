@@ -17,11 +17,18 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ token: "t" }) }));
+const prefsMock = vi.hoisted(() => ({ disclaimerSuppressed: false }));
+vi.mock("@/hooks/use-user-preferences", () => ({
+  useUserPreferences: () => ({ disclaimerSuppressed: prefsMock.disclaimerSuppressed }),
+}));
 vi.mock("@/lib/api", () => ({ api: h.apiMock, ApiError: h.ApiError }));
 // Disclaimer just needs to expose its accept action for the publish path.
 vi.mock("./disclaimer-sheet", () => ({
-  DisclaimerSheet: ({ onAccept }: { onAccept: () => void }) => (
-    <button onClick={onAccept}>accept-terms</button>
+  DisclaimerSheet: ({ onAccept }: { onAccept: (suppress7d: boolean) => void }) => (
+    <>
+      <button onClick={() => onAccept(false)}>accept-terms</button>
+      <button onClick={() => onAccept(true)}>accept-terms-suppress</button>
+    </>
   ),
 }));
 
@@ -156,6 +163,63 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     await waitFor(() => expect(bodies.length).toBe(1));
     expect(bodies[0].publishMode).toBe("live");
     expect(bodies[0].disclaimerAccepted).toBe(true);
+  });
+
+  it("sends suppress7d when the seller accepts terms with 'don't show for 7 days' checked", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "active" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms-suppress"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(bodies[0].disclaimerAccepted).toBe(true);
+    expect(bodies[0].suppress7d).toBe(true);
+  });
+
+  it("skips the terms sheet and publishes directly when the seller is within the 7-day suppression", async () => {
+    prefsMock.disclaimerSuppressed = true;
+    try {
+      const bodies: Array<Record<string, unknown>> = [];
+      h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+        if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "active" }; }
+        return {};
+      });
+
+      render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+      const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+      fireEvent.click(toggle);
+      // Suppressed → the primary action publishes directly; no terms sheet.
+      fireEvent.click(screen.getByText("Publish"));
+
+      await waitFor(() => expect(bodies.length).toBe(1));
+      expect(bodies[0].publishMode).toBe("live");
+      expect(bodies[0].disclaimerAccepted).toBe(true);
+      expect(screen.queryByText("accept-terms")).not.toBeInTheDocument();
+    } finally {
+      prefsMock.disclaimerSuppressed = false;
+    }
+  });
+
+  it("shows About-page terms microcopy on the suppressed publish path", () => {
+    prefsMock.disclaimerSuppressed = true;
+    try {
+      render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={vi.fn()} onClose={vi.fn()} />);
+      const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+      fireEvent.click(toggle);
+      const link = screen.getByRole("link", { name: /about page/i });
+      expect(link).toHaveAttribute("href", "/about");
+    } finally {
+      prefsMock.disclaimerSuppressed = false;
+    }
   });
 
   it("shows the aspect-fill sheet when publish needs item specifics, then retries with them filled", async () => {
