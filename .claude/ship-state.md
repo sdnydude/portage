@@ -239,11 +239,19 @@ phase_F_todo: |
            apps/web/src/components/capture/scan-flow.tsx F1 diff in the review phase (precedent: Stage 2.5).
            DEAD CODE (my change orphaned): apps/web/src/lib/scan-listing-payload.ts + .test.ts now unused →
            delete in a follow-up.
-  [ ] F2   Price panel — confirm/edit price on every publish (prefill items.price → comps → estimate).
-  [ ] F3   Terms panel (DisclaimerSheet) with opt-in "don't show for 7 days": unchecked default; version-scoped
-           (void on CURRENT_DISCLAIMER_VERSION bump); server-side — needs a SCHEMA CHANGE (suppress_until,
-           user-level; current disclaimer_acceptances is per-listing) → pause for explicit go before db:push;
-           first acceptance still recorded, TTL suppresses only the re-prompt.
+  [x] F2   DONE (commit 97322fc). resolvePublishPriceWithSource reports the precedence step
+           (item/comps/estimate); the sheet shows it as a provenance hint under the price; both
+           callers wired. Scan's comps/estimate prefill fallback already existed via reviewPrice.
+           Editable price on every publish was delivered by F1. web 203 green, typecheck clean.
+  [~] F3   SPLIT after architect+evaluator review (consent path was broken — see bug 69727d0).
+           [x] F3a DONE (commit 69727d0): POST /listings now records a disclaimer_acceptances row against
+               the REAL new listing id on live publish (disclaimerAccepted flag); version stamped server-side
+               from shared CURRENT_DISCLAIMER_VERSION; de-duped the shipping.ts shadow constant. api 529/web 204.
+           [ ] F3b display-only 7-day suppression — STILL NEEDS SCHEMA (disclaimer_suppressions OR a
+               user-pref column) → PAUSE before db:push. REVIEW MANDATES: do NOT record implicit/suppressed
+               publishes as fresh consent (suppress only the re-PROMPT); strict === version check (void on
+               bump); fixed (non-sliding) window; server-derived userId; add a re-view/"stop hiding" path;
+               plain timestamp (not timestamptz). Reviewers split table-vs-column (1:1 either way).
   [ ] F4   Two-state publish RESULT screen: success vs draft-saved-with-the-verbatim-eBay-reason.
   Done when: both paths show price + terms, eBay-draft works, 7-day dismiss works + resets on version bump,
   result screen distinguishes success from draft-saved.
