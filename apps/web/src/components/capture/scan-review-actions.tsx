@@ -11,6 +11,9 @@ export interface ScanReviewActionsProps {
   isSaving: boolean;
   isListing: boolean;
   canSave: boolean;
+  /** Listing quantity as a raw string (coerced to a whole number >= 1 at save). */
+  quantity: string;
+  onQuantityChange: (value: string) => void;
   /** Why Save is disabled (required fields incomplete) — shown below the buttons. */
   saveDisabledReason?: string | null;
   /** Marks the Price label with a red asterisk when price is a missing required field. */
@@ -27,7 +30,7 @@ export interface ScanReviewActionsProps {
  * unit-testable in isolation. "Save & List" carries the entered price upward.
  */
 export function ScanReviewActions({
-  price, onPriceChange, onRescan, onSave, onSaveAndList, isSaving, isListing, canSave,
+  price, onPriceChange, quantity, onQuantityChange, onRescan, onSave, onSaveAndList, isSaving, isListing, canSave,
   saveDisabledReason = null, priceRequired = false, canList = true, listDisabledReason = null,
 }: ScanReviewActionsProps) {
   const busy = isSaving || isListing;
@@ -40,12 +43,28 @@ export function ScanReviewActions({
       className="fixed bottom-0 left-0 right-0 z-[70] px-4 py-3 glass-thick glass-fallback border-t border-border"
       style={{ paddingBottom: "calc(0.75rem + var(--safe-area-bottom))" }}
     >
-      <div className="mb-2">
-        <span className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1">
-          Price
-          {priceRequired && <span className="text-[var(--accent-error)]"> *</span>}
-        </span>
-        <PriceField value={price} onChange={onPriceChange} />
+      <div className="mb-2 flex items-end gap-3">
+        <div className="w-20 shrink-0">
+          <label htmlFor="scan-quantity" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1">Qty</label>
+          <input
+            id="scan-quantity"
+            aria-label="Quantity"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            step={1}
+            value={quantity}
+            onChange={(e) => onQuantityChange(e.target.value)}
+            className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-text-primary text-sm focus:border-border-focus focus:outline-none transition-colors"
+          />
+        </div>
+        <div className="flex-1">
+          <span className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1">
+            Price
+            {priceRequired && <span className="text-[var(--accent-error)]"> *</span>}
+          </span>
+          <PriceField value={price} onChange={onPriceChange} />
+        </div>
       </div>
       <div className="flex gap-2">
         <button

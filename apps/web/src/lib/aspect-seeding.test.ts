@@ -105,6 +105,16 @@ describe("mergeAspectSuggestions", () => {
     expect(result.aiNames).toEqual(["Color"]);
   });
 
+  it("does not auto-fill an AI value that is not in an enumerated aspect's allowed list", () => {
+    const result = autoFillFromAi(
+      { Color: ["Purple"] }, // not an allowed value
+      { Color: aspect(["Red", "Blue"]) }, // enumerated
+      {},
+    );
+    expect(result.values).toEqual({});
+    expect(result.aiNames).toEqual([]);
+  });
+
   it("never clobbers an aspect that already has a value (seller- or seed-set)", () => {
     const result = autoFillFromAi(
       { Brand: ["Sony"] },

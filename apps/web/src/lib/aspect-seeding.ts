@@ -61,10 +61,21 @@ export function autoFillFromAi(
     if (name in current) continue; // seller- or seed-set — never overwrite
     const raw = aiAspects?.[name];
     const v = Array.isArray(raw) ? raw[0] : undefined;
-    if (typeof v === "string" && v.trim() !== "") {
-      values[name] = v.trim();
-      aiNames.push(name);
+    if (typeof v !== "string" || v.trim() === "") continue;
+    const trimmed = v.trim();
+    const allowed = aspects[name].values;
+    if (allowed) {
+      // Enumerated aspect: only fill if the AI value is one eBay actually allows
+      // (case-insensitive), and store eBay's canonical casing. An out-of-list AI
+      // value would be rejected at publish — don't auto-fill it.
+      const match = allowed.find((a) => a.toLowerCase() === trimmed.toLowerCase());
+      if (!match) continue;
+      values[name] = match;
+    } else {
+      // Free-text aspect: no allowed list to validate against — accept as-is.
+      values[name] = trimmed;
     }
+    aiNames.push(name);
   }
   return { values, aiNames };
 }

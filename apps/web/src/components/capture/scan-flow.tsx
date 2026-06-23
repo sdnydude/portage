@@ -1230,28 +1230,6 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 </div>
               </div>
 
-              {/* Quantity — whole number ≥ 1, persisted on the item at save */}
-              <div>
-                <label htmlFor="scan-quantity" className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Quantity</label>
-                <input
-                  id="scan-quantity"
-                  aria-label="Quantity"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  step={1}
-                  value={editQuantity}
-                  // Free typing (incl. transient empty); normalize to a whole number
-                  // ≥ 1 on blur so the field is never left blank or fractional.
-                  onChange={(e) => setEditQuantity(e.target.value)}
-                  onBlur={() => {
-                    const n = Math.floor(Number(editQuantity));
-                    setEditQuantity(String(Number.isFinite(n) && n >= 1 ? n : 1));
-                  }}
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary focus:border-border-focus focus:outline-none transition-colors"
-                />
-              </div>
-
               {/* Condition Notes */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Condition Notes</label>
@@ -1367,6 +1345,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           <ScanReviewActions
             price={reviewPrice}
             onPriceChange={setListPrice}
+            quantity={editQuantity}
+            onQuantityChange={setEditQuantity}
             onRescan={handleRescan}
             onSave={handleSave}
             onSaveAndList={handleSaveAndList}

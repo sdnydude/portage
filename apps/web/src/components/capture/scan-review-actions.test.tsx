@@ -5,6 +5,8 @@ import { ScanReviewActions } from "./scan-review-actions";
 const baseProps = {
   price: 50 as number | null,
   onPriceChange: vi.fn(),
+  quantity: "1",
+  onQuantityChange: vi.fn(),
   onRescan: vi.fn(),
   onSave: vi.fn(),
   onSaveAndList: vi.fn(),
