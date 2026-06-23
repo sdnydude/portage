@@ -215,9 +215,15 @@ phase_F_todo: |
              - LESSON (logged): tdd-guard is NOT exempt for apps/web; never work around it; an early
                onClick={onSaveAndList} passed the click EVENT as ebayDraft (false-green) — fixed to
                onClick={() => onSaveAndList(ebayDraft)}. web 199 green.
-  [ ] F-GATE  Verify via Playwright: drive an eBay-draft publish on BOTH panels → confirm the eBay offer +
-              aspects.MPN through an IN-APP eBay-read route (standalone tsx deadlocks on token refresh).
-              Doubles as PR #132's MPN merge-gate proof (MPN now lands on the eBay offer). BLOCKS PR #132 merge.
+  [x] F-GATE  DONE + LIVE-VERIFIED (2026-06-23). Built EbayAdapter.getEbayItemVerification(sku) (GET
+              inventory_item + offer → aspects/MPN) + GET /listings/:id/ebay-offer (requireAuth, ownership-
+              scoped). TDD: api 523 green, typecheck/lint clean. Playwright ebay-draft-gate.spec.ts drives
+              eBay-draft on BOTH panels (item-detail CreateListingSheet + scan Save&List w/ real AI scan,
+              fixture=demo iPhone). LIVE 3/3 pass; independent route read confirms: item-detail offer
+              192643508011 + scan offer 193013983011, both UNPUBLISHED, aspects.MPN=['Does Not Apply']
+              → PR #132's product.mpn→aspects.MPN mirror PROVEN. PR #132 merge-gate now SATISFIED.
+              2 orphan eBay drafts (PRT-000009/192643508011, PRT-000010/193013983011) left for F-ORPHAN.
+              UNCOMMITTED.
   [ ] F-ORPHAN  Orphan cleanup — deleting a Portage listing (or a failed publish) must withdraw/delete the
                 eBay offer, or reuse it; today they orphan as eBay drafts (e.g. PRT-000008 / item 5117769708900).
   [ ] F1   Route both publish paths through a single publish-confirm sheet (kills the panels-on-one-path-only divergence).
