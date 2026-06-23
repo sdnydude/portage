@@ -16,11 +16,13 @@ interface CreateListingSheetProps {
   initialAspects?: Record<string, string[]>;
   /** F1: scan prefill — default the eBay-draft toggle on. */
   initialEbayDraft?: boolean;
+  /** F1: seed the publish-now toggle (e.g. seller profile default = live). */
+  initialPublishNow?: boolean;
   onCreated: () => void;
   onClose: () => void;
 }
 
-export function CreateListingSheet({ itemId, suggestedPrice, categoryId, initialAspects, initialEbayDraft = false, onCreated, onClose }: CreateListingSheetProps) {
+export function CreateListingSheet({ itemId, suggestedPrice, categoryId, initialAspects, initialEbayDraft = false, initialPublishNow = false, onCreated, onClose }: CreateListingSheetProps) {
   const { token } = useAuth();
   const [marketplace, setMarketplace] = useState<"ebay" | "etsy">("ebay");
   const [price, setPrice] = useState(suggestedPrice?.toString() ?? "");
@@ -37,7 +39,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, categoryId, initial
     if (userEditedPrice.current) return;
     setPrice(suggestedPrice?.toString() ?? "");
   }, [suggestedPrice]);
-  const [publishNow, setPublishNow] = useState(false);
+  const [publishNow, setPublishNow] = useState(initialPublishNow);
   // When not publishing now, optionally create an UNPUBLISHED eBay offer (Seller
   // Hub draft) instead of a Portage-local draft. eBay marketplace only.
   const [ebayDraft, setEbayDraft] = useState(initialEbayDraft);

@@ -15,7 +15,7 @@ import { resolvePublishPrice } from "@/lib/price";
 import { demandLabel } from "@/lib/demand";
 import { PhotoGalleryStrip } from "./photo-gallery-strip";
 import { PhotoEditPanel } from "./photo-edit-panel";
-import { buildListingPayload } from "@/lib/scan-listing-payload";
+import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
 import {
   getAvailablePortageConditions,
@@ -121,6 +121,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [compsLoading, setCompsLoading] = useState(false);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const [isListingForSale, setIsListingForSale] = useState(false);
+  // F1: after "Save & List" creates the item, open the unified publish-confirm
+  // sheet (seeded) instead of posting the listing directly from scan.
+  const [publishItemId, setPublishItemId] = useState<string | null>(null);
+  const [publishEbayDraft, setPublishEbayDraft] = useState(false);
+  const [publishNowSeed, setPublishNowSeed] = useState(false);
   // Seller-set sale price for the review step (null = use the resolved default).
   const [listPrice, setListPrice] = useState<number | null>(null);
   // Packaged weight (decimal lb) + dims, seeded from the AI estimate; manual
@@ -610,23 +615,20 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           ...(weightDims.ebayPackageType ? { ebayPackageType: weightDims.ebayPackageType } : {}),
         },
       });
-      // Honor the seller's draft/live preference; a failed profile fetch falls
-      // back to draft inside buildListingPayload (never an accidental live).
-      const profile = await api<{ profile: { ebayPublishMode?: "draft" | "live" | null } }>(
+      // F1: seed the confirm sheet from the seller profile (live -> publish-now
+      // on); a failed profile fetch falls back to draft (never an accidental live).
+      const profileLive = await api<{ profile: { ebayPublishMode?: "draft" | "live" | null } }>(
         "/seller-profile",
         { token },
       )
-        .then((d) => d.profile)
-        .catch(() => null);
-      const listing = await api<{ id: string; status: string; warning?: string }>("/listings", {
-        method: "POST",
-        token,
-        body: buildListingPayload(
-          { itemId: newItem.id, price: price ?? null, resolvedCategoryId, aspects: buildAspects(), ebayDraft },
-          profile,
-        ),
-      });
-      onClose(listing.warning ? { warning: listing.warning } : undefined);
+        .then((d) => d.profile?.ebayPublishMode === "live")
+        .catch(() => false);
+      setPublishEbayDraft(ebayDraft);
+      // An explicit eBay-draft choice overrides a live profile default (do not go live).
+      setPublishNowSeed(profileLive && !ebayDraft);
+      setPublishItemId(newItem.id);
+      setState("review");
+      setIsListingForSale(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
       setState("review");
@@ -1365,6 +1367,21 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             }
           />
         </div>
+      )}
+
+      {/* F1: unified publish-confirm sheet, opened after Save & List creates the
+          item — seeded with the scan's price/category/aspects + draft/live choice. */}
+      {publishItemId && (
+        <CreateListingSheet
+          itemId={publishItemId}
+          suggestedPrice={reviewPrice ?? undefined}
+          categoryId={resolvedCategoryId ?? undefined}
+          initialAspects={buildAspects()}
+          initialEbayDraft={publishEbayDraft}
+          initialPublishNow={publishNowSeed}
+          onCreated={() => { setPublishItemId(null); onClose(); }}
+          onClose={() => setPublishItemId(null)}
+        />
       )}
 
       {/* ─── SAVING STATE ──────────────────────────────────────────────── */}

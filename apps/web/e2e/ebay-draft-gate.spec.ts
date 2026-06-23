@@ -101,13 +101,20 @@ test.describe("F-GATE: eBay-draft publish + MPN verification", () => {
 
     const saveAndList = page.getByRole("button", { name: "Save & List" });
     await expect(saveAndList, "Save & List is gated — required eBay specifics not filled by the AI scan").toBeEnabled();
+    await saveAndList.click();
+
+    // F1: scan now creates the item then opens the unified confirm sheet (seeded
+    // as an eBay draft). Confirm there to actually create the listing.
+    const confirm = page.getByRole("button", { name: "Save eBay Draft" });
+    await expect(confirm).toBeVisible({ timeout: 60_000 });
+    await page.screenshot({ path: path.join(SHOT_DIR, "fgate-3-scan-confirm-sheet.png"), fullPage: true });
 
     const [resp] = await Promise.all([
       page.waitForResponse(
         (r) => r.request().method() === "POST" && new URL(r.url()).pathname.endsWith("/listings"),
         { timeout: 60_000 },
       ),
-      saveAndList.click(),
+      confirm.click(),
     ]);
     expect(resp.ok(), `POST /listings failed: ${resp.status()} ${await resp.text()}`).toBeTruthy();
     const created = await resp.json();

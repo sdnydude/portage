@@ -93,6 +93,14 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     expect(bodies[0].publishMode).toBe("ebay_draft");
   });
 
+  it("defaults the publish-now path on when initialPublishNow is set (seller profile = live)", () => {
+    render(
+      <CreateListingSheet itemId="i1" suggestedPrice={65} initialPublishNow onCreated={vi.fn()} onClose={vi.fn()} />,
+    );
+    // publishNow on → the primary action reviews terms before publishing, not "Save Draft".
+    expect(screen.getByText("Review Terms")).toBeInTheDocument();
+  });
+
   it("carries scan prefill (categoryId + aspects + eBay-draft default) into the listing POST", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
