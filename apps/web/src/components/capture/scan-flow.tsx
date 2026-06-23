@@ -11,7 +11,7 @@ import { CropTool } from "@/components/listing-flow/crop-tool";
 import { ScanReviewActions } from "./scan-review-actions";
 import { ScanAspectsSection } from "./scan-aspects-section";
 import { useScanAspects } from "@/hooks/use-scan-aspects";
-import { resolvePublishPrice } from "@/lib/price";
+import { resolvePublishPriceWithSource } from "@/lib/price";
 import { demandLabel } from "@/lib/demand";
 import { PhotoGalleryStrip } from "./photo-gallery-strip";
 import { PhotoEditPanel } from "./photo-edit-panel";
@@ -481,8 +481,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const valueLowNum = parseFloat(editValueLow) || 0;
   const valueHighNum = parseFloat(editValueHigh) || 0;
   const recommendedNum = Math.round((valueLowNum + valueHighNum) / 2) || null;
-  const reviewPrice = listPrice ?? resolvePublishPrice(
-    { estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
+  const { price: reviewPrice, source: reviewPriceSource } = resolvePublishPriceWithSource(
+    { price: listPrice, estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
     comps?.stats,
   );
 
@@ -1375,6 +1375,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         <CreateListingSheet
           itemId={publishItemId}
           suggestedPrice={reviewPrice ?? undefined}
+          priceSource={reviewPriceSource ?? undefined}
           categoryId={resolvedCategoryId ?? undefined}
           initialAspects={buildAspects()}
           initialEbayDraft={publishEbayDraft}

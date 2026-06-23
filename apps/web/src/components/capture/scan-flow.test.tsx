@@ -411,6 +411,16 @@ describe("ScanFlow review wiring", () => {
     expect(apiMock.mock.calls.some(([p]) => p === "/listings")).toBe(false);
   });
 
+  it("opens the confirm sheet with a price provenance hint (estimate fallback)", async () => {
+    await renderInReview();
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    expect(await screen.findByText("Create Listing")).toBeInTheDocument();
+    // No seller price + no comps in this fixture → the prefill falls back to the
+    // AI estimate, and the sheet labels its provenance.
+    expect(screen.getByText("Estimated")).toBeInTheDocument();
+  });
+
   it("defaults the confirm sheet to draft (publish-now off) when the seller-profile fetch fails — no accidental live", async () => {
     await renderInReview();
     apiMock.mockImplementation(async (path: string) => {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { resolvePublishMode } from "@/lib/publish-mode";
+import type { PublishPriceSource } from "@/lib/price";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { DisclaimerSheet } from "./disclaimer-sheet";
@@ -10,6 +11,8 @@ import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 interface CreateListingSheetProps {
   itemId: string;
   suggestedPrice?: number;
+  /** F2: where suggestedPrice came from — shown as a provenance hint. */
+  priceSource?: PublishPriceSource;
   /** F1: scan prefill — the eBay leaf category resolved at scan time. */
   categoryId?: string;
   /** F1: scan prefill — item specifics captured at scan time. */
@@ -22,7 +25,7 @@ interface CreateListingSheetProps {
   onClose: () => void;
 }
 
-export function CreateListingSheet({ itemId, suggestedPrice, categoryId, initialAspects, initialEbayDraft = false, initialPublishNow = false, onCreated, onClose }: CreateListingSheetProps) {
+export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialPublishNow = false, onCreated, onClose }: CreateListingSheetProps) {
   const { token } = useAuth();
   const [marketplace, setMarketplace] = useState<"ebay" | "etsy">("ebay");
   const [price, setPrice] = useState(suggestedPrice?.toString() ?? "");
@@ -177,6 +180,15 @@ export function CreateListingSheet({ itemId, suggestedPrice, categoryId, initial
               className="w-full pl-7 pr-4 py-2.5 bg-muted rounded-xl text-base text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
             />
           </div>
+          {priceSource && (
+            <p className="mt-1 text-xs text-text-secondary">
+              {priceSource === "item"
+                ? "From your price"
+                : priceSource === "comps"
+                  ? "From market comps"
+                  : "Estimated"}
+            </p>
+          )}
         </div>
 
         <label className="flex items-center gap-3 py-2 cursor-pointer">

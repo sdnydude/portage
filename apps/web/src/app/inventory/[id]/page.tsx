@@ -14,7 +14,7 @@ import { useComps } from "@/hooks/use-comps";
 import { api, API_BASE } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
 import { formatCondition } from "@/lib/format";
-import { resolvePublishPrice } from "@/lib/price";
+import { resolvePublishPriceWithSource } from "@/lib/price";
 
 const conditionColors: Record<string, string> = {
   new: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -621,7 +621,8 @@ export default function ItemDetailPage() {
       {showListingSheet && (
         <CreateListingSheet
           itemId={item.id}
-          suggestedPrice={resolvePublishPrice(item, comps?.stats) ?? undefined}
+          suggestedPrice={resolvePublishPriceWithSource(item, comps?.stats).price ?? undefined}
+          priceSource={resolvePublishPriceWithSource(item, comps?.stats).source ?? undefined}
           onCreated={() => {
             setShowListingSheet(false);
             // Save-redirect contract: land on inventory, not listings

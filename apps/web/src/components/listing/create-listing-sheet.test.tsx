@@ -93,6 +93,13 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     expect(bodies[0].publishMode).toBe("ebay_draft");
   });
 
+  it("shows where the prefilled price came from (provenance hint)", () => {
+    render(
+      <CreateListingSheet itemId="i1" suggestedPrice={95} priceSource="comps" onCreated={vi.fn()} onClose={vi.fn()} />,
+    );
+    expect(screen.getByText(/market comps/i)).toBeInTheDocument();
+  });
+
   it("defaults the publish-now path on when initialPublishNow is set (seller profile = live)", () => {
     render(
       <CreateListingSheet itemId="i1" suggestedPrice={65} initialPublishNow onCreated={vi.fn()} onClose={vi.fn()} />,
