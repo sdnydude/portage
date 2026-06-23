@@ -1,8 +1,8 @@
 status: in_progress
-phase: 4-build (gate APPROVED by user 2026-06-11; B5 amended = deprecate static category list, eBay taxonomy
-  is THE category; B7 added = seed Brand/Model aspects from item fields; flow cards verified live-shared
-  state — duplicate cards are visual only, no divergence)
-branch: main (feature branch created at Phase 4 start)
+phase: 4-build COMPLETE (A/B/C shipped: PRs #111/#112/#118 etc.) → AI-specifics A–E + live-test hardening
+  shipped on branch feat/ai-specifics-and-publish-result (PR #132, OPEN, merge-gated on Phase-F live verify).
+  NEXT FOCUS = backlog Phase F (unify publish + price/terms panels). See docs/incomplete-work-backlog.md.
+branch: feat/ai-specifics-and-publish-result (PR #132 → main; do NOT merge until Phase-F live MPN verify)
 feature: "Pre-Stage-3 fix batch — ONE ship, phased (user-directed 2026-06-11, mirrors redesign merge_decision: phases 1-3 once, phased build, hard gate before Phase 4). Nine user-reported items from live production test (iPhone/iPad, demo account, real eBay account). Prior redesign state versioned: ship-state_v7_redesign-pre-stage3-fixbatch.md — Stage 3 (eBay-setup nav trap) resumes after this ship."
 complexity: complex (DB schema + api + web, >5 tasks)
 tdd: true (tdd-guard enforced; apps/web NOT exempt — guard fired on onboarding fix today)
@@ -144,4 +144,81 @@ tdd_guard_bypasses: "ONE scripted bypass so far (Phase A, A3): login session-ins
   Phase 6 reviewers: review the login-route diff extra-carefully (precedent: Stage 2.5 had 3 such bypasses)."
 pr_strategy: "PR per phase (A/B/C), --no-ff merge, single-revert rollback per concern — mirrors redesign."
 
-next: "HARD GATE: present plan A1-A7/B1-B6/C1-C3 to user. On approval -> Phase 4 build starting Phase A."
+next: "Phase F in progress on branch feat/phase-f-publish-unification. F0 (eBay-draft backend) DONE +
+  committed (api 520 green). RESUME AT F0b: eBay-draft toggle on both publish panels. See PHASE F TODO."
+
+phase_F_progress: |
+  F0 — eBay-draft publish mode (POST /listings publishMode='ebay_draft' → adapter createListing draft mode →
+       creates unpublished eBay offer + persists ebaySku/ebayOfferId, status stays draft). DONE, committed on
+       feat/phase-f-publish-unification. typecheck clean, api 520 (+1 route test). Safe design: NEW 'ebay_draft'
+       enum value (did NOT repurpose 'draft', which stays DB-only — repurposing would push every local draft to eBay).
+  Investigation that grounded F0 (eBay-draft was never a wired feature):
+   - adapter draft branch (1a0f73c/T7) is real but NO route ever forwarded 'draft' to it ("draft = DB only" since b883433/T13).
+   - the eBay drafts seen in testing are ORPHANED offers: createListing makes the offer at line 519, /publish at 602;
+     a /publish failure (BrandMPN 25002 / ATO 25019 / condition 25021) leaves the offer unpublished = a draft.
+     Pre-offer failures (validate/weight/aspect-gate@439 "Complete eBay details") leave NOTHING on eBay.
+   - draft 5117769708900 (Nextorage, 22:21 EST 2026-06-22) = orphan for SKU PRT-000008 (gap in seq 1-7,9; item deleted).
+   - orphan-cleanup is a deferred bug (delete eBay offer when Portage listing deleted / on failed publish).
+  RESUME — F0b (eBay-draft toggle, both panels):
+   - CreateListingSheet (create-listing-sheet.tsx:51): publishNow toggle maps live/draft; add 3-way so eBay
+     marketplace + not-publish-now + eBay-draft-on → publishMode 'ebay_draft'. TDD the mapping.
+   - Scan Save & List: thread an eBay-draft choice through buildListingPayload (scan-listing-payload.ts) +
+     ScanReviewActions; sends publishMode 'ebay_draft'. TDD.
+   - Then F-GATE: Playwright drives an eBay-draft publish on both panels; verify the eBay offer + aspects.MPN via
+     an IN-APP eBay-read route (a standalone tsx script deadlocks on token refresh — build a small admin/route).
+   - Fold in orphan-cleanup when wiring delete."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SESSION HANDOFF — 2026-06-23
+# ─────────────────────────────────────────────────────────────────────────────
+handoff_2026_06_23: |
+  WHERE WE LEFT OFF
+  - Pre-Stage-3 fix batch (Phases A/B/C: auth/session, item-setup+publish-truth, listing-UX) = SHIPPED earlier
+    (PRs #111/#112/#118/#121/#123/#124/#125).
+  - AI-specifics A–E (scan AI-fills required eBay specifics → auto-fill in place [AI]-tagged/editable →
+    persist on items.aspects → carry through every publish path) + the live-production-test fixes =
+    SHIPPED on branch feat/ai-specifics-and-publish-result via PR #132 (OPEN, pushed, 8 commits).
+  - Verified: API 519 tests, web 195 tests, typecheck + lint clean; both containers rebuilt + healthy;
+    one live publish succeeded (eBay listing 307019237500).
+  - tdd-guard ON throughout (apps/web NOT exempt — guard fired on hooks/components all session).
+
+  PR #132 COMMITS (newest→oldest): 45c1a7c (web quantity-in-bar + F9 enum-check) · eff8ba9 (F2 malformed
+  aspect degrade + firmer prompt) · 48ad82c (MPN item-specific + F6 updateListing parity) · aceeba1
+  (quantity crosswire) · 346e1fd (persistent publish-failure banner) · e70baaa (auto-fill in place +
+  quantity + required-field gating) · 35f1cf3 (refine-path prefill) · 12ad270 (BrandMPN sentinel).
+
+  MERGE GATE (do NOT merge PR #132 until done): live re-publish an item, confirm the eBay listing's MPN
+  item-specific shows a value (real or "Does Not Apply"), Type auto-fills more often, quantity sits left of
+  Price in the bottom bar, and the review scrolls to the bottom. User will run this during Phase F.
+
+  REVIEW-HARDENING ALREADY DONE THIS SHIP (the F6/F2/F9 adversarial-review items — NOT pending):
+  F6 shared normalizeAspects() → updateListing parity; F2 per-value .catch([]) degrade; F9 autoFillFromAi
+  enum-check. (These were review findings tagged "Phase F" but are completed in PR #132.)
+
+  OPEN DEFERRED (registry, queryable):
+  - Type AI auto-pick on high-cardinality aspects (~20+ values) — best-effort prompt nudge shipped; AI-dependent.
+  - Duplicate listings row on republish (two listings rows → same eBay listing 307019237500) — idempotency gap.
+  - SKU "Custom label" Seller-Hub check (PRT-000009 IS sent in offer.sku; confirm it shows in Seller Hub).
+  - Price model: items.price (asking) vs listings.price (per-marketplace) kept SEPARATE by user decision.
+
+phase_F_todo: |
+  PHASE F — Unify publish + price & terms panels (design agreed; see docs/incomplete-work-backlog.md)
+  Goal: ONE publish-confirm sheet for BOTH paths (item-detail CreateListingSheet AND scan Save & List),
+  carrying price + terms + a truthful publish result.
+
+  [ ] F-GATE  Live re-publish verify (PR #132 merge gate): MPN item-specific shows on eBay; Type/quantity/
+              scroll all correct. BLOCKS merge of PR #132.
+  [ ] F1  Route both publish paths through a single publish-confirm sheet (kill the divergence where panels
+          appear on item-detail but the scan Save & List publishes with no panels).
+  [ ] F2  Price panel — confirm/edit price on every publish (prefill from items.price → comps → estimate).
+  [ ] F3  Terms panel (DisclaimerSheet) with opt-in "don't show for 7 days":
+            - unchecked by default (never auto-suppress legal terms),
+            - version-scoped — voided when CURRENT_DISCLAIMER_VERSION bumps,
+            - server-side via disclaimer_acceptances + a suppress_until timestamp (holds across devices),
+            - first acceptance still recorded; the TTL only suppresses the re-prompt.
+  [ ] F4  Two-state publish RESULT screen: success vs draft-saved-with-the-verbatim-eBay-reason.
+  Done when: both publish paths show price + terms, the 7-day dismiss works and resets on version bump,
+  and the result screen distinguishes success from draft-saved.
+
+  SUBSEQUENT PHASES (not F): E-panel (AiIdentificationPanel summary), G (Save & List lists live, not a silent
+  draft), H (orders sync — broken weeks), I (remove in-app carriers → eBay shipping policy). See backlog doc.
