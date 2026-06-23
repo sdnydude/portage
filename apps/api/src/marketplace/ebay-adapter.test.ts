@@ -155,6 +155,23 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
   });
 });
 
+describe('EbayAdapter.createListing — BrandMPN (error 25002) handling', () => {
+  it('sends MPN "Does Not Apply" when the item has a brand but no real MPN (eBay rejects Brand without MPN)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Nextorage',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      publishMode: 'draft',
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.product.brand).toBe('Nextorage');
+    expect(body.product.mpn).toBe('Does Not Apply');
+  });
+});
+
 describe('EbayAdapter — request hygiene (User-Agent)', () => {
   it('sends a descriptive User-Agent on the inventory PUT — an anonymous fetch reads as a bot to eBay ATO', async () => {
     const adapter = new EbayAdapter('user-1');
@@ -289,7 +306,7 @@ describe('EbayAdapter.createListing — required item aspects', () => {
     expect(product.aspects.MPN).toEqual(['WH1000XM4/B']);
   });
 
-  it('leaves product.mpn unset (never the model name) when no real mpn is provided', async () => {
+  it('sends MPN "Does Not Apply" (never the model name) when brand is present but no real mpn', async () => {
     const adapter = new EbayAdapter('user-1');
     await adapter.createListing({
       ...baseInput,
@@ -299,7 +316,10 @@ describe('EbayAdapter.createListing — required item aspects', () => {
     } as any);
     const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
     const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
-    expect(product.mpn).toBeUndefined();
+    // eBay's BrandMPN rule (25002) rejects a Brand without an MPN — but the MPN
+    // must still never be the model name.
+    expect(product.mpn).toBe('Does Not Apply');
+    expect(product.mpn).not.toBe('WH-1000XM4');
   });
 });
 

@@ -366,6 +366,10 @@ export class EbayAdapter implements MarketplaceAdapter {
     // MPN is the real part number (input.mpn), NEVER the model name — eBay rejects
     // a model name in the MPN field with error 25002.
     if (input.mpn) product.mpn = input.mpn;
+    // eBay's BrandMPN rule (error 25002 <BrandMPN>) rejects a Brand sent without an
+    // accompanying MPN. When a branded item has no real part number, send eBay's
+    // "Does Not Apply" sentinel rather than nothing so publish isn't rejected.
+    if (product.brand && !product.mpn) product.mpn = 'Does Not Apply';
     if (specific.upc) product.upc = [specific.upc as string];
     if (specific.epid) product.epid = specific.epid;
 
@@ -630,6 +634,9 @@ export class EbayAdapter implements MarketplaceAdapter {
       if (input.brand) product.brand = input.brand;
       // Real part number only — never the model name (eBay error 25002).
       if (input.mpn) product.mpn = input.mpn;
+      // BrandMPN rule (25002): a Brand without an MPN is rejected — send the
+      // "Does Not Apply" sentinel when a branded item has no real part number.
+      if (product.brand && !product.mpn) product.mpn = 'Does Not Apply';
       if (specific.upc) product.upc = [specific.upc as string];
       if (specific.epid) product.epid = specific.epid;
       if (specific.aspects) product.aspects = specific.aspects;
