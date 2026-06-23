@@ -115,7 +115,7 @@ const createListingSchema = z.object({
   price: z.number().positive(),
   currency: z.string().length(3).default('USD'),
   publishImmediately: z.boolean().default(false),
-  publishMode: z.enum(['draft', 'live']).optional(),
+  publishMode: z.enum(['draft', 'live', 'ebay_draft']).optional(),
   marketplaceSpecificFields: z.record(z.unknown()).optional(),
 });
 
@@ -205,7 +205,10 @@ listingsRouter.post('/', async (req, res, next) => {
 
     // publishMode (when present) takes precedence over the legacy
     // publishImmediately flag. draft = save to DB only (no marketplace call).
-    const shouldPublish = body.publishMode === 'live' || (body.publishMode === undefined && body.publishImmediately);
+    // 'ebay_draft' also calls the adapter — but in draft mode (creates the eBay
+    // offer, skips /publish). Only 'draft' stays DB-only (no marketplace call).
+    const shouldPublish = body.publishMode === 'live' || body.publishMode === 'ebay_draft' || (body.publishMode === undefined && body.publishImmediately);
+    const adapterPublishMode: 'draft' | 'live' = body.publishMode === 'ebay_draft' ? 'draft' : 'live';
 
     if (shouldPublish) {
       const adapter = getAdapter(userId, body.marketplace);
@@ -249,9 +252,9 @@ listingsRouter.post('/', async (req, res, next) => {
         features: item.features as string[],
         marketplaceSpecific,
         ebaySku: stableSku,
-        // This branch only runs when shouldPublish — say so explicitly rather
-        // than relying on the adapter treating absent publishMode as live.
-        publishMode: 'live',
+        // 'live' for a real publish, 'draft' for an eBay-draft request (adapter
+        // creates the offer and skips /publish).
+        publishMode: adapterPublishMode,
       });
 
       marketplaceListingId = result.marketplaceListingId;

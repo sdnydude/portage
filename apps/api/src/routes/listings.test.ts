@@ -105,6 +105,33 @@ describe('POST /listings', () => {
     );
   });
 
+  it('publishMode "ebay_draft" calls the adapter in draft mode and persists the unpublished eBay offer', async () => {
+    mockSelectOnce([{ ...MOCK_ITEM }]);
+    mockSelectOnce([]); // seller profile (policy self-heal)
+    mockSelectOnce([]); // footer lookup
+    const values = mockInsertCapture();
+    // The adapter's draft branch creates the eBay inventory item + offer, skips
+    // /publish, and returns status 'draft' with the offerId + sku.
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: null, ebayOfferId: 'offer-9', ebaySku: 'PRT-000009', status: 'draft' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'ebay_draft',
+        marketplaceSpecificFields: { categoryId: '123' },
+      });
+
+    expect(res.status).toBe(201);
+    // adapter IS called (not the DB-only path) and in DRAFT mode (no /publish)
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({ publishMode: 'draft' }));
+    // the eBay offer id + sku are persisted; status stays draft (not active)
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ ebayOfferId: 'offer-9', ebaySku: 'PRT-000009', status: 'draft' }));
+  });
+
   it('carries item.aspects into marketplaceSpecific on publish, client aspects winning per key', async () => {
     mockSelectOnce([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'], Color: ['Black'] } }]);
     mockSelectOnce([]); // seller profile (policy self-heal)
