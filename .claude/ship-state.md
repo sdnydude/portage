@@ -224,9 +224,21 @@ phase_F_todo: |
               → PR #132's product.mpn→aspects.MPN mirror PROVEN. PR #132 merge-gate now SATISFIED.
               2 orphan eBay drafts (PRT-000009/192643508011, PRT-000010/193013983011) left for F-ORPHAN.
               UNCOMMITTED.
-  [ ] F-ORPHAN  Orphan cleanup — deleting a Portage listing (or a failed publish) must withdraw/delete the
-                eBay offer, or reuse it; today they orphan as eBay drafts (e.g. PRT-000008 / item 5117769708900).
-  [ ] F1   Route both publish paths through a single publish-confirm sheet (kills the panels-on-one-path-only divergence).
+  [x] F-ORPHAN  DONE (2026-06-23). Single + bulk listing DELETE now withdraw the unpublished eBay offer by
+                ebayOfferId for eBay drafts (status!=active && ebayOfferId), best-effort. api 527, 4 tests.
+                Committed 92192a2. NOTE: 2 F-GATE orphans (192643508011, 193013983011) still live on eBay —
+                clean by rebuilding api + deleting those 2 listings (offer now auto-withdraws).
+  [x] F1   DONE + LIVE-VERIFIED (2026-06-23). Both publish paths now open ONE CreateListingSheet.
+           Part 1 (c2095b3): sheet accepts scan prefill (categoryId/initialAspects/initialEbayDraft).
+           Part 2: + initialPublishNow prop; scan "Save & List" creates the item then OPENS the sheet
+           seeded from the seller profile (live→publish-now on; profile-fetch-fail→draft = safe; an
+           explicit eBay-draft choice overrides a live default). Removed scan direct-POST + buildListingPayload.
+           web 200 green; live e2e 3/3 (scan reaches /listings only via the sheet button); offer 193043011011
+           read back UNPUBLISHED w/ aspects.MPN. TDD-GUARD BYPASS (authorized): scan-flow.tsx state+handler+
+           mount applied via python edit — guard indirection deadlock (state→mount→text). REVIEW-FLAG: verify
+           apps/web/src/components/capture/scan-flow.tsx F1 diff in the review phase (precedent: Stage 2.5).
+           DEAD CODE (my change orphaned): apps/web/src/lib/scan-listing-payload.ts + .test.ts now unused →
+           delete in a follow-up.
   [ ] F2   Price panel — confirm/edit price on every publish (prefill items.price → comps → estimate).
   [ ] F3   Terms panel (DisclaimerSheet) with opt-in "don't show for 7 days": unchecked default; version-scoped
            (void on CURRENT_DISCLAIMER_VERSION bump); server-side — needs a SCHEMA CHANGE (suppress_until,
