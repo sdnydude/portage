@@ -390,4 +390,15 @@ describe('generateListingFields', () => {
 
     expect(result.ebay?.aspects).toEqual({ Brand: ['Sony'], Color: ['Black'] });
   });
+
+  it('degrades a malformed aspect value instead of throwing a 502 — good values survive', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: ['Sony'], Bad: null } } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    expect(result.ebay?.aspects?.Brand).toEqual(['Sony']);
+  });
 });

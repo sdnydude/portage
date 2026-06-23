@@ -91,13 +91,13 @@ const ListingFieldsOutputSchema = z.object({
     condition: z.string().optional().default(''),
     conditionDescription: z.string().optional().default(''),
     // Coerce scalar-string aspect values (some models return "Sony" instead of
-    // ["Sony"]) to arrays so they match Record<string, string[]>. Keep the
-    // default so a malformed aspects bag degrades to {} rather than throwing —
-    // generateListingFields throws on schema failure and prepare-listing does not
-    // wrap it in a non-fatal guard.
+    // ["Sony"]) to arrays. A malformed value (null/object) is caught PER KEY and
+    // degrades to [] (dropped downstream by normalizeAspects) rather than failing
+    // the whole parse — so one bad specific never 502s generateListingFields /
+    // prepare-listing (which has no non-fatal guard). Good values still survive.
     aspects: z.record(
       z.string(),
-      z.union([z.string().transform((v) => [v]), z.array(z.string())]),
+      z.union([z.string().transform((v) => [v]), z.array(z.string())]).catch([]),
     ).optional().default({}),
     upc: z.string().nullable().optional().default(null),
     epid: z.string().nullable().optional().default(null),
@@ -254,7 +254,7 @@ const LISTING_FIELDS_SYSTEM_PROMPT = `You are a marketplace listing expert. Gene
 
 RULES:
 - eBay title must be ≤80 characters. Pack keywords: Brand + Model + Key Attributes + Condition hint
-- Fill ALL required item specifics from the provided aspects list. Use "N/A" only as last resort.
+- Fill EVERY required item specific. When a specific provides a list of allowed values, you MUST output the single closest-matching value FROM THAT LIST — map the item to the best fit (e.g. an external SSD → "Portable External SSD", a hand tool → its closest "Type"). Never leave a required specific blank, never output "N/A" when the list has any reasonable match, and never invent a value that is not in the provided list. Only use "N/A" for a free-text specific (no allowed list) you genuinely cannot determine.
 - Condition description must reference specific wear visible in photos (scratches, scuffs, patina, etc.)
 - If no wear is visible, say "Item appears to be in [condition] condition with no visible wear."
 - Price suggestion should target slightly below sold median for faster sale
