@@ -176,6 +176,11 @@ scanRouter.post('/refine', async (req, res, next) => {
     }
 
     const detailedResult = await identifyItemsMulti(images);
+    // Same Phase-A prefill as POST /scan?detail=full — the refine (multi-photo)
+    // path must also fill the top candidate's required eBay specifics, or the
+    // scan review shows an empty aspect list. Best-effort, never throws; threads
+    // the first image so generateListingFields takes the vision (JSON) path.
+    detailedResult.candidates = await prefillCandidateAspects(detailedResult.candidates, images[0]?.base64);
     const identification = detailedResult.candidates[0];
 
     await incrementScanCount(userId);
