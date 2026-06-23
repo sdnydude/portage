@@ -10,11 +10,17 @@ import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 interface CreateListingSheetProps {
   itemId: string;
   suggestedPrice?: number;
+  /** F1: scan prefill — the eBay leaf category resolved at scan time. */
+  categoryId?: string;
+  /** F1: scan prefill — item specifics captured at scan time. */
+  initialAspects?: Record<string, string[]>;
+  /** F1: scan prefill — default the eBay-draft toggle on. */
+  initialEbayDraft?: boolean;
   onCreated: () => void;
   onClose: () => void;
 }
 
-export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose }: CreateListingSheetProps) {
+export function CreateListingSheet({ itemId, suggestedPrice, categoryId, initialAspects, initialEbayDraft = false, onCreated, onClose }: CreateListingSheetProps) {
   const { token } = useAuth();
   const [marketplace, setMarketplace] = useState<"ebay" | "etsy">("ebay");
   const [price, setPrice] = useState(suggestedPrice?.toString() ?? "");
@@ -34,7 +40,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
   const [publishNow, setPublishNow] = useState(false);
   // When not publishing now, optionally create an UNPUBLISHED eBay offer (Seller
   // Hub draft) instead of a Portage-local draft. eBay marketplace only.
-  const [ebayDraft, setEbayDraft] = useState(false);
+  const [ebayDraft, setEbayDraft] = useState(initialEbayDraft);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
@@ -46,6 +52,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
   // Single create-and-publish call; `aspects` carries seller-filled item
   // specifics on a retry after EBAY_ASPECTS_REQUIRED.
   const submitListing = async (priceNum: number, aspects?: Record<string, string[]>) => {
+    const fields: { categoryId?: string; aspects?: Record<string, string[]> } = {};
+    if (categoryId) fields.categoryId = categoryId;
+    // The seller-filled retry set wins; otherwise fall back to scan prefill.
+    const effectiveAspects = aspects ?? initialAspects;
+    if (effectiveAspects && Object.keys(effectiveAspects).length > 0) fields.aspects = effectiveAspects;
     await api("/listings", {
       method: "POST",
       body: {
@@ -53,7 +64,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, onCreated, onClose 
         marketplace,
         price: priceNum,
         publishMode: resolvePublishMode({ publishNow, ebayDraft, marketplace }),
-        ...(aspects ? { marketplaceSpecificFields: { aspects } } : {}),
+        ...(Object.keys(fields).length > 0 ? { marketplaceSpecificFields: fields } : {}),
       },
       token: token!,
     });

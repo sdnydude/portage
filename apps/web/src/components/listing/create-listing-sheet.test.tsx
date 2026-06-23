@@ -93,6 +93,37 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     expect(bodies[0].publishMode).toBe("ebay_draft");
   });
 
+  it("carries scan prefill (categoryId + aspects + eBay-draft default) into the listing POST", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(
+      <CreateListingSheet
+        itemId="i1"
+        suggestedPrice={65}
+        initialEbayDraft
+        categoryId="175669"
+        initialAspects={{ Brand: ["Apple"], MPN: ["Does Not Apply"] }}
+        onCreated={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // eBay-draft default is on → the button is the draft action; just save.
+    fireEvent.click(screen.getByText("Save eBay Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(bodies[0].publishMode).toBe("ebay_draft");
+    expect((bodies[0].marketplaceSpecificFields as { categoryId?: string })?.categoryId).toBe("175669");
+    expect((bodies[0].marketplaceSpecificFields as { aspects?: Record<string, string[]> })?.aspects).toEqual({
+      Brand: ["Apple"],
+      MPN: ["Does Not Apply"],
+    });
+  });
+
   it("shows the aspect-fill sheet when publish needs item specifics, then retries with them filled", async () => {
     const onCreated = vi.fn();
     let listingsCalls = 0;
