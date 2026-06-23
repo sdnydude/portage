@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { ScanFlow } from "@/components/capture/scan-flow";
 import { FloatingMic } from "@/components/porter/floating-mic";
 import { useUnreadCount } from "@/hooks/use-messages";
@@ -20,7 +20,6 @@ export function TabBar() {
   const pathname = usePathname();
   const [showScan, setShowScan] = useState(false);
   const [scanWarning, setScanWarning] = useState<string | null>(null);
-  const warningTimer = useRef<number | null>(null);
   const { count: unreadCount } = useUnreadCount();
 
   const handleScanOpen = useCallback(() => {
@@ -29,17 +28,10 @@ export function TabBar() {
 
   const handleScanClose = useCallback((result?: { warning?: string }) => {
     setShowScan(false);
-    // Marketplace draft-fallback reason (e.g. eBay rejected the publish) —
-    // ScanFlow has unmounted, so the host surfaces it.
-    if (result?.warning) {
-      setScanWarning(result.warning);
-      if (warningTimer.current !== null) window.clearTimeout(warningTimer.current);
-      warningTimer.current = window.setTimeout(() => setScanWarning(null), 8000);
-    }
-  }, []);
-
-  useEffect(() => () => {
-    if (warningTimer.current !== null) window.clearTimeout(warningTimer.current);
+    // Publish-failure / draft-fallback reason (e.g. eBay rejected the publish).
+    // Persists until the seller dismisses it — the old 8s auto-hide was missed on
+    // mobile after the modal closed, so a failed publish read as a silent success.
+    if (result?.warning) setScanWarning(result.warning);
   }, []);
 
   const isHome = pathname.startsWith("/home");
@@ -169,14 +161,25 @@ export function TabBar() {
       {/* Scan flow modal */}
       {showScan && <ScanFlow onClose={handleScanClose} />}
 
-      {/* Save & List draft-fallback warning (marketplace's actual reason) */}
+      {/* Save & List publish-failure / draft-fallback (marketplace's actual reason).
+          Persists until dismissed — a failed publish must never read as a silent success. */}
       {scanWarning && (
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-24 left-4 right-4 z-50 mx-auto max-w-md px-4 py-3 rounded-xl text-sm font-medium shadow-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/90 dark:border-amber-800 dark:text-amber-200 animate-in fade-in slide-in-from-bottom-2 duration-200"
+          className="fixed bottom-24 left-4 right-4 z-50 mx-auto max-w-md px-4 py-3 rounded-xl text-sm font-medium shadow-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/90 dark:border-amber-800 dark:text-amber-200 animate-in fade-in slide-in-from-bottom-2 duration-200 flex items-start gap-3"
         >
-          {scanWarning}
+          <span className="flex-1">{scanWarning}</span>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setScanWarning(null)}
+            className="shrink-0 -mr-1 -mt-0.5 p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900/50"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 

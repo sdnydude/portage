@@ -46,6 +46,29 @@ function mergeItemShipping(
 }
 
 /**
+ * Carry the item's stored eBay aspects into marketplaceSpecific so every publish
+ * path sends the specifics captured at scan/prepare — the aspect pop-up never
+ * re-asks for data already on the item (error 25002). Client-supplied aspects win
+ * key-by-key (an AspectFillSheet retry overrides the stored value); item.aspects
+ * fills the rest. Ephemeral: the merged object goes to the adapter, not persisted.
+ */
+function mergeItemAspects(
+  item: { aspects?: Record<string, string[]> | null },
+  specific: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const ms = { ...(specific ?? {}) };
+  const itemAspects = (item.aspects as Record<string, string[]> | null) ?? {};
+  const clientAspects = (ms.aspects as Record<string, string[]> | undefined) ?? {};
+  ms.aspects = { ...itemAspects, ...clientAspects };
+  return ms;
+}
+
+/** First MPN value from a merged aspects bag, for the adapter's product.mpn. */
+function mpnFromAspects(specific: Record<string, unknown> | undefined): string | undefined {
+  return (specific?.aspects as Record<string, string[]> | undefined)?.MPN?.[0];
+}
+
+/**
  * Self-heal eBay setup fields (policy IDs + inventory location) from the seller
  * profile when the request carries none — body-provided values always win, the
  * profile only fills gaps. Mirrors the identical block in POST /:id/publish
@@ -202,6 +225,7 @@ listingsRouter.post('/', async (req, res, next) => {
         if (cat.categoryId) marketplaceSpecific = { ...(marketplaceSpecific ?? {}), categoryId: cat.categoryId };
         marketplaceSpecific = await applySellerPolicyDefaults(userId, marketplaceSpecific);
         marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
+        marketplaceSpecific = mergeItemAspects(item, marketplaceSpecific);
         stableSku = await ensureItemEbaySku(item);
       }
 
@@ -221,6 +245,7 @@ listingsRouter.post('/', async (req, res, next) => {
         quantity: item.quantity,
         brand: item.brand,
         model: item.model,
+        mpn: mpnFromAspects(marketplaceSpecific),
         features: item.features as string[],
         marketplaceSpecific,
         ebaySku: stableSku,
@@ -334,7 +359,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             features: item.features as string[],
             ebaySku: updated.ebaySku ?? undefined,
             ebayOfferId: updated.ebayOfferId ?? undefined,
-            marketplaceSpecific: updated.marketplaceSpecificFields as Record<string, unknown> | undefined,
+            marketplaceSpecific: mergeItemAspects(item, updated.marketplaceSpecificFields as Record<string, unknown> | undefined),
           });
           // Degraded-sync warnings (e.g. Best Offer downgrade) belong to the user.
           if (syncResult?.warning) warning = syncResult.warning;
@@ -430,6 +455,7 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       // Item columns are the source of truth for package weight/dimensions —
       // merge them in eBay shape so calculated-shipping publishes carry weight.
       marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
+      marketplaceSpecific = mergeItemAspects(item, marketplaceSpecific);
     }
 
     const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
@@ -448,6 +474,7 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       quantity: item.quantity,
       brand: item.brand,
       model: item.model,
+      mpn: mpnFromAspects(marketplaceSpecific),
       features: item.features as string[],
       marketplaceSpecific,
       // Prefer the listing's own SKU when it already has one (a legacy draft whose

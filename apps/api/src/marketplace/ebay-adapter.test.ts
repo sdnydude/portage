@@ -155,6 +155,36 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
   });
 });
 
+describe('EbayAdapter.createListing — BrandMPN (error 25002) handling', () => {
+  it('sends MPN "Does Not Apply" when the item has a brand but no real MPN (eBay rejects Brand without MPN)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Nextorage',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      publishMode: 'draft',
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.product.brand).toBe('Nextorage');
+    expect(body.product.mpn).toBe('Does Not Apply');
+  });
+
+  it('mirrors product.mpn into the MPN item-specific (aspects.MPN) so the eBay listing shows it', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Nextorage',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      publishMode: 'draft',
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
+    expect(product.aspects.MPN).toEqual(['Does Not Apply']);
+  });
+});
+
 describe('EbayAdapter — request hygiene (User-Agent)', () => {
   it('sends a descriptive User-Agent on the inventory PUT — an anonymous fetch reads as a bot to eBay ATO', async () => {
     const adapter = new EbayAdapter('user-1');
@@ -272,6 +302,37 @@ describe('EbayAdapter.createListing — required item aspects', () => {
     } as any);
     expect(aspectsFromPut().Brand).toEqual(['Cloud Microphones']);
     expect(aspectsFromPut().Model).toEqual(['CL-1']);
+  });
+
+  it('sets product.mpn from input.mpn (real part number) and seeds aspects.MPN — never the model name (eBay rejects model-as-MPN, 25002)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Sony',
+      model: 'WH-1000XM4',
+      mpn: 'WH1000XM4/B',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
+    expect(product.mpn).toBe('WH1000XM4/B');
+    expect(product.aspects.MPN).toEqual(['WH1000XM4/B']);
+  });
+
+  it('sends MPN "Does Not Apply" (never the model name) when brand is present but no real mpn', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      brand: 'Sony',
+      model: 'WH-1000XM4',
+      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+    } as any);
+    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
+    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
+    // eBay's BrandMPN rule (25002) rejects a Brand without an MPN — but the MPN
+    // must still never be the model name.
+    expect(product.mpn).toBe('Does Not Apply');
+    expect(product.mpn).not.toBe('WH-1000XM4');
   });
 });
 
@@ -518,6 +579,23 @@ describe('EbayAdapter.createListing — Best Offer auto-accept (bestOfferTerms)'
     const body = JSON.parse((putCall![1] as RequestInit).body as string);
     expect(body.listingPolicies).toBeUndefined();
     expect(body.pricingSummary.price.value).toBe('25');
+  });
+
+  it('updateListing normalizes scalar aspect values and backfills Brand/MPN (parity with createListing)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.updateListing('listing-1', {
+      brand: 'Nextorage',
+      currency: 'USD',
+      ebaySku: 'PRT-000009', // inventory-item PUT (carries product.aspects) is gated on this
+      marketplaceSpecific: { ...validSetup, aspects: { Type: 'Portable External SSD' } }, // scalar, not array
+    } as any);
+
+    const putCall = fetchMock.mock.calls.find(([u, o]) => String(u).includes('/inventory_item/') && (o as RequestInit).method === 'PUT');
+    expect(putCall).toBeTruthy();
+    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
+    expect(product.aspects.Type).toEqual(['Portable External SSD']); // scalar coerced to array
+    expect(product.aspects.Brand).toEqual(['Nextorage']);            // backfilled from input.brand
+    expect(product.aspects.MPN).toEqual(['Does Not Apply']);         // BrandMPN sentinel mirrored
   });
 
   it('updateListing sends bestOfferTerms inside a COMPLETE listingPolicies block (never partial — eBay PUT replaces the object)', async () => {
@@ -1207,6 +1285,7 @@ describe('EbayAdapter.updateListing — syncs inventory_item + offer', () => {
       photos: [{ url: 'https://portage-images.digitalharmonyai.com/updated.jpg' }],
       brand: 'Sony',
       model: 'XM5',
+      mpn: 'WH1000XM5/B',
       ebaySku: 'portage-sku-abc',
       ebayOfferId: 'offer-42',
     });
@@ -1219,7 +1298,8 @@ describe('EbayAdapter.updateListing — syncs inventory_item + offer', () => {
     expect(invBody.product.title).toBe('Updated Headphones');
     expect(invBody.product.imageUrls).toEqual(['https://portage-images.digitalharmonyai.com/updated.jpg']);
     expect(invBody.product.brand).toBe('Sony');
-    expect(invBody.product.mpn).toBe('XM5');
+    // MPN is the real part number (input.mpn), never the model name.
+    expect(invBody.product.mpn).toBe('WH1000XM5/B');
 
     const offerPut = fetchMock.mock.calls.find(([u]) => String(u).includes('/offer/offer-42'));
     expect(offerPut).toBeTruthy();

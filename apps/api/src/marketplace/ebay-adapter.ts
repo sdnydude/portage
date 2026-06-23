@@ -234,6 +234,37 @@ export async function resolveEbayCategoryId(
   };
 }
 
+/**
+ * Normalize a marketplaceSpecific.aspects bag to eBay's array-of-strings shape
+ * (the prepare-listing AI sometimes emits a scalar per aspect, which crashed the
+ * publish path), and backfill Brand/Model/MPN from the product identity. Shared by
+ * createListing and updateListing so both send identical, valid specifics. The MPN
+ * passed here is product.mpn (real part number, or the "Does Not Apply" sentinel),
+ * mirrored into the MPN item-specific so the eBay listing actually shows it.
+ */
+function normalizeAspects(
+  rawAspects: Record<string, unknown> | undefined,
+  identity: { brand?: string | null; model?: string | null; mpn?: string },
+): Record<string, string[]> {
+  const aspects: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(rawAspects ?? {})) {
+    const arr = (Array.isArray(v) ? v : [v])
+      .map((x) => (typeof x === 'number' || typeof x === 'boolean' ? String(x) : x))
+      .filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+    if (arr.length > 0) {
+      aspects[k] = arr;
+    } else {
+      // Dropping silently would resurface as a misleading "missing aspect" error
+      // at the publish gate — make the discard observable.
+      logger.warn({ aspect: k }, 'Discarded non-string aspect value from marketplaceSpecific.aspects');
+    }
+  }
+  if (identity.brand && !aspects.Brand) aspects.Brand = [identity.brand];
+  if (identity.model && !aspects.Model) aspects.Model = [identity.model];
+  if (identity.mpn && !aspects.MPN) aspects.MPN = [identity.mpn];
+  return aspects;
+}
+
 export class EbayAdapter implements MarketplaceAdapter {
   readonly marketplace = 'ebay' as const;
 
@@ -363,33 +394,25 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
 
     if (input.brand) product.brand = input.brand;
-    if (input.model) product.mpn = input.model;
+    // MPN is the real part number (input.mpn), NEVER the model name — eBay rejects
+    // a model name in the MPN field with error 25002.
+    if (input.mpn) product.mpn = input.mpn;
+    // eBay's BrandMPN rule (error 25002 <BrandMPN>) rejects a Brand sent without an
+    // accompanying MPN. When a branded item has no real part number, send eBay's
+    // "Does Not Apply" sentinel rather than nothing so publish isn't rejected.
+    if (product.brand && !product.mpn) product.mpn = 'Does Not Apply';
     if (specific.upc) product.upc = [specific.upc as string];
     if (specific.epid) product.epid = specific.epid;
 
     // eBay validates category-required item specifics from `aspects` (not the
     // legacy product.brand/mpn fields), so a missing Brand aspect fails publish
-    // with error 25002. Surface Brand/Model here, but let explicit AI-prepared
-    // aspects win — curated values are authoritative over the derived fallbacks.
-    // Normalize aspect values to eBay's array-of-strings shape — the
-    // prepare-listing AI sometimes emits a single string per aspect, which
-    // previously crashed the publish path (.filter on a string).
-    const rawAspects = (specific.aspects as Record<string, unknown> | undefined) ?? {};
-    const aspects: Record<string, string[]> = {};
-    for (const [k, v] of Object.entries(rawAspects)) {
-      const arr = (Array.isArray(v) ? v : [v])
-        .map((x) => (typeof x === 'number' || typeof x === 'boolean' ? String(x) : x))
-        .filter((x): x is string => typeof x === 'string' && x.trim() !== '');
-      if (arr.length > 0) {
-        aspects[k] = arr;
-      } else {
-        // Dropping silently would resurface as a misleading "missing aspect"
-        // error at the publish gate — make the discard observable.
-        logger.warn({ aspect: k }, 'Discarded non-string aspect value from marketplaceSpecific.aspects');
-      }
-    }
-    if (input.brand && !aspects.Brand) aspects.Brand = [input.brand];
-    if (input.model && !aspects.Model) aspects.Model = [input.model];
+    // with error 25002. Normalize + backfill Brand/Model/MPN via the shared helper
+    // (explicit AI-prepared aspects still win — they're not overwritten).
+    const aspects = normalizeAspects(specific.aspects as Record<string, unknown> | undefined, {
+      brand: input.brand,
+      model: input.model,
+      mpn: product.mpn as string | undefined,
+    });
 
     // Publish gate: eBay rejects publish (error 25002) when a category-required
     // item specific has no value. Check here — before any inventory/offer write
@@ -625,10 +648,22 @@ export class EbayAdapter implements MarketplaceAdapter {
       if (input.description) product.description = input.description;
       if (input.photos) product.imageUrls = input.photos.map((p) => p.url);
       if (input.brand) product.brand = input.brand;
-      if (input.model) product.mpn = input.model;
+      // Real part number only — never the model name (eBay error 25002).
+      if (input.mpn) product.mpn = input.mpn;
+      // BrandMPN rule (25002): a Brand without an MPN is rejected — send the
+      // "Does Not Apply" sentinel when a branded item has no real part number.
+      if (product.brand && !product.mpn) product.mpn = 'Does Not Apply';
       if (specific.upc) product.upc = [specific.upc as string];
       if (specific.epid) product.epid = specific.epid;
-      if (specific.aspects) product.aspects = specific.aspects;
+      // Parity with createListing: normalize scalar values + backfill Brand/Model/MPN
+      // (sentinel) so an active-listing edit can't push a malformed or incomplete
+      // specifics bag. The publish-time required-aspect GATE stays publish-only.
+      const aspects = normalizeAspects(specific.aspects as Record<string, unknown> | undefined, {
+        brand: input.brand,
+        model: input.model,
+        mpn: product.mpn as string | undefined,
+      });
+      if (Object.keys(aspects).length > 0) product.aspects = aspects;
 
       const inventoryItem: Record<string, unknown> = {
         availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },

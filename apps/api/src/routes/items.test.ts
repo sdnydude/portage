@@ -275,6 +275,35 @@ describe('POST /items', () => {
     );
   });
 
+  it('accepts aspects and passes them to the insert', async () => {
+    const valuesSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'] } }]),
+    });
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Sony WH-1000XM4', aspects: { Brand: ['Sony'] } });
+
+    expect(res.status).toBe(201);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ aspects: { Brand: ['Sony'] } }));
+  });
+
+  it('defaults aspects to {} when omitted', async () => {
+    const valuesSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM }]),
+    });
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'No aspects item' });
+
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ aspects: {} }));
+  });
+
   it('rejects quantity 0 — eBay requires at least 1', async () => {
     const res = await request(app)
       .post('/items')
@@ -331,6 +360,46 @@ describe('PATCH /items/:id', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('NOT_FOUND');
+  });
+
+  it('updates aspects via PATCH', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Color: ['Red'] } }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ aspects: { Color: ['Red'] } });
+
+    expect(res.status).toBe(200);
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ aspects: { Color: ['Red'] } }));
+  });
+
+  it('merges aspects on PATCH — a partial aspect update preserves existing keys', async () => {
+    // Existing item already carries scan-captured Brand/Model specifics. A partial
+    // aspect edit (adding Color) must not wipe them — aspects is JSONB like
+    // marketplaceData, so the partial PATCH must read-merge, not wholesale-replace.
+    mockSelectReturnOnce([{ id: 'item-1', aspects: { Brand: ['Sony'], Model: ['WH-1000XM4'] } }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'], Model: ['WH-1000XM4'], Color: ['Red'] } }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ aspects: { Color: ['Red'] } });
+
+    expect(res.status).toBe(200);
+    const written = setSpy.mock.calls[0][0].aspects;
+    expect(written).toEqual({ Brand: ['Sony'], Model: ['WH-1000XM4'], Color: ['Red'] });
   });
 
   it('persists marketplaceData.ebay.categoryId so publish can resolve the eBay leaf category', async () => {

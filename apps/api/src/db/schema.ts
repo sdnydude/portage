@@ -65,6 +65,10 @@ export const items = pgTable('items', {
   brand: varchar('brand', { length: 255 }).notNull().default(''),
   model: varchar('model', { length: 255 }).notNull().default(''),
   features: jsonb('features').notNull().default([]),
+  // eBay item specifics (Brand, MPN, category aspects) keyed → string[] values.
+  // AI-filled at scan, carried into every publish path so the aspect pop-up never
+  // re-asks for data already captured. Existing rows default to {}.
+  aspects: jsonb('aspects').$type<Record<string, string[]>>().notNull().default({}),
   estimatedValueMin: doublePrecision('estimated_value_min'),
   estimatedValueMax: doublePrecision('estimated_value_max'),
   estimatedValueRecommended: doublePrecision('estimated_value_recommended'),

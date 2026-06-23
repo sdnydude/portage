@@ -10,6 +10,9 @@ export interface MarketplaceListingInput {
   photos: { url: string; isPrimary?: boolean }[];
   brand?: string;
   model?: string;
+  // Manufacturer Part Number — a real part/SKU number, never the model name.
+  // eBay rejects the model name as MPN (error 25002).
+  mpn?: string | null;
   features?: string[];
   quantity?: number;
   publishMode?: 'draft' | 'live';
