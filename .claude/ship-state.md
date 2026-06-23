@@ -208,11 +208,13 @@ phase_F_todo: |
 
   [x] F0   eBay-draft backend — POST /listings publishMode='ebay_draft' → adapter draft mode → unpublished
            eBay offer + persist sku/offerId, status draft. DONE (commit 8b44c5b, api 520 green).
-  [ ] F0b  eBay-draft TOGGLE on BOTH publish panels → sends publishMode 'ebay_draft':
-             - CreateListingSheet (create-listing-sheet.tsx:51): publishNow→live/draft becomes 3-way
-               (live / eBay-draft / local-draft) for the eBay marketplace. TDD the mapping.
-             - Scan Save & List: thread the eBay-draft choice through buildListingPayload
-               (scan-listing-payload.ts) + a toggle in ScanReviewActions. TDD.
+  [x] F0b  eBay-draft TOGGLE on BOTH panels → publishMode 'ebay_draft'. DONE (commits 3a6431a + 90a2ebb).
+             - CreateListingSheet: "Save as eBay draft" toggle (3-way via resolvePublishMode helper).
+             - Scan Save & List: "List as eBay draft" checkbox in ScanReviewActions; the boolean rides
+               onSaveAndList(ebayDraft) → buildListingPayload(ebayDraft) → 'ebay_draft'.
+             - LESSON (logged): tdd-guard is NOT exempt for apps/web; never work around it; an early
+               onClick={onSaveAndList} passed the click EVENT as ebayDraft (false-green) — fixed to
+               onClick={() => onSaveAndList(ebayDraft)}. web 199 green.
   [ ] F-GATE  Verify via Playwright: drive an eBay-draft publish on BOTH panels → confirm the eBay offer +
               aspects.MPN through an IN-APP eBay-read route (standalone tsx deadlocks on token refresh).
               Doubles as PR #132's MPN merge-gate proof (MPN now lands on the eBay offer). BLOCKS PR #132 merge.
