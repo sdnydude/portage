@@ -427,19 +427,23 @@ export function useListingFlow() {
         });
         itemId = item.id;
         setState(prev => ({ ...prev, inventoryItemId: itemId }));
-      } else if (weightOz != null) {
-        // Existing item: persist weight/dims to the item columns so the
-        // publish-time merge (listings route) can emit packageWeightAndSize.
+      } else {
+        // Existing item: persist the flow's quantity (item.quantity is the single
+        // source of truth — publish reads it) and, when present, weight/dims so
+        // the publish-time merge (listings route) can emit packageWeightAndSize.
         await api(`/items/${itemId}`, {
           method: 'PATCH',
           body: {
-            weightOz,
-            // route schema is positive().optional() — send undefined, never null.
-            lengthIn: dimL ?? undefined,
-            widthIn: dimW ?? undefined,
-            heightIn: dimH ?? undefined,
-            ebayPackageType: pkgType ?? undefined,
-            weightEstimated: estimated,
+            quantity: s.quantity,
+            ...(weightOz != null && {
+              weightOz,
+              // route schema is positive().optional() — send undefined, never null.
+              lengthIn: dimL ?? undefined,
+              widthIn: dimW ?? undefined,
+              heightIn: dimH ?? undefined,
+              ebayPackageType: pkgType ?? undefined,
+              weightEstimated: estimated,
+            }),
           },
           token,
         });
