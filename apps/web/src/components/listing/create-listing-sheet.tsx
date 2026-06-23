@@ -69,6 +69,9 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         marketplace,
         price: priceNum,
         publishMode: resolvePublishMode({ publishNow, ebayDraft, marketplace }),
+        // F3a: publish-now is the only path that shows + requires the terms sheet,
+        // so its acceptance is recorded server-side against the new listing.
+        ...(publishNow ? { disclaimerAccepted: true } : {}),
         ...(Object.keys(fields).length > 0 ? { marketplaceSpecificFields: fields } : {}),
       },
       token: token!,

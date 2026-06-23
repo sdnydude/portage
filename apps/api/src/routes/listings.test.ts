@@ -856,6 +856,52 @@ function mockSelectBulk(rows: unknown[]) {
 const LISTING_1 = '10000000-0000-0000-0000-000000000001';
 const LISTING_2 = '10000000-0000-0000-0000-000000000002';
 
+describe('POST /listings — disclaimer consent (F3a)', () => {
+  it('records a disclaimer acceptance against the new listing id on a live publish with disclaimerAccepted', async () => {
+    mockSelectOnce([{ ...MOCK_ITEM }]);
+    mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // footer
+    const inserts: Array<Record<string, unknown>> = [];
+    const mk = (ret: unknown) => ({
+      values: vi.fn((v: Record<string, unknown>) => { inserts.push(v); return { returning: vi.fn().mockResolvedValue(ret) }; }),
+    });
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(mk([{ id: 'listing-1', status: 'active' }]) as any)
+      .mockReturnValueOnce(mk([{ id: 'acc-1' }]) as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 100, publishMode: 'live', disclaimerAccepted: true });
+
+    expect(res.status).toBe(201);
+    const acceptance = inserts.find((v) => 'disclaimerVersion' in v);
+    expect(acceptance, 'an acceptance row should be inserted').toBeDefined();
+    expect(acceptance).toMatchObject({ listingId: 'listing-1', disclaimerVersion: 1 });
+  });
+
+  it('does not record an acceptance when disclaimerAccepted is absent', async () => {
+    mockSelectOnce([{ ...MOCK_ITEM }]);
+    mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // footer
+    const inserts: Array<Record<string, unknown>> = [];
+    const mk = (ret: unknown) => ({
+      values: vi.fn((v: Record<string, unknown>) => { inserts.push(v); return { returning: vi.fn().mockResolvedValue(ret) }; }),
+    });
+    vi.mocked(db.insert).mockReturnValue(mk([{ id: 'listing-1', status: 'active' }]) as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 100, publishMode: 'live' });
+
+    expect(res.status).toBe(201);
+    expect(inserts.find((v) => 'disclaimerVersion' in v)).toBeUndefined();
+  });
+});
+
 describe('POST /bulk/activate', () => {
   it('publishes eBay drafts via bulkPublishOffers and updates their status', async () => {
     mockSelectBulk([

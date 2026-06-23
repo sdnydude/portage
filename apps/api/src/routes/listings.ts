@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { eq, desc, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { listings, items, sellerProfiles } from '../db/schema.js';
+import { listings, items, sellerProfiles, disclaimerAcceptances } from '../db/schema.js';
+import { CURRENT_DISCLAIMER_VERSION } from '@portage/shared';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
@@ -117,6 +118,10 @@ const createListingSchema = z.object({
   publishImmediately: z.boolean().default(false),
   publishMode: z.enum(['draft', 'live', 'ebay_draft']).optional(),
   marketplaceSpecificFields: z.record(z.unknown()).optional(),
+  // F3a: the seller reviewed + accepted the terms sheet for this live publish.
+  // The disclaimer version is stamped server-side (CURRENT) — never trusted from
+  // the client — so the legal record reflects the terms actually in force.
+  disclaimerAccepted: z.boolean().default(false),
 });
 
 const updateListingSchema = z.object({
@@ -301,6 +306,21 @@ listingsRouter.post('/', async (req, res, next) => {
     }).returning();
 
     logger.info({ userId, listingId: listing.id, marketplace: body.marketplace, status }, 'Listing created');
+
+    // F3a: record the explicit disclaimer acceptance against the REAL listing id
+    // (live publish only — drafts never show the terms sheet). Version is stamped
+    // server-side from the shared constant, never trusted from the client.
+    if (body.disclaimerAccepted && status === 'active') {
+      const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+        || req.socket.remoteAddress
+        || null;
+      await db.insert(disclaimerAcceptances).values({
+        userId,
+        listingId: listing.id,
+        disclaimerVersion: CURRENT_DISCLAIMER_VERSION,
+        ipAddress: ipAddress?.slice(0, 45) ?? null,
+      });
+    }
 
     const response: Record<string, unknown> = { ...listing };
     if (adapterWarning) {

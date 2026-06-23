@@ -139,6 +139,25 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     });
   });
 
+  it("sends disclaimerAccepted on a publish-now (after accepting terms) so consent is recorded", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "active" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(bodies[0].publishMode).toBe("live");
+    expect(bodies[0].disclaimerAccepted).toBe(true);
+  });
+
   it("shows the aspect-fill sheet when publish needs item specifics, then retries with them filled", async () => {
     const onCreated = vi.fn();
     let listingsCalls = 0;
