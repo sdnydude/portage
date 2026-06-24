@@ -33,7 +33,7 @@ type ItemShipping = {
   heightIn: number | null;
   ebayPackageType: string | null;
 };
-function mergeItemShipping(
+export function mergeItemShipping(
   item: ItemShipping,
   specific: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
@@ -53,7 +53,7 @@ function mergeItemShipping(
  * key-by-key (an AspectFillSheet retry overrides the stored value); item.aspects
  * fills the rest. Ephemeral: the merged object goes to the adapter, not persisted.
  */
-function mergeItemAspects(
+export function mergeItemAspects(
   item: { aspects?: Record<string, string[]> | null },
   specific: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
