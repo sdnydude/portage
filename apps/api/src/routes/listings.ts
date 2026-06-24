@@ -398,7 +398,15 @@ listingsRouter.patch('/:id', async (req, res, next) => {
       .returning();
 
     // Skip marketplace sync when archiving — the listing was already removed above.
-    if (!isArchiving && updated.status === 'active' && updated.marketplaceListingId) {
+    // Sync edits (e.g. price) to the marketplace for a published listing AND for an
+    // unpublished eBay draft (status 'draft' + ebayOfferId) — eBay rejects UI price
+    // edits on Inventory-API listings, so Portage must push the change to the offer.
+    const ebaySyncId = updated.marketplaceListingId ?? updated.ebayOfferId;
+    const shouldSyncMarketplace = !isArchiving && !!ebaySyncId && (
+      (updated.status === 'active' && !!updated.marketplaceListingId) ||
+      (updated.status === 'draft' && updated.marketplace === 'ebay' && !!updated.ebayOfferId)
+    );
+    if (shouldSyncMarketplace) {
       const [item] = await db.select()
         .from(items)
         .where(eq(items.id, updated.itemId))
@@ -411,7 +419,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             .from(sellerProfiles)
             .where(eq(sellerProfiles.userId, userId))
             .limit(1);
-          const syncResult = await adapter.updateListing(updated.marketplaceListingId, {
+          const syncResult = await adapter.updateListing(ebaySyncId!, {
             title: item.title,
             description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(updated.marketplace)),
             price: updated.price,

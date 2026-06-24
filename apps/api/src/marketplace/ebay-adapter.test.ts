@@ -1502,7 +1502,7 @@ describe('EbayAdapter.getEbayItemVerification — F-GATE read-back of live eBay 
       }
       if (u.includes('/offer?sku=PRT-000009')) {
         return new Response(JSON.stringify({
-          offers: [{ offerId: '9988776655', status: 'UNPUBLISHED', listing: { listingId: '307019237500' } }],
+          offers: [{ offerId: '9988776655', status: 'UNPUBLISHED', listing: { listingId: '307019237500' }, pricingSummary: { price: { value: '349.00', currency: 'USD' } } }],
         }), { status: 200 });
       }
       return new Response('{}', { status: 200 });
@@ -1513,6 +1513,7 @@ describe('EbayAdapter.getEbayItemVerification — F-GATE read-back of live eBay 
 
     expect(result.found).toBe(true);
     expect(result.sku).toBe('PRT-000009');
+    expect(result.price).toBe('349.00');
     expect(result.aspects.MPN).toEqual(['HD600']);
     expect(result.mpn).toBe('HD600');
     expect(result.brand).toBe('Sennheiser');

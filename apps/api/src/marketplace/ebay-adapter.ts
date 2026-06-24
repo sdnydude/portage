@@ -204,6 +204,8 @@ export interface EbayItemVerification {
   offerId: string | null;
   status: string | null;
   listingId: string | null;
+  /** The offer's current price on eBay (pricingSummary.price.value), or null. */
+  price: string | null;
 }
 
 export function validateEbayListingFields(specific: Record<string, unknown>): EbayListingFields {
@@ -856,21 +858,23 @@ export class EbayAdapter implements MarketplaceAdapter {
     let offerId: string | null = null;
     let status: string | null = null;
     let listingId: string | null = null;
+    let price: string | null = null;
     try {
       const data = await this.request<{
-        offers?: Array<{ offerId?: string; status?: string; listing?: { listingId?: string } }>;
+        offers?: Array<{ offerId?: string; status?: string; listing?: { listingId?: string }; pricingSummary?: { price?: { value?: string } } }>;
       }>(`/sell/inventory/v1/offer?sku=${encoded}&marketplace_id=EBAY_US`);
       const offer = data.offers?.[0];
       if (offer) {
         offerId = offer.offerId ?? null;
         status = offer.status ?? null;
         listingId = offer.listing?.listingId ?? null;
+        price = offer.pricingSummary?.price?.value ?? null;
       }
     } catch {
       // No offer for this SKU yet — leave offer fields null.
     }
 
-    return { sku, found, aspects, mpn, brand, offerId, status, listingId };
+    return { sku, found, aspects, mpn, brand, offerId, status, listingId, price };
   }
 
   async getOrders(since?: Date): Promise<MarketplaceOrderResult[]> {
