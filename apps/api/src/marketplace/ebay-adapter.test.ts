@@ -1474,6 +1474,17 @@ describe('createListing — calculated-shipping weight gate (eBay error 25020)',
   });
 });
 
+describe('EbayAdapter.withdrawOffer — end a published eBay offer', () => {
+  it('POSTs to the offer withdraw endpoint (not DELETE) for a published listing', async () => {
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ listingId: '307022338248' }), { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+    await adapter.withdrawOffer('193511711011');
+    const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/sell/inventory/v1/offer/193511711011/withdraw'));
+    expect(call, 'withdraw endpoint should be hit').toBeDefined();
+    expect((call?.[1] as { method?: string })?.method).toBe('POST');
+  });
+});
+
 describe('EbayAdapter.getEbayItemVerification — F-GATE read-back of live eBay state', () => {
   it('reads the inventory_item + offer for a SKU and returns aspects.MPN, offerId and status', async () => {
     fetchMock.mockImplementation(async (url: unknown) => {

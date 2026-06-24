@@ -807,6 +807,19 @@ export class EbayAdapter implements MarketplaceAdapter {
     logger.info({ userId: this.userId, marketplaceListingId }, 'eBay listing deleted');
   }
 
+  /**
+   * End a PUBLISHED eBay listing: withdraw its offer (the offer survives, the
+   * listing is ended). Takes the OFFER id — not the listing id, and not DELETE
+   * (deleteOffer is for unpublished offers; a published one must be withdrawn).
+   */
+  async withdrawOffer(offerId: string): Promise<void> {
+    await this.request(`/sell/inventory/v1/offer/${offerId}/withdraw`, {
+      method: 'POST',
+    });
+
+    logger.info({ userId: this.userId, offerId }, 'eBay offer withdrawn (listing ended)');
+  }
+
   async getListingStatus(marketplaceListingId: string): Promise<'active' | 'sold' | 'ended' | 'unknown'> {
     try {
       const data = await this.request<{ status: string }>(`/sell/inventory/v1/offer/${marketplaceListingId}`);

@@ -2,13 +2,15 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
-const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId, mockGetEbayItemVerification, mockDeleteListing } = vi.hoisted(() => ({
+import { AppError } from '../middleware/error.js';
+const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId, mockGetEbayItemVerification, mockDeleteListing, mockWithdrawOffer } = vi.hoisted(() => ({
   mockCreateListing: vi.fn(),
   mockUpdateListing: vi.fn(),
   mockBulkPublishOffers: vi.fn(),
   mockResolveEbayCategoryId: vi.fn(),
   mockGetEbayItemVerification: vi.fn(),
   mockDeleteListing: vi.fn(),
+  mockWithdrawOffer: vi.fn(),
 }));
 
 vi.mock('../db/index.js', () => ({
@@ -22,6 +24,7 @@ vi.mock('../marketplace/ebay-adapter.js', () => ({
     bulkPublishOffers: mockBulkPublishOffers,
     getEbayItemVerification: mockGetEbayItemVerification,
     deleteListing: mockDeleteListing,
+    withdrawOffer: mockWithdrawOffer,
   })),
   resolveEbayCategoryId: mockResolveEbayCategoryId,
 }));
@@ -855,6 +858,40 @@ function mockSelectBulk(rows: unknown[]) {
 
 const LISTING_1 = '10000000-0000-0000-0000-000000000001';
 const LISTING_2 = '10000000-0000-0000-0000-000000000002';
+
+describe('PATCH /listings/:id — archive ends the eBay listing via withdrawOffer', () => {
+  const LID = '00000000-0000-0000-0000-0000000000a0';
+  it('withdraws by ebayOfferId (not deleteListing by listing id) and archives locally', async () => {
+    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022338248', ebayOfferId: '193511711011' }]);
+    mockWithdrawOffer.mockResolvedValue(undefined);
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, status: 'archived', marketplace: 'ebay', marketplaceListingId: '307022338248' }]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ status: 'archived' });
+
+    expect(res.status).toBe(200);
+    expect(mockWithdrawOffer).toHaveBeenCalledWith('193511711011');
+    expect(mockDeleteListing).not.toHaveBeenCalled();
+  });
+
+  it('archives locally with a warning when the eBay withdraw fails — not blocked', async () => {
+    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022338248', ebayOfferId: '193511711011' }]);
+    mockWithdrawOffer.mockRejectedValue(new AppError(404, 'EBAY_API_ERROR', 'This Offer is not available.'));
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, status: 'archived', marketplace: 'ebay', marketplaceListingId: '307022338248' }]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ status: 'archived' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('archived');
+  });
+});
 
 describe('POST /listings — disclaimer consent (F3a)', () => {
   it('records a disclaimer acceptance against the new listing id on a live publish with disclaimerAccepted', async () => {

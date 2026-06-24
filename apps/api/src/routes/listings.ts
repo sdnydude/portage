@@ -368,12 +368,18 @@ listingsRouter.patch('/:id', async (req, res, next) => {
 
     if (isArchiving) {
       try {
-        const adapter = getAdapter(userId, existing.marketplace);
-        await adapter.deleteListing(existing.marketplaceListingId!);
+        if (existing.marketplace === 'ebay' && existing.ebayOfferId) {
+          // A published eBay listing is ended by WITHDRAWING its offer (by offerId),
+          // not by DELETE-ing the offer with the listing id (that 404s, 25713).
+          await new EbayAdapter(userId).withdrawOffer(existing.ebayOfferId);
+        } else {
+          await getAdapter(userId, existing.marketplace).deleteListing(existing.marketplaceListingId!);
+        }
       } catch (err) {
-        if (err instanceof AppError) throw err;
+        // Best-effort: archive locally even if the marketplace call fails (e.g. the
+        // offer was already ended). Surface a warning rather than blocking the archive.
         logger.warn({ listingId: existing.id, error: (err as Error).message }, 'Failed to remove from marketplace during archive');
-        warning = 'Archived locally but failed to remove from marketplace';
+        warning = 'Archived locally but failed to remove from the marketplace';
       }
     }
 
