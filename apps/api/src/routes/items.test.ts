@@ -12,11 +12,12 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
-vi.mock('../marketplace/ebay-adapter.js', () => ({
-  EbayAdapter: {
-    searchComps: vi.fn(),
-  },
-}));
+const { mockUpdateListing } = vi.hoisted(() => ({ mockUpdateListing: vi.fn() }));
+vi.mock('../marketplace/ebay-adapter.js', () => {
+  const EbayAdapter = vi.fn(() => ({ updateListing: mockUpdateListing }));
+  (EbayAdapter as unknown as { searchComps: ReturnType<typeof vi.fn> }).searchComps = vi.fn();
+  return { EbayAdapter };
+});
 
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 
@@ -52,6 +53,9 @@ function mockSelectReturnOnce(rows: unknown[]) {
             offset: vi.fn().mockResolvedValue(rows),
           }),
         }),
+        // Awaiting the where-result directly (no .limit()) resolves to all rows,
+        // so a handler can iterate every matching row.
+        then: (resolve: (v: unknown) => unknown) => resolve(rows),
       }),
     }),
   } as any);
@@ -360,6 +364,84 @@ describe('PATCH /items/:id', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('NOT_FOUND');
+  });
+
+  it('re-syncs the eBay listing when a listed item field is edited (title -> updateListing)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'New Title', quantity: 1, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebayOfferId: '193000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' }]); // listings for the item
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307000000001', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'New Title' });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateListing).toHaveBeenCalledTimes(1);
+    const [idArg, input] = mockUpdateListing.mock.calls[0] as [string, { title?: string; ebayOfferId?: string }];
+    expect(input.title).toBe('New Title');
+    expect(input.ebayOfferId).toBe('193000000001');
+    expect(idArg).toBe('307000000001');
+  });
+
+  it('syncs the full eBay payload (price/condition/quantity/weight/aspects) so a live update is not rejected', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T', condition: 'good', quantity: 2, price: 50, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3, aspects: { Brand: ['Sony'] } }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebayOfferId: '193000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' }]);
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307000000001', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 50 });
+
+    expect(res.status).toBe(200);
+    const [, input] = mockUpdateListing.mock.calls[0] as [string, {
+      price?: number; condition?: string; quantity?: number; marketplaceSpecific?: Record<string, unknown>;
+    }];
+    expect(input.price).toBe(50);
+    expect(input.condition).toBe('good');
+    expect(input.quantity).toBe(2);
+    expect(input.marketplaceSpecific?.weight).toBeDefined();           // avoids eBay 25020
+    expect(input.marketplaceSpecific?.categoryId).toBe('175669');       // preserves listing specifics
+    expect((input.marketplaceSpecific?.aspects as Record<string, string[]>)?.Brand).toEqual(['Sony']);
+  });
+
+  it('still saves the item edit when the eBay sync fails (best-effort)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'Saved Locally' }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebayOfferId: '193000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: {}, currency: 'USD' }]);
+    mockUpdateListing.mockRejectedValue(new Error('eBay 25021'));
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Saved Locally' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('Saved Locally');
+  });
+
+  it('syncs every active/draft eBay listing for the item and skips rows with no usable id', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'Edited' }]);
+    mockSelectReturnOnce([
+      { marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebayOfferId: '193000000001', ebaySku: 'PRT-A', marketplaceSpecificFields: {}, currency: 'USD' },
+      // orphan draft: no offer id and no listing id -> must be skipped, not synced
+      { marketplace: 'ebay', status: 'draft', marketplaceListingId: null, ebayOfferId: null, ebaySku: 'PRT-ORPHAN', marketplaceSpecificFields: {}, currency: 'USD' },
+      { marketplace: 'ebay', status: 'draft', marketplaceListingId: null, ebayOfferId: '193000000002', ebaySku: 'PRT-D', marketplaceSpecificFields: {}, currency: 'USD' },
+    ]);
+    mockUpdateListing.mockResolvedValue({ status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Edited' });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateListing).toHaveBeenCalledTimes(2);
+    expect(mockUpdateListing.mock.calls.map((c) => c[0])).toEqual(['307000000001', '193000000002']);
   });
 
   it('updates aspects via PATCH', async () => {
