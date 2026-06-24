@@ -432,7 +432,9 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             features: item.features as string[],
             ebaySku: updated.ebaySku ?? undefined,
             ebayOfferId: updated.ebayOfferId ?? undefined,
-            marketplaceSpecific: mergeItemAspects(item, updated.marketplaceSpecificFields as Record<string, unknown> | undefined),
+            // mergeItemShipping too (not just aspects): a published eBay update must
+            // re-send the package weight/dims or eBay rejects it (error 25020).
+            marketplaceSpecific: mergeItemAspects(item, mergeItemShipping(item, updated.marketplaceSpecificFields as Record<string, unknown> | undefined)),
           });
           // Degraded-sync warnings (e.g. Best Offer downgrade) belong to the user.
           if (syncResult?.warning) warning = syncResult.warning;

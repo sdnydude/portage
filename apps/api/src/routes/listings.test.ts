@@ -881,6 +881,24 @@ describe('PATCH /listings/:id — price change syncs to the eBay draft offer', (
     expect(inputArg.ebayOfferId).toBe('193511711011');
     expect(idArg).toBe('193511711011'); // offer id used as the identifier for an unpublished draft
   });
+
+  it('includes item weight/dims when syncing a price change to an ACTIVE eBay listing (avoids eBay 25020)', async () => {
+    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebayOfferId: '193549052011', ebaySku: 'PRT-000009', currency: 'USD' }]);
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebayOfferId: '193549052011', ebaySku: 'PRT-000009', price: 162, currency: 'USD', itemId: ITEM_ID }]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+    mockSelectOnce([{ ...MOCK_ITEM, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]); // item with weight/dims
+    mockSelectOnce([]); // footer
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307022414462', status: 'active' });
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 162 });
+
+    expect(res.status).toBe(200);
+    const [, inputArg] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
+    expect(inputArg.marketplaceSpecific?.weight, 'weight must be sent on update or eBay rejects with 25020').toBeDefined();
+  });
 });
 
 describe('PATCH /listings/:id — archive ends the eBay listing via withdrawOffer', () => {
