@@ -255,11 +255,88 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     fireEvent.click(screen.getByRole("button", { name: "Dynamic" }));
     fireEvent.click(screen.getByRole("button", { name: "Save & publish" }));
 
+    // F4: the retry lands on the result screen; onCreated fires on dismissal.
+    await screen.findByText("Published");
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     expect(listingsCalls).toBe(2);
     expect((bodies[1].marketplaceSpecificFields as { aspects?: Record<string, string[]> })?.aspects).toEqual({
       Type: ["Dynamic"],
     });
+  });
+
+  it("shows a published-success result after a live publish, then reaches onCreated via Done", async () => {
+    const onCreated = vi.fn();
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/listings") return { id: "L1", status: "active" };
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={onCreated} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms"));
+
+    // The sheet no longer silently navigates — it confirms the result first.
+    expect(await screen.findByText("Published")).toBeInTheDocument();
+    // onCreated only fires when the seller dismisses the result.
+    expect(onCreated).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onCreated).toHaveBeenCalled();
+  });
+
+  it("shows a draft-saved result with eBay's verbatim reason when publish falls back to draft", async () => {
+    const reason = "Your eBay account has a security restriction (ATO_TASR_block). Listing saved as a draft.";
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/listings") return { id: "L1", status: "draft", warning: reason };
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms"));
+
+    expect(await screen.findByText("Saved as draft")).toBeInTheDocument();
+    // eBay's actual reason is surfaced verbatim, not a generic line.
+    expect(screen.getByRole("alert")).toHaveTextContent(reason);
+  });
+
+  it("routes the aspect-fill publish through the same result screen", async () => {
+    const onCreated = vi.fn();
+    let listingsCalls = 0;
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/listings") {
+        listingsCalls += 1;
+        if (listingsCalls === 1) {
+          throw new h.ApiError(400, "EBAY_ASPECTS_REQUIRED", "eBay needs these item specifics filled in: Type", [
+            { name: "Type", values: ["Dynamic"] },
+          ]);
+        }
+        return { id: "L1", status: "active" };
+      }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={onCreated} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms"));
+    await screen.findByText("Complete eBay details");
+    fireEvent.click(screen.getByRole("button", { name: "Dynamic" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save & publish" }));
+
+    // Same truthful result — not a silent navigate.
+    expect(await screen.findByText("Published")).toBeInTheDocument();
+    expect(onCreated).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onCreated).toHaveBeenCalled();
   });
 
   it("disables Save & publish while the aspect-fill retry POST is in flight (no duplicate listing)", async () => {

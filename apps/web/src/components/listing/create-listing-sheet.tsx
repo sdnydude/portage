@@ -9,6 +9,14 @@ import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { DisclaimerSheet } from "./disclaimer-sheet";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 
+/** POST /listings response — `warning` carries eBay's verbatim reason when a
+ *  live publish fell back to a draft. */
+interface PublishResult {
+  id: string;
+  status: string;
+  warning?: string;
+}
+
 interface CreateListingSheetProps {
   itemId: string;
   suggestedPrice?: number;
@@ -56,6 +64,9 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // sheet and retry rather than dead-ending on the raw error message.
   const [aspectMissing, setAspectMissing] = useState<AspectRequirement[] | null>(null);
   const [aspectError, setAspectError] = useState<string | null>(null);
+  // F4: a successful create surfaces a truthful two-state result (published vs
+  // saved-as-draft-with-eBay's-reason) instead of silently navigating away.
+  const [result, setResult] = useState<PublishResult | null>(null);
 
   // Single create-and-publish call; `aspects` carries seller-filled item
   // specifics on a retry after EBAY_ASPECTS_REQUIRED.
@@ -65,7 +76,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
     const effectiveAspects = aspects ?? initialAspects;
     if (effectiveAspects && Object.keys(effectiveAspects).length > 0) fields.aspects = effectiveAspects;
-    await api("/listings", {
+    return api<PublishResult>("/listings", {
       method: "POST",
       body: {
         itemId,
@@ -94,8 +105,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     setError(null);
 
     try {
-      await submitListing(priceNum, undefined, suppress7d);
-      onCreated();
+      const res = await submitListing(priceNum, undefined, suppress7d);
+      setResult(res); // show the result; onCreated() fires when the seller dismisses it
     } catch (err) {
       // Required item specifics: open the fill sheet instead of dead-ending.
       // The gate throws before any listing row is created, so the retry won't
@@ -118,8 +129,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     setIsCreating(true);
     setAspectError(null);
     try {
-      await submitListing(priceNum, aspects);
-      onCreated(); // unmounts the sheet — no need to clear isCreating on success
+      const res = await submitListing(priceNum, aspects);
+      setResult(res); // same truthful result screen as the direct publish path
     } catch (err) {
       // Still missing something — keep the sheet open with eBay's message.
       if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
@@ -133,6 +144,63 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       setIsCreating(false);
     }
   };
+
+  // F4: once a create succeeds, the sheet becomes a truthful result screen.
+  // `warning` (or a non-active status) means the live publish fell back to a
+  // draft; show eBay's verbatim reason rather than implying a clean publish.
+  if (result) {
+    const isDraft = !!result.warning || result.status !== "active";
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+        <div className="fixed inset-0 bg-black/50" onClick={onCreated} />
+        <div className="relative bg-surface rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-4 p-6 space-y-4 max-h-[85dvh] overflow-y-auto text-center">
+          <div
+            className={`w-14 h-14 mx-auto rounded-full flex items-center justify-center ${
+              result.warning ? "bg-amber-100 dark:bg-amber-950/40" : "bg-forest-green/15"
+            }`}
+          >
+            {result.warning ? (
+              // Amber alert only when the live publish actually fell back to a
+              // draft. A deliberate draft save is a clean success, not a problem.
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2.5" strokeLinecap="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v4M12 16h.01" />
+              </svg>
+            ) : (
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green, #2D5A27)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            )}
+          </div>
+          <h3 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
+            {isDraft ? "Saved as draft" : "Published"}
+          </h3>
+          {result.warning && (
+            <div
+              role="alert"
+              className="rounded-xl p-3 text-left text-[13px] border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-200"
+            >
+              {result.warning}
+            </div>
+          )}
+          <div className="flex flex-col gap-3 pt-2">
+            <a
+              href={`/listings/${result.id}`}
+              className="w-full py-2.5 rounded-xl border border-border text-sm font-medium text-text-primary"
+            >
+              View listing
+            </a>
+            <button
+              onClick={onCreated}
+              className="w-full py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
