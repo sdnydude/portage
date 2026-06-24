@@ -144,8 +144,12 @@ tdd_guard_bypasses: "ONE scripted bypass so far (Phase A, A3): login session-ins
   Phase 6 reviewers: review the login-route diff extra-carefully (precedent: Stage 2.5 had 3 such bypasses)."
 pr_strategy: "PR per phase (A/B/C), --no-ff merge, single-revert rollback per concern — mirrors redesign."
 
-next: "Phase F in progress on branch feat/phase-f-publish-unification. F0 (eBay-draft backend) DONE +
-  committed (api 520 green). RESUME AT F0b: eBay-draft toggle on both publish panels. See PHASE F TODO."
+next: "PHASE F COMPLETE (F0…F4 all done + committed on feat/phase-f-publish-unification, tip d494a2c).
+  Open before any merge-to-main: (1) PR #132 live merge-gate (user runs live re-publish); (2) /about page
+  HARD DEP (F3b suppressed-path microcopy links a dead /about); (3) 3 review-phase flags — F1 scan-flow.tsx
+  tdd-guard bypass, F3b schema-column bypass, DisclaimerSheet listingId-fed-itemId cleanup. SUBSEQUENT
+  PHASES (not F): E-panel (AiIdentificationPanel), G (Save&List lists live not silent draft), H (orders
+  sync), I (remove in-app carriers → eBay shipping policy). Then Stage 3 (eBay-setup nav trap) resumes."
 
 phase_F_progress: |
   F0 — eBay-draft publish mode (POST /listings publishMode='ebay_draft' → adapter createListing draft mode →
@@ -260,9 +264,17 @@ phase_F_todo: |
                    → /about; shared UserPreferences.disclaimerSuppressed. web 210 green, typecheck/lint clean,
                    LIVE-VERIFIED the checkbox renders (e2e f3b-terms-checkbox). HARD DEP (open): /about page
                    must ship with terms/waiver links — microcopy link is dead until then.
-  [ ] F4   Two-state publish RESULT screen: success vs draft-saved-with-the-verbatim-eBay-reason.
+  [x] F4   DONE (commit d494a2c). Two-state publish RESULT inside the unified CreateListingSheet: the sheet
+           kept the POST /listings response ({status,warning}) instead of silently navigating. Published →
+           green check "Published"; draft-fallback → amber "Saved as draft" + eBay's VERBATIM warning;
+           deliberate draft → green "Saved as draft" (no warning = clean success, not a problem). Done /
+           View-listing dismiss → onCreated(). Aspect-fill retry routes through the SAME result. TDD: 3 new
+           sheet tests (+1 existing updated to click through the result); web 213 green, typecheck/lint clean.
+           Gate 2: e2e f4-publish-result.spec.ts drives draft-save on the rebuilt ephemeral stack (3998/8998),
+           asserts the result screen + View-listing reaches the persisted listing after reload — GREEN.
+           Proof: website/static/img/verification/f4-publish-result/.
   Done when: both paths show price + terms, eBay-draft works, 7-day dismiss works + resets on version bump,
-  result screen distinguishes success from draft-saved.
+  result screen distinguishes success from draft-saved.  ← ALL MET. PHASE F COMPLETE.
 
   CARRY-OVER DEFERRED (registry; not Phase F core): Type AI auto-pick on high-cardinality aspects (best-effort
   prompt shipped); duplicate listings-row on republish (idempotency); SKU Seller-Hub Custom-label check.
