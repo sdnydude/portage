@@ -38,6 +38,11 @@ async function readEbayOffer(page: Page, listingId: string) {
 }
 
 test.describe("F-GATE: eBay-draft publish + MPN verification", () => {
+  // Live: creates real eBay draft offers on the demo account's connected eBay account.
+  // The deterministic ephemeral CI stack seeds a fresh user with no eBay tokens, so
+  // these only run when explicitly opted in via E2E_EBAY_LIVE.
+  test.skip(!process.env.E2E_EBAY_LIVE, "Requires a live eBay-connected account; set E2E_EBAY_LIVE=1 to run");
+
   test("item-detail panel: Save as eBay draft creates an unpublished offer with MPN", async ({ page }) => {
     await login(page);
 

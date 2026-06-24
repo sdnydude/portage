@@ -10,6 +10,9 @@ async function login(page: Page) {
 }
 
 test("archive an active listing -> ends it on eBay", async ({ page }) => {
+  // Live: targets a hardcoded real active eBay listing on the demo account, absent
+  // from the fresh ephemeral CI database. Opt in via E2E_EBAY_LIVE.
+  test.skip(!process.env.E2E_EBAY_LIVE, "Requires a live eBay-connected account + seeded active listing; set E2E_EBAY_LIVE=1 to run");
   test.setTimeout(90_000);
   await login(page);
 
