@@ -9,6 +9,7 @@ import { useEnhance } from "@/hooks/use-enhance";
 import { PhotoGalleryStrip } from "@/components/capture/photo-gallery-strip";
 import { PhotoEditPanel } from "@/components/capture/photo-edit-panel";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
+import { ListingOptimizerPanel } from "@/components/listing/listing-optimizer-panel";
 import { CropTool } from "@/components/listing-flow/crop-tool";
 import { useComps } from "@/hooks/use-comps";
 import { api, API_BASE } from "@/lib/api";
@@ -28,7 +29,7 @@ export default function ItemDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
-  const { item, isLoading, error, deleteItem, updateItem } = useItem(params.id);
+  const { item, isLoading, error, deleteItem, updateItem, refetch: refetchItem } = useItem(params.id);
   const { isProcessing: isEnhancing, result: enhanceResult, error: enhanceError, enhance, reset: resetEnhance } = useEnhance();
   const [photoIndex, setPhotoIndex] = useState(0);
   // Which photo the full-screen editor overlay is open for (null = closed).
@@ -483,6 +484,9 @@ export default function ItemDetailPage() {
               </div>
             </div>
           )}
+
+          {/* Listing Optimizer — eBay item-specific gaps, demand, performance */}
+          <ListingOptimizerPanel itemId={params.id} onFilled={refetchItem} />
 
           {/* List on Marketplace CTA */}
           <button
