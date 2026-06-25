@@ -11,7 +11,7 @@ import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { mergeItemShipping, mergeItemAspects } from './listings.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
-import type { MarketplaceCacheEntry } from '@portage/shared';
+import type { MarketplaceCacheEntry, MarketplaceData } from '@portage/shared';
 import { isAllowedImageOrigin } from './images.js';
 
 const logger = createLogger('items');
@@ -282,6 +282,99 @@ itemsRouter.get('/:id/comps', async (req, res, next) => {
 
     logger.info({ userId, itemId: item.id, sampleSize: comps.stats.sampleSize }, 'Comps fetched');
     res.json(comps);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Listing optimizer research: which eBay item-specifics buyers filter on that this
+// item is still missing, plus comps-based demand. App-token reads (taxonomy +
+// browse), so it works before any marketplace is connected.
+itemsRouter.get('/:id/research', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const [item] = await db.select().from(items)
+      .where(and(eq(items.id, req.params.id), eq(items.userId, userId)))
+      .limit(1);
+
+    if (!item) {
+      throw new AppError(404, 'NOT_FOUND', 'Item not found');
+    }
+
+    const searchQuery = (item.title || [item.brand, item.model].filter(Boolean).join(' ')).slice(0, 200);
+
+    // Prefer the eBay leaf category already cached on the item; else ask Taxonomy.
+    const cachedEbay = (item.marketplaceData as MarketplaceData | null)?.ebay;
+    let category: { categoryId: string; categoryName: string } | null =
+      cachedEbay?.categoryId
+        ? { categoryId: cachedEbay.categoryId, categoryName: cachedEbay.categoryName ?? '' }
+        : null;
+    if (!category) {
+      try {
+        category = await EbayAdapter.getCategorySuggestion(searchQuery);
+      } catch (err) {
+        logger.warn({ itemId: item.id, error: (err as Error).message }, 'Category suggestion failed for research');
+      }
+    }
+
+    const [aspectsMeta, comps] = await Promise.all([
+      category ? EbayAdapter.getRequiredAspects(category.categoryId) : Promise.resolve({}),
+      EbayAdapter.searchComps(searchQuery, category?.categoryId).catch((err) => {
+        logger.warn({ itemId: item.id, error: (err as Error).message }, 'Comps fetch failed for research');
+        return null;
+      }),
+    ]);
+
+    // Aspect gap: an aspect is "filled" when the item already carries a value for it
+    // (case-insensitive), with Brand/Model also honored from the dedicated columns.
+    const itemAspects = (item.aspects as Record<string, string[]>) ?? {};
+    const lowerToValues = new Map(Object.entries(itemAspects).map(([k, v]) => [k.toLowerCase(), v]));
+    const valueFor = (name: string): string[] | null => {
+      const v = lowerToValues.get(name.toLowerCase());
+      if (v && v.length) return v;
+      if (name.toLowerCase() === 'brand' && item.brand) return [item.brand];
+      if (name.toLowerCase() === 'model' && item.model) return [item.model];
+      return null;
+    };
+
+    const filled: Array<{ name: string; required: boolean; values: string[] }> = [];
+    const missing: Array<{ name: string; required: boolean; suggestedValues: string[] | null; cardinality: string }> = [];
+    for (const [name, meta] of Object.entries(aspectsMeta as Record<string, { required: boolean; values: string[] | null; cardinality: string }>)) {
+      const values = valueFor(name);
+      if (values) filled.push({ name, required: meta.required, values });
+      else missing.push({ name, required: meta.required, suggestedValues: meta.values, cardinality: meta.cardinality });
+    }
+    // Required gaps first, then alphabetical — fix what eBay enforces before the rest.
+    const byRequiredThenName = (a: { required: boolean; name: string }, b: { required: boolean; name: string }) =>
+      (Number(b.required) - Number(a.required)) || a.name.localeCompare(b.name);
+    missing.sort(byRequiredThenName);
+    filled.sort(byRequiredThenName);
+
+    const demand = comps
+      ? { ...comps.stats, soldCount: comps.sold.length, activeCount: comps.active.length }
+      : null;
+
+    // Performance feedback: the Analytics traffic report for the item's published
+    // eBay listing. Best-effort — needs a live listing AND the sell.analytics scope
+    // on the user token (pre-2026-06 connections lack it until they reconnect), so
+    // a missing scope / no listing simply yields null rather than failing research.
+    let traffic = null;
+    try {
+      const [listed] = await db.select({ marketplaceListingId: listings.marketplaceListingId })
+        .from(listings).where(and(
+          eq(listings.itemId, item.id),
+          eq(listings.userId, userId),
+          eq(listings.marketplace, 'ebay'),
+          eq(listings.status, 'active'),
+        )).limit(1);
+      if (listed?.marketplaceListingId) {
+        traffic = await new EbayAdapter(userId).getTrafficReport(listed.marketplaceListingId);
+      }
+    } catch (err) {
+      logger.warn({ itemId: item.id, error: (err as Error).message }, 'Traffic report fetch failed for research');
+    }
+
+    res.json({ category, aspects: { filled, missing }, demand, traffic });
   } catch (err) {
     next(err);
   }

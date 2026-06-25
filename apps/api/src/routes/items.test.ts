@@ -12,10 +12,13 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
-const { mockUpdateListing } = vi.hoisted(() => ({ mockUpdateListing: vi.fn() }));
+const { mockUpdateListing, mockGetTrafficReport } = vi.hoisted(() => ({ mockUpdateListing: vi.fn(), mockGetTrafficReport: vi.fn() }));
 vi.mock('../marketplace/ebay-adapter.js', () => {
-  const EbayAdapter = vi.fn(() => ({ updateListing: mockUpdateListing }));
-  (EbayAdapter as unknown as { searchComps: ReturnType<typeof vi.fn> }).searchComps = vi.fn();
+  const EbayAdapter = vi.fn(() => ({ updateListing: mockUpdateListing, getTrafficReport: mockGetTrafficReport }));
+  const statics = EbayAdapter as unknown as Record<string, ReturnType<typeof vi.fn>>;
+  statics.searchComps = vi.fn();
+  statics.getCategorySuggestion = vi.fn();
+  statics.getRequiredAspects = vi.fn();
   return { EbayAdapter };
 });
 
@@ -716,5 +719,69 @@ describe('POST /items/photos/export/prepare', () => {
     expect(res.body.itemCount).toBe(1);
     expect(res.body.photoCount).toBe(60);
     expect(res.body.skippedCount).toBe(1);
+  });
+});
+
+describe('GET /items/:id/research', () => {
+  it('returns category, aspect gap (filled vs missing, required-first), and demand', async () => {
+    mockSelectReturnOnce([{
+      id: 'item-1', title: 'Sony WH-1000XM4', brand: 'Sony', model: 'WH-1000XM4',
+      category: 'Headphones', condition: 'good',
+      aspects: { Brand: ['Sony'] },
+      marketplaceData: { ebay: { categoryId: '112529', categoryName: 'Headphones' } },
+    }]);
+    (EbayAdapter as unknown as { getRequiredAspects: ReturnType<typeof vi.fn> }).getRequiredAspects.mockResolvedValue({
+      Brand: { required: true, values: ['Sony', 'Bose'], cardinality: 'SINGLE' },
+      Color: { required: false, values: ['Black', 'Silver'], cardinality: 'SINGLE' },
+      Type: { required: true, values: null, cardinality: 'SINGLE' },
+    });
+    (EbayAdapter as unknown as { searchComps: ReturnType<typeof vi.fn> }).searchComps.mockResolvedValue({
+      sold: [{}, {}], active: [{}],
+      stats: { soldMedian: 220, soldAvg: 215, activeMedian: 250, activeAvg: 240, sampleSize: 3, sellThrough: 0.67 },
+    });
+
+    const res = await request(app)
+      .get('/items/item-1/research')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    // Brand is filled (from item.aspects); Color + Type are missing, required-first
+    // (Type before Color), each carrying eBay's suggested values for one-tap fill.
+    expect(res.body).toEqual({
+      category: { categoryId: '112529', categoryName: 'Headphones' },
+      aspects: {
+        filled: [{ name: 'Brand', required: true, values: ['Sony'] }],
+        missing: [
+          { name: 'Type', required: true, suggestedValues: null, cardinality: 'SINGLE' },
+          { name: 'Color', required: false, suggestedValues: ['Black', 'Silver'], cardinality: 'SINGLE' },
+        ],
+      },
+      demand: { soldMedian: 220, soldAvg: 215, activeMedian: 250, activeAvg: 240, sampleSize: 3, sellThrough: 0.67, soldCount: 2, activeCount: 1 },
+      traffic: null,
+    });
+  });
+
+  it('includes the Analytics traffic report when the item has a published eBay listing', async () => {
+    mockSelectReturnOnce([{
+      id: 'item-1', title: 'Sony WH-1000XM4', brand: 'Sony', model: 'WH-1000XM4',
+      category: 'Headphones', condition: 'good', aspects: {},
+      marketplaceData: { ebay: { categoryId: '112529', categoryName: 'Headphones' } },
+    }]);
+    // listings lookup → a published eBay listing carrying a marketplaceListingId
+    mockSelectReturnOnce([{ marketplaceListingId: '307022338248' }]);
+    (EbayAdapter as unknown as { getRequiredAspects: ReturnType<typeof vi.fn> }).getRequiredAspects.mockResolvedValue({});
+    (EbayAdapter as unknown as { searchComps: ReturnType<typeof vi.fn> }).searchComps.mockResolvedValue({
+      sold: [], active: [], stats: { soldMedian: null, soldAvg: null, activeMedian: null, activeAvg: null, sampleSize: 0, sellThrough: null },
+    });
+    const report = { listingId: '307022338248', impressions: 1500, clickThroughRate: 2.4, views: 36, transactions: 3, salesConversionRate: 8.3, range: { from: '20260526', to: '20260625' } };
+    mockGetTrafficReport.mockResolvedValue(report);
+
+    const res = await request(app)
+      .get('/items/item-1/research')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.traffic).toEqual(report);
+    expect(mockGetTrafficReport).toHaveBeenCalledWith('307022338248');
   });
 });

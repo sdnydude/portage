@@ -1540,3 +1540,42 @@ describe('EbayAdapter.getEbayItemVerification — F-GATE read-back of live eBay 
     expect(result.offerId).toBeNull();
   });
 });
+
+describe('EbayAdapter.getTrafficReport — Analytics traffic for a listing', () => {
+  it('maps header metric keys to the listing record metric values', async () => {
+    const adapter = new EbayAdapter('user-1');
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      header: {
+        dimensionKeys: [{ key: 'LISTING' }],
+        metrics: [
+          { key: 'LISTING_IMPRESSION_TOTAL' },
+          { key: 'CLICK_THROUGH_RATE' },
+          { key: 'LISTING_VIEWS_TOTAL' },
+          { key: 'TRANSACTION' },
+          { key: 'SALES_CONVERSION_RATE' },
+        ],
+      },
+      records: [
+        {
+          dimensionValues: [{ value: '307022338248' }],
+          metricValues: [{ value: 1500 }, { value: 2.4 }, { value: 36 }, { value: 3 }, { value: 8.3 }],
+        },
+      ],
+    }), { status: 200 }));
+
+    const report = await adapter.getTrafficReport('307022338248');
+
+    expect(report).toEqual({
+      listingId: '307022338248',
+      impressions: 1500,
+      clickThroughRate: 2.4,
+      views: 36,
+      transactions: 3,
+      salesConversionRate: 8.3,
+      range: { from: expect.any(String), to: expect.any(String) },
+    });
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/sell/analytics/v1/traffic_report');
+    expect(decodeURIComponent(url)).toContain('listing_ids:{307022338248}');
+  });
+});

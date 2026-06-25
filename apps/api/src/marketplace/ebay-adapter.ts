@@ -208,6 +208,20 @@ export interface EbayItemVerification {
   price: string | null;
 }
 
+/**
+ * Analytics API traffic metrics for one listing over a date window. Any metric can
+ * be null when eBay has no data for it in the window.
+ */
+export interface EbayTrafficReport {
+  listingId: string;
+  impressions: number | null;
+  clickThroughRate: number | null;
+  views: number | null;
+  transactions: number | null;
+  salesConversionRate: number | null;
+  range: { from: string; to: string };
+}
+
 export function validateEbayListingFields(specific: Record<string, unknown>): EbayListingFields {
   const categoryId = specific.categoryId as string | undefined;
   if (!categoryId || categoryId === '99') {
@@ -875,6 +889,57 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
 
     return { sku, found, aspects, mpn, brand, offerId, status, listingId, price };
+  }
+
+  // Analytics API traffic report for a single published listing — impressions,
+  // click-through rate, views, transactions, conversion. Requires the user token
+  // to carry the sell.analytics.readonly scope (added 2026-06; pre-existing
+  // connections must reconnect to re-consent). Returns null when eBay has no
+  // record for the listing in the window.
+  async getTrafficReport(listingId: string, days = 30): Promise<EbayTrafficReport | null> {
+    // eBay traffic data lags ~a day; end the window at yesterday so the range is
+    // always fully populated and never rejected as "future".
+    const ymd = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
+    const to = new Date();
+    to.setUTCDate(to.getUTCDate() - 1);
+    const from = new Date(to);
+    from.setUTCDate(from.getUTCDate() - (days - 1));
+
+    const metricKeys = ['LISTING_IMPRESSION_TOTAL', 'CLICK_THROUGH_RATE', 'LISTING_VIEWS_TOTAL', 'TRANSACTION', 'SALES_CONVERSION_RATE'];
+    const params = new URLSearchParams();
+    params.set('dimension', 'LISTING');
+    params.set('metric', metricKeys.join(','));
+    params.append('filter', 'marketplace_ids:{EBAY_US}');
+    params.append('filter', `listing_ids:{${listingId}}`);
+    params.append('filter', `date_range:[${ymd(from)}..${ymd(to)}]`);
+
+    const data = await this.request<{
+      header?: { metrics?: Array<{ key: string }> };
+      records?: Array<{ dimensionValues?: Array<{ value: string }>; metricValues?: Array<{ value: number | null }> }>;
+    }>(`/sell/analytics/v1/traffic_report?${params.toString()}`);
+
+    const record = (data.records ?? []).find(
+      (r) => r.dimensionValues?.[0]?.value === listingId,
+    ) ?? data.records?.[0];
+    if (!record) return null;
+
+    // metricValues are positional, parallel to header.metrics; map by key so we
+    // are not dependent on eBay's column order.
+    const keys = (data.header?.metrics ?? []).map((m) => m.key);
+    const valueFor = (key: string): number | null => {
+      const i = keys.indexOf(key);
+      return i >= 0 ? record.metricValues?.[i]?.value ?? null : null;
+    };
+
+    return {
+      listingId,
+      impressions: valueFor('LISTING_IMPRESSION_TOTAL'),
+      clickThroughRate: valueFor('CLICK_THROUGH_RATE'),
+      views: valueFor('LISTING_VIEWS_TOTAL'),
+      transactions: valueFor('TRANSACTION'),
+      salesConversionRate: valueFor('SALES_CONVERSION_RATE'),
+      range: { from: ymd(from), to: ymd(to) },
+    };
   }
 
   async getOrders(since?: Date): Promise<MarketplaceOrderResult[]> {
