@@ -41,6 +41,7 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(xml).toContain('<PrimaryCategory><CategoryID>14985</CategoryID></PrimaryCategory>');
     expect(xml).toContain('<StartPrice currencyID="USD">199.99</StartPrice>');
     expect(xml).toContain('<Quantity>1</Quantity>');
+    expect(xml).toContain('<ListingType>FixedPriceItem</ListingType>');
     expect(xml).toContain('<ListingDuration>GTC</ListingDuration>');
     expect(xml).toContain('<ConditionID>3000</ConditionID>');
     expect(xml).toContain('<Country>US</Country>');
@@ -64,18 +65,27 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(xml).toContain('<ConditionDescription>Light wear on headband.</ConditionDescription>');
   });
 
+  it('marks self-hosted (R2) pictures with PictureSource=Vendor so eBay does not treat them as EPS', () => {
+    expect(buildAddFixedPriceItemXml(baseInput, 'T')).toContain('<PictureDetails><PictureSource>Vendor</PictureSource>');
+  });
+
   it('sends inline terms (Decision 5): no-returns + Calculated buyer-paid USPS + DispatchTimeMax=1, never SellerProfiles/PaymentMethods', () => {
     const xml = buildAddFixedPriceItemXml(baseInput, 'T');
     expect(xml).toContain('<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>');
     expect(xml).toContain('<ShippingDetails>');
     expect(xml).toContain('<ShippingType>Calculated</ShippingType>');
     expect(xml).toContain('<OriginatingPostalCode>10001</OriginatingPostalCode>');
-    expect(xml).toContain('<WeightMajor unit="lbs">1</WeightMajor>');
-    expect(xml).toContain('<WeightMinor unit="ozs">8</WeightMinor>');
-    expect(xml).toContain('<PackageLength unit="inches">12</PackageLength>');
-    expect(xml).toContain('<PackageWidth unit="inches">9</PackageWidth>');
-    expect(xml).toContain('<PackageDepth unit="inches">6</PackageDepth>');
     expect(xml).toMatch(/<ShippingService>USPS\w+<\/ShippingService>/);
+    // weight/dims live in ShippingPackageDetails at Item level (CalculatedShippingRate
+    // is deprecated for them — schema-verified); units are oz/in/lbs, not ozs/inches.
+    expect(xml).toContain('<ShippingPackageDetails>');
+    expect(xml).toContain('<MeasurementUnit>English</MeasurementUnit>');
+    expect(xml).toContain('<WeightMajor unit="lbs">1</WeightMajor>');
+    expect(xml).toContain('<WeightMinor unit="oz">8</WeightMinor>');
+    expect(xml).toContain('<PackageLength unit="in">12</PackageLength>');
+    expect(xml).toContain('<PackageWidth unit="in">9</PackageWidth>');
+    expect(xml).toContain('<PackageDepth unit="in">6</PackageDepth>');
+    expect(xml).toContain('<ShippingPackage>');
     expect(xml).toContain('<DispatchTimeMax>1</DispatchTimeMax>');
     expect(xml).not.toContain('<SellerProfiles>');
     expect(xml).not.toContain('<PaymentMethods>');
@@ -84,7 +94,7 @@ describe('buildAddFixedPriceItemXml', () => {
   it('includes BestOfferDetails only when a floor below price is set (G9), and escapes XML-special chars', () => {
     const withFloor = buildAddFixedPriceItemXml({ ...baseInput, bestOfferAutoAcceptPrice: 150 }, 'T');
     expect(withFloor).toContain('<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>');
-    expect(withFloor).toContain('<MinimumBestOfferPrice currencyID="USD">150</MinimumBestOfferPrice>');
+    expect(withFloor).toContain('<BestOfferAutoAcceptPrice currencyID="USD">150</BestOfferAutoAcceptPrice>');
     expect(buildAddFixedPriceItemXml(baseInput, 'T')).not.toContain('<BestOfferDetails>');
     expect(buildAddFixedPriceItemXml({ ...baseInput, bestOfferAutoAcceptPrice: 250 }, 'T')).not.toContain('<BestOfferDetails>');
     const escaped = buildAddFixedPriceItemXml(

@@ -27,6 +27,8 @@ export interface TradingListingInput {
     weightMinor: number;
     dimensions: { length: number; width: number; height: number };
     service?: string;
+    /** eBay ShippingPackage enum (required for calculated); defaults to PackageThickEnvelope. */
+    shippingPackage?: string;
   };
   dispatchTimeMax?: number;
   bestOfferAutoAcceptPrice?: number;
@@ -35,7 +37,9 @@ export interface TradingListingInput {
 
 function pictureDetails(urls: string[]): string {
   if (urls.length === 0) return '';
-  return `<PictureDetails>${urls.map(u => `<PictureURL>${escapeXml(u)}</PictureURL>`).join('')}</PictureDetails>`;
+  // PictureSource=Vendor tells eBay these are self-hosted (Cloudflare R2) URLs, not
+  // EPS references — without it eBay treats them as EPS and rejects them.
+  return `<PictureDetails><PictureSource>Vendor</PictureSource>${urls.map(u => `<PictureURL>${escapeXml(u)}</PictureURL>`).join('')}</PictureDetails>`;
 }
 
 function itemSpecifics(aspects: Record<string, string[]>): string {
@@ -47,7 +51,9 @@ function itemSpecifics(aspects: Record<string, string[]>): string {
   return lists.length === 0 ? '' : `<ItemSpecifics>${lists.join('')}</ItemSpecifics>`;
 }
 
-/** Inline standard terms (Decision 5): buyer-paid Calculated USPS shipping. */
+/** Inline Calculated shipping (Decision 5). Weight/dims now live in ShippingPackageDetails
+ * (schema-verified — they are deprecated inside CalculatedShippingRate); this container
+ * carries only the origin ZIP and the buyer-paid USPS service option. */
 function inlineShipping(s: TradingListingInput['shipping']): string {
   const service = s.service ?? 'USPSPriority';
   return (
@@ -55,11 +61,6 @@ function inlineShipping(s: TradingListingInput['shipping']): string {
     '<ShippingType>Calculated</ShippingType>' +
     '<CalculatedShippingRate>' +
     `<OriginatingPostalCode>${escapeXml(s.originPostalCode)}</OriginatingPostalCode>` +
-    `<PackageDepth unit="inches">${s.dimensions.height}</PackageDepth>` +
-    `<PackageLength unit="inches">${s.dimensions.length}</PackageLength>` +
-    `<PackageWidth unit="inches">${s.dimensions.width}</PackageWidth>` +
-    `<WeightMajor unit="lbs">${s.weightMajor}</WeightMajor>` +
-    `<WeightMinor unit="ozs">${s.weightMinor}</WeightMinor>` +
     '</CalculatedShippingRate>' +
     '<ShippingServiceOptions>' +
     '<ShippingServicePriority>1</ShippingServicePriority>' +
@@ -69,13 +70,32 @@ function inlineShipping(s: TradingListingInput['shipping']): string {
   );
 }
 
+/** Package weight + dimensions for Calculated shipping, in Item.ShippingPackageDetails
+ * (eBay deprecated these inside CalculatedShippingRate). MeasureType units are lbs/oz/in
+ * (NOT lbs/ozs/inches). ShippingPackage is required for calculated shipping. */
+function shippingPackageDetails(s: TradingListingInput['shipping']): string {
+  return (
+    '<ShippingPackageDetails>' +
+    '<MeasurementUnit>English</MeasurementUnit>' +
+    `<PackageDepth unit="in">${s.dimensions.height}</PackageDepth>` +
+    `<PackageLength unit="in">${s.dimensions.length}</PackageLength>` +
+    `<PackageWidth unit="in">${s.dimensions.width}</PackageWidth>` +
+    `<WeightMajor unit="lbs">${s.weightMajor}</WeightMajor>` +
+    `<WeightMinor unit="oz">${s.weightMinor}</WeightMinor>` +
+    `<ShippingPackage>${escapeXml(s.shippingPackage ?? 'PackageThickEnvelope')}</ShippingPackage>` +
+    '</ShippingPackageDetails>'
+  );
+}
+
 /** Best Offer auto-accept (G9): only when floor is positive and below the BIN price. */
 function bestOfferDetails(input: TradingListingInput): string {
   const floor = input.bestOfferAutoAcceptPrice;
   if (typeof floor !== 'number' || floor <= 0 || floor >= input.price) return '';
+  // BestOfferAutoAcceptPrice auto-ACCEPTS offers at/above the floor. (MinimumBestOfferPrice
+  // is a different field — the auto-DECLINE floor — which we deliberately do not set.)
   return (
     '<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>' +
-    `<ListingDetails><MinimumBestOfferPrice currencyID="${input.currency}">${floor}</MinimumBestOfferPrice></ListingDetails>`
+    `<ListingDetails><BestOfferAutoAcceptPrice currencyID="${input.currency}">${floor}</BestOfferAutoAcceptPrice></ListingDetails>`
   );
 }
 
@@ -158,6 +178,7 @@ function itemBody(input: TradingListingInput): string {
     `<PrimaryCategory><CategoryID>${escapeXml(input.categoryId)}</CategoryID></PrimaryCategory>` +
     `<StartPrice currencyID="${input.currency}">${input.price}</StartPrice>` +
     `<Quantity>${input.quantity}</Quantity>` +
+    '<ListingType>FixedPriceItem</ListingType>' +
     `<ListingDuration>${input.listingDuration ?? 'GTC'}</ListingDuration>` +
     `<ConditionID>${escapeXml(input.conditionId)}</ConditionID>` +
     (input.conditionDescription ? `<ConditionDescription>${escapeXml(input.conditionDescription)}</ConditionDescription>` : '') +
@@ -170,6 +191,7 @@ function itemBody(input: TradingListingInput): string {
     itemSpecifics(input.aspects) +
     '<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>' +
     inlineShipping(input.shipping) +
+    shippingPackageDetails(input.shipping) +
     bestOfferDetails(input)
   );
 }
