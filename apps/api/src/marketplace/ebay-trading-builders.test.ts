@@ -7,6 +7,7 @@ import {
   buildGetItemXml,
   parseAddItemResponse,
   parseGetItemStatus,
+  splitOunces,
   type TradingListingInput,
 } from './ebay-trading-builders.js';
 
@@ -157,5 +158,15 @@ describe('parseGetItemStatus', () => {
     expect(parseGetItemStatus(mk('Completed', 0))).toBe('ended');
     expect(parseGetItemStatus(mk('Ended'))).toBe('ended');
     expect(parseGetItemStatus({ GetItemResponse: {} })).toBe('unknown');
+  });
+});
+
+describe('splitOunces', () => {
+  it('splits total ounces into whole lbs + remainder oz (eBay WeightMajor/WeightMinor)', () => {
+    expect(splitOunces(24)).toEqual({ weightMajor: 1, weightMinor: 8 });
+    expect(splitOunces(8)).toEqual({ weightMajor: 0, weightMinor: 8 });
+    expect(splitOunces(32)).toEqual({ weightMajor: 2, weightMinor: 0 });
+    expect(splitOunces(0)).toEqual({ weightMajor: 0, weightMinor: 0 });
+    expect(splitOunces(17.5)).toEqual({ weightMajor: 1, weightMinor: 2 });
   });
 });

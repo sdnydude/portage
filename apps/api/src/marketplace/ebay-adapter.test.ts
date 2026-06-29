@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
-import { resolveEbayCondition, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError, clearEbayTaxonomyCaches } from './ebay-adapter.js';
+import { resolveEbayCondition, resolveEbayConditionId, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError, clearEbayTaxonomyCaches } from './ebay-adapter.js';
 
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
@@ -1577,5 +1577,15 @@ describe('EbayAdapter.getTrafficReport — Analytics traffic for a listing', () 
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toContain('/sell/analytics/v1/traffic_report');
     expect(decodeURIComponent(url)).toContain('listing_ids:{307022338248}');
+  });
+});
+
+describe('resolveEbayConditionId (numeric ConditionID for Trading API)', () => {
+  it('resolves a numeric id: explicit conditionId wins, then enum reverse-map, then chain default', () => {
+    expect(resolveEbayConditionId('good', { conditionId: '2750' })).toBe('2750');
+    expect(resolveEbayConditionId('good', { condition: 'LIKE_NEW' })).toBe('2750');
+    expect(resolveEbayConditionId('good')).toBe('5000');
+    expect(resolveEbayConditionId('new')).toBe('1000');
+    expect(resolveEbayConditionId('unknown-grade')).toBe('3000');
   });
 });

@@ -79,6 +79,12 @@ function bestOfferDetails(input: TradingListingInput): string {
   );
 }
 
+/** Split total ounces (items store normalized oz) into eBay WeightMajor (lbs) + WeightMinor (oz). */
+export function splitOunces(totalOz: number): { weightMajor: number; weightMinor: number } {
+  const rounded = Math.round(totalOz);
+  return { weightMajor: Math.floor(rounded / 16), weightMinor: rounded % 16 };
+}
+
 type ParsedXml = Record<string, unknown>;
 
 function getPath(obj: unknown, path: string[]): unknown {

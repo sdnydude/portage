@@ -141,6 +141,27 @@ const CONDITION_PREFERENCE_CHAINS: Record<string, string[]> = {
   poor: ['6000', '3000', '5000'],
 };
 
+const EBAY_ENUM_TO_CONDITION_ID: Record<string, string> = Object.fromEntries(
+  Object.entries(EBAY_CONDITION_ID_TO_ENUM).map(([id, en]) => [en, id]),
+);
+
+/**
+ * Numeric eBay ConditionID for the Trading API (N2 — Trading uses numeric ids, not
+ * the Inventory API's enum strings). Precedence mirrors resolveEbayCondition: an
+ * explicit numeric conditionId (per-category validated) wins, then a supplied enum
+ * is reverse-mapped, then the Portage grade's first preferred id, falling back to
+ * 3000 (generic Used) for an unknown grade.
+ */
+export function resolveEbayConditionId(portageCondition: string, specific?: Record<string, unknown>): string {
+  const explicitId = specific?.conditionId;
+  if (typeof explicitId === 'string' && explicitId.length > 0) return explicitId;
+  const enumOverride = specific?.condition;
+  if (typeof enumOverride === 'string' && EBAY_ENUM_TO_CONDITION_ID[enumOverride]) {
+    return EBAY_ENUM_TO_CONDITION_ID[enumOverride];
+  }
+  return CONDITION_PREFERENCE_CHAINS[portageCondition]?.[0] ?? '3000';
+}
+
 // Snap a Portage condition to the closest eBay grade a category supports.
 // Returns null when no preferred grade is offered (including an empty list); the
 // caller decides whether that means "ignore" (Metadata API gave nothing) or
