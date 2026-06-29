@@ -70,32 +70,23 @@ function mpnFromAspects(specific: Record<string, unknown> | undefined): string |
 }
 
 /**
- * Self-heal eBay setup fields (policy IDs + inventory location) from the seller
- * profile when the request carries none — body-provided values always win, the
- * profile only fills gaps. Mirrors the identical block in POST /:id/publish
- * (kept duplicated there to avoid touching that route's verified behavior).
+ * Inject the seller's ship-from origin ZIP from their profile when the request
+ * carries none — a body-provided value wins, the profile only fills the gap. The
+ * Trading API needs OriginatingPostalCode for inline calculated shipping; there are
+ * no Business-Policy IDs to resolve anymore (the account is opted out of them).
  */
-async function applySellerPolicyDefaults(
+async function applyShipFromOrigin(
   userId: string,
   specific: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown> | undefined> {
   const ms = (specific ?? {}) as Record<string, unknown>;
-  const fp = ms.fulfillmentPolicyId as string | undefined;
-  const pp = ms.paymentPolicyId as string | undefined;
-  const rp = ms.returnPolicyId as string | undefined;
-  const loc = ms.merchantLocationKey as string | undefined;
-  if (fp && pp && rp && loc) return specific;
+  if (ms.originPostalCode) return specific;
   const [profile] = await db.select()
     .from(sellerProfiles)
     .where(eq(sellerProfiles.userId, userId))
     .limit(1);
-  return {
-    ...ms,
-    fulfillmentPolicyId: fp || profile?.ebayFulfillmentPolicyId || undefined,
-    paymentPolicyId: pp || profile?.ebayPaymentPolicyId || undefined,
-    returnPolicyId: rp || profile?.ebayReturnPolicyId || undefined,
-    merchantLocationKey: loc || profile?.ebayMerchantLocationKey || undefined,
-  };
+  const shipFrom = profile?.shipFromAddress as { postalCode?: string } | null | undefined;
+  return { ...ms, originPostalCode: shipFrom?.postalCode };
 }
 
 function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): MarketplaceAdapter {
@@ -232,12 +223,12 @@ listingsRouter.post('/', async (req, res, next) => {
     let publishedAt: Date | null = null;
     let adapterWarning: string | undefined;
 
-    // publishMode (when present) takes precedence over the legacy
-    // publishImmediately flag. draft = save to DB only (no marketplace call).
-    // 'ebay_draft' also calls the adapter — but in draft mode (creates the eBay
-    // offer, skips /publish). Only 'draft' stays DB-only (no marketplace call).
-    const shouldPublish = body.publishMode === 'live' || body.publishMode === 'ebay_draft' || (body.publishMode === undefined && body.publishImmediately);
-    const adapterPublishMode: 'draft' | 'live' = body.publishMode === 'ebay_draft' ? 'draft' : 'live';
+    // publishMode (when present) takes precedence over the legacy publishImmediately
+    // flag. Only 'live' (or legacy publishImmediately) calls eBay. Both 'draft' and
+    // 'ebay_draft' stay DB-only: under the Trading API a listing publishes live via
+    // AddFixedPriceItem with no unpublished-offer concept, so an "eBay draft" is just
+    // a local draft (N1) — no marketplace call.
+    const shouldPublish = body.publishMode === 'live' || (body.publishMode === undefined && body.publishImmediately);
 
     if (shouldPublish) {
       const adapter = getAdapter(userId, body.marketplace);
@@ -255,7 +246,7 @@ listingsRouter.post('/', async (req, res, next) => {
       if (body.marketplace === 'ebay') {
         const cat = await resolveEbayCategoryId(marketplaceSpecific, item);
         if (cat.categoryId) marketplaceSpecific = { ...(marketplaceSpecific ?? {}), categoryId: cat.categoryId };
-        marketplaceSpecific = await applySellerPolicyDefaults(userId, marketplaceSpecific);
+        marketplaceSpecific = await applyShipFromOrigin(userId, marketplaceSpecific);
         marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
         marketplaceSpecific = mergeItemAspects(item, marketplaceSpecific);
         stableSku = await ensureItemEbaySku(item);
@@ -281,9 +272,6 @@ listingsRouter.post('/', async (req, res, next) => {
         features: item.features as string[],
         marketplaceSpecific,
         ebaySku: stableSku,
-        // 'live' for a real publish, 'draft' for an eBay-draft request (adapter
-        // creates the offer and skips /publish).
-        publishMode: adapterPublishMode,
       });
 
       marketplaceListingId = result.marketplaceListingId;

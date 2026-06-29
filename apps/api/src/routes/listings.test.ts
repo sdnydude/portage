@@ -112,14 +112,9 @@ describe('POST /listings', () => {
     );
   });
 
-  it('publishMode "ebay_draft" calls the adapter in draft mode and persists the unpublished eBay offer', async () => {
+  it('publishMode "ebay_draft" saves a DB-only draft and does NOT call the adapter (Trading has no unpublished offer — N1)', async () => {
     mockSelectOnce([{ ...MOCK_ITEM }]);
-    mockSelectOnce([]); // seller profile (policy self-heal)
-    mockSelectOnce([]); // footer lookup
     const values = mockInsertCapture();
-    // The adapter's draft branch creates the eBay inventory item + offer, skips
-    // /publish, and returns status 'draft' with the offerId + sku.
-    mockCreateListing.mockResolvedValue({ marketplaceListingId: null, ebayOfferId: 'offer-9', ebaySku: 'PRT-000009', status: 'draft' });
 
     const res = await request(app)
       .post('/listings')
@@ -133,10 +128,10 @@ describe('POST /listings', () => {
       });
 
     expect(res.status).toBe(201);
-    // adapter IS called (not the DB-only path) and in DRAFT mode (no /publish)
-    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({ publishMode: 'draft' }));
-    // the eBay offer id + sku are persisted; status stays draft (not active)
-    expect(values).toHaveBeenCalledWith(expect.objectContaining({ ebayOfferId: 'offer-9', ebaySku: 'PRT-000009', status: 'draft' }));
+    // ebay_draft is now a local draft only — no eBay call (AddFixedPriceItem publishes
+    // live; there is no unpublished-offer concept under Trading).
+    expect(mockCreateListing).not.toHaveBeenCalled();
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
   });
 
   it('carries item.aspects into marketplaceSpecific on publish, client aspects winning per key', async () => {
@@ -440,13 +435,10 @@ describe('POST /listings', () => {
     }));
   });
 
-  it('self-heals eBay policy IDs from the seller profile when a live POST / publish lacks them', async () => {
+  it('injects the ship-from origin ZIP from the seller profile when a live create lacks it (inline calculated shipping)', async () => {
     mockSelectOnce([MOCK_ITEM]);
-    mockSelectOnce([{
-      ebayFulfillmentPolicyId: 'fp-9', ebayPaymentPolicyId: 'pp-9',
-      ebayReturnPolicyId: 'rp-9', ebayMerchantLocationKey: 'loc-9',
-    }]);
-    mockSelectOnce([]); // footer lookup — no seller profile
+    mockSelectOnce([{ shipFromAddress: { postalCode: '90210' } }]); // seller profile ship-from
+    mockSelectOnce([]); // footer lookup
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 
@@ -463,23 +455,13 @@ describe('POST /listings', () => {
 
     expect(res.status).toBe(201);
     expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
-      marketplaceSpecific: expect.objectContaining({
-        categoryId: '123',
-        fulfillmentPolicyId: 'fp-9',
-        paymentPolicyId: 'pp-9',
-        returnPolicyId: 'rp-9',
-        merchantLocationKey: 'loc-9',
-      }),
+      marketplaceSpecific: expect.objectContaining({ categoryId: '123', originPostalCode: '90210' }),
     }));
   });
 
-  it('keeps body-provided policy IDs over profile values (body wins, profile fills gaps)', async () => {
+  it('keeps a body-provided origin ZIP over the profile (body wins, profile not consulted)', async () => {
     mockSelectOnce([MOCK_ITEM]);
-    mockSelectOnce([{
-      ebayFulfillmentPolicyId: 'fp-9', ebayPaymentPolicyId: 'pp-9',
-      ebayReturnPolicyId: 'rp-9', ebayMerchantLocationKey: 'loc-9',
-    }]);
-    mockSelectOnce([]); // footer lookup — no seller profile
+    mockSelectOnce([]); // footer lookup — ship-from not consulted because body supplied originPostalCode
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 
@@ -491,16 +473,11 @@ describe('POST /listings', () => {
         marketplace: 'ebay',
         price: 100,
         publishMode: 'live',
-        marketplaceSpecificFields: { categoryId: '123', fulfillmentPolicyId: 'fp-body' },
+        marketplaceSpecificFields: { categoryId: '123', originPostalCode: '10001' },
       });
 
     expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
-      marketplaceSpecific: expect.objectContaining({
-        fulfillmentPolicyId: 'fp-body',
-        paymentPolicyId: 'pp-9',
-        returnPolicyId: 'rp-9',
-        merchantLocationKey: 'loc-9',
-      }),
+      marketplaceSpecific: expect.objectContaining({ categoryId: '123', originPostalCode: '10001' }),
     }));
   });
 
