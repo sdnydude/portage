@@ -205,6 +205,17 @@ export function buildAddFixedPriceItemXml(input: TradingListingInput, token: str
   );
 }
 
+/** Same payload as AddFixedPriceItem, but eBay only VALIDATES it — no listing is created.
+ * Used as a pre-flight dry-run before the real publish (live-only proof de-risk). */
+export function buildVerifyAddFixedPriceItemXml(input: TradingListingInput, token: string): string {
+  return (
+    `${XML_DECL}\n<VerifyAddFixedPriceItemRequest xmlns="${NS}">` +
+    `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +
+    `<Item>${itemBody(input)}</Item>` +
+    '</VerifyAddFixedPriceItemRequest>'
+  );
+}
+
 export function buildReviseFixedPriceItemXml(itemId: string, input: TradingListingInput, token: string): string {
   return (
     `${XML_DECL}\n<ReviseFixedPriceItemRequest xmlns="${NS}">` +

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildAddFixedPriceItemXml,
+  buildVerifyAddFixedPriceItemXml,
   buildReviseInventoryStatusXml,
   buildReviseFixedPriceItemXml,
   buildEndFixedPriceItemXml,
@@ -104,6 +105,20 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(escaped).toContain('<Title>Tom &amp; Jerry &lt;best&gt;</Title>');
     expect(escaped).toContain('<Value>A &amp; B</Value>');
     expect(escaped).not.toContain('Tom & Jerry');
+  });
+});
+
+describe('buildVerifyAddFixedPriceItemXml (dry-run validation, no listing created)', () => {
+  it('wraps the SAME item body as Add in a VerifyAddFixedPriceItemRequest', () => {
+    const xml = buildVerifyAddFixedPriceItemXml(baseInput, 'T');
+    expect(xml).toContain('<VerifyAddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">');
+    expect(xml).toContain('<eBayAuthToken>T</eBayAuthToken>');
+    // identical Item content to the real Add call (so validating proves the real payload)
+    expect(xml).toContain('<Title>Sennheiser HD 600 Headphones</Title>');
+    expect(xml).toContain('<ListingType>FixedPriceItem</ListingType>');
+    expect(xml).toContain('<ShippingPackageDetails>');
+    expect(xml).not.toContain('<SellerProfiles>');
+    expect(xml).toContain('</VerifyAddFixedPriceItemRequest>');
   });
 });
 
