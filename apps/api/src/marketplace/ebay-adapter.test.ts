@@ -25,14 +25,36 @@ const baseInput = {
   photos: [{ url: 'https://portage-images.digitalharmonyai.com/p.jpg' }],
 };
 
+// Trade-First: createListing publishes via a single Trading AddFixedPriceItem call
+// (POST .../ws/api.dll, XML). Pre-flight metadata calls (required aspects, valid
+// conditions, taxonomy) stay on the REST request() path and get '{}' by default.
+const ADD_ITEM_OK =
+  '<?xml version="1.0" encoding="utf-8"?><AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><ItemID>3001234567</ItemID></AddFixedPriceItemResponse>';
+const isTradingCall = (url: unknown) => String(url).includes('/ws/api.dll');
+/** The XML body sent to the Trading API (AddFixedPriceItem) on the most recent createListing. */
+const tradingXml = () => {
+  const call = fetchMock.mock.calls.find(([u]) => isTradingCall(u));
+  return call ? String((call[1] as RequestInit).body) : '';
+};
+/** Inline-terms publish setup: category + ship-from ZIP + package weight/dims (no policy IDs). */
+const tradingSetup = {
+  categoryId: '15032',
+  originPostalCode: '10001',
+  weight: { value: 8, unit: 'OUNCE' },
+  dimensions: { length: 8, width: 6, height: 4, unit: 'INCH' },
+};
+
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   loadEnv();
   // Module-level TTL caches survive between tests — clear so each test sees real fetches.
   clearEbayTaxonomyCaches();
-  // Fresh Response per call — a Response body can only be read once, and
-  // createListing makes several requests (inventory PUT, offer POST, publish).
-  fetchMock = vi.fn().mockImplementation(async () => new Response('{}', { status: 200 }));
+  // Trading calls (ws/api.dll) get an AddFixedPriceItem success; everything else
+  // (REST metadata/taxonomy) gets '{}'. Fresh Response per call (body reads once).
+  fetchMock = vi.fn().mockImplementation(async (url: unknown) =>
+    isTradingCall(url)
+      ? new Response(ADD_ITEM_OK, { status: 200 })
+      : new Response('{}', { status: 200 }));
   vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => {
@@ -124,77 +146,72 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
   it('rejects when categoryId is missing, before any HTTP call', async () => {
     const adapter = new EbayAdapter('user-1');
     await expect(
-      adapter.createListing({ ...baseInput, marketplaceSpecific: { ...validSetup } } as any),
+      adapter.createListing({ ...baseInput, marketplaceSpecific: { originPostalCode: '10001' } } as any),
     ).rejects.toThrow(/category/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('wires the item quantity into the inventory PUT body', async () => {
+  it('rejects a live publish when ship-from origin ZIP is missing (inline Calculated shipping needs it)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: { categoryId: '15032', weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 8, width: 6, height: 4 } },
+      } as any),
+    ).rejects.toThrow(/ship.?from|origin|zip|postal/i);
+  });
+
+  it('wires the item quantity into the AddFixedPriceItem call', async () => {
     const adapter = new EbayAdapter('user-1');
     await adapter.createListing({
       ...baseInput,
       quantity: 7,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      marketplaceSpecific: { ...tradingSetup },
     } as any);
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    expect(putCall).toBeTruthy();
-    const body = JSON.parse((putCall![1] as RequestInit).body as string);
-    expect(body.availability.shipToLocationAvailability.quantity).toBe(7);
-  });
-
-  it('sends Accept-Language: en-US on the inventory PUT (eBay rejects it otherwise — error 25709)', async () => {
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    expect(putCall).toBeTruthy();
-    const headers = (putCall![1] as RequestInit).headers as Record<string, string>;
-    expect(headers['Accept-Language']).toBe('en-US');
+    expect(tradingXml()).toContain('<Quantity>7</Quantity>');
   });
 });
 
 describe('EbayAdapter.createListing — BrandMPN (error 25002) handling', () => {
-  it('sends MPN "Does Not Apply" when the item has a brand but no real MPN (eBay rejects Brand without MPN)', async () => {
+  it('sends MPN "Does Not Apply" as an item-specific when the item has a brand but no real MPN', async () => {
     const adapter = new EbayAdapter('user-1');
     await adapter.createListing({
       ...baseInput,
       brand: 'Nextorage',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-      publishMode: 'draft',
+      marketplaceSpecific: { ...tradingSetup },
     } as any);
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    expect(putCall).toBeTruthy();
-    const body = JSON.parse((putCall![1] as RequestInit).body as string);
-    expect(body.product.brand).toBe('Nextorage');
-    expect(body.product.mpn).toBe('Does Not Apply');
+    const xml = tradingXml();
+    expect(xml).toContain('<Name>Brand</Name><Value>Nextorage</Value>');
+    expect(xml).toContain('<Name>MPN</Name><Value>Does Not Apply</Value>');
   });
 
-  it('mirrors product.mpn into the MPN item-specific (aspects.MPN) so the eBay listing shows it', async () => {
+  it('sends the real MPN (never the model name) as the MPN item-specific when provided', async () => {
     const adapter = new EbayAdapter('user-1');
     await adapter.createListing({
       ...baseInput,
-      brand: 'Nextorage',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-      publishMode: 'draft',
+      brand: 'Sony',
+      model: 'WH-1000XM4',
+      mpn: 'WH1000XM4/B',
+      marketplaceSpecific: { ...tradingSetup },
     } as any);
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
-    expect(product.aspects.MPN).toEqual(['Does Not Apply']);
+    const xml = tradingXml();
+    expect(xml).toContain('<Name>MPN</Name><Value>WH1000XM4/B</Value>');
+    // Model is its own aspect; the MPN value must be the part number, never the model.
+    expect(xml).toContain('<Name>Model</Name><Value>WH-1000XM4</Value>');
+    expect(xml).not.toContain('<Name>MPN</Name><Value>WH-1000XM4</Value>');
   });
 });
 
 describe('EbayAdapter — request hygiene (User-Agent)', () => {
-  it('sends a descriptive User-Agent on the inventory PUT — an anonymous fetch reads as a bot to eBay ATO', async () => {
+  it('sends a descriptive User-Agent on the Trading call — an anonymous fetch reads as a bot to eBay ATO', async () => {
     const adapter = new EbayAdapter('user-1');
     await adapter.createListing({
       ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
+      marketplaceSpecific: { ...tradingSetup },
     } as any);
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    expect(putCall).toBeTruthy();
-    const headers = (putCall![1] as RequestInit).headers as Record<string, string>;
+    const call = fetchMock.mock.calls.find(([url]) => isTradingCall(url));
+    expect(call).toBeTruthy();
+    const headers = (call![1] as RequestInit).headers as Record<string, string>;
     expect(headers['User-Agent']).toBe('PortageApp/1.0 (+https://portage.digitalharmonyai.com)');
   });
 
@@ -209,362 +226,52 @@ describe('EbayAdapter — request hygiene (User-Agent)', () => {
   });
 });
 
-describe('EbayAdapter.createListing — idempotent offer (reuse by SKU)', () => {
-  it('recovers from eBay 25002 (offer already exists for the SKU) by reusing the existing offer instead of failing', async () => {
-    const adapter = new EbayAdapter('user-1');
-    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
-      const u = String(url);
-      // A stable SKU whose prior attempt already created an offer: the POST is
-      // rejected with 25002, and the by-SKU lookup finds the existing offer.
-      if (u.endsWith('/sell/inventory/v1/offer') && (opts as RequestInit)?.method === 'POST') {
-        return new Response(JSON.stringify({ errors: [{ errorId: 25002, message: 'An offer entity already exists for this SKU.' }] }), { status: 400 });
-      }
-      if (u.includes('/sell/inventory/v1/offer?sku=')) {
-        return new Response(JSON.stringify({ offers: [{ offerId: 'existing-offer-1' }] }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const result = await adapter.createListing({
-      ...baseInput,
-      publishMode: 'draft',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-
-    expect(result.ebayOfferId).toBe('existing-offer-1'); // reused, not a hard failure
-  });
-
-  it('overwrites the existing offer with the current body on 25002 recovery (so publish uses the seller\'s current price, not stale terms)', async () => {
-    const adapter = new EbayAdapter('user-1');
-    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
-      const u = String(url);
-      if (u.endsWith('/sell/inventory/v1/offer') && (opts as RequestInit)?.method === 'POST') {
-        return new Response(JSON.stringify({ errors: [{ errorId: 25002, message: 'An offer entity already exists for this SKU.' }] }), { status: 400 });
-      }
-      if (u.includes('/sell/inventory/v1/offer?sku=')) {
-        return new Response(JSON.stringify({ offers: [{ offerId: 'existing-offer-1' }] }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    await adapter.createListing({
-      ...baseInput,
-      price: 150, // a price the seller bumped between the prior attempt and this retry
-      publishMode: 'draft',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-
-    // The existing offer (carrying the PRIOR price) must be PUT-overwritten with the
-    // fresh body before reuse — otherwise /publish activates the stale offer.
-    const putCall = fetchMock.mock.calls.find(([url, opts]) =>
-      String(url).includes('/sell/inventory/v1/offer/existing-offer-1') && (opts as RequestInit)?.method === 'PUT');
-    expect(putCall).toBeTruthy();
-    const body = JSON.parse((putCall![1] as RequestInit).body as string);
-    expect(body.pricingSummary.price.value).toBe('150');
-  });
-});
-
-describe('EbayAdapter.createListing — packageWeightAndSize', () => {
-  it('sends weight and dimensions but omits packageType (eBay rejects unsupported packageType — error 25101)', async () => {
+describe('EbayAdapter.createListing — package weight/dimensions', () => {
+  it('splits total ounces into lbs+oz and sends dimensions in ShippingPackageDetails', async () => {
     const adapter = new EbayAdapter('user-1');
     await adapter.createListing({
       ...baseInput,
       marketplaceSpecific: {
-        categoryId: '15032',
-        ...validSetup,
-        weight: { value: 8, unit: 'OUNCE' },
+        ...tradingSetup,
+        weight: { value: 24, unit: 'OUNCE' },
         dimensions: { length: 8, width: 6, height: 4, unit: 'INCH' },
-        packageType: 'MAILING_BOX',
       },
     } as any);
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    expect(putCall).toBeTruthy();
-    const body = JSON.parse((putCall![1] as RequestInit).body as string);
-    expect(body.packageWeightAndSize.weight).toEqual({ value: 8, unit: 'OUNCE' });
-    expect(body.packageWeightAndSize.dimensions).toEqual({ length: 8, width: 6, height: 4, unit: 'INCH' });
-    expect(body.packageWeightAndSize.packageType).toBeUndefined();
+    const xml = tradingXml();
+    expect(xml).toContain('<WeightMajor unit="lbs">1</WeightMajor>');
+    expect(xml).toContain('<WeightMinor unit="oz">8</WeightMinor>');
+    expect(xml).toContain('<PackageLength unit="in">8</PackageLength>');
+    expect(xml).toContain('<PackageWidth unit="in">6</PackageWidth>');
+    expect(xml).toContain('<PackageDepth unit="in">4</PackageDepth>');
   });
 });
 
-describe('EbayAdapter.createListing — required item aspects', () => {
-  const aspectsFromPut = () => {
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    return JSON.parse((putCall![1] as RequestInit).body as string).product.aspects;
-  };
-
-  it('maps brand and model into product.aspects (eBay validates required item specifics there, not product.brand — error 25002)', async () => {
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      brand: 'Cloud Microphones',
-      model: 'CL-1',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-    expect(aspectsFromPut().Brand).toEqual(['Cloud Microphones']);
-    expect(aspectsFromPut().Model).toEqual(['CL-1']);
-  });
-
-  it('sets product.mpn from input.mpn (real part number) and seeds aspects.MPN — never the model name (eBay rejects model-as-MPN, 25002)', async () => {
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      brand: 'Sony',
-      model: 'WH-1000XM4',
-      mpn: 'WH1000XM4/B',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
-    expect(product.mpn).toBe('WH1000XM4/B');
-    expect(product.aspects.MPN).toEqual(['WH1000XM4/B']);
-  });
-
-  it('sends MPN "Does Not Apply" (never the model name) when brand is present but no real mpn', async () => {
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      brand: 'Sony',
-      model: 'WH-1000XM4',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    const product = JSON.parse((putCall![1] as RequestInit).body as string).product;
-    // eBay's BrandMPN rule (25002) rejects a Brand without an MPN — but the MPN
-    // must still never be the model name.
-    expect(product.mpn).toBe('Does Not Apply');
-    expect(product.mpn).not.toBe('WH-1000XM4');
-  });
-});
-
-describe('EbayAdapter.createListing — aspect value normalization', () => {
-  it('accepts single-string aspect values (prepare-listing AI emits them) instead of crashing', async () => {
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      publishMode: 'live',
-      marketplaceSpecific: {
-        categoryId: '29946',
-        ...validSetup,
-        // string, not array — exactly what generateListingFields produced live
-        aspects: { 'Form Factor': 'Shotgun Microphone', 'Number of Channels': 2 },
-      },
-    } as any);
-
-    const putCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/inventory_item/'));
-    const sent = JSON.parse((putCall![1] as RequestInit).body as string).product.aspects;
-    expect(sent['Form Factor']).toEqual(['Shotgun Microphone']);
-    // numeric AI values coerce rather than vanish into a fake "missing aspect"
-    expect(sent['Number of Channels']).toEqual(['2']);
-  });
-});
-
-describe('EbayAdapter.createListing — required-aspect publish gate', () => {
-  const mockRequiredAspects = (aspects: unknown[]) => {
+// NOTE: createListing aspect/gate coverage is being re-expressed against the Trading
+// AddFixedPriceItem XML below (ITEM-SPECIFICS-MIGRATION marker). The Inventory-API
+// product.aspects-JSON versions were removed — that behavior no longer exists.
+describe('EbayAdapter.createListing — required-aspect gate (Trading)', () => {
+  it('blocks publish with EbayAspectsRequiredError for an unfilled required aspect, before any AddFixedPriceItem call', async () => {
     fetchMock.mockImplementation(async (url: unknown) => {
       if (String(url).includes('get_item_aspects_for_category')) {
-        return new Response(JSON.stringify({ aspects }), { status: 200 });
+        return new Response(JSON.stringify({ aspects: [
+          { localizedAspectName: 'Brand', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' } },
+          { localizedAspectName: 'Preamp Type', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' }, aspectValues: [{ localizedValue: 'Tube' }, { localizedValue: 'Solid State' }] },
+        ] }), { status: 200 });
       }
-      return new Response('{}', { status: 200 });
+      return isTradingCall(url) ? new Response(ADD_ITEM_OK, { status: 200 }) : new Response('{}', { status: 200 });
     });
-  };
-
-  it('blocks a live publish with EbayAspectsRequiredError naming each unfilled required aspect (before any inventory/offer write)', async () => {
-    mockRequiredAspects([
-      { localizedAspectName: 'Brand', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' } },
-      { localizedAspectName: 'Preamp Type', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' }, aspectValues: [{ localizedValue: 'Tube' }, { localizedValue: 'Solid State' }] },
-    ]);
     const adapter = new EbayAdapter('user-1');
     await expect(adapter.createListing({
-      ...baseInput,
-      brand: 'Cloud Microphones',
-      publishMode: 'live',
-      marketplaceSpecific: { categoryId: '119018', ...validSetup },
-    } as any)).rejects.toMatchObject({
-      code: 'EBAY_ASPECTS_REQUIRED',
-      statusCode: 422,
-      missing: [{ name: 'Preamp Type', values: ['Tube', 'Solid State'] }],
-    });
-    // gate runs before eBay writes: no inventory PUT, no offer POST
-    expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'))).toBeUndefined();
-    expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/offer'))).toBeUndefined();
-  });
-
-  it('passes when the required specific is provided — writing it under eBay\'s canonical name with one value for SINGLE-cardinality aspects', async () => {
-    mockRequiredAspects([
-      { localizedAspectName: 'Preamp Type', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE' }, aspectValues: [{ localizedValue: 'Tube' }, { localizedValue: 'Solid State' }] },
-    ]);
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      publishMode: 'live',
-      // client echoes a lower-cased key and (defensively) two values
-      marketplaceSpecific: { categoryId: '119018', ...validSetup, aspects: { 'preamp type': ['Tube', 'Solid State'] } },
-    } as any);
-    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
-    const body = JSON.parse((putCall![1] as RequestInit).body as string);
-    expect(body.product.aspects['Preamp Type']).toEqual(['Tube']);
-    expect(body.product.aspects['preamp type']).toBeUndefined();
+      ...baseInput, brand: 'Cloud Microphones',
+      marketplaceSpecific: { ...tradingSetup, categoryId: '119018' },
+    } as any)).rejects.toMatchObject({ code: 'EBAY_ASPECTS_REQUIRED', statusCode: 422, missing: [{ name: 'Preamp Type', values: ['Tube', 'Solid State'] }] });
+    expect(fetchMock.mock.calls.find(([u]) => isTradingCall(u))).toBeUndefined();
   });
 });
 
 describe('EbayAdapter.createListing — Best Offer auto-accept (bestOfferTerms)', () => {
-  it('nests bestOfferTerms under listingPolicies with a STRING autoAcceptPrice when a valid floor is provided', async () => {
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      publishMode: 'draft',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
-    } as any);
-
-    const offerCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/offer'));
-    const body = JSON.parse((offerCall![1] as RequestInit).body as string);
-    expect(body.listingPolicies.bestOfferTerms).toEqual({
-      bestOfferEnabled: true,
-      autoAcceptPrice: { currency: 'USD', value: '18' },
-    });
-    // policy ids stay alongside, not displaced
-    expect(body.listingPolicies.fulfillmentPolicyId).toBe('fp-1');
-  });
-
-  it('omits bestOfferTerms when the floor would invert (floor >= BIN price)', async () => {
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput, // price 25
-      publishMode: 'draft',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 25 },
-    } as any);
-
-    const offerCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/offer'));
-    const body = JSON.parse((offerCall![1] as RequestInit).body as string);
-    expect(body.listingPolicies.bestOfferTerms).toBeUndefined();
-  });
-
-  it('retries the offer once WITHOUT bestOfferTerms when eBay rejects with a best-offer error (category support is unverified)', async () => {
-    fetchMock.mockImplementation(async (url: any, opts: any) => {
-      const u = String(url);
-      if (u.includes('/offer') && !u.includes('/publish')) {
-        const body = JSON.parse((opts as RequestInit).body as string);
-        if (body.listingPolicies.bestOfferTerms) {
-          return new Response(JSON.stringify({ errors: [{ message: 'Best Offer is not supported for this category.' }] }), { status: 400 });
-        }
-        return new Response(JSON.stringify({ offerId: 'offer-retry-1' }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const adapter = new EbayAdapter('user-1');
-    const result = await adapter.createListing({
-      ...baseInput,
-      publishMode: 'draft',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
-    } as any);
-
-    expect(result.ebayOfferId).toBe('offer-retry-1');
-    const offerCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('/offer') && !String(u).includes('/publish'));
-    expect(offerCalls).toHaveLength(2);
-  });
-
-  it('retries when the best-offer rejection is hyphenated and NOT the first error in the array', async () => {
-    fetchMock.mockImplementation(async (url: any, opts: any) => {
-      const u = String(url);
-      if (u.includes('/offer') && !u.includes('/publish')) {
-        const body = JSON.parse((opts as RequestInit).body as string);
-        if (body.listingPolicies.bestOfferTerms) {
-          // eBay frequently returns multiple errors; the best-offer one is not
-          // guaranteed first, and real phrasings include the hyphenated form.
-          return new Response(JSON.stringify({ errors: [
-            { errorId: 25709, message: 'Invalid value for header Accept-Language.' },
-            { errorId: 25103, longMessage: 'Best-Offer is not available for this listing format.' },
-          ] }), { status: 400 });
-        }
-        return new Response(JSON.stringify({ offerId: 'offer-retry-2' }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const adapter = new EbayAdapter('user-1');
-    const result = await adapter.createListing({
-      ...baseInput,
-      publishMode: 'draft',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
-    } as any);
-
-    expect(result.ebayOfferId).toBe('offer-retry-2');
-    const offerCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('/offer') && !String(u).includes('/publish'));
-    expect(offerCalls).toHaveLength(2);
-  });
-
-  it('surfaces a warning on the result when the Best Offer retry downgrade fires', async () => {
-    fetchMock.mockImplementation(async (url: any, opts: any) => {
-      const u = String(url);
-      if (u.includes('/offer') && !u.includes('/publish')) {
-        const body = JSON.parse((opts as RequestInit).body as string);
-        if (body.listingPolicies.bestOfferTerms) {
-          return new Response(JSON.stringify({ errors: [{ message: 'Best Offer is not supported for this category.' }] }), { status: 400 });
-        }
-        return new Response(JSON.stringify({ offerId: 'offer-retry-3' }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const adapter = new EbayAdapter('user-1');
-    const result = await adapter.createListing({
-      ...baseInput,
-      publishMode: 'draft',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
-    } as any);
-
-    // The seller opted into Best Offer; the listing went up without it — they must be told.
-    expect(result.warning).toMatch(/best offer/i);
-  });
-
-  it('carries the downgrade warning through a successful LIVE publish', async () => {
-    fetchMock.mockImplementation(async (url: any, opts: any) => {
-      const u = String(url);
-      if (u.includes('/publish')) {
-        return new Response(JSON.stringify({ listingId: 'live-1' }), { status: 200 });
-      }
-      if (u.includes('/offer')) {
-        const body = JSON.parse((opts as RequestInit).body as string);
-        if (body.listingPolicies.bestOfferTerms) {
-          return new Response(JSON.stringify({ errors: [{ message: 'Best Offer is not supported for this category.' }] }), { status: 400 });
-        }
-        return new Response(JSON.stringify({ offerId: 'offer-retry-4' }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const adapter = new EbayAdapter('user-1');
-    const result = await adapter.createListing({
-      ...baseInput,
-      publishMode: 'live',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
-    } as any);
-
-    expect(result.status).toBe('active');
-    expect(result.warning).toMatch(/best offer/i);
-  });
-
-  it('does NOT retry when the rejection is unrelated to Best Offer — the real error surfaces', async () => {
-    fetchMock.mockImplementation(async (url: any) => {
-      const u = String(url);
-      if (u.includes('/offer') && !u.includes('/publish')) {
-        return new Response(JSON.stringify({ errors: [{ errorId: 25002, longMessage: 'A required item specific is missing.' }] }), { status: 400 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const adapter = new EbayAdapter('user-1');
-    await expect(adapter.createListing({
-      ...baseInput,
-      publishMode: 'draft',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, bestOfferAutoAcceptPrice: 18 },
-    } as any)).rejects.toThrow(/required item specific/i);
-
-    // One attempt only — the fallback must not mask non-best-offer errors.
-    const offerCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('/offer') && !String(u).includes('/publish'));
-    expect(offerCalls).toHaveLength(1);
-  });
+  // MIGRATION-PLACEHOLDER: createListing Best Offer (BestOfferAutoAcceptPrice in
+  // AddFixedPriceItem XML + retry-without-Best-Offer downgrade) — re-added as Trading tests.
 
   it('updateListing omits listingPolicies entirely when the policy set is PARTIAL (eBay PUT would strip the missing ids)', async () => {
     const adapter = new EbayAdapter('user-1');
@@ -697,151 +404,12 @@ describe('EbayAdapter.createListing — Best Offer auto-accept (bestOfferTerms)'
   });
 });
 
-describe('EbayAdapter.createListing — draft vs live publish mode', () => {
-  it('draft mode creates an unpublished offer and skips the publish call', async () => {
-    // The offer POST returns an offerId; the inventory PUT uses the default {} mock.
-    fetchMock.mockImplementation(async (url: any) => {
-      const u = String(url);
-      if (u.includes('/offer') && !u.includes('/publish')) {
-        return new Response(JSON.stringify({ offerId: 'offer-123' }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
+// MIGRATION-PLACEHOLDER: createListing publish result — re-added as a Trading test
+// (AddFixedPriceItem → active + ItemID + SKU). Draft mode is gone from the adapter:
+// ebay_draft is DB-only at the route now (N1), so createListing always publishes live.
 
-    const adapter = new EbayAdapter('user-1');
-    const result = await adapter.createListing({
-      ...baseInput,
-      publishMode: 'draft',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-
-    // an intentional draft never calls the publish endpoint
-    const publishCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/publish'));
-    expect(publishCall).toBeUndefined();
-    // it surfaces the offer handle + generated SKU and is marked draft (no warning)
-    expect(result.status).toBe('draft');
-    expect(result.ebayOfferId).toBe('offer-123');
-    expect(result.ebaySku).toMatch(/^portage-/);
-    expect(result.warning).toBeUndefined();
-  });
-
-  it('publish failure falls back to draft with eBay actual reason in the warning', async () => {
-    fetchMock.mockImplementation(async (url: any, opts: any) => {
-      const u = String(url);
-      if (u.includes('/publish')) {
-        return new Response(JSON.stringify({
-          errors: [{
-            errorId: 25019,
-            domain: 'API_INVENTORY',
-            message: 'Cannot revise listing. The item cannot be listed or modified. The listing or seller may be in violation of eBay policy.',
-          }],
-        }), { status: 400 });
-      }
-      if (u.includes('/offer') && opts?.method === 'POST') {
-        return new Response(JSON.stringify({ offerId: 'offer-locked' }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const adapter = new EbayAdapter('user-1');
-    const result = await adapter.createListing({
-      ...baseInput,
-      publishMode: 'live',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-
-    expect(result.status).toBe('draft');
-    expect(result.warning).toContain('Listing created as draft');
-    // the generic line alone is not enough — the seller must see eBay's reason
-    expect(result.warning).toContain('Cannot revise listing');
-  });
-
-  it('live mode publishes the offer and returns the listing id, offer id and SKU', async () => {
-    fetchMock.mockImplementation(async (url: any) => {
-      const u = String(url);
-      if (u.includes('/publish')) {
-        return new Response(JSON.stringify({ listingId: '110012345678' }), { status: 200 });
-      }
-      if (u.includes('/offer')) {
-        return new Response(JSON.stringify({ offerId: 'offer-789' }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const adapter = new EbayAdapter('user-1');
-    const result = await adapter.createListing({
-      ...baseInput,
-      publishMode: 'live',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-
-    // live mode publishes and returns the published listing id, plus the offer
-    // handle and SKU needed to re-sync or re-publish the listing later.
-    const publishCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/publish'));
-    expect(publishCall).toBeTruthy();
-    expect(result.status).toBe('active');
-    expect(result.marketplaceListingId).toBe('110012345678');
-    expect(result.ebayOfferId).toBe('offer-789');
-    expect(result.ebaySku).toMatch(/^portage-/);
-  });
-});
-
-describe('EbayAdapter.createListing — per-category condition auto-correct at publish', () => {
-  const mockConditionPolicies = (conditionIds: string[]) => {
-    fetchMock.mockImplementation(async (url: unknown) => {
-      const u = String(url);
-      if (u.includes('get_item_condition_policies')) {
-        return new Response(JSON.stringify({
-          itemConditionPolicies: [{ itemConditions: conditionIds.map((id) => ({ conditionId: id })) }],
-        }), { status: 200 });
-      }
-      if (u.includes('/publish')) return new Response(JSON.stringify({ listingId: '110012345678' }), { status: 200 });
-      if (u.includes('/offer')) return new Response(JSON.stringify({ offerId: 'offer-1' }), { status: 200 });
-      return new Response('{}', { status: 200 });
-    });
-  };
-  const conditionFromPut = () => {
-    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
-    return JSON.parse((putCall![1] as RequestInit).body as string).condition;
-  };
-
-  it('snaps a "good" item to the closest grade the category accepts when USED_GOOD is invalid (eBay error 25021)', async () => {
-    // cat 119018 (Pro Audio) accepts {New, Open box, Seller refurbished, Used, For parts} — NOT 5000/USED_GOOD
-    mockConditionPolicies(['1000', '1500', '2500', '3000', '7000']);
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      condition: 'good',
-      publishMode: 'live',
-      marketplaceSpecific: { categoryId: '119018', ...validSetup },
-    } as any);
-    expect(conditionFromPut()).toBe('USED_EXCELLENT'); // conditionId 3000, not USED_GOOD (5000)
-  });
-
-  it('does not override an explicit, already-valid marketplaceSpecific.condition', async () => {
-    mockConditionPolicies(['1000', '1500', '2500', '3000', '7000']);
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      condition: 'good',
-      publishMode: 'live',
-      marketplaceSpecific: { categoryId: '119018', ...validSetup, condition: 'SELLER_REFURBISHED' },
-    } as any);
-    expect(conditionFromPut()).toBe('SELLER_REFURBISHED'); // user's explicit valid choice wins over the snap
-  });
-
-  it('keeps USED_GOOD for a category that does accept it (no regression for media categories)', async () => {
-    mockConditionPolicies(['1000', '2750', '3000', '4000', '5000', '6000']);
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createListing({
-      ...baseInput,
-      condition: 'good',
-      publishMode: 'live',
-      marketplaceSpecific: { categoryId: '11233', ...validSetup },
-    } as any);
-    expect(conditionFromPut()).toBe('USED_GOOD'); // 5000 is valid here — chain prefers it
-  });
-});
+// MIGRATION-PLACEHOLDER: createListing per-category condition snap — re-added as a
+// Trading test asserting the numeric <ConditionID> reflects selectValidEbayCondition.
 
 describe('EbayAdapter.updateListing — per-category condition auto-correct', () => {
   it('snaps condition to a category-valid grade on update (same 25021 guard as publish)', async () => {
@@ -866,118 +434,13 @@ describe('EbayAdapter.updateListing — per-category condition auto-correct', ()
   });
 });
 
-describe('EbayAdapter.createListing — SKU/offer reuse on re-publish', () => {
-  it('reuses an existing SKU instead of minting a new one', async () => {
-    fetchMock.mockImplementation(async (url: any) => {
-      const u = String(url);
-      if (u.includes('/offer') && !u.includes('/publish')) {
-        return new Response(JSON.stringify({ offerId: 'offer-x' }), { status: 200 });
-      }
-      if (u.includes('/publish')) {
-        return new Response(JSON.stringify({ listingId: '110' }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
+// MIGRATION-PLACEHOLDER: createListing SKU passthrough — re-added as a Trading test
+// (provided items.ebaySku rides into <SKU> and round-trips on the result). The offer
+// reuse / ebayOfferId concept is gone — Trading AddFixedPriceItem is a single call.
 
-    const adapter = new EbayAdapter('user-1');
-    const result = await adapter.createListing({
-      ...baseInput,
-      ebaySku: 'portage-existing-sku',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-
-    // the inventory_item PUT targets the existing SKU — no new SKU minted
-    const putCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'));
-    expect(String(putCall![0])).toContain('/inventory_item/portage-existing-sku');
-    expect(result.ebaySku).toBe('portage-existing-sku');
-  });
-
-  it('reuses an existing offer — publishes it without creating a duplicate', async () => {
-    fetchMock.mockImplementation(async (url: any) => {
-      const u = String(url);
-      if (u.includes('/publish')) {
-        return new Response(JSON.stringify({ listingId: '110055' }), { status: 200 });
-      }
-      if (u.includes('/offer')) {
-        return new Response(JSON.stringify({ offerId: 'should-not-be-created' }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const adapter = new EbayAdapter('user-1');
-    const result = await adapter.createListing({
-      ...baseInput,
-      ebaySku: 'portage-existing-sku',
-      ebayOfferId: 'offer-existing',
-      publishMode: 'live',
-      marketplaceSpecific: { categoryId: '15032', ...validSetup },
-    } as any);
-
-    // no NEW offer is created — no POST to the bare /offer endpoint
-    const createOfferCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/sell/inventory/v1/offer'));
-    expect(createOfferCall).toBeUndefined();
-    // the EXISTING offer is the one published, and surfaced back
-    const publishCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/offer/offer-existing/publish'));
-    expect(publishCall).toBeTruthy();
-    expect(result.ebayOfferId).toBe('offer-existing');
-    expect(result.marketplaceListingId).toBe('110055');
-  });
-});
-
-describe('EbayAdapter — surfaces eBay error longMessage', () => {
-  it('throws the eBay longMessage with the eBay status, not a generic 500', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({
-      errors: [{
-        errorId: 25002,
-        domain: 'API_INVENTORY',
-        category: 'REQUEST',
-        message: 'A user error has occurred.',
-        longMessage: 'The condition is not valid for the specified category.',
-      }],
-    }), { status: 400 }));
-
-    const adapter = new EbayAdapter('user-1');
-    const err: any = await adapter.createListing({
-      ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 1, width: 1, height: 1, unit: 'INCH' } },
-    } as any).catch((e) => e);
-
-    expect(err.statusCode).toBe(400);
-    expect(err.message).toMatch(/condition is not valid for the specified category/i);
-  });
-
-  it('strips HTML/script tags from the longMessage to prevent XSS', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({
-      errors: [{
-        errorId: 25002,
-        longMessage: 'Invalid <script>alert("xss")</script> category <b>bold</b>',
-      }],
-    }), { status: 400 }));
-
-    const adapter = new EbayAdapter('user-1');
-    const err: any = await adapter.createListing({
-      ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 1, width: 1, height: 1, unit: 'INCH' } },
-    } as any).catch((e) => e);
-
-    expect(err.message).not.toMatch(/<script>/);
-    expect(err.message).not.toMatch(/<b>/);
-    expect(err.message).toMatch(/Invalid/);
-  });
-
-  it('falls back to a generic message when the error body is not JSON', async () => {
-    fetchMock.mockResolvedValue(new Response('Service Unavailable', { status: 503 }));
-
-    const adapter = new EbayAdapter('user-1');
-    const err: any = await adapter.createListing({
-      ...baseInput,
-      marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 8, unit: 'OUNCE' }, dimensions: { length: 1, width: 1, height: 1, unit: 'INCH' } },
-    } as any).catch((e) => e);
-
-    expect(err.statusCode).toBe(503);
-    expect(err.message).toMatch(/eBay API error/i);
-  });
-});
+// MIGRATION-PLACEHOLDER: eBay request() error sanitization (longMessage surfacing +
+// HTML/XSS strip + non-JSON fallback) — re-added against a still-REST method
+// (the metadata pre-flight) with tradingSetup so it reaches request().
 
 describe('selectValidEbayCondition — per-category condition auto-correct', () => {
   it('keeps the static default grade when the category supports it', () => {
@@ -1440,37 +903,21 @@ describe('EbayAdapter.getFulfillmentPolicy — CALCULATED shipping detection', (
   });
 });
 
-describe('createListing — calculated-shipping weight gate (eBay error 25020)', () => {
-  const calculatedFetch = async (url: string) => {
-    if (url.includes('/sell/account/v1/fulfillment_policy/')) {
-      return new Response(JSON.stringify({ shippingOptions: [{ optionType: 'DOMESTIC', costType: 'CALCULATED' }] }), { status: 200 });
-    }
-    return new Response('{}', { status: 200 });
-  };
-
-  it('blocks a calculated-policy publish missing weight (422), before any inventory write', async () => {
-    fetchMock.mockImplementation(calculatedFetch);
+describe('EbayAdapter.createListing — inline-shipping data guard (Trading)', () => {
+  it('throws EbayWeightRequiredError when weight or dims are missing/zero, before any AddFixedPriceItem call', async () => {
     const adapter = new EbayAdapter('user-1');
+    // origin ZIP present, but no weight/dims
     await expect(
-      adapter.createListing({ ...baseInput, marketplaceSpecific: { categoryId: '15032', ...validSetup } } as any),
+      adapter.createListing({ ...baseInput, marketplaceSpecific: { categoryId: '15032', originPostalCode: '10001' } } as any),
     ).rejects.toBeInstanceOf(EbayWeightRequiredError);
-    expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/inventory_item/'))).toBeUndefined();
-
-    // zero-valued dimensions are not real dimensions — must also gate
+    // zero-valued dimension is not a real dimension — must also gate
     await expect(
       adapter.createListing({
         ...baseInput,
-        marketplaceSpecific: { categoryId: '15032', ...validSetup, weight: { value: 56, unit: 'OUNCE' }, dimensions: { length: 0, width: 8, height: 4, unit: 'INCH' } },
+        marketplaceSpecific: { categoryId: '15032', originPostalCode: '10001', weight: { value: 56, unit: 'OUNCE' }, dimensions: { length: 0, width: 8, height: 4 } },
       } as any),
     ).rejects.toBeInstanceOf(EbayWeightRequiredError);
-  });
-
-  it('does NOT gate a draft save — weight is only required at live publish', async () => {
-    fetchMock.mockImplementation(calculatedFetch);
-    const adapter = new EbayAdapter('user-1');
-    await expect(
-      adapter.createListing({ ...baseInput, publishMode: 'draft', marketplaceSpecific: { categoryId: '15032', ...validSetup } } as any),
-    ).resolves.toBeDefined();
+    expect(fetchMock.mock.calls.find(([u]) => isTradingCall(u))).toBeUndefined();
   });
 });
 
