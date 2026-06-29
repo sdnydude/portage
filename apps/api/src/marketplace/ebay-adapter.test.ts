@@ -249,6 +249,22 @@ describe('EbayAdapter.createListing — package weight/dimensions', () => {
 // NOTE: createListing aspect/gate coverage is being re-expressed against the Trading
 // AddFixedPriceItem XML below (ITEM-SPECIFICS-MIGRATION marker). The Inventory-API
 // product.aspects-JSON versions were removed — that behavior no longer exists.
+describe('EbayAdapter.createListing — aspect backfill + normalization (Trading)', () => {
+  it('backfills MPN "Does Not Apply" for a branded item with no real mpn, and coerces string/number aspect values', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput, brand: 'Sony',
+      marketplaceSpecific: { ...tradingSetup, aspects: { 'Form Factor': 'Shotgun', 'Number of Channels': 2 } },
+    } as any);
+    const xml = tradingXml();
+    expect(xml).toContain('<Name>Brand</Name><Value>Sony</Value>');
+    expect(xml).toContain('<Name>MPN</Name><Value>Does Not Apply</Value>');
+    // single-string and numeric AI values coerce to string array, not crash/vanish
+    expect(xml).toContain('<Name>Form Factor</Name><Value>Shotgun</Value>');
+    expect(xml).toContain('<Name>Number of Channels</Name><Value>2</Value>');
+  });
+});
+
 describe('EbayAdapter.createListing — required-aspect gate (Trading)', () => {
   it('blocks publish with EbayAspectsRequiredError for an unfilled required aspect, before any AddFixedPriceItem call', async () => {
     fetchMock.mockImplementation(async (url: unknown) => {
@@ -270,8 +286,38 @@ describe('EbayAdapter.createListing — required-aspect gate (Trading)', () => {
 });
 
 describe('EbayAdapter.createListing — Best Offer auto-accept (bestOfferTerms)', () => {
-  // MIGRATION-PLACEHOLDER: createListing Best Offer (BestOfferAutoAcceptPrice in
-  // AddFixedPriceItem XML + retry-without-Best-Offer downgrade) — re-added as Trading tests.
+  it('retries AddFixedPriceItem without Best Offer when eBay rejects it for that reason, and surfaces a downgrade warning', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      const body = String((opts as RequestInit).body);
+      if (body.includes('BestOfferAutoAcceptPrice')) {
+        return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></AddFixedPriceItemResponse>', { status: 200 });
+      }
+      return new Response(ADD_ITEM_OK, { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 18 },
+    } as any);
+    expect(calls).toBe(2); // first with Best Offer (rejected), retry without
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/best offer/i);
+  });
+
+  it('does NOT retry when the rejection is unrelated to Best Offer — the real error surfaces', async () => {
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url)
+        ? new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>A required item specific is missing.</ShortMessage></Errors></AddFixedPriceItemResponse>', { status: 200 })
+        : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+    await expect(adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 18 },
+    } as any)).rejects.toThrow(/required item specific/i);
+  });
 
   it('updateListing omits listingPolicies entirely when the policy set is PARTIAL (eBay PUT would strip the missing ids)', async () => {
     const adapter = new EbayAdapter('user-1');
@@ -404,12 +450,39 @@ describe('EbayAdapter.createListing — Best Offer auto-accept (bestOfferTerms)'
   });
 });
 
-// MIGRATION-PLACEHOLDER: createListing publish result — re-added as a Trading test
-// (AddFixedPriceItem → active + ItemID + SKU). Draft mode is gone from the adapter:
-// ebay_draft is DB-only at the route now (N1), so createListing always publishes live.
+describe('EbayAdapter.createListing — publish result (Trading)', () => {
+  it('returns active + the AddFixedPriceItem ItemID + SKU on a successful publish', async () => {
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput, ebaySku: 'PRT-000042',
+      marketplaceSpecific: { ...tradingSetup },
+    } as any);
+    expect(result.status).toBe('active');
+    expect(result.marketplaceListingId).toBe('3001234567'); // ItemID from ADD_ITEM_OK
+    expect(result.marketplaceUrl).toContain('3001234567');
+    expect(result.ebaySku).toBe('PRT-000042');
+  });
+});
 
-// MIGRATION-PLACEHOLDER: createListing per-category condition snap — re-added as a
-// Trading test asserting the numeric <ConditionID> reflects selectValidEbayCondition.
+describe('EbayAdapter.createListing — per-category condition snap (Trading)', () => {
+  it('snaps "good" to the closest grade the category accepts, as a numeric ConditionID', async () => {
+    // cat 119018 accepts {1000,1500,2500,3000,7000} — NOT 5000 (USED_GOOD); chain → 3000
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes('get_item_condition_policies')) {
+        return new Response(JSON.stringify({
+          itemConditionPolicies: [{ itemConditions: ['1000', '1500', '2500', '3000', '7000'].map((id) => ({ conditionId: id })) }],
+        }), { status: 200 });
+      }
+      return isTradingCall(url) ? new Response(ADD_ITEM_OK, { status: 200 }) : new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput, condition: 'good',
+      marketplaceSpecific: { ...tradingSetup, categoryId: '119018' },
+    } as any);
+    expect(tradingXml()).toContain('<ConditionID>3000</ConditionID>'); // not 5000
+  });
+});
 
 describe('EbayAdapter.updateListing — per-category condition auto-correct', () => {
   it('snaps condition to a category-valid grade on update (same 25021 guard as publish)', async () => {
@@ -434,13 +507,14 @@ describe('EbayAdapter.updateListing — per-category condition auto-correct', ()
   });
 });
 
-// MIGRATION-PLACEHOLDER: createListing SKU passthrough — re-added as a Trading test
-// (provided items.ebaySku rides into <SKU> and round-trips on the result). The offer
-// reuse / ebayOfferId concept is gone — Trading AddFixedPriceItem is a single call.
-
-// MIGRATION-PLACEHOLDER: eBay request() error sanitization (longMessage surfacing +
-// HTML/XSS strip + non-JSON fallback) — re-added against a still-REST method
-// (the metadata pre-flight) with tradingSetup so it reaches request().
+// SKU passthrough is covered by the "publish result" test above (asserts ebaySku
+// 'PRT-000042' rides through and round-trips). The offer-reuse / ebayOfferId concept
+// is gone — Trading AddFixedPriceItem is a single call.
+//
+// request() error sanitization (longMessage + HTML/XSS strip + non-JSON fallback) is
+// UNCHANGED code; createListing no longer exercises request() on the publish path
+// (it uses callTradingApi). That coverage belongs with a REST method and is re-added
+// with the updateListing rewrite (Phase 4), which uses request() throughout.
 
 describe('selectValidEbayCondition — per-category condition auto-correct', () => {
   it('keeps the static default grade when the category supports it', () => {
