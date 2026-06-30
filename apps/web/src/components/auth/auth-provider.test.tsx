@@ -127,6 +127,9 @@ describe("AuthProvider session loss", () => {
     expect(syncCall).toBeDefined();
     expect(syncCall![1].method).toBe("POST");
     expect(syncCall![1].headers.Authorization).toBe("Bearer new-at");
+    // keepalive lets the request survive the immediate post-login redirect
+    // (router.replace) — without it the navigation cancels the in-flight fetch.
+    expect(syncCall![1].keepalive).toBe(true);
   });
 
   it("redirects to /home the moment auth:session-lost fires", async () => {
