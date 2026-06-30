@@ -1122,6 +1122,31 @@ describe('POST /bulk/activate', () => {
     expect(mockBulkPublishOffers).toHaveBeenCalledWith(['offer-1', 'offer-2']);
     expect(res.body.ids).toEqual(expect.arrayContaining([LISTING_1, LISTING_2]));
   });
+
+  it('does NOT silently mark an eBay DB-only draft active (no offer) — flags it to publish individually (G6)', async () => {
+    // Under the Trading API an eBay draft is DB-only: no marketplaceListingId, no ebayOfferId.
+    // Bulk-activate must NOT flip it to "active" with no eBay call (that shows a live-looking
+    // listing that does not exist on eBay).
+    mockSelectBulk([
+      { id: LISTING_1, status: 'draft', marketplace: 'ebay', marketplaceListingId: null, ebayOfferId: null, ebaySku: 'sku-1' },
+    ]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+
+    const res = await request(app)
+      .post('/listings/bulk/activate')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: [LISTING_1] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(0);
+    expect(res.body.ids).not.toContain(LISTING_1);
+    expect(res.body.needsPublish).toBe(1);
+    expect(updateSet).not.toHaveBeenCalled(); // never marked active locally
+    expect(mockBulkPublishOffers).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /listings/:id — F-ORPHAN: withdraw the eBay offer', () => {

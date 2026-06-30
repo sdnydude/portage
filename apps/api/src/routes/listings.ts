@@ -785,9 +785,17 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
     const ebayPublishable = owned.filter((l) =>
       l.status === 'draft' && l.marketplace === 'ebay' && l.ebayOfferId
     );
-    // Non-marketplace drafts/archived can be activated locally
+    // Non-marketplace, non-eBay drafts/archived can be activated locally. eBay is excluded:
+    // an eBay draft is DB-only under the Trading API and must be PUBLISHED (AddFixedPriceItem),
+    // not flipped to "active" with no marketplace call (G6).
     const activatable = owned.filter((l) =>
-      (l.status === 'draft' || l.status === 'archived') && !l.marketplaceListingId
+      (l.status === 'draft' || l.status === 'archived') && !l.marketplaceListingId && l.marketplace !== 'ebay'
+    );
+    // eBay DB-only drafts (no offer) cannot be bulk-published yet (Trading bulk = 1.15) — they
+    // must be published individually via the listing's Publish action. Never silent-activate.
+    const ebayNeedsPublish = owned.filter((l) =>
+      l.marketplace === 'ebay' && !l.marketplaceListingId && !l.ebayOfferId &&
+      (l.status === 'draft' || l.status === 'archived')
     );
     // Archived marketplace listings need individual re-listing
     const skippedMarketplace = owned.filter((l) =>
@@ -833,7 +841,14 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
         .returning({ id: listings.id });
     }
 
-    logger.info({ userId, published, activated: activated.length, failed: publishFailed.length }, 'Bulk listings activated');
+    logger.info({ userId, published, activated: activated.length, needsPublish: ebayNeedsPublish.length, failed: publishFailed.length }, 'Bulk listings activated');
+    const warnings: string[] = [];
+    if (skippedMarketplace.length > 0) {
+      warnings.push(`${skippedMarketplace.length} archived listing(s) were previously published to a marketplace and must be re-listed individually`);
+    }
+    if (ebayNeedsPublish.length > 0) {
+      warnings.push(`${ebayNeedsPublish.length} eBay draft(s) must be published individually — bulk activate cannot publish to eBay`);
+    }
     res.json({
       activated: true,
       count: activated.length + published,
@@ -841,9 +856,8 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
       published,
       publishFailed: publishFailed.length,
       skipped: skippedMarketplace.length,
-      warning: skippedMarketplace.length > 0
-        ? `${skippedMarketplace.length} archived listing(s) were previously published to a marketplace and must be re-listed individually`
-        : undefined,
+      needsPublish: ebayNeedsPublish.length,
+      warning: warnings.length > 0 ? warnings.join('; ') : undefined,
     });
   } catch (err) {
     next(err);
