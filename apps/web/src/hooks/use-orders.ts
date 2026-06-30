@@ -34,6 +34,8 @@ export function useOrders(status?: string) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     if (!token) return;
@@ -57,9 +59,24 @@ export function useOrders(status?: string) {
 
   const syncOrders = useCallback(async () => {
     if (!token) return;
-    await api<{ synced: number }>("/orders/sync", { method: "POST", token });
-    await fetchOrders();
+    setSyncError(null);
+    setIsSyncing(true);
+    try {
+      const data = await api<{
+        synced: number;
+        newOrders: string[];
+        errors?: { marketplace: string; message: string }[];
+      }>("/orders/sync", { method: "POST", token });
+      if (data.errors && data.errors.length > 0) {
+        setSyncError(data.errors.map((e) => e.message).join("; "));
+      }
+      await fetchOrders();
+    } catch (err) {
+      setSyncError(err instanceof ApiError ? err.message : "Failed to sync orders");
+    } finally {
+      setIsSyncing(false);
+    }
   }, [token, fetchOrders]);
 
-  return { orders, isLoading, error, refetch: fetchOrders, syncOrders };
+  return { orders, isLoading, error, syncError, isSyncing, refetch: fetchOrders, syncOrders };
 }

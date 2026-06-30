@@ -233,6 +233,20 @@ export interface EbayItemVerification {
 }
 
 /**
+ * Minimal live-listing snapshot used to reconstruct a local item+listing when an
+ * order references a listing Portage never stored. `found:false` means GetItem
+ * failed (ended/purged/unknown ItemID) — caller falls back to the order payload.
+ */
+export interface EbayItemDetail {
+  found: boolean;
+  title: string | null;
+  photos: string[];
+  price: number | null;
+  brand: string | null;
+  aspects: Record<string, string[]>;
+}
+
+/**
  * Analytics API traffic metrics for one listing over a date window. Any metric can
  * be null when eBay has no data for it in the window.
  */
@@ -681,6 +695,31 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
   }
 
+  /**
+   * Fetch enough of a live eBay listing (via Trading GetItem) to reconstruct a
+   * local item+listing when an order arrives for a listing Portage never stored
+   * (orphan-order backfill in /orders/sync). Returns found:false on any read
+   * failure so the caller can fall back to the order payload.
+   */
+  async getItemDetail(itemId: string): Promise<EbayItemDetail> {
+    try {
+      const token = await getEbayAccessToken(this.userId);
+      const parsed = await callTradingApi('GetItem', buildGetItemXml(itemId, token), token);
+      const v = parseGetItemVerification(parsed);
+      const price = v.price != null && v.price !== '' ? Number(v.price) : null;
+      return {
+        found: v.found,
+        title: v.title,
+        photos: v.photos,
+        price: price != null && Number.isFinite(price) ? price : null,
+        brand: v.brand,
+        aspects: v.aspects,
+      };
+    } catch {
+      return { found: false, title: null, photos: [], price: null, brand: null, aspects: {} };
+    }
+  }
+
   // Analytics API traffic report for a single published listing — impressions,
   // click-through rate, views, transactions, conversion. Requires the user token
   // to carry the sell.analytics.readonly scope (added 2026-06; pre-existing
@@ -747,7 +786,7 @@ export class EbayAdapter implements MarketplaceAdapter {
           deliveryCost: { value: string };
         };
         totalFeeBasisAmount?: { value: string };
-        lineItems?: Array<{ legacyItemId: string }>;
+        lineItems?: Array<{ legacyItemId: string; title?: string }>;
         fulfillmentStartInstructions?: Array<{
           shippingStep?: {
             shipTo?: {
@@ -773,6 +812,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       return {
         marketplaceOrderId: order.orderId,
         marketplaceListingId: order.lineItems?.[0]?.legacyItemId ?? null,
+        title: order.lineItems?.[0]?.title,
         buyerUsername: order.buyer.username,
         salePrice: parseFloat(order.pricingSummary.total.value),
         shippingCost: parseFloat(order.pricingSummary.deliveryCost?.value ?? '0'),

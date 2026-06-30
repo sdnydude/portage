@@ -143,12 +143,14 @@ export interface GetItemVerification {
   status: string | null;
   listingId: string | null;
   price: string | null;
+  title: string | null;
+  photos: string[];
 }
 
 /** Read back the live item state from a GetItem response: item specifics (aspects),
  * Brand/MPN, ListingStatus, ItemID and price. Used by the F-GATE verification route. */
 export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification {
-  const empty: GetItemVerification = { found: false, sku: null, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null };
+  const empty: GetItemVerification = { found: false, sku: null, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, title: null, photos: [] };
   const item = getPath(parsed, ['GetItemResponse', 'Item']) as Record<string, unknown> | undefined;
   if (!item) return empty;
 
@@ -178,6 +180,11 @@ export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification
     price = text != null ? String(text) : null;
   }
 
+  const picRaw = getPath(item, ['PictureDetails', 'PictureURL']);
+  const photos = (Array.isArray(picRaw) ? picRaw : picRaw != null ? [picRaw] : [])
+    .filter((u) => u != null)
+    .map((u) => String(u));
+
   return {
     found: true,
     sku: item.SKU != null ? String(item.SKU) : null,
@@ -187,6 +194,8 @@ export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification
     status: selling?.ListingStatus != null ? String(selling.ListingStatus) : null,
     listingId: item.ItemID != null ? String(item.ItemID) : null,
     price,
+    title: item.Title != null ? String(item.Title) : null,
+    photos,
   };
 }
 

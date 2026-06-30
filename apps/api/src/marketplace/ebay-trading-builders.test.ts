@@ -220,6 +220,20 @@ describe('parseGetItemVerification', () => {
     expect(v.mpn).toBeNull();
     expect(v.listingId).toBeNull();
   });
+
+  it('extracts Title and PictureDetails.PictureURL for inventory backfill', () => {
+    const parsed = {
+      GetItemResponse: { Item: {
+        ItemID: '306972688941',
+        Title: 'Shure SM7B Microphone',
+        StartPrice: { '@_currencyID': 'USD', '#text': 399 },
+        PictureDetails: { PictureURL: ['https://i.ebayimg.com/a.jpg', 'https://i.ebayimg.com/b.jpg'] },
+      } },
+    };
+    const v = parseGetItemVerification(parsed);
+    expect(v.title).toBe('Shure SM7B Microphone');
+    expect(v.photos).toEqual(['https://i.ebayimg.com/a.jpg', 'https://i.ebayimg.com/b.jpg']);
+  });
 });
 
 describe('splitOunces', () => {
