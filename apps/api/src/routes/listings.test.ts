@@ -515,7 +515,7 @@ describe('POST /listings', () => {
 
   it('injects the ship-from origin ZIP from the seller profile when a live create lacks it (inline calculated shipping)', async () => {
     mockSelectOnce([MOCK_ITEM]);
-    mockSelectOnce([{ shipFromAddress: { postalCode: '90210' } }]); // seller profile ship-from
+    mockSelectOnce([{ shipFromAddress: { zip: '90210' } }]); // seller profile ship-from (canonical key is `zip`)
     mockSelectOnce([]); // footer lookup
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
@@ -755,7 +755,7 @@ describe('POST /listings/:id/publish', () => {
       marketplaceSpecificFields: { categoryId: '15032', fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'portage-sku-1' }]);
-    mockSelectOnce([{ shipFromAddress: { postalCode: '90210' } }]); // applyShipFromOrigin reads the seller profile
+    mockSelectOnce([{ shipFromAddress: { zip: '90210' } }]); // applyShipFromOrigin reads the seller profile (key is `zip`)
     mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),

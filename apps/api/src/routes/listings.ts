@@ -86,8 +86,10 @@ async function applyShipFromOrigin(
     .from(sellerProfiles)
     .where(eq(sellerProfiles.userId, userId))
     .limit(1);
-  const shipFrom = profile?.shipFromAddress as { postalCode?: string } | null | undefined;
-  return { ...ms, originPostalCode: shipFrom?.postalCode };
+  // seller_profiles.shipFromAddress stores the ZIP under `zip` (FE form + schema);
+  // `postalCode` is a fallback for any legacy/eBay-pulled shape.
+  const shipFrom = profile?.shipFromAddress as { zip?: string; postalCode?: string } | null | undefined;
+  return { ...ms, originPostalCode: shipFrom?.zip ?? shipFrom?.postalCode };
 }
 
 function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): MarketplaceAdapter {
