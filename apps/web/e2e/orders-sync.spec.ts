@@ -71,9 +71,14 @@ test.describe("login triggers orders sync", () => {
       });
     });
 
+    // Use the same seeded creds as auth.setup — the CI ephemeral DB seeds
+    // E2E_EMAIL (e2e@portage.app), NOT demo@portage.app, so hardcoding demo
+    // makes the UI login fail on CI and login() never fires the sync.
+    const email = process.env.E2E_EMAIL ?? "demo@portage.app";
+    const password = process.env.E2E_PASSWORD ?? "demo1234demo1234";
     await page.goto("/login");
-    await page.locator('input[type=email]').fill("demo@portage.app");
-    await page.locator('input[type=password]').fill("demo1234demo1234");
+    await page.locator('input[type=email]').fill(email);
+    await page.locator('input[type=password]').fill(password);
     await page.getByRole("button", { name: "Sign In" }).click();
 
     // login() fires the sync synchronously; poll briefly for the route to hit.
