@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import express from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import Stripe from 'stripe';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
@@ -25,12 +25,19 @@ function getStripe(): Stripe {
   return _stripe;
 }
 
+// Rate-limit key: authenticated callers key on their user id; anonymous callers key on a
+// normalized IP subnet. ipKeyGenerator collapses an IPv6 address to its subnet so a client
+// holding a /64 block can't rotate addresses to bypass the limit (avoids ERR_ERL_KEY_GEN_IPV6).
+export function billingRateLimitKey(req: Request): string {
+  return req.user?.sub ?? (req.ip ? ipKeyGenerator(req.ip) : 'unknown');
+}
+
 const billingLimiter = rateLimit({
   windowMs: 60 * 60_000,
   limit: process.env.NODE_ENV === 'test' ? 100 : 10,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.sub ?? req.ip ?? 'unknown',
+  keyGenerator: billingRateLimitKey,
   message: { error: 'Too many billing requests, please try again later', code: 'RATE_LIMITED' },
 });
 
