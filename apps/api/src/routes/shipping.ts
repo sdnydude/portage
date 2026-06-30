@@ -7,6 +7,7 @@ import { shippingPresets, shippingProviders, orders, users, disclaimerAcceptance
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
+import { CURRENT_DISCLAIMER_VERSION } from '@portage/shared';
 
 const logger = createLogger('shipping');
 
@@ -504,8 +505,8 @@ shippingRouter.post('/orders/:id/ship', async (req, res, next) => {
 });
 
 // ─── Disclaimer Acceptance ──────────────────────────────────
-
-const CURRENT_DISCLAIMER_VERSION = 1;
+// CURRENT_DISCLAIMER_VERSION is imported from @portage/shared (single source of
+// truth) — the suppression check and acceptance recording must agree on it.
 
 const acceptTermsSchema = z.object({
   disclaimerVersion: z.number().int().positive().optional(),

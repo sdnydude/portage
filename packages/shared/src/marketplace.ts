@@ -17,7 +17,6 @@ export interface MarketplaceListingInput {
   quantity?: number;
   publishMode?: 'draft' | 'live';
   ebaySku?: string;
-  ebayOfferId?: string;
   shippingWeight?: number;
   shippingWeightUnit?: 'oz' | 'lb' | 'g' | 'kg';
   marketplaceSpecific?: Record<string, unknown>;
@@ -29,7 +28,6 @@ export interface MarketplaceListingResult {
   status: 'active' | 'draft' | 'pending';
   warning?: string;
   ebaySku?: string;
-  ebayOfferId?: string;
 }
 
 export interface MarketplaceOrderResult {

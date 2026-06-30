@@ -9,12 +9,13 @@ import { useEnhance } from "@/hooks/use-enhance";
 import { PhotoGalleryStrip } from "@/components/capture/photo-gallery-strip";
 import { PhotoEditPanel } from "@/components/capture/photo-edit-panel";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
+import { ListingOptimizerPanel } from "@/components/listing/listing-optimizer-panel";
 import { CropTool } from "@/components/listing-flow/crop-tool";
 import { useComps } from "@/hooks/use-comps";
 import { api, API_BASE } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
 import { formatCondition } from "@/lib/format";
-import { resolvePublishPrice } from "@/lib/price";
+import { resolvePublishPriceWithSource } from "@/lib/price";
 
 const conditionColors: Record<string, string> = {
   new: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -28,7 +29,7 @@ export default function ItemDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
-  const { item, isLoading, error, deleteItem, updateItem } = useItem(params.id);
+  const { item, isLoading, error, deleteItem, updateItem, refetch: refetchItem } = useItem(params.id);
   const { isProcessing: isEnhancing, result: enhanceResult, error: enhanceError, enhance, reset: resetEnhance } = useEnhance();
   const [photoIndex, setPhotoIndex] = useState(0);
   // Which photo the full-screen editor overlay is open for (null = closed).
@@ -484,6 +485,9 @@ export default function ItemDetailPage() {
             </div>
           )}
 
+          {/* Listing Optimizer — eBay item-specific gaps, demand, performance */}
+          <ListingOptimizerPanel itemId={params.id} onFilled={refetchItem} />
+
           {/* List on Marketplace CTA */}
           <button
             onClick={() => setShowListingSheet(true)}
@@ -621,7 +625,8 @@ export default function ItemDetailPage() {
       {showListingSheet && (
         <CreateListingSheet
           itemId={item.id}
-          suggestedPrice={resolvePublishPrice(item, comps?.stats) ?? undefined}
+          suggestedPrice={resolvePublishPriceWithSource(item, comps?.stats).price ?? undefined}
+          priceSource={resolvePublishPriceWithSource(item, comps?.stats).source ?? undefined}
           onCreated={() => {
             setShowListingSheet(false);
             // Save-redirect contract: land on inventory, not listings

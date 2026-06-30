@@ -3,6 +3,9 @@ export interface ScanListingInput {
   price: number | null;
   resolvedCategoryId: string | null;
   aspects: Record<string, string[]>;
+  /** When true, create an UNPUBLISHED eBay offer (Seller Hub draft) instead of
+   *  honoring the profile's draft/live default. */
+  ebayDraft?: boolean;
 }
 
 export interface SellerProfileLite {
@@ -13,7 +16,7 @@ export interface ScanListingPayload {
   itemId: string;
   marketplace: "ebay";
   price?: number;
-  publishMode: "draft" | "live";
+  publishMode: "draft" | "live" | "ebay_draft";
   marketplaceSpecificFields?: {
     aspects?: Record<string, string[]>;
     categoryId?: string;
@@ -27,7 +30,8 @@ export function buildListingPayload(
   // CONSERVATIVE fallback: a missing/failed profile must never cause an
   // accidental live publish — an unexpected draft is recoverable, an
   // unexpected live listing is not.
-  const publishMode = profile?.ebayPublishMode ?? "draft";
+  // eBay-draft toggle wins; otherwise the conservative profile default applies.
+  const publishMode = input.ebayDraft ? "ebay_draft" : (profile?.ebayPublishMode ?? "draft");
   const payload: ScanListingPayload = {
     itemId: input.itemId,
     marketplace: "ebay",

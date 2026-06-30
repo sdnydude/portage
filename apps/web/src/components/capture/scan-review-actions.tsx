@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { PriceField } from "@/components/listing/price-field";
 
 export interface ScanReviewActionsProps {
@@ -7,7 +8,8 @@ export interface ScanReviewActionsProps {
   onPriceChange: (price: number | null) => void;
   onRescan: () => void;
   onSave: () => void;
-  onSaveAndList: () => void;
+  /** ebayDraft = true when "List as eBay draft" is checked (create an unpublished offer). */
+  onSaveAndList: (ebayDraft?: boolean) => void;
   isSaving: boolean;
   isListing: boolean;
   canSave: boolean;
@@ -34,6 +36,8 @@ export function ScanReviewActions({
   saveDisabledReason = null, priceRequired = false, canList = true, listDisabledReason = null,
 }: ScanReviewActionsProps) {
   const busy = isSaving || isListing;
+  // "List as eBay draft" — local to the bar; its value rides Save & List up to scan-flow.
+  const [ebayDraft, setEbayDraft] = useState(false);
   // Save gate is the broader one (required fields) — surface it first; the List
   // gate (eBay specifics) only matters once Save is satisfiable.
   const showSaveReason = !canSave && !!saveDisabledReason;
@@ -66,6 +70,17 @@ export function ScanReviewActions({
           <PriceField value={price} onChange={onPriceChange} />
         </div>
       </div>
+      <label className="flex items-center gap-2 mb-2 cursor-pointer">
+        <input
+          type="checkbox"
+          aria-label="List as eBay draft"
+          checked={ebayDraft}
+          onChange={(e) => setEbayDraft(e.target.checked)}
+          className="h-4 w-4 accent-[var(--teal)]"
+        />
+        <span className="text-xs text-text-secondary">List as eBay draft (don&apos;t go live)</span>
+      </label>
+
       <div className="flex gap-2">
         <button
           onClick={onRescan}
@@ -83,7 +98,7 @@ export function ScanReviewActions({
           {isSaving ? "Saving..." : "Save"}
         </button>
         <button
-          onClick={onSaveAndList}
+          onClick={() => onSaveAndList(ebayDraft)}
           disabled={!canSave || !canList || busy}
           aria-describedby={showListReason ? "scan-list-disabled-reason" : undefined}
           className="flex-1 py-3.5 rounded-2xl border-2 border-[var(--orange)] text-[var(--orange)] font-semibold text-sm disabled:opacity-50 transition-opacity"

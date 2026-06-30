@@ -88,6 +88,90 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event PreToolUse",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event PostToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event UserPromptSubmit",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event SubagentStart",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event SubagentStop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event Notification",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint report",
+            "timeout": 30
+          }
+        ]
       }
     ]
   }

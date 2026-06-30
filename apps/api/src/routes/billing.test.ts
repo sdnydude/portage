@@ -2,6 +2,7 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import { createTestToken } from '../test/helpers.js';
 import { db } from '../db/index.js';
+import { billingRateLimitKey } from './billing.js';
 
 vi.mock('../db/index.js', () => ({
   db: {
@@ -171,5 +172,18 @@ describe('POST /billing/webhook', () => {
       .send(Buffer.from('{"type":"invoice.payment_failed"}'));
     expect(res.status).toBe(200);
     expect(res.body.duplicate).toBe(true);
+  });
+});
+
+describe('billingRateLimitKey', () => {
+  it('normalizes an IPv6 address to a subnet for anonymous callers (no raw-IPv6 limit bypass)', () => {
+    const raw = '2001:db8:85a3:8d3:1319:8a2e:370:7344';
+    const key = billingRateLimitKey({ ip: raw } as any);
+    expect(key).not.toBe(raw); // must be a normalized subnet, not the raw address
+    expect(key.startsWith('2001:db8')).toBe(true); // network prefix retained
+  });
+
+  it('keys an authenticated caller on the user id, never the IP', () => {
+    expect(billingRateLimitKey({ user: { sub: 'user-42' }, ip: '2001:db8::1' } as any)).toBe('user-42');
   });
 });

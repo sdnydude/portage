@@ -50,6 +50,12 @@ export const users = pgTable('users', {
   listingForkPref: text('listing_fork_pref').notNull().default('ask'),
   listingForkCount: integer('listing_fork_count').notNull().default(0),
   listingCompactMode: boolean('listing_compact_mode').notNull().default(false),
+  // F3b: display-only suppression of the publish terms sheet ("don't show for 7
+  // days"). NOT a consent record — that lives in disclaimerAcceptances. Suppressed
+  // only when suppressUntil > now AND suppressVersion === CURRENT_DISCLAIMER_VERSION
+  // (a version bump voids it). Null = never suppressed.
+  disclaimerSuppressUntil: timestamp('disclaimer_suppress_until'),
+  disclaimerSuppressVersion: integer('disclaimer_suppress_version'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -111,6 +117,11 @@ export const listings = pgTable('listings', {
   status: listingStatusEnum('status').notNull().default('draft'),
   price: doublePrecision('price').notNull(),
   currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  // Idempotency anchor (R3): the row is inserted FIRST with a null marketplaceListingId
+  // and this key, then eBay is called, then the row is UPDATEd. The partial unique
+  // index below serializes concurrent submits that share a key so a non-idempotent
+  // AddFixedPriceItem can't double-list. Null for non-publish drafts / legacy rows.
+  idempotencyKey: varchar('idempotency_key', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   publishedAt: timestamp('published_at'),
@@ -119,6 +130,9 @@ export const listings = pgTable('listings', {
   index('idx_listings_user_id').on(t.userId),
   index('idx_listings_item_id').on(t.itemId),
   index('idx_listings_marketplace_listing_id').on(t.marketplaceListingId),
+  uniqueIndex('uq_listings_idempotency_key')
+    .on(t.userId, t.idempotencyKey)
+    .where(sql`${t.idempotencyKey} IS NOT NULL`),
 ]);
 
 export const orders = pgTable('orders', {

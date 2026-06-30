@@ -44,3 +44,23 @@ export function resolvePublishPrice(
     null
   );
 }
+
+/** Where a prefilled publish price came from (drives the provenance hint). */
+export type PublishPriceSource = "item" | "comps" | "estimate";
+
+/**
+ * Same precedence as resolvePublishPrice, but also reports which step the price
+ * came from so the publish sheet can show provenance ("from your price" / comps
+ * / estimate). source is null when no price is known.
+ */
+export function resolvePublishPriceWithSource(
+  item: PublishPriceItem,
+  comps?: PublishPriceComps | null,
+): { price: number | null; source: PublishPriceSource | null } {
+  if (item.price != null) return { price: item.price, source: "item" };
+  if (comps?.soldMedian != null) return { price: comps.soldMedian, source: "comps" };
+  if (comps?.activeMedian != null) return { price: comps.activeMedian, source: "comps" };
+  if (item.estimatedValueRecommended != null) return { price: item.estimatedValueRecommended, source: "estimate" };
+  if (item.estimatedValueMin != null) return { price: item.estimatedValueMin, source: "estimate" };
+  return { price: null, source: null };
+}

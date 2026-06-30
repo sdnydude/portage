@@ -14,7 +14,7 @@ const DEFAULT_PREFS: UserPreferences = {
 
 export function useUserPreferences() {
   const { token } = useAuth();
-  const [prefs, setPrefs] = useState<UserPreferences>(DEFAULT_PREFS);
+  const [prefs, setPrefs] = useState<UserPreferences>({ ...DEFAULT_PREFS, disclaimerSuppressed: false });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -44,6 +44,7 @@ export function useUserPreferences() {
     forkPref: prefs.listingForkPref,
     forkCount: prefs.listingForkCount,
     compactMode: prefs.listingCompactMode,
+    disclaimerSuppressed: prefs.disclaimerSuppressed ?? false,
     isLoading,
     updatePrefs,
   };
