@@ -76,9 +76,77 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: resolver finds nothing new, so publish behaves as before unless a test overrides.
   mockResolveEbayCategoryId.mockResolvedValue({ categoryId: null, categoryName: null, newlyResolved: false });
+  // Default db.update for the insert-first→update publish path (R3): the create route
+  // now inserts a draft row then UPDATEs it with the eBay result. Tests that assert the
+  // update payload override this with their own updateSet spy.
+  vi.mocked(db.update).mockReturnValue({
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+    }),
+  } as any);
 });
 
 describe('POST /listings', () => {
+  it('inserts the listing row BEFORE calling eBay so a crash after publish leaves no orphan (insert-first, R3)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
+    mockSelectOnce([]); // footer lookup
+    const insertValues = mockInsertCapture();
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active', marketplaceListingId: '3001' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+
+    await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live' });
+
+    // The DB row must be inserted before the eBay AddFixedPriceItem call: if the
+    // process dies between the eBay 200 and the insert, an insert-after design
+    // leaves a live listing with no Portage row (an unrecoverable orphan).
+    expect(insertValues.mock.invocationCallOrder[0])
+      .toBeLessThan(mockCreateListing.mock.invocationCallOrder[0]);
+  });
+
+  it('persists a client-supplied idempotencyKey on the insert-first row (R3 dedup anchor)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
+    mockSelectOnce([]); // footer lookup
+    const insertValues = mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+
+    await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'client-key-123' });
+
+    // The client's key must reach the row so a retried submit collides on the unique
+    // index instead of double-listing; a server-generated UUID would never collide.
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'client-key-123' }));
+  });
+
+  it('replays the existing listing (no eBay call) when the idempotencyKey collides (R3)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    // insert-first hits the partial unique index — Postgres raises 23505.
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value'), { code: '23505' })),
+      }),
+    } as any);
+    mockSelectOnce([{ id: 'listing-existing', status: 'active', marketplaceListingId: '3001' }]); // prior row for this key
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe('listing-existing');
+    expect(mockCreateListing).not.toHaveBeenCalled(); // must NOT publish a second time
+  });
+
   it('merges item weight/dimensions into marketplaceSpecific on eBay publish', async () => {
     mockSelectOnce([
       { ...MOCK_ITEM, weightOz: 56, lengthIn: 10, widthIn: 8, heightIn: 4, ebayPackageType: 'MAILING_BOX' },
@@ -269,6 +337,7 @@ describe('POST /listings', () => {
     }]);
     mockSelectOnce([MOCK_ITEM]);
     mockSelectOnce([]); // seller profile (policy self-heal)
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer lookup
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
@@ -298,6 +367,7 @@ describe('POST /listings', () => {
     }]);
     mockSelectOnce([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'], Color: ['Black'] } }]);
     mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
@@ -329,6 +399,7 @@ describe('POST /listings', () => {
     }]);
     mockSelectOnce([{ ...MOCK_ITEM, aspects: { MPN: ['ABC-123'] } }]);
     mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
@@ -356,6 +427,7 @@ describe('POST /listings', () => {
     }]); // draft listing carries NO sku
     mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'PRT-000009' }]); // item holds the stable sku
     mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
@@ -389,6 +461,7 @@ describe('POST /listings', () => {
     }]);
     mockSelectOnce([{ ...MOCK_ITEM, ebaySku: null }]); // item never backfilled
     mockSelectOnce([]); // seller profile
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
@@ -410,11 +483,15 @@ describe('POST /listings', () => {
     );
   });
 
-  it('persists ebaySku and ebayOfferId from the publish result', async () => {
+  it('persists ebaySku and ebayOfferId from the publish result (via the insert-first UPDATE)', async () => {
     mockSelectOnce([MOCK_ITEM]);
-    mockSelectOnce([]); // seller profile (none — policy self-heal finds nothing)
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer lookup — no seller profile
-    const insertValues = mockInsertCapture();
+    mockInsertCapture(); // insert-first draft row (marketplaceListingId null)
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
     mockCreateListing.mockResolvedValue({
       marketplaceListingId: '110012345678',
       ebaySku: 'portage-sku-1',
@@ -428,7 +505,8 @@ describe('POST /listings', () => {
       .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishImmediately: true });
 
     expect(res.status).toBe(201);
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+    // The eBay result lands on the UPDATE, not the insert (the insert-first row starts null).
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
       ebaySku: 'portage-sku-1',
       ebayOfferId: 'offer-1',
       marketplaceListingId: '110012345678',
@@ -527,6 +605,7 @@ describe('POST /listings/:id/publish — seller listing footer', () => {
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     // The footer select projects { footer: sellerProfiles.defaultListingFooter }.
     mockSelectOnce([{ footer: 'Ships fast from a smoke-free studio.' }]);
     const updateSet = vi.fn().mockReturnValue({
@@ -557,6 +636,7 @@ describe('POST /listings/:id/publish', () => {
     // Post-backfill invariant: the item carries the same SKU the listing was
     // published under, so re-publish reuses it (no orphaned inventory item).
     mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'portage-sku-1' }]);
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
@@ -585,6 +665,7 @@ describe('POST /listings/:id/publish', () => {
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
@@ -612,6 +693,7 @@ describe('POST /listings/:id/publish', () => {
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'draft' }]) }),
@@ -642,6 +724,7 @@ describe('POST /listings/:id/publish', () => {
       ebayFulfillmentPolicyId: 'fp-9', ebayPaymentPolicyId: 'pp-9',
       ebayReturnPolicyId: 'rp-9', ebayMerchantLocationKey: 'loc-9',
     }]);
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
@@ -661,6 +744,31 @@ describe('POST /listings/:id/publish', () => {
         returnPolicyId: 'rp-9',
         merchantLocationKey: 'loc-9',
       }),
+    }));
+  });
+
+  it('injects the ship-from origin ZIP from the seller profile when a draft publish lacks it (inline calculated shipping)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
+      marketplaceSpecificFields: { categoryId: '15032', fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
+    }]);
+    mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'portage-sku-1' }]);
+    mockSelectOnce([{ shipFromAddress: { postalCode: '90210' } }]); // applyShipFromOrigin reads the seller profile
+    mockSelectOnce([]); // footer lookup — no seller profile
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '110', status: 'active' });
+
+    await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
+      marketplaceSpecific: expect.objectContaining({ originPostalCode: '90210' }),
     }));
   });
 });
@@ -805,6 +913,7 @@ describe('POST /listings/:id/publish — persistence', () => {
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer lookup — no seller profile
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
@@ -964,7 +1073,11 @@ describe('POST /listings — disclaimer consent (F3a)', () => {
     vi.mocked(db.insert).mockReturnValue({
       values: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) })),
     } as any);
-    const setMock = vi.fn((_v: Record<string, unknown>) => ({ where: vi.fn().mockResolvedValue(undefined) }));
+    // db.update now runs twice: the insert-first listing UPDATE (needs .where().returning())
+    // then the users suppression UPDATE (awaits .where()). One spy serves both.
+    const setMock = vi.fn((_v: Record<string, unknown>) => ({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+    }));
     vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 
@@ -974,11 +1087,13 @@ describe('POST /listings — disclaimer consent (F3a)', () => {
       .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 100, publishMode: 'live', disclaimerAccepted: true, suppress7d: true });
 
     expect(res.status).toBe(201);
-    expect(setMock).toHaveBeenCalledTimes(1);
-    const arg = setMock.mock.calls[0][0] as Record<string, unknown> as { disclaimerSuppressUntil?: Date; disclaimerSuppressVersion?: number };
-    expect(arg.disclaimerSuppressVersion).toBe(1);
-    expect(arg.disclaimerSuppressUntil).toBeInstanceOf(Date);
-    expect(arg.disclaimerSuppressUntil!.getTime()).toBeGreaterThan(Date.now());
+    const suppressCall = setMock.mock.calls
+      .map((c) => c[0] as { disclaimerSuppressUntil?: Date; disclaimerSuppressVersion?: number })
+      .find((v) => v.disclaimerSuppressVersion !== undefined);
+    expect(suppressCall).toBeDefined();
+    expect(suppressCall!.disclaimerSuppressVersion).toBe(1);
+    expect(suppressCall!.disclaimerSuppressUntil).toBeInstanceOf(Date);
+    expect(suppressCall!.disclaimerSuppressUntil!.getTime()).toBeGreaterThan(Date.now());
   });
 });
 

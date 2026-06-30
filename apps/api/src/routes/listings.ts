@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { eq, desc, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
@@ -109,6 +110,11 @@ const createListingSchema = z.object({
   publishImmediately: z.boolean().default(false),
   publishMode: z.enum(['draft', 'live', 'ebay_draft']).optional(),
   marketplaceSpecificFields: z.record(z.unknown()).optional(),
+  // R3 idempotency: a client-supplied key that is stable across retries of the same
+  // publish intent. When present, a partial unique index serializes concurrent/retried
+  // submits so a non-idempotent AddFixedPriceItem can't double-list. Server generates
+  // one when absent (gives orphan protection via insert-first, no cross-retry dedup).
+  idempotencyKey: z.string().min(1).max(255).optional(),
   // F3a: the seller reviewed + accepted the terms sheet for this live publish.
   // The disclaimer version is stamped server-side (CURRENT) — never trusted from
   // the client — so the legal record reflects the terms actually in force.
@@ -216,19 +222,50 @@ listingsRouter.post('/', async (req, res, next) => {
 
     if (!item) throw new AppError(404, 'NOT_FOUND', 'Item not found');
 
-    let marketplaceListingId: string | null = null;
-    let ebaySku: string | null = null;
-    let ebayOfferId: string | null = null;
-    let status: 'draft' | 'active' = 'draft';
-    let publishedAt: Date | null = null;
-    let adapterWarning: string | undefined;
-
     // publishMode (when present) takes precedence over the legacy publishImmediately
     // flag. Only 'live' (or legacy publishImmediately) calls eBay. Both 'draft' and
     // 'ebay_draft' stay DB-only: under the Trading API a listing publishes live via
     // AddFixedPriceItem with no unpublished-offer concept, so an "eBay draft" is just
     // a local draft (N1) — no marketplace call.
     const shouldPublish = body.publishMode === 'live' || (body.publishMode === undefined && body.publishImmediately);
+
+    // R3 insert-first: persist the row BEFORE any eBay call so a crash/throw between
+    // the AddFixedPriceItem 200 and the DB write cannot orphan a live listing. The row
+    // starts as a draft with a null marketplaceListingId and an idempotency key; a
+    // successful publish UPDATEs it in place below. The partial unique index on
+    // (userId, idempotencyKey) serializes concurrent submits that share a key.
+    const idempotencyKey = body.idempotencyKey ?? randomUUID();
+    let listing: typeof listings.$inferSelect;
+    try {
+      [listing] = await db.insert(listings).values({
+        itemId: body.itemId,
+        userId,
+        marketplace: body.marketplace,
+        marketplaceListingId: null,
+        ebaySku: null,
+        ebayOfferId: null,
+        marketplaceSpecificFields: body.marketplaceSpecificFields ?? null,
+        status: 'draft',
+        price: body.price,
+        currency: body.currency,
+        publishedAt: null,
+        idempotencyKey,
+      }).returning();
+    } catch (e) {
+      // A duplicate (userId, idempotencyKey) means a concurrent or retried submit already
+      // created this listing — replay it instead of double-listing on eBay (R3). The
+      // partial unique index is what raises 23505 before any AddFixedPriceItem call.
+      if ((e as { code?: string }).code === '23505') {
+        const [existing] = await db.select().from(listings)
+          .where(and(eq(listings.userId, userId), eq(listings.idempotencyKey, idempotencyKey)))
+          .limit(1);
+        if (existing) return res.status(201).json(existing);
+      }
+      throw e;
+    }
+
+    let status: 'draft' | 'active' = 'draft';
+    let adapterWarning: string | undefined;
 
     if (shouldPublish) {
       const adapter = getAdapter(userId, body.marketplace);
@@ -274,27 +311,23 @@ listingsRouter.post('/', async (req, res, next) => {
         ebaySku: stableSku,
       });
 
-      marketplaceListingId = result.marketplaceListingId;
-      ebaySku = result.ebaySku ?? null;
-      ebayOfferId = result.ebayOfferId ?? null;
-      status = result.status === 'active' ? 'active' : 'draft';
-      if (status === 'active') publishedAt = new Date();
+      // UPDATE the pre-inserted row with the eBay result. createListing already folds
+      // Warning/PartialFailure into result (the ItemID is still present), so the row
+      // reflects the live listing even on a non-fatal eBay warning.
+      [listing] = await db.update(listings)
+        .set({
+          marketplaceListingId: result.marketplaceListingId,
+          ebaySku: result.ebaySku ?? null,
+          ebayOfferId: result.ebayOfferId ?? null,
+          status: result.status === 'active' ? 'active' : 'draft',
+          publishedAt: result.status === 'active' ? new Date() : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(listings.id, listing.id))
+        .returning();
+      status = listing.status as 'draft' | 'active';
       adapterWarning = result.warning;
     }
-
-    const [listing] = await db.insert(listings).values({
-      itemId: body.itemId,
-      userId,
-      marketplace: body.marketplace,
-      marketplaceListingId,
-      ebaySku,
-      ebayOfferId,
-      marketplaceSpecificFields: body.marketplaceSpecificFields ?? null,
-      status,
-      price: body.price,
-      currency: body.currency,
-      publishedAt,
-    }).returning();
 
     logger.info({ userId, listingId: listing.id, marketplace: body.marketplace, status }, 'Listing created');
 
@@ -514,6 +547,12 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
           merchantLocationKey: loc || profile?.ebayMerchantLocationKey || undefined,
         };
       }
+
+      // Inline calculated shipping needs OriginatingPostalCode — fill it from the
+      // seller profile's ship-from when the draft carries none (a body/draft value
+      // still wins). Without this a seeded/photo-first draft published here throws
+      // EBAY_SHIP_FROM_REQUIRED (the create route does the same at POST /).
+      marketplaceSpecific = await applyShipFromOrigin(userId, marketplaceSpecific);
 
       // Item columns are the source of truth for package weight/dimensions —
       // merge them in eBay shape so calculated-shipping publishes carry weight.
