@@ -952,3 +952,50 @@ describe('resolveEbayConditionId (numeric ConditionID for Trading API)', () => {
     expect(resolveEbayConditionId('unknown-grade')).toBe('3000');
   });
 });
+
+describe('EbayAdapter.getItemDetail — GetItem inventory backfill for orphan orders', () => {
+  const GET_ITEM_OK =
+    '<?xml version="1.0"?><GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents">' +
+    '<Ack>Success</Ack><Item><ItemID>306972688941</ItemID><Title>Shure SM7B Microphone</Title>' +
+    '<StartPrice currencyID="USD">399</StartPrice>' +
+    '<PictureDetails><PictureURL>https://i.ebayimg.com/a.jpg</PictureURL><PictureURL>https://i.ebayimg.com/b.jpg</PictureURL></PictureDetails>' +
+    '<ItemSpecifics><NameValueList><Name>Brand</Name><Value>Shure</Value></NameValueList></ItemSpecifics>' +
+    '</Item></GetItemResponse>';
+
+  it('returns title, photos, price, brand and aspects from a GetItem response', async () => {
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url) ? new Response(GET_ITEM_OK, { status: 200 }) : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+
+    const detail = await adapter.getItemDetail('306972688941');
+
+    expect(detail.found).toBe(true);
+    expect(detail.title).toBe('Shure SM7B Microphone');
+    expect(detail.photos).toEqual(['https://i.ebayimg.com/a.jpg', 'https://i.ebayimg.com/b.jpg']);
+    expect(detail.price).toBe(399);
+    expect(detail.brand).toBe('Shure');
+    expect(detail.aspects.Brand).toEqual(['Shure']);
+  });
+});
+
+describe('EbayAdapter.getOrders — line-item title for orphan-order backfill', () => {
+  it('maps lineItems[0].title onto the order result', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes('/sell/fulfillment/v1/order')) {
+        return new Response(JSON.stringify({ orders: [{
+          orderId: '23-14730-30879',
+          buyer: { username: 'buyer1' },
+          pricingSummary: { total: { value: '399', currency: 'USD' }, deliveryCost: { value: '0' } },
+          lineItems: [{ legacyItemId: '306972688941', title: 'Shure SM7B Microphone' }],
+        }] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+
+    const orders = await adapter.getOrders();
+
+    expect(orders[0].marketplaceListingId).toBe('306972688941');
+    expect(orders[0].title).toBe('Shure SM7B Microphone');
+  });
+});

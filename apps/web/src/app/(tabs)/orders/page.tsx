@@ -47,7 +47,7 @@ function getMarketplaceBadge(marketplace: "ebay" | "etsy") {
 
 export default function OrdersPage() {
   const { isAuthenticated } = useAuth();
-  const { orders, isLoading, error, syncOrders } = useOrders();
+  const { orders, isLoading, error, syncOrders, isSyncing, syncError } = useOrders();
 
   const pendingOrders = orders.filter((o) => o.status === "payment_received");
   const otherOrders = orders.filter((o) => o.status !== "payment_received");
@@ -75,13 +75,23 @@ export default function OrdersPage() {
         action={
           <button
             onClick={() => syncOrders()}
-            className="text-xs font-medium text-forest-green px-3 py-1.5 rounded-full bg-forest-green-50 hover:bg-forest-green-100 transition-colors"
+            disabled={isSyncing}
+            className="text-xs font-medium text-forest-green px-3 py-1.5 rounded-full bg-forest-green-50 hover:bg-forest-green-100 transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
           >
-            Sync
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={isSyncing ? "animate-spin" : ""}>
+              <path d="M21 12a9 9 0 11-6.219-8.56" />
+              <polyline points="21 3 21 9 15 9" />
+            </svg>
+            {isSyncing ? "Syncing…" : "Sync"}
           </button>
         }
       />
       <div className="px-4 py-4 max-w-lg mx-auto">
+        {syncError && (
+          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-sm text-red-700 dark:text-red-300 mb-4">
+            Sync failed: {syncError}
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />

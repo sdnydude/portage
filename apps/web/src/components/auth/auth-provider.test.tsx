@@ -95,6 +95,40 @@ describe("AuthProvider session loss", () => {
     expect(logoutCalls[1][1].headers.Authorization).toBe("Bearer new-at");
   });
 
+  it("login fires a fire-and-forget orders sync with the new access token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ synced: 0, newOrders: [], errors: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { useAuth } = await import("@/hooks/use-auth");
+    function LoginButton() {
+      const { login } = useAuth();
+      return (
+        <button onClick={() => login("new-at", "new-rt", { id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" })}>
+          in
+        </button>
+      );
+    }
+
+    const { getByText } = render(
+      <AuthProvider>
+        <LoginButton />
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      getByText("in").click();
+    });
+
+    const syncCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/orders/sync"));
+    expect(syncCall).toBeDefined();
+    expect(syncCall![1].method).toBe("POST");
+    expect(syncCall![1].headers.Authorization).toBe("Bearer new-at");
+  });
+
   it("redirects to /home the moment auth:session-lost fires", async () => {
     localStorage.setItem("portage_token", "t");
     localStorage.setItem("portage_user", JSON.stringify({ id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" }));

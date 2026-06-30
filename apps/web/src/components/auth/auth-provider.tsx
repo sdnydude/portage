@@ -70,6 +70,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(TOKEN_KEY, newToken);
     localStorage.setItem(REFRESH_KEY, refreshToken);
     if (newUser) localStorage.setItem(USER_KEY, JSON.stringify(newUser));
+
+    // Fire-and-forget: pull marketplace orders in the background so the Orders
+    // tab is fresh by the time the user navigates there. Never block or break
+    // login on a slow/down marketplace API — swallow all failures here (the
+    // manual Sync button surfaces errors on demand).
+    void api("/orders/sync", { method: "POST", token: newToken }).catch(() => {});
   }, []);
 
   const logout = useCallback(async () => {

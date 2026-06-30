@@ -33,6 +33,9 @@ export interface MarketplaceListingResult {
 export interface MarketplaceOrderResult {
   marketplaceOrderId: string;
   marketplaceListingId: string | null;
+  /** Line-item title from the marketplace, used to backfill a local item when the
+   *  listing isn't in Portage and a full item read (e.g. eBay GetItem) is unavailable. */
+  title?: string;
   buyerUsername: string;
   salePrice: number;
   shippingCost: number;
