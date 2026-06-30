@@ -134,6 +134,62 @@ export function parseGetItemStatus(parsed: ParsedXml): 'active' | 'sold' | 'ende
   return 'unknown';
 }
 
+export interface GetItemVerification {
+  found: boolean;
+  sku: string | null;
+  aspects: Record<string, string[]>;
+  mpn: string | null;
+  brand: string | null;
+  status: string | null;
+  listingId: string | null;
+  price: string | null;
+}
+
+/** Read back the live item state from a GetItem response: item specifics (aspects),
+ * Brand/MPN, ListingStatus, ItemID and price. Used by the F-GATE verification route. */
+export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification {
+  const empty: GetItemVerification = { found: false, sku: null, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null };
+  const item = getPath(parsed, ['GetItemResponse', 'Item']) as Record<string, unknown> | undefined;
+  if (!item) return empty;
+
+  const aspects: Record<string, string[]> = {};
+  const nvlRaw = getPath(item, ['ItemSpecifics', 'NameValueList']);
+  const nvls = Array.isArray(nvlRaw) ? nvlRaw : nvlRaw != null ? [nvlRaw] : [];
+  for (const nvl of nvls) {
+    const name = (nvl as Record<string, unknown>)?.Name;
+    const value = (nvl as Record<string, unknown>)?.Value;
+    if (typeof name !== 'string') continue;
+    const vals = (Array.isArray(value) ? value : [value]).filter((v) => v != null).map((v) => String(v));
+    if (vals.length > 0) aspects[name] = vals;
+  }
+  const byLower = new Map(Object.keys(aspects).map((k) => [k.toLowerCase(), k]));
+  const aspectVal = (name: string): string | null => {
+    const key = byLower.get(name.toLowerCase());
+    return key ? aspects[key][0] ?? null : null;
+  };
+
+  const selling = getPath(item, ['SellingStatus']) as Record<string, unknown> | undefined;
+  // StartPrice (and CurrentPrice) parse as { '@_currencyID', '#text' } with attributes on,
+  // or as a bare scalar when there are no attributes.
+  const priceRaw = getPath(item, ['StartPrice']) ?? getPath(selling ?? {}, ['CurrentPrice']);
+  let price: string | null = null;
+  if (priceRaw != null) {
+    const text = typeof priceRaw === 'object' ? (priceRaw as Record<string, unknown>)['#text'] : priceRaw;
+    price = text != null ? String(text) : null;
+  }
+
+  return {
+    found: true,
+    sku: item.SKU != null ? String(item.SKU) : null,
+    aspects,
+    mpn: aspectVal('MPN'),
+    brand: aspectVal('Brand'),
+    status: selling?.ListingStatus != null ? String(selling.ListingStatus) : null,
+    listingId: item.ItemID != null ? String(item.ItemID) : null,
+    price,
+  };
+}
+
 export function buildGetItemXml(itemId: string, token: string): string {
   return (
     `${XML_DECL}\n<GetItemRequest xmlns="${NS}">` +

@@ -483,7 +483,7 @@ describe('POST /listings', () => {
     );
   });
 
-  it('persists ebaySku and ebayOfferId from the publish result (via the insert-first UPDATE)', async () => {
+  it('persists the ebaySku from the publish result (via the insert-first UPDATE)', async () => {
     mockSelectOnce([MOCK_ITEM]);
     mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
     mockSelectOnce([]); // footer lookup — no seller profile
@@ -495,7 +495,6 @@ describe('POST /listings', () => {
     mockCreateListing.mockResolvedValue({
       marketplaceListingId: '110012345678',
       ebaySku: 'portage-sku-1',
-      ebayOfferId: 'offer-1',
       status: 'active',
     });
 
@@ -508,7 +507,6 @@ describe('POST /listings', () => {
     // The eBay result lands on the UPDATE, not the insert (the insert-first row starts null).
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
       ebaySku: 'portage-sku-1',
-      ebayOfferId: 'offer-1',
       marketplaceListingId: '110012345678',
     }));
   });
@@ -626,7 +624,7 @@ describe('POST /listings/:id/publish — seller listing footer', () => {
 });
 
 describe('POST /listings/:id/publish', () => {
-  it('reuses the stored ebaySku and ebayOfferId when re-publishing (no orphan)', async () => {
+  it('reuses the stored ebaySku when re-publishing (no orphan)', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
       itemId: ITEM_ID, price: 199, currency: 'USD',
@@ -643,7 +641,7 @@ describe('POST /listings/:id/publish', () => {
     });
     vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
     mockCreateListing.mockResolvedValue({
-      marketplaceListingId: '110', ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1', status: 'active',
+      marketplaceListingId: '110', ebaySku: 'portage-sku-1', status: 'active',
     });
 
     const res = await request(app)
@@ -653,7 +651,6 @@ describe('POST /listings/:id/publish', () => {
     expect(res.status).toBe(200);
     expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
       ebaySku: 'portage-sku-1',
-      ebayOfferId: 'offer-1',
     }));
   });
 
@@ -804,6 +801,34 @@ describe('PATCH /listings/:id', () => {
     }));
   });
 
+  it('injects the seller ship-from origin ZIP into the eBay content sync (Trade-First revise needs it)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([{ footer: null, shipFromAddress: { zip: '90210' } }]);
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '110012345678', status: 'active' });
+
+    await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(mockUpdateListing).toHaveBeenCalledWith('110012345678', expect.objectContaining({
+      marketplaceSpecific: expect.objectContaining({ originPostalCode: '90210' }),
+    }));
+  });
+
   it('carries item.aspects into the adapter on PATCH /:id sync', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
@@ -862,24 +887,24 @@ describe('PATCH /listings/:id', () => {
     expect(res.body.warning).toMatch(/best offer/i);
   });
 
-  it('syncs full item fields to eBay including ebaySku and ebayOfferId', async () => {
+  it('syncs full item fields to eBay including ebaySku', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
       itemId: ITEM_ID, price: 199, currency: 'USD',
-      ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
+      ebaySku: 'portage-sku-1',
       marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
     }]);
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
         id: 'listing-1', status: 'active', marketplace: 'ebay',
         itemId: ITEM_ID, price: 179, currency: 'USD',
-        ebaySku: 'portage-sku-1', ebayOfferId: 'offer-1',
+        ebaySku: 'portage-sku-1',
         marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
       }]) }),
     });
     vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
     mockSelectOnce([MOCK_ITEM]);
-    mockSelectOnce([]); // footer lookup — no seller profile
+    mockSelectOnce([]); // profile (footer + ship-from) lookup — no seller profile
     mockUpdateListing.mockResolvedValue({ marketplaceListingId: '110012345678', status: 'active' });
 
     const res = await request(app)
@@ -899,17 +924,16 @@ describe('PATCH /listings/:id', () => {
       model: 'WH-1000XM4',
       photos: [{ url: 'https://portage-images.digitalharmonyai.com/p.jpg' }],
       ebaySku: 'portage-sku-1',
-      ebayOfferId: 'offer-1',
     }));
   });
 });
 
 describe('POST /listings/:id/publish — persistence', () => {
-  it('persists the result ebaySku and ebayOfferId after publishing a DB-only draft', async () => {
+  it('persists the result ebaySku after publishing a DB-only draft', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
       itemId: ITEM_ID, price: 199, currency: 'USD',
-      ebaySku: null, ebayOfferId: null,
+      ebaySku: null,
       marketplaceSpecificFields: { fulfillmentPolicyId: 'fp', paymentPolicyId: 'pp', returnPolicyId: 'rp', merchantLocationKey: 'loc' },
     }]);
     mockSelectOnce([MOCK_ITEM]);
@@ -920,7 +944,7 @@ describe('POST /listings/:id/publish — persistence', () => {
     });
     vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
     mockCreateListing.mockResolvedValue({
-      marketplaceListingId: '110', ebaySku: 'new-sku', ebayOfferId: 'new-offer', status: 'active',
+      marketplaceListingId: '110', ebaySku: 'new-sku', status: 'active',
     });
 
     await request(app)
@@ -929,7 +953,6 @@ describe('POST /listings/:id/publish — persistence', () => {
 
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
       ebaySku: 'new-sku',
-      ebayOfferId: 'new-offer',
     }));
   });
 });
@@ -943,30 +966,9 @@ function mockSelectBulk(rows: unknown[]) {
 }
 
 const LISTING_1 = '10000000-0000-0000-0000-000000000001';
-const LISTING_2 = '10000000-0000-0000-0000-000000000002';
 
-describe('PATCH /listings/:id — price change syncs to the eBay draft offer', () => {
+describe('PATCH /listings/:id — price change syncs to the live eBay listing', () => {
   const LID = '00000000-0000-0000-0000-0000000000d2';
-  it('pushes a price change to the unpublished eBay offer for an ebay-draft listing', async () => {
-    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'draft', marketplaceListingId: null, ebayOfferId: '193511711011', ebaySku: 'PRT-000013', currency: 'USD' }]);
-    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, marketplace: 'ebay', status: 'draft', marketplaceListingId: null, ebayOfferId: '193511711011', ebaySku: 'PRT-000013', price: 149.99, currency: 'USD', itemId: ITEM_ID }]) })) }));
-    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
-    mockSelectOnce([{ ...MOCK_ITEM }]); // sync block: item
-    mockSelectOnce([]);                  // sync block: footer
-    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '193511711011', status: 'draft' });
-
-    const res = await request(app)
-      .patch(`/listings/${LID}`)
-      .set('Authorization', `Bearer ${authToken}`)
-      .send({ price: 149.99 });
-
-    expect(res.status).toBe(200);
-    expect(mockUpdateListing).toHaveBeenCalledTimes(1);
-    const [idArg, inputArg] = mockUpdateListing.mock.calls[0] as [string, { price?: number; ebayOfferId?: string }];
-    expect(inputArg.price).toBe(149.99);
-    expect(inputArg.ebayOfferId).toBe('193511711011');
-    expect(idArg).toBe('193511711011'); // offer id used as the identifier for an unpublished draft
-  });
 
   it('includes item weight/dims when syncing a price change to an ACTIVE eBay listing (avoids eBay 25020)', async () => {
     mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebayOfferId: '193549052011', ebaySku: 'PRT-000009', currency: 'USD' }]);
@@ -987,11 +989,11 @@ describe('PATCH /listings/:id — price change syncs to the eBay draft offer', (
   });
 });
 
-describe('PATCH /listings/:id — archive ends the eBay listing via withdrawOffer', () => {
+describe('PATCH /listings/:id — archive ends the eBay listing via EndFixedPriceItem', () => {
   const LID = '00000000-0000-0000-0000-0000000000a0';
-  it('withdraws by ebayOfferId (not deleteListing by listing id) and archives locally', async () => {
-    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022338248', ebayOfferId: '193511711011' }]);
-    mockWithdrawOffer.mockResolvedValue(undefined);
+  it('ends the listing by Trading ItemID via deleteListing and archives locally', async () => {
+    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022338248', ebayOfferId: null }]);
+    mockDeleteListing.mockResolvedValue(undefined);
     const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, status: 'archived', marketplace: 'ebay', marketplaceListingId: '307022338248' }]) })) }));
     vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
 
@@ -1001,13 +1003,13 @@ describe('PATCH /listings/:id — archive ends the eBay listing via withdrawOffe
       .send({ status: 'archived' });
 
     expect(res.status).toBe(200);
-    expect(mockWithdrawOffer).toHaveBeenCalledWith('193511711011');
-    expect(mockDeleteListing).not.toHaveBeenCalled();
+    expect(mockDeleteListing).toHaveBeenCalledWith('307022338248');
+    expect(mockWithdrawOffer).not.toHaveBeenCalled();
   });
 
-  it('archives locally with a warning when the eBay withdraw fails — not blocked', async () => {
-    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022338248', ebayOfferId: '193511711011' }]);
-    mockWithdrawOffer.mockRejectedValue(new AppError(404, 'EBAY_API_ERROR', 'This Offer is not available.'));
+  it('archives locally with a warning when the eBay end-listing call fails — not blocked', async () => {
+    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022338248', ebayOfferId: null }]);
+    mockDeleteListing.mockRejectedValue(new AppError(404, 'EBAY_API_ERROR', 'The auction has already been closed.'));
     const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, status: 'archived', marketplace: 'ebay', marketplaceListingId: '307022338248' }]) })) }));
     vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
 
@@ -1098,31 +1100,6 @@ describe('POST /listings — disclaimer consent (F3a)', () => {
 });
 
 describe('POST /bulk/activate', () => {
-  it('publishes eBay drafts via bulkPublishOffers and updates their status', async () => {
-    mockSelectBulk([
-      { id: LISTING_1, status: 'draft', marketplace: 'ebay', marketplaceListingId: 'offer-1', ebayOfferId: 'offer-1', ebaySku: 'sku-1' },
-      { id: LISTING_2, status: 'draft', marketplace: 'ebay', marketplaceListingId: 'offer-2', ebayOfferId: 'offer-2', ebaySku: 'sku-2' },
-    ]);
-    mockBulkPublishOffers.mockResolvedValue([
-      { offerId: 'offer-1', listingId: '110001', success: true },
-      { offerId: 'offer-2', listingId: '110002', success: true },
-    ]);
-    const updateSet = vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'x' }]) }),
-    });
-    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
-
-    const res = await request(app)
-      .post('/listings/bulk/activate')
-      .set('Authorization', `Bearer ${authToken}`)
-      .send({ ids: [LISTING_1, LISTING_2] });
-
-    expect(res.body).toMatchObject({ published: 2 });
-    expect(res.status).toBe(200);
-    expect(mockBulkPublishOffers).toHaveBeenCalledWith(['offer-1', 'offer-2']);
-    expect(res.body.ids).toEqual(expect.arrayContaining([LISTING_1, LISTING_2]));
-  });
-
   it('does NOT silently mark an eBay DB-only draft active (no offer) — flags it to publish individually (G6)', async () => {
     // Under the Trading API an eBay draft is DB-only: no marketplaceListingId, no ebayOfferId.
     // Bulk-activate must NOT flip it to "active" with no eBay call (that shows a live-looking
@@ -1149,13 +1126,30 @@ describe('POST /bulk/activate', () => {
   });
 });
 
-describe('DELETE /listings/:id — F-ORPHAN: withdraw the eBay offer', () => {
+describe('DELETE /listings/:id — Trade-First end-or-local-delete', () => {
   const LISTING_ID = '00000000-0000-0000-0000-0000000000d1';
 
-  it('withdraws the unpublished eBay offer (by ebayOfferId) when deleting an eBay-draft listing', async () => {
+  it('deletes a DB-only eBay draft locally with no eBay call (nothing live to end)', async () => {
     mockSelectOnce([{
       id: LISTING_ID, userId: 'test-user-id', marketplace: 'ebay',
-      status: 'draft', marketplaceListingId: null, ebayOfferId: '192643508011',
+      status: 'draft', marketplaceListingId: null,
+    }]);
+    const whereDelete = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: whereDelete } as any);
+
+    const res = await request(app)
+      .delete(`/listings/${LISTING_ID}`)
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockDeleteListing).not.toHaveBeenCalled();
+    expect(whereDelete).toHaveBeenCalled();
+  });
+
+  it('ends a live eBay listing by Trading ItemID (deleteListing) when deleting an active listing', async () => {
+    mockSelectOnce([{
+      id: LISTING_ID, userId: 'test-user-id', marketplace: 'ebay',
+      status: 'active', marketplaceListingId: '307022338248',
     }]);
     mockDeleteListing.mockResolvedValue(undefined);
     vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) } as any);
@@ -1165,14 +1159,13 @@ describe('DELETE /listings/:id — F-ORPHAN: withdraw the eBay offer', () => {
       .set('Authorization', `Bearer ${authToken}`);
 
     expect(res.status).toBe(200);
-    expect(mockDeleteListing).toHaveBeenCalledWith('192643508011');
+    expect(mockDeleteListing).toHaveBeenCalledWith('307022338248');
   });
 
-  it('bulk delete withdraws unpublished eBay offers (by ebayOfferId) for draft listings', async () => {
+  it('bulk delete removes a DB-only eBay draft with no eBay call', async () => {
     mockSelectBulk([
-      { id: '10000000-0000-0000-0000-0000000000a1', status: 'draft', marketplace: 'ebay', marketplaceListingId: null, ebayOfferId: '192643508011' },
+      { id: '10000000-0000-0000-0000-0000000000a1', status: 'draft', marketplace: 'ebay', marketplaceListingId: null },
     ]);
-    mockDeleteListing.mockResolvedValue(undefined);
     vi.mocked(db.transaction).mockImplementation(async (cb: any) =>
       cb({ delete: () => ({ where: () => ({ returning: () => Promise.resolve([{ id: '10000000-0000-0000-0000-0000000000a1' }]) }) }) }),
     );
@@ -1183,32 +1176,13 @@ describe('DELETE /listings/:id — F-ORPHAN: withdraw the eBay offer', () => {
       .send({ ids: ['10000000-0000-0000-0000-0000000000a1'] });
 
     expect(res.status).toBe(200);
-    expect(mockDeleteListing).toHaveBeenCalledWith('192643508011');
+    expect(mockDeleteListing).not.toHaveBeenCalled();
   });
 
-  it('bulk delete is best-effort: a failed eBay offer withdrawal still deletes locally', async () => {
-    mockSelectBulk([
-      { id: '10000000-0000-0000-0000-0000000000a2', status: 'draft', marketplace: 'ebay', marketplaceListingId: null, ebayOfferId: '192643508011' },
-    ]);
-    mockDeleteListing.mockRejectedValue(new Error('eBay 500'));
-    const txReturning = vi.fn().mockResolvedValue([{ id: '10000000-0000-0000-0000-0000000000a2' }]);
-    vi.mocked(db.transaction).mockImplementation(async (cb: any) =>
-      cb({ delete: () => ({ where: () => ({ returning: txReturning }) }) }),
-    );
-
-    const res = await request(app)
-      .post('/listings/bulk/delete')
-      .set('Authorization', `Bearer ${authToken}`)
-      .send({ ids: ['10000000-0000-0000-0000-0000000000a2'] });
-
-    expect(res.status).toBe(200);
-    expect(txReturning).toHaveBeenCalled();
-  });
-
-  it('still deletes the listing locally when the eBay offer withdrawal fails', async () => {
+  it('delete is best-effort: a failed eBay end-listing still deletes locally', async () => {
     mockSelectOnce([{
       id: LISTING_ID, userId: 'test-user-id', marketplace: 'ebay',
-      status: 'draft', marketplaceListingId: null, ebayOfferId: '192643508011',
+      status: 'active', marketplaceListingId: '307022338248',
     }]);
     mockDeleteListing.mockRejectedValue(new Error('eBay 500'));
     const whereDelete = vi.fn().mockResolvedValue(undefined);
@@ -1226,13 +1200,13 @@ describe('DELETE /listings/:id — F-ORPHAN: withdraw the eBay offer', () => {
 describe('GET /listings/:id/ebay-offer — F-GATE verification read', () => {
   const LISTING_ID = '00000000-0000-0000-0000-0000000000ef';
 
-  it('returns the live eBay verification for the listing\'s SKU', async () => {
-    mockSelectOnce([{ id: LISTING_ID, userId: 'test-user-id', marketplace: 'ebay', ebaySku: 'PRT-000009' }]);
+  it('reads back live eBay state by Trading ItemID (marketplaceListingId)', async () => {
+    mockSelectOnce([{ id: LISTING_ID, userId: 'test-user-id', marketplace: 'ebay', ebaySku: 'PRT-000009', marketplaceListingId: '307019237500' }]);
     mockGetEbayItemVerification.mockResolvedValue({
       sku: 'PRT-000009', found: true,
       aspects: { MPN: ['HD600'], Brand: ['Sennheiser'] },
       mpn: 'HD600', brand: 'Sennheiser',
-      offerId: '9988776655', status: 'UNPUBLISHED', listingId: '307019237500',
+      status: 'Active', listingId: '307019237500', price: '349',
     });
 
     const res = await request(app)
@@ -1240,8 +1214,20 @@ describe('GET /listings/:id/ebay-offer — F-GATE verification read', () => {
       .set('Authorization', `Bearer ${authToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ sku: 'PRT-000009', mpn: 'HD600', offerId: '9988776655' });
+    expect(res.body).toMatchObject({ sku: 'PRT-000009', mpn: 'HD600', listingId: '307019237500' });
     expect(res.body.aspects.MPN).toEqual(['HD600']);
-    expect(mockGetEbayItemVerification).toHaveBeenCalledWith('PRT-000009');
+    expect(mockGetEbayItemVerification).toHaveBeenCalledWith('307019237500');
+  });
+
+  it('returns found:false without calling eBay when the listing was never published (no ItemID)', async () => {
+    mockSelectOnce([{ id: LISTING_ID, userId: 'test-user-id', marketplace: 'ebay', ebaySku: 'PRT-000010', marketplaceListingId: null }]);
+
+    const res = await request(app)
+      .get(`/listings/${LISTING_ID}/ebay-offer`)
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.found).toBe(false);
+    expect(mockGetEbayItemVerification).not.toHaveBeenCalled();
   });
 });

@@ -492,7 +492,6 @@ itemsRouter.patch('/:id', async (req, res, next) => {
       const ebayListings = await db.select({
         status: listings.status,
         marketplaceListingId: listings.marketplaceListingId,
-        ebayOfferId: listings.ebayOfferId,
         ebaySku: listings.ebaySku,
         marketplaceSpecificFields: listings.marketplaceSpecificFields,
         currency: listings.currency,
@@ -500,14 +499,15 @@ itemsRouter.patch('/:id', async (req, res, next) => {
         eq(listings.itemId, updated.id),
         eq(listings.userId, userId),
         eq(listings.marketplace, 'ebay'),
-        // Only live/draft rows — never a stale archived/sold history row for this item.
+        // Only live rows — never a stale archived/sold history row for this item.
         inArray(listings.status, ['active', 'draft']),
       ));
 
       for (const listed of ebayListings) {
-        const syncId = listed.marketplaceListingId ?? listed.ebayOfferId;
-        const syncable = (listed.status === 'active' && listed.marketplaceListingId) || (listed.status === 'draft' && listed.ebayOfferId);
-        if (!syncId || !syncable) continue;
+        // Trade-First: only a published listing (active + Trading ItemID) can be revised.
+        // A DB-only draft has no live listing to sync until it is published.
+        const syncId = listed.marketplaceListingId;
+        if (listed.status !== 'active' || !syncId) continue;
         try {
           const adapter = new EbayAdapter(userId);
           await adapter.updateListing(syncId, {
@@ -522,7 +522,6 @@ itemsRouter.patch('/:id', async (req, res, next) => {
             photos: (updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
             features: updated.features as string[],
             ebaySku: listed.ebaySku ?? undefined,
-            ebayOfferId: listed.ebayOfferId ?? undefined,
             marketplaceSpecific: mergeItemAspects(updated, mergeItemShipping(updated, listed.marketplaceSpecificFields as Record<string, unknown> | undefined)),
           });
         } catch (err) {

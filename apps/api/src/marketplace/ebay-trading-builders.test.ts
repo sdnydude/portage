@@ -8,6 +8,7 @@ import {
   buildGetItemXml,
   parseAddItemResponse,
   parseGetItemStatus,
+  parseGetItemVerification,
   splitOunces,
   type TradingListingInput,
 } from './ebay-trading-builders.js';
@@ -183,6 +184,41 @@ describe('parseGetItemStatus', () => {
     expect(parseGetItemStatus(mk('Completed', 0))).toBe('ended');
     expect(parseGetItemStatus(mk('Ended'))).toBe('ended');
     expect(parseGetItemStatus({ GetItemResponse: {} })).toBe('unknown');
+  });
+});
+
+describe('parseGetItemVerification', () => {
+  it('reads aspects, MPN, Brand, status, ItemID and price from a GetItem response', () => {
+    const parsed = {
+      GetItemResponse: { Item: {
+        ItemID: '307034606520',
+        SKU: 'PRT-000016',
+        SellingStatus: { ListingStatus: 'Active' },
+        StartPrice: { '@_currencyID': 'USD', '#text': 349 },
+        ItemSpecifics: { NameValueList: [
+          { Name: 'Brand', Value: 'Sennheiser' },
+          { Name: 'MPN', Value: 'HD600' },
+          { Name: 'Type', Value: ['Over-Ear'] },
+        ] },
+      } },
+    };
+    const v = parseGetItemVerification(parsed);
+    expect(v.found).toBe(true);
+    expect(v.sku).toBe('PRT-000016');
+    expect(v.listingId).toBe('307034606520');
+    expect(v.status).toBe('Active');
+    expect(v.price).toBe('349');
+    expect(v.aspects.MPN).toEqual(['HD600']);
+    expect(v.mpn).toBe('HD600');
+    expect(v.brand).toBe('Sennheiser');
+  });
+
+  it('returns found:false with null fields when the response carries no Item', () => {
+    const v = parseGetItemVerification({ GetItemResponse: { Ack: 'Failure' } });
+    expect(v.found).toBe(false);
+    expect(v.aspects).toEqual({});
+    expect(v.mpn).toBeNull();
+    expect(v.listingId).toBeNull();
   });
 });
 

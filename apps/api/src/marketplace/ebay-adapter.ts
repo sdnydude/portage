@@ -4,7 +4,7 @@ import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
 import { callTradingApi } from './ebay-trading-client.js';
-import { buildAddFixedPriceItemXml, parseAddItemResponse, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
+import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml, buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
 import { EBAY_USER_AGENT } from './ebay-constants.js';
 import type {
   MarketplaceAdapter,
@@ -219,15 +219,16 @@ export interface EbayListingFields {
  * missing inventory_item can each be absent independently.
  */
 export interface EbayItemVerification {
-  sku: string;
+  /** The listing's SKU as reported by eBay, or null when GetItem returns no SKU. */
+  sku: string | null;
   found: boolean;
   aspects: Record<string, string[]>;
   mpn: string | null;
   brand: string | null;
-  offerId: string | null;
   status: string | null;
+  /** The Trading ItemID (eBay listing id) echoed back by GetItem, or null. */
   listingId: string | null;
-  /** The offer's current price on eBay (pricingSummary.price.value), or null. */
+  /** The live StartPrice on eBay, or null. */
   price: string | null;
 }
 
@@ -422,8 +423,14 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
   }
 
-  async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
-    const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  /**
+   * Build the Trading item payload shared by AddFixedPriceItem (publish) and
+   * ReviseFixedPriceItem (content edit). Enforces the publish guards: valid leaf
+   * category, ship-from origin ZIP + package weight/dims (inline Calculated shipping),
+   * required-aspect gate, and per-category ConditionID snap. `sku` is passed through to
+   * the item body; pass undefined on a revise with no SKU so eBay keeps the existing one.
+   */
+  private async buildTradingInput(input: MarketplaceListingInput, sku: string | undefined): Promise<TradingListingInput> {
     const specific = input.marketplaceSpecific ?? {};
 
     // A valid leaf category is required ('99' is eBay's unset placeholder).
@@ -493,7 +500,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
 
     const { weightMajor, weightMinor } = splitOunces(rawWeight!.value as number);
-    const tradingInput: TradingListingInput = {
+    return {
       title: input.title,
       description: input.description,
       categoryId,
@@ -513,6 +520,11 @@ export class EbayAdapter implements MarketplaceAdapter {
       },
       bestOfferAutoAcceptPrice: (specific as Partial<EbayPreparedFields>).bestOfferAutoAcceptPrice,
     };
+  }
+
+  async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
+    const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const tradingInput = await this.buildTradingInput(input, sku);
 
     const token = await getEbayAccessToken(this.userId);
 
@@ -561,231 +573,112 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   async updateListing(marketplaceListingId: string, input: Partial<MarketplaceListingInput>): Promise<MarketplaceListingResult> {
-    if (input.ebaySku) {
-      let ebayCondition = resolveEbayCondition(input.condition ?? 'good', input.marketplaceSpecific);
-      const specific = input.marketplaceSpecific ?? {};
+    const token = await getEbayAccessToken(this.userId);
+    const marketplaceUrl = `https://www.ebay.com/itm/${marketplaceListingId}`;
+    const specific = (input.marketplaceSpecific ?? {}) as Record<string, unknown>;
 
-      // Same per-category guard as publish (eBay error 25021): snap to a grade the
-      // category accepts, unless an explicit valid enum was supplied.
-      if (specific.categoryId && !specific.condition) {
-        const validConditionIds = await EbayAdapter.getValidConditions(specific.categoryId as string);
-        const conditionFix = resolveEbayCategoryCondition(input.condition ?? 'good', validConditionIds);
-        if (conditionFix.condition) ebayCondition = conditionFix.condition;
-      }
-
-      const product: Record<string, unknown> = {};
-      if (input.title) product.title = input.title;
-      if (input.description) product.description = input.description;
-      if (input.photos) product.imageUrls = input.photos.map((p) => p.url);
-      if (input.brand) product.brand = input.brand;
-      // Real part number only — never the model name (eBay error 25002).
-      if (input.mpn) product.mpn = input.mpn;
-      // BrandMPN rule (25002): a Brand without an MPN is rejected — send the
-      // "Does Not Apply" sentinel when a branded item has no real part number.
-      if (product.brand && !product.mpn) product.mpn = 'Does Not Apply';
-      if (specific.upc) product.upc = [specific.upc as string];
-      if (specific.epid) product.epid = specific.epid;
-      // Parity with createListing: normalize scalar values + backfill Brand/Model/MPN
-      // (sentinel) so an active-listing edit can't push a malformed or incomplete
-      // specifics bag. The publish-time required-aspect GATE stays publish-only.
-      const aspects = normalizeAspects(specific.aspects as Record<string, unknown> | undefined, {
-        brand: input.brand,
-        model: input.model,
-        mpn: product.mpn as string | undefined,
-      });
-      if (Object.keys(aspects).length > 0) product.aspects = aspects;
-
-      const inventoryItem: Record<string, unknown> = {
-        availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
-        condition: ebayCondition,
-        product,
-      };
-
-      if (specific.conditionDescription) {
-        inventoryItem.conditionDescription = specific.conditionDescription;
-      }
-
-      if (specific.weight || specific.dimensions) {
-        // packageType is deliberately NOT sent — symmetry with createListing.
-        // eBay rejects the whole <ShippingPackage> (error 25101 / 216305) when
-        // packageType isn't supported by the courier in the resolved fulfillment
-        // policy, and it's optional: calculated shipping computes rates from
-        // weight + dimensions alone. The seller's packageType stays metadata-only.
-        const pkg: Record<string, unknown> = {};
-        if (specific.weight) pkg.weight = specific.weight;
-        if (specific.dimensions) pkg.dimensions = specific.dimensions;
-        inventoryItem.packageWeightAndSize = pkg;
-      }
-
-      await this.request(`/sell/inventory/v1/inventory_item/${input.ebaySku}`, {
-        method: 'PUT',
-        body: JSON.stringify(inventoryItem),
-      });
-
-      logger.info({ userId: this.userId, sku: input.ebaySku }, 'eBay inventory item updated');
-    }
-
-    const offerId = input.ebayOfferId ?? marketplaceListingId;
-    const updates: Record<string, unknown> = {};
-    if (input.title) updates.title = input.title;
-    if (input.description) updates.listingDescription = input.description;
-    if (input.price) {
-      updates.pricingSummary = {
-        price: { value: String(input.price), currency: input.currency ?? 'USD' },
-      };
-    }
-
-    // Best Offer on update: only when the COMPLETE policy set is in hand —
-    // eBay's offer PUT replaces listingPolicies wholesale (per updateOffer
-    // docs: complex provided fields are replaced, not merged), so a partial
-    // block (bestOfferTerms alone) would strip the policy ids off the live offer.
-    const updateSpecific = (input.marketplaceSpecific ?? {}) as Record<string, unknown>;
-    const updateBoTerms = input.price
-      ? EbayAdapter.bestOfferTerms(updateSpecific, input.price, input.currency ?? 'USD')
-      : {};
-    const hasFullPolicies = Boolean(
-      updateSpecific.fulfillmentPolicyId && updateSpecific.paymentPolicyId && updateSpecific.returnPolicyId,
+    // A content edit (anything that changes the item body) goes through
+    // ReviseFixedPriceItem with the full item payload. A price/quantity-only edit
+    // takes the ReviseInventoryStatus fast path — no item rebuild, no aspect gate.
+    const hasContentChange = Boolean(
+      input.title || input.description || input.photos || input.brand || input.model || input.mpn ||
+      input.condition || input.features ||
+      specific.aspects || specific.weight || specific.dimensions || specific.categoryId ||
+      specific.conditionId || specific.condition || specific.conditionDescription,
     );
-    if (Object.keys(updateBoTerms).length > 0 && hasFullPolicies) {
-      updates.listingPolicies = {
-        fulfillmentPolicyId: updateSpecific.fulfillmentPolicyId,
-        paymentPolicyId: updateSpecific.paymentPolicyId,
-        returnPolicyId: updateSpecific.returnPolicyId,
-        ...updateBoTerms,
-      };
+
+    if (!hasContentChange && (input.price !== undefined || input.quantity !== undefined)) {
+      await callTradingApi(
+        'ReviseInventoryStatus',
+        buildReviseInventoryStatusXml(
+          marketplaceListingId,
+          { price: input.price, quantity: input.quantity, currency: input.currency ?? 'USD' },
+          token,
+        ),
+        token,
+      );
+      logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay price/qty revised via ReviseInventoryStatus');
+      return { marketplaceListingId, marketplaceUrl, status: 'active' };
     }
 
-    let updateWarning: string | undefined;
-    if (Object.keys(updates).length > 0) {
-      try {
-        await this.request(`/sell/inventory/v1/offer/${offerId}`, {
-          method: 'PUT',
-          body: JSON.stringify(updates),
-        });
-      } catch (err) {
-        // Same retry-once pattern as createListing, but here the WHOLE
-        // listingPolicies block is dropped — bestOfferTerms can't be removed
-        // without resending the block, and a partial block would strip ids.
-        if (!updates.listingPolicies || !EbayAdapter.isBestOfferRejection(err)) {
-          throw err;
-        }
-        logger.warn({ userId: this.userId, offerId, error: (err as Error).message, details: err instanceof AppError ? err.details : undefined }, 'eBay rejected bestOfferTerms on update — retrying without Best Offer');
-        updateWarning = 'Updated without Best Offer auto-accept — eBay rejected it for this listing.';
-        delete updates.listingPolicies;
-        if (Object.keys(updates).length > 0) {
-          await this.request(`/sell/inventory/v1/offer/${offerId}`, {
-            method: 'PUT',
-            body: JSON.stringify(updates),
-          });
-        }
+    // Full content revise: rebuild the item body with the same guards as publish. The
+    // SKU is only re-sent when the caller supplies one, so a revise never rewrites it.
+    const tradingInput = await this.buildTradingInput(input as MarketplaceListingInput, input.ebaySku);
+
+    // Best Offer category support isn't verifiable pre-flight — on a best-offer
+    // rejection, retry the revise once without it rather than failing the whole edit.
+    let bestOfferDowngraded = false;
+    const BEST_OFFER_DOWNGRADE_WARNING = 'Updated without Best Offer auto-accept — eBay rejected it for this listing.';
+    const callRevise = (withBestOffer: boolean): Promise<Record<string, unknown>> =>
+      callTradingApi(
+        'ReviseFixedPriceItem',
+        buildReviseFixedPriceItemXml(
+          marketplaceListingId,
+          withBestOffer ? tradingInput : { ...tradingInput, bestOfferAutoAcceptPrice: undefined },
+          token,
+        ),
+        token,
+      );
+
+    try {
+      await callRevise(true);
+    } catch (err) {
+      if (tradingInput.bestOfferAutoAcceptPrice && EbayAdapter.isBestOfferRejection(err)) {
+        logger.warn({ userId: this.userId, itemId: marketplaceListingId, error: (err as Error).message }, 'eBay rejected Best Offer — retrying ReviseFixedPriceItem without it');
+        bestOfferDowngraded = true;
+        await callRevise(false);
+      } else {
+        throw err;
       }
     }
 
-    logger.info({ userId: this.userId, marketplaceListingId }, 'eBay listing updated');
-
+    logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay listing revised via ReviseFixedPriceItem');
     return {
       marketplaceListingId,
-      marketplaceUrl: `https://www.ebay.com/itm/${marketplaceListingId}`,
+      marketplaceUrl,
       status: 'active',
-      ...(updateWarning ? { warning: updateWarning } : {}),
+      ...(bestOfferDowngraded ? { warning: BEST_OFFER_DOWNGRADE_WARNING } : {}),
     };
   }
 
-  async bulkPublishOffers(offerIds: string[]): Promise<Array<{ offerId: string; listingId?: string; success: boolean; error?: string }>> {
-    const data = await this.request<{
-      responses: Array<{
-        statusCode: number;
-        offerId: string;
-        listingId?: string;
-        errors?: Array<{ message: string }>;
-      }>;
-    }>('/sell/inventory/v1/bulk_publish_offer', {
-      method: 'POST',
-      body: JSON.stringify({ requests: offerIds.map((offerId) => ({ offerId })) }),
-    });
-
-    return data.responses.map((r) => ({
-      offerId: r.offerId,
-      listingId: r.statusCode === 200 ? r.listingId : undefined,
-      success: r.statusCode === 200,
-      error: r.statusCode !== 200 ? r.errors?.[0]?.message : undefined,
-    }));
-  }
-
-  async deleteListing(marketplaceListingId: string): Promise<void> {
-    await this.request(`/sell/inventory/v1/offer/${marketplaceListingId}`, {
-      method: 'DELETE',
-    });
-
-    logger.info({ userId: this.userId, marketplaceListingId }, 'eBay listing deleted');
-  }
-
   /**
-   * End a PUBLISHED eBay listing: withdraw its offer (the offer survives, the
-   * listing is ended). Takes the OFFER id — not the listing id, and not DELETE
-   * (deleteOffer is for unpublished offers; a published one must be withdrawn).
+   * End a live eBay listing via Trading EndFixedPriceItem. Under Trade-First the
+   * ItemID is the listing id — there is no offer to withdraw or DELETE (the old
+   * Inventory offer paths 404 on a Trading ItemID).
    */
-  async withdrawOffer(offerId: string): Promise<void> {
-    await this.request(`/sell/inventory/v1/offer/${offerId}/withdraw`, {
-      method: 'POST',
-    });
+  async deleteListing(marketplaceListingId: string): Promise<void> {
+    const token = await getEbayAccessToken(this.userId);
+    await callTradingApi('EndFixedPriceItem', buildEndFixedPriceItemXml(marketplaceListingId, token), token);
 
-    logger.info({ userId: this.userId, offerId }, 'eBay offer withdrawn (listing ended)');
+    logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay listing ended via EndFixedPriceItem');
   }
 
   async getListingStatus(marketplaceListingId: string): Promise<'active' | 'sold' | 'ended' | 'unknown'> {
     try {
-      const data = await this.request<{ status: string }>(`/sell/inventory/v1/offer/${marketplaceListingId}`);
-
-      switch (data.status) {
-        case 'PUBLISHED': return 'active';
-        case 'ENDED': return 'ended';
-        default: return 'unknown';
-      }
+      const token = await getEbayAccessToken(this.userId);
+      const parsed = await callTradingApi('GetItem', buildGetItemXml(marketplaceListingId, token), token);
+      return parseGetItemStatus(parsed);
     } catch {
       return 'unknown';
     }
   }
 
-  async getEbayItemVerification(sku: string): Promise<EbayItemVerification> {
-    const encoded = encodeURIComponent(sku);
-
-    let aspects: Record<string, string[]> = {};
-    let mpn: string | null = null;
-    let brand: string | null = null;
-    let found = false;
+  /**
+   * Read back the live eBay state for a published listing via Trading GetItem,
+   * keyed by the Trading ItemID (= marketplaceListingId). Returns item specifics
+   * (aspects), Brand/MPN, ListingStatus and price. There is no Inventory offer to
+   * read under Trade-First — GetItem is the single source of truth. A read failure
+   * (ended/unknown ItemID) reports found:false rather than throwing.
+   */
+  async getEbayItemVerification(itemId: string): Promise<EbayItemVerification> {
     try {
-      const item = await this.request<{
-        product?: { aspects?: Record<string, string[]>; mpn?: string; brand?: string };
-      }>(`/sell/inventory/v1/inventory_item/${encoded}`);
-      found = true;
-      aspects = item.product?.aspects ?? {};
-      mpn = item.product?.mpn ?? null;
-      brand = item.product?.brand ?? null;
+      const token = await getEbayAccessToken(this.userId);
+      const parsed = await callTradingApi('GetItem', buildGetItemXml(itemId, token), token);
+      const v = parseGetItemVerification(parsed);
+      return { sku: v.sku, found: v.found, aspects: v.aspects, mpn: v.mpn, brand: v.brand, status: v.status, listingId: v.listingId, price: v.price };
     } catch {
-      // Missing inventory_item (404) or read error — report not-found rather than throw.
+      return { sku: null, found: false, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null };
     }
-
-    let offerId: string | null = null;
-    let status: string | null = null;
-    let listingId: string | null = null;
-    let price: string | null = null;
-    try {
-      const data = await this.request<{
-        offers?: Array<{ offerId?: string; status?: string; listing?: { listingId?: string }; pricingSummary?: { price?: { value?: string } } }>;
-      }>(`/sell/inventory/v1/offer?sku=${encoded}&marketplace_id=EBAY_US`);
-      const offer = data.offers?.[0];
-      if (offer) {
-        offerId = offer.offerId ?? null;
-        status = offer.status ?? null;
-        listingId = offer.listing?.listingId ?? null;
-        price = offer.pricingSummary?.price?.value ?? null;
-      }
-    } catch {
-      // No offer for this SKU yet — leave offer fields null.
-    }
-
-    return { sku, found, aspects, mpn, brand, offerId, status, listingId, price };
   }
 
   // Analytics API traffic report for a single published listing — impressions,

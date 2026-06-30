@@ -204,8 +204,16 @@ listingsRouter.get('/:id/ebay-offer', async (req, res, next) => {
 
     if (!listing) throw new AppError(404, 'NOT_FOUND', 'Listing not found');
 
+    // Trade-First: GetItem is keyed by the Trading ItemID (marketplaceListingId).
+    // A listing that was never published to eBay has no ItemID — report not-found
+    // rather than calling eBay with an empty id.
+    if (!listing.marketplaceListingId) {
+      res.json({ sku: listing.ebaySku ?? null, found: false, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null });
+      return;
+    }
+
     const adapter = new EbayAdapter(userId);
-    const verification = await adapter.getEbayItemVerification(listing.ebaySku!);
+    const verification = await adapter.getEbayItemVerification(listing.marketplaceListingId);
     res.json(verification);
   } catch (err) {
     next(err);
@@ -320,7 +328,6 @@ listingsRouter.post('/', async (req, res, next) => {
         .set({
           marketplaceListingId: result.marketplaceListingId,
           ebaySku: result.ebaySku ?? null,
-          ebayOfferId: result.ebayOfferId ?? null,
           status: result.status === 'active' ? 'active' : 'draft',
           publishedAt: result.status === 'active' ? new Date() : null,
           updatedAt: new Date(),
@@ -391,13 +398,10 @@ listingsRouter.patch('/:id', async (req, res, next) => {
 
     if (isArchiving) {
       try {
-        if (existing.marketplace === 'ebay' && existing.ebayOfferId) {
-          // A published eBay listing is ended by WITHDRAWING its offer (by offerId),
-          // not by DELETE-ing the offer with the listing id (that 404s, 25713).
-          await new EbayAdapter(userId).withdrawOffer(existing.ebayOfferId);
-        } else {
-          await getAdapter(userId, existing.marketplace).deleteListing(existing.marketplaceListingId!);
-        }
+        // Trade-First: a published eBay listing is ended by EndFixedPriceItem
+        // (deleteListing), keyed by the Trading ItemID = marketplaceListingId.
+        // There is no separate offer to withdraw.
+        await getAdapter(userId, existing.marketplace).deleteListing(existing.marketplaceListingId!);
       } catch (err) {
         // Best-effort: archive locally even if the marketplace call fails (e.g. the
         // offer was already ended). Surface a warning rather than blocking the archive.
@@ -421,14 +425,11 @@ listingsRouter.patch('/:id', async (req, res, next) => {
       .returning();
 
     // Skip marketplace sync when archiving — the listing was already removed above.
-    // Sync edits (e.g. price) to the marketplace for a published listing AND for an
-    // unpublished eBay draft (status 'draft' + ebayOfferId) — eBay rejects UI price
-    // edits on Inventory-API listings, so Portage must push the change to the offer.
-    const ebaySyncId = updated.marketplaceListingId ?? updated.ebayOfferId;
-    const shouldSyncMarketplace = !isArchiving && !!ebaySyncId && (
-      (updated.status === 'active' && !!updated.marketplaceListingId) ||
-      (updated.status === 'draft' && updated.marketplace === 'ebay' && !!updated.ebayOfferId)
-    );
+    // Sync edits (e.g. price) to the marketplace only for a published listing. Under
+    // Trade-First an eBay "draft" is DB-only (no live listing), so there is nothing to
+    // sync until it is published via AddFixedPriceItem.
+    const ebaySyncId = updated.marketplaceListingId;
+    const shouldSyncMarketplace = !isArchiving && updated.status === 'active' && !!ebaySyncId;
     if (shouldSyncMarketplace) {
       const [item] = await db.select()
         .from(items)
@@ -438,13 +439,24 @@ listingsRouter.patch('/:id', async (req, res, next) => {
       if (item) {
         try {
           const adapter = getAdapter(userId, updated.marketplace);
-          const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
+          const [profileRow] = await db.select({ footer: sellerProfiles.defaultListingFooter, shipFromAddress: sellerProfiles.shipFromAddress })
             .from(sellerProfiles)
             .where(eq(sellerProfiles.userId, userId))
             .limit(1);
+          // mergeItemShipping too (not just aspects): a published eBay update must
+          // re-send the package weight/dims or eBay rejects it (error 25020).
+          let syncSpecific = mergeItemAspects(item, mergeItemShipping(item, updated.marketplaceSpecificFields as Record<string, unknown> | undefined));
+          // A Trade-First content revise rebuilds the full Trading item body, which
+          // needs the ship-from origin ZIP for inline calculated shipping — same
+          // requirement as publish. Fill it from the seller profile when absent.
+          if (updated.marketplace === 'ebay' && !syncSpecific.originPostalCode) {
+            const shipFrom = profileRow?.shipFromAddress as { zip?: string; postalCode?: string } | null | undefined;
+            const zip = shipFrom?.zip ?? shipFrom?.postalCode;
+            if (zip) syncSpecific = { ...syncSpecific, originPostalCode: zip };
+          }
           const syncResult = await adapter.updateListing(ebaySyncId!, {
             title: item.title,
-            description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(updated.marketplace)),
+            description: applyFooter(item.description, profileRow?.footer, descriptionLimitFor(updated.marketplace)),
             price: updated.price,
             currency: updated.currency,
             condition: item.condition,
@@ -454,10 +466,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             photos: (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
             features: item.features as string[],
             ebaySku: updated.ebaySku ?? undefined,
-            ebayOfferId: updated.ebayOfferId ?? undefined,
-            // mergeItemShipping too (not just aspects): a published eBay update must
-            // re-send the package weight/dims or eBay rejects it (error 25020).
-            marketplaceSpecific: mergeItemAspects(item, mergeItemShipping(item, updated.marketplaceSpecificFields as Record<string, unknown> | undefined)),
+            marketplaceSpecific: syncSpecific,
           });
           // Degraded-sync warnings (e.g. Best Offer downgrade) belong to the user.
           if (syncResult?.warning) warning = syncResult.warning;
@@ -589,7 +598,6 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       ebaySku: listing.marketplace === 'ebay'
         ? (listing.ebaySku ?? await ensureItemEbaySku(item))
         : (listing.ebaySku ?? undefined),
-      ebayOfferId: listing.ebayOfferId ?? undefined,
       // POST /:id/publish is always a live publish — state it explicitly.
       publishMode: 'live',
     });
@@ -598,7 +606,6 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       .set({
         marketplaceListingId: result.marketplaceListingId,
         ebaySku: result.ebaySku ?? null,
-        ebayOfferId: result.ebayOfferId ?? null,
         status: result.status === 'active' ? 'active' : 'draft',
         publishedAt: result.status === 'active' ? new Date() : null,
         updatedAt: new Date(),
@@ -631,22 +638,14 @@ listingsRouter.delete('/:id', async (req, res, next) => {
 
     if (!listing) throw new AppError(404, 'NOT_FOUND', 'Listing not found');
 
+    // Under Trade-First an eBay listing is either published (has a Trading ItemID =
+    // marketplaceListingId) or a DB-only draft with nothing live to clean up.
     if (listing.marketplaceListingId && listing.status === 'active') {
       try {
         const adapter = getAdapter(userId, listing.marketplace);
         await adapter.deleteListing(listing.marketplaceListingId);
       } catch (err) {
         logger.warn({ listingId: listing.id, err: (err as Error).message }, 'Failed to delete from marketplace — removing locally');
-      }
-    } else if (listing.ebayOfferId && listing.marketplace === 'ebay') {
-      // F-ORPHAN: an unpublished eBay offer (e.g. an ebay_draft) has no
-      // marketplaceListingId — withdraw it by offerId so deleting the Portage
-      // listing doesn't leave an orphaned eBay draft.
-      try {
-        const adapter = getAdapter(userId, listing.marketplace);
-        await adapter.deleteListing(listing.ebayOfferId);
-      } catch (err) {
-        logger.warn({ listingId: listing.id, err: (err as Error).message }, 'Failed to withdraw eBay offer — removing locally');
       }
     }
 
@@ -671,7 +670,7 @@ listingsRouter.post('/bulk/delete', async (req, res, next) => {
     const { ids } = bulkListingIdsSchema.parse(req.body);
 
     // Verify ownership before deleting
-    const owned = await db.select({ id: listings.id, status: listings.status, marketplaceListingId: listings.marketplaceListingId, ebayOfferId: listings.ebayOfferId, marketplace: listings.marketplace })
+    const owned = await db.select({ id: listings.id, status: listings.status, marketplaceListingId: listings.marketplaceListingId, marketplace: listings.marketplace })
       .from(listings)
       .where(and(inArray(listings.id, ids), eq(listings.userId, userId)));
 
@@ -679,21 +678,8 @@ listingsRouter.post('/bulk/delete', async (req, res, next) => {
       throw new AppError(403, 'FORBIDDEN', 'One or more listings do not belong to you');
     }
 
-    // F-ORPHAN: withdraw unpublished eBay offers (ebay drafts have an ebayOfferId
-    // but no marketplaceListingId) so bulk-deleting them doesn't leave orphans.
-    await Promise.all(
-      owned
-        .filter((l) => l.status !== 'active' && l.ebayOfferId && l.marketplace === 'ebay')
-        .map(async (l) => {
-          try {
-            await getAdapter(userId, l.marketplace).deleteListing(l.ebayOfferId!);
-          } catch (err) {
-            logger.warn({ listingId: l.id, error: (err as Error).message }, 'Bulk delete: failed to withdraw eBay offer');
-          }
-        }),
-    );
-
-    // Best-effort removal from marketplaces for active listings
+    // Best-effort removal from marketplaces for active listings (Trade-First: a
+    // DB-only eBay draft has no live listing to clean up).
     await Promise.all(
       owned
         .filter((l) => l.status === 'active' && l.marketplaceListingId)
@@ -767,13 +753,12 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
     const userId = req.user!.sub;
     const { ids } = bulkListingIdsSchema.parse(req.body);
 
-    // Verify ownership — include marketplace fields for eBay bulk publish
+    // Verify ownership
     const owned = await db.select({
       id: listings.id,
       status: listings.status,
       marketplace: listings.marketplace,
       marketplaceListingId: listings.marketplaceListingId,
-      ebayOfferId: listings.ebayOfferId,
       ebaySku: listings.ebaySku,
     })
       .from(listings)
@@ -783,56 +768,22 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
       throw new AppError(403, 'FORBIDDEN', 'One or more listings do not belong to you');
     }
 
-    // eBay drafts with an offerId can be bulk-published via the eBay batch API
-    const ebayPublishable = owned.filter((l) =>
-      l.status === 'draft' && l.marketplace === 'ebay' && l.ebayOfferId
-    );
     // Non-marketplace, non-eBay drafts/archived can be activated locally. eBay is excluded:
     // an eBay draft is DB-only under the Trading API and must be PUBLISHED (AddFixedPriceItem),
     // not flipped to "active" with no marketplace call (G6).
     const activatable = owned.filter((l) =>
       (l.status === 'draft' || l.status === 'archived') && !l.marketplaceListingId && l.marketplace !== 'ebay'
     );
-    // eBay DB-only drafts (no offer) cannot be bulk-published yet (Trading bulk = 1.15) — they
-    // must be published individually via the listing's Publish action. Never silent-activate.
+    // eBay DB-only drafts must be published individually via the listing's Publish
+    // action (Trading AddFixedPriceItem needs the full item payload — there is no
+    // bulk publish for not-yet-created listings). Never silent-activate (G6).
     const ebayNeedsPublish = owned.filter((l) =>
-      l.marketplace === 'ebay' && !l.marketplaceListingId && !l.ebayOfferId &&
-      (l.status === 'draft' || l.status === 'archived')
+      l.marketplace === 'ebay' && !l.marketplaceListingId && (l.status === 'draft' || l.status === 'archived')
     );
     // Archived marketplace listings need individual re-listing
     const skippedMarketplace = owned.filter((l) =>
       l.status === 'archived' && !!l.marketplaceListingId
     );
-
-    let published = 0;
-    const publishedIds: string[] = [];
-    const publishFailed: string[] = [];
-
-    if (ebayPublishable.length > 0) {
-      const adapter = new EbayAdapter(userId);
-      const offerIds = ebayPublishable.map((l) => l.ebayOfferId!);
-      const offerToListing = new Map(ebayPublishable.map((l) => [l.ebayOfferId!, l.id]));
-
-      // eBay batch API accepts up to 25 per call
-      for (let i = 0; i < offerIds.length; i += 25) {
-        const batch = offerIds.slice(i, i + 25);
-        const results = await adapter.bulkPublishOffers(batch);
-        for (const r of results) {
-          const listingId = offerToListing.get(r.offerId);
-          if (!listingId) continue;
-          if (r.success) {
-            await db.update(listings)
-              .set({ marketplaceListingId: r.listingId ?? null, status: 'active', publishedAt: new Date(), updatedAt: new Date() })
-              .where(eq(listings.id, listingId));
-            published++;
-            publishedIds.push(listingId);
-          } else {
-            publishFailed.push(r.offerId);
-            logger.warn({ listingId, offerId: r.offerId, error: r.error }, 'Bulk publish failed for offer');
-          }
-        }
-      }
-    }
 
     let activated: { id: string }[] = [];
     if (activatable.length > 0) {
@@ -843,7 +794,7 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
         .returning({ id: listings.id });
     }
 
-    logger.info({ userId, published, activated: activated.length, needsPublish: ebayNeedsPublish.length, failed: publishFailed.length }, 'Bulk listings activated');
+    logger.info({ userId, activated: activated.length, needsPublish: ebayNeedsPublish.length }, 'Bulk listings activated');
     const warnings: string[] = [];
     if (skippedMarketplace.length > 0) {
       warnings.push(`${skippedMarketplace.length} archived listing(s) were previously published to a marketplace and must be re-listed individually`);
@@ -853,10 +804,8 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
     }
     res.json({
       activated: true,
-      count: activated.length + published,
-      ids: [...publishedIds, ...activated.map((r) => r.id)],
-      published,
-      publishFailed: publishFailed.length,
+      count: activated.length,
+      ids: activated.map((r) => r.id),
       skipped: skippedMarketplace.length,
       needsPublish: ebayNeedsPublish.length,
       warning: warnings.length > 0 ? warnings.join('; ') : undefined,
