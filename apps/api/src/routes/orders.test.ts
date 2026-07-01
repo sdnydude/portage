@@ -219,6 +219,35 @@ describe('POST /orders/sync', () => {
     }));
   });
 
+  it('heals stale soldAt on already-imported orders instead of skipping them', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    const realSoldAt = new Date('2026-06-12T10:00:00.000Z');
+    mockGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: '23-14730-30879',
+      marketplaceListingId: '306972688941',
+      buyerUsername: 'buyer1',
+      salePrice: 399,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt: realSoldAt,
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    // existing-order check -> FOUND, but with the sync-time-stamped (wrong) date
+    queueSelects([{ id: 'order-old', soldAt: new Date('2026-06-30T19:00:00.000Z') }]);
+    const setSpy = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) });
+    vi.mocked(db.update).mockReturnValueOnce({ set: setSpy } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.synced).toBe(0); // healed, not re-imported
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ soldAt: realSoldAt }));
+  });
+
   it('creates ONE item+listing per eBay ItemID when multiple orders share a listing', async () => {
     const token = createTestToken({ sub: 'user-1' });
     queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);

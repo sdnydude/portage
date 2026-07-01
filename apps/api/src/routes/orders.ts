@@ -184,7 +184,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
         const marketplaceOrders = await adapter.getOrders(since);
 
         for (const mOrder of marketplaceOrders) {
-          const [existing] = await db.select({ id: orders.id })
+          const [existing] = await db.select({ id: orders.id, soldAt: orders.soldAt })
             .from(orders)
             .where(and(
               eq(orders.userId, userId),
@@ -192,7 +192,17 @@ ordersRouter.post('/sync', async (req, res, next) => {
             ))
             .limit(1);
 
-          if (existing) continue;
+          if (existing) {
+            // Heal stale soldAt: rows imported before the creationDate→soldAt
+            // mapping existed were stamped with the sync time instead of the
+            // real sale date. Re-syncs correct them in place.
+            if (mOrder.soldAt && Math.abs(new Date(existing.soldAt).getTime() - mOrder.soldAt.getTime()) > 1000) {
+              await db.update(orders)
+                .set({ soldAt: mOrder.soldAt })
+                .where(eq(orders.id, existing.id));
+            }
+            continue;
+          }
 
           if (!mOrder.marketplaceListingId) {
             logger.warn({
