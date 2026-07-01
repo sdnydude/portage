@@ -248,6 +248,35 @@ describe('POST /orders/sync', () => {
     expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ soldAt: realSoldAt }));
   });
 
+  it('heals bogus marketplaceFees (fee basis) on already-imported orders', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    const soldAt = new Date('2026-06-23T22:21:00.000Z');
+    mockGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: '13-14804-73944',
+      marketplaceListingId: '306972688941',
+      buyerUsername: 'buyer1',
+      salePrice: 25,
+      shippingCost: 0,
+      marketplaceFees: 0, // adapter no longer maps the fee basis
+      currency: 'USD',
+      soldAt,
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    // existing row imported by the old code: correct date, fee BASIS stored as fees
+    queueSelects([{ id: 'order-old', soldAt, marketplaceFees: 27.06 }]);
+    const setSpy = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) });
+    vi.mocked(db.update).mockReturnValueOnce({ set: setSpy } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.synced).toBe(0);
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ marketplaceFees: 0 }));
+  });
+
   it('creates ONE item+listing per eBay ItemID when multiple orders share a listing', async () => {
     const token = createTestToken({ sub: 'user-1' });
     queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);

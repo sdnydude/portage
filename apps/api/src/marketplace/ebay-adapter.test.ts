@@ -1021,3 +1021,29 @@ describe('EbayAdapter.getOrders — sold date from eBay creationDate', () => {
     expect(orders[0].soldAt).toEqual(new Date('2026-05-04T09:23:19.815Z'));
   });
 });
+
+describe('EbayAdapter.getOrders — marketplace fees', () => {
+  it('reports 0 fees even when totalFeeBasisAmount is present (fee BASIS, not the fee)', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes('/sell/fulfillment/v1/order')) {
+        return new Response(JSON.stringify({ orders: [{
+          orderId: '13-14804-73944',
+          buyer: { username: 'buyer1' },
+          pricingSummary: { total: { value: '25.00', currency: 'USD' }, deliveryCost: { value: '0' } },
+          // Fee BASIS (item + shipping used to CALCULATE fees) — mapping this as
+          // the fee produced "Profit −$2.06" on a $25 sale. Real fees come from
+          // the Finances API, which we don't call.
+          totalFeeBasisAmount: { value: '27.06' },
+          lineItems: [{ legacyItemId: '306972688941' }],
+          creationDate: '2026-06-23T22:21:00.000Z',
+        }] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+
+    const orders = await adapter.getOrders();
+
+    expect(orders[0].marketplaceFees).toBe(0);
+  });
+});
