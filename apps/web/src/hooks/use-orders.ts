@@ -23,6 +23,8 @@ export interface Order {
   soldAt: string;
   shippedAt: string | null;
   deliveredAt: string | null;
+  /** eBay ItemID (listings.marketplaceListingId) — used to link Ship-It to the eBay item page. */
+  ebayItemId: string | null;
 }
 
 interface OrdersResponse {

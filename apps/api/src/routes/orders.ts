@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, desc, and, isNotNull } from 'drizzle-orm';
+import { eq, desc, and, isNotNull, getTableColumns } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { orders, listings, items } from '../db/schema.js';
@@ -37,8 +37,15 @@ ordersRouter.get('/', async (req, res, next) => {
       conditions.push(eq(orders.status, status));
     }
 
-    const results = await db.select()
+    // Join the listing so each order carries its eBay ItemID (marketplaceListingId)
+    // + marketplace — the UI links "Ship It" to the eBay item page from these.
+    const results = await db.select({
+      ...getTableColumns(orders),
+      ebayItemId: listings.marketplaceListingId,
+      listingMarketplace: listings.marketplace,
+    })
       .from(orders)
+      .leftJoin(listings, eq(orders.listingId, listings.id))
       .where(and(...conditions))
       .orderBy(desc(orders.soldAt))
       .limit(limit)
@@ -54,8 +61,13 @@ ordersRouter.get('/:id', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
 
-    const [order] = await db.select()
+    const [order] = await db.select({
+      ...getTableColumns(orders),
+      ebayItemId: listings.marketplaceListingId,
+      listingMarketplace: listings.marketplace,
+    })
       .from(orders)
+      .leftJoin(listings, eq(orders.listingId, listings.id))
       .where(and(eq(orders.id, req.params.id), eq(orders.userId, userId)))
       .limit(1);
 
