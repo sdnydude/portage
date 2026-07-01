@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { useShippingLabel } from "@/hooks/use-shipping";
@@ -36,6 +35,7 @@ interface OrderDetail {
   soldAt: string;
   shippedAt: string | null;
   deliveredAt: string | null;
+  ebayItemId: string | null;
   item: {
     id: string;
     title: string;
@@ -330,9 +330,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
         {/* Action buttons */}
         <section className="py-4 space-y-3">
-          {order.status === "payment_received" && (
-            <Link
-              href={`/orders/${orderId}/ship`}
+          {order.status === "payment_received" && order.ebayItemId && (
+            <a
+              href={`https://www.ebay.com/itm/${order.ebayItemId}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl bg-forest-green text-white font-semibold text-sm"
               style={{ boxShadow: "var(--shadow-elevated)" }}
             >
@@ -343,7 +345,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <circle cx="18.5" cy="18.5" r="2.5" />
               </svg>
               Ship It
-            </Link>
+            </a>
           )}
 
           {order.status === "label_purchased" && (
