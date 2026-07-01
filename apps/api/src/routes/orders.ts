@@ -259,7 +259,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
 
           if (matchedListing) {
             await db.update(listings)
-              .set({ status: 'sold', soldAt: new Date(), updatedAt: new Date() })
+              .set({ status: 'sold', soldAt: mOrder.soldAt ?? new Date(), updatedAt: new Date() })
               .where(eq(listings.id, matchedListing.id));
           }
 

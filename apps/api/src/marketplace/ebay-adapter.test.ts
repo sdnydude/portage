@@ -999,3 +999,25 @@ describe('EbayAdapter.getOrders — line-item title for orphan-order backfill', 
     expect(orders[0].title).toBe('Shure SM7B Microphone');
   });
 });
+
+describe('EbayAdapter.getOrders — sold date from eBay creationDate', () => {
+  it('maps Order.creationDate onto soldAt (not the sync time)', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes('/sell/fulfillment/v1/order')) {
+        return new Response(JSON.stringify({ orders: [{
+          orderId: '23-14730-30879',
+          buyer: { username: 'buyer1' },
+          pricingSummary: { total: { value: '399', currency: 'USD' }, deliveryCost: { value: '0' } },
+          lineItems: [{ legacyItemId: '306972688941', title: 'Shure SM7B Microphone' }],
+          creationDate: '2026-05-04T09:23:19.815Z',
+        }] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+
+    const orders = await adapter.getOrders();
+
+    expect(orders[0].soldAt).toEqual(new Date('2026-05-04T09:23:19.815Z'));
+  });
+});
