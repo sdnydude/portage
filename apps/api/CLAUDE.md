@@ -87,7 +87,7 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 | Scan | `/scan` | requireAuth |
 | Porter | `/porter` | requireAuth |
 | Drafts | `/drafts` | requireAuth |
-| Shipping | `/shipping` | requireAuth |
+| Disclaimer | `/disclaimer` | requireAuth |
 | Prepare listing | `/items` (sub-mount) | requireAuth |
 | Seller profile | `/seller-profile` | requireAuth |
 | Preferences | `/users/me/preferences` | requireAuth |
