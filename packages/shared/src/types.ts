@@ -558,19 +558,12 @@ export interface ActionPill {
 export interface RichMessage {
   role: 'user' | 'assistant';
   blocks: ContentBlock[];
-  voiceTranscript?: string;
-}
-
-export interface AudioPlayback {
-  url: string;
-  duration?: number;
 }
 
 export type TextDeltaEvent = { type: 'text_delta'; text: string };
 export type ToolStartEvent = { type: 'tool_start'; toolId: string; toolName: string };
 export type ToolResultEvent = { type: 'tool_result'; toolId: string; toolName: string; structured?: unknown };
 export type ActionPillsEvent = { type: 'action_pills'; pills: ActionPill[] };
-export type AudioEvent = { type: 'audio_url'; url: string };
 export type DoneEvent = { type: 'done'; conversationId: string; model: string; inputTokens: number; outputTokens: number };
 export type ErrorEvent = { type: 'error'; message: string };
 
@@ -579,6 +572,5 @@ export type StreamEvent =
   | ToolStartEvent
   | ToolResultEvent
   | ActionPillsEvent
-  | AudioEvent
   | DoneEvent
   | ErrorEvent;
