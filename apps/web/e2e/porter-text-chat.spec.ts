@@ -3,15 +3,16 @@ import path from "node:path";
 
 const SHOT_DIR = path.join(process.cwd(), "test-results", "proof");
 
-// Phase 2 gate: with the voice feature removed, Porter TEXT chat must still
-// stream end-to-end against the rebuilt :3002 container, and no voice UI
-// (mic buttons, push-to-talk FAB) may render anywhere. This spec is LIVE —
-// /porter/stream is not mocked, so the assertion proves the whole path:
-// app container → api container → LLM → SSE → rendered assistant message.
+// Phase 2 gate: with the voice feature removed, no voice UI (mic buttons,
+// push-to-talk FAB, audio playback) may render anywhere, and Porter TEXT
+// chat must still stream end-to-end.
+//
+// The UI-absence checks run everywhere, including the ephemeral CI stack.
+// The live chat exchange needs a real LLM behind /porter/stream, which the
+// ephemeral stack does not have — it is gated behind E2E_PORTER_LIVE=1
+// (same pattern as E2E_EBAY_LIVE in phase-f-archive-live.spec.ts).
 
-test("Porter text chat streams end-to-end with no voice UI anywhere", async ({ page }) => {
-  test.setTimeout(120_000);
-
+test("voice UI is gone from inventory, home, and porter pages", async ({ page }) => {
   // Non-home tab: the FloatingMic push-to-talk FAB used to render here.
   await page.goto("/inventory");
   await expect(page.getByRole("link", { name: "Porter" })).toBeVisible();
@@ -27,10 +28,19 @@ test("Porter text chat streams end-to-end with no voice UI anywhere", async ({ p
 
   // Porter tab: input row used to carry a VoiceButton next to send.
   await page.goto("/porter");
-  const input = page.getByPlaceholder("Ask Porter…");
-  await expect(input).toBeVisible();
+  await expect(page.getByPlaceholder("Ask Porter…")).toBeVisible();
   await expect(page.getByRole("button", { name: "Voice input" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /talk/i })).toHaveCount(0);
+  await expect(page.locator("audio")).toHaveCount(0);
+});
+
+test("Porter text chat streams a live assistant reply without TTS", async ({ page }) => {
+  test.skip(!process.env.E2E_PORTER_LIVE, "Requires a live LLM behind /porter/stream; set E2E_PORTER_LIVE=1 to run");
+  test.setTimeout(120_000);
+
+  await page.goto("/porter");
+  const input = page.getByPlaceholder("Ask Porter…");
+  await expect(input).toBeVisible();
 
   // Live text exchange — the reply must stream back and render. The user
   // bubble already contains the marker once, so a real assistant reply is
