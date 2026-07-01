@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, desc, and, isNotNull } from 'drizzle-orm';
+import { eq, desc, and, isNotNull, getTableColumns } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { orders, listings, items } from '../db/schema.js';
@@ -37,8 +37,19 @@ ordersRouter.get('/', async (req, res, next) => {
       conditions.push(eq(orders.status, status));
     }
 
-    const results = await db.select()
+    // Join the listing so each order carries its eBay ItemID (marketplaceListingId)
+    // + marketplace — the UI links "Ship It" to the eBay item page from these —
+    // and the item so the sold list can render thumbnail + title rows.
+    const results = await db.select({
+      ...getTableColumns(orders),
+      ebayItemId: listings.marketplaceListingId,
+      listingMarketplace: listings.marketplace,
+      itemTitle: items.title,
+      itemPhotos: items.photos,
+    })
       .from(orders)
+      .leftJoin(listings, eq(orders.listingId, listings.id))
+      .leftJoin(items, eq(orders.itemId, items.id))
       .where(and(...conditions))
       .orderBy(desc(orders.soldAt))
       .limit(limit)
@@ -54,8 +65,13 @@ ordersRouter.get('/:id', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
 
-    const [order] = await db.select()
+    const [order] = await db.select({
+      ...getTableColumns(orders),
+      ebayItemId: listings.marketplaceListingId,
+      listingMarketplace: listings.marketplace,
+    })
       .from(orders)
+      .leftJoin(listings, eq(orders.listingId, listings.id))
       .where(and(eq(orders.id, req.params.id), eq(orders.userId, userId)))
       .limit(1);
 
@@ -168,7 +184,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
         const marketplaceOrders = await adapter.getOrders(since);
 
         for (const mOrder of marketplaceOrders) {
-          const [existing] = await db.select({ id: orders.id })
+          const [existing] = await db.select({ id: orders.id, soldAt: orders.soldAt })
             .from(orders)
             .where(and(
               eq(orders.userId, userId),
@@ -176,7 +192,17 @@ ordersRouter.post('/sync', async (req, res, next) => {
             ))
             .limit(1);
 
-          if (existing) continue;
+          if (existing) {
+            // Heal stale soldAt: rows imported before the creationDate→soldAt
+            // mapping existed were stamped with the sync time instead of the
+            // real sale date. Re-syncs correct them in place.
+            if (mOrder.soldAt && Math.abs(new Date(existing.soldAt).getTime() - mOrder.soldAt.getTime()) > 1000) {
+              await db.update(orders)
+                .set({ soldAt: mOrder.soldAt })
+                .where(eq(orders.id, existing.id));
+            }
+            continue;
+          }
 
           if (!mOrder.marketplaceListingId) {
             logger.warn({
@@ -259,7 +285,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
 
           if (matchedListing) {
             await db.update(listings)
-              .set({ status: 'sold', soldAt: new Date(), updatedAt: new Date() })
+              .set({ status: 'sold', soldAt: mOrder.soldAt ?? new Date(), updatedAt: new Date() })
               .where(eq(listings.id, matchedListing.id));
           }
 

@@ -42,14 +42,24 @@ function queueInserts(...rowSets: unknown[][]) {
 
 function queueSelects(...rowSets: unknown[][]) {
   for (const rows of rowSets) {
-    vi.mocked(db.select).mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue(rows),
-        }),
-      }),
-    } as any);
+    // Supports both from→where→limit and from→leftJoin→where→limit chains.
+    const chain: any = {
+      leftJoin: vi.fn(() => chain),
+      where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue(rows) }),
+    };
+    vi.mocked(db.select).mockReturnValueOnce({ from: vi.fn().mockReturnValue(chain) } as any);
   }
+}
+
+// db.select().from().leftJoin().where().orderBy().limit().offset() -> rows (the orders list).
+function queueListSelect(rows: unknown[]) {
+  const chain: any = {
+    leftJoin: vi.fn(() => chain),
+    where: vi.fn(() => ({
+      orderBy: vi.fn(() => ({ limit: vi.fn(() => ({ offset: vi.fn().mockResolvedValue(rows) })) })),
+    })),
+  };
+  vi.mocked(db.select).mockReturnValueOnce({ from: vi.fn().mockReturnValue(chain) } as any);
 }
 
 let app: ReturnType<typeof createApp>;
@@ -69,6 +79,7 @@ describe('GET /orders/:id', () => {
         marketplaceOrderId: '14-1', buyerUsername: 'b', salePrice: 10, shippingCost: 1,
         currency: 'USD', status: 'payment_received', trackingNumber: null, carrier: null,
         shippingLabelUrl: null, soldAt: new Date(), shippedAt: null, deliveredAt: null,
+        ebayItemId: '306972688941', listingMarketplace: 'ebay',
       }],
       [{ id: 'i1', title: 'Mic Kit', photos: [{ url: 'https://x/p.jpg', isPrimary: true }] }],
     );
@@ -81,6 +92,50 @@ describe('GET /orders/:id', () => {
     expect(res.body.item).toBeDefined();
     expect(res.body.item.title).toBe('Mic Kit');
     expect(res.body.item.photos).toHaveLength(1);
+    // Ship-It links to the eBay item page; detail must expose the eBay ItemID.
+    expect(res.body.ebayItemId).toBe('306972688941');
+  });
+});
+
+describe('GET /orders (list)', () => {
+  it('exposes the eBay ItemID on each order so the UI can link to the eBay item page', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueListSelect([{
+      id: 'o1', userId: 'user-1', itemId: 'i1', listingId: 'l1', marketplace: 'ebay',
+      marketplaceOrderId: '14-1', buyerUsername: 'b', salePrice: 10, shippingCost: 1,
+      currency: 'USD', status: 'payment_received', soldAt: new Date(),
+      ebayItemId: '306972688941', listingMarketplace: 'ebay',
+    }]);
+
+    const res = await request(app)
+      .get('/orders')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.orders[0].ebayItemId).toBe('306972688941');
+  });
+
+  it('selects the item title + photos so the sold list can render thumbnail rows', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueListSelect([{
+      id: 'o1', userId: 'user-1', itemId: 'i1', listingId: 'l1', marketplace: 'ebay',
+      marketplaceOrderId: '14-1', buyerUsername: 'b', salePrice: 10, shippingCost: 1,
+      currency: 'USD', status: 'payment_received', soldAt: new Date(),
+      ebayItemId: '306972688941', listingMarketplace: 'ebay',
+      itemTitle: 'Mic Kit', itemPhotos: [{ url: 'https://x/p.jpg', isPrimary: true }],
+    }]);
+
+    const res = await request(app)
+      .get('/orders')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // The mock passes rows through, so also pin the select() column set — the
+    // route must actually join items and project these fields.
+    const selectArg = vi.mocked(db.select).mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(selectArg)).toEqual(expect.arrayContaining(['itemTitle', 'itemPhotos', 'ebayItemId']));
+    expect(res.body.orders[0].itemTitle).toBe('Mic Kit');
+    expect(res.body.orders[0].itemPhotos).toHaveLength(1);
   });
 });
 
@@ -162,6 +217,35 @@ describe('POST /orders/sync', () => {
       title: 'Vintage Neumann U87',
       price: 1200,
     }));
+  });
+
+  it('heals stale soldAt on already-imported orders instead of skipping them', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    const realSoldAt = new Date('2026-06-12T10:00:00.000Z');
+    mockGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: '23-14730-30879',
+      marketplaceListingId: '306972688941',
+      buyerUsername: 'buyer1',
+      salePrice: 399,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt: realSoldAt,
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    // existing-order check -> FOUND, but with the sync-time-stamped (wrong) date
+    queueSelects([{ id: 'order-old', soldAt: new Date('2026-06-30T19:00:00.000Z') }]);
+    const setSpy = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) });
+    vi.mocked(db.update).mockReturnValueOnce({ set: setSpy } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.synced).toBe(0); // healed, not re-imported
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ soldAt: realSoldAt }));
   });
 
   it('creates ONE item+listing per eBay ItemID when multiple orders share a listing', async () => {

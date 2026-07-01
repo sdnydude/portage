@@ -23,6 +23,11 @@ export interface Order {
   soldAt: string;
   shippedAt: string | null;
   deliveredAt: string | null;
+  /** eBay ItemID (listings.marketplaceListingId) — used to link Ship-It to the eBay item page. */
+  ebayItemId: string | null;
+  /** Item title + photos (items join) — the sold list renders thumbnail/title rows from these. */
+  itemTitle: string | null;
+  itemPhotos: Array<{ url: string; isPrimary?: boolean }> | null;
 }
 
 interface OrdersResponse {

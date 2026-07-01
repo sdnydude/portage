@@ -273,41 +273,6 @@ export interface ShipFromAddress {
 }
 
 export type PackageType = 'box' | 'envelope' | 'poly_mailer';
-export type ShippingProviderType = 'shippo' | 'easypost' | 'pirate_ship';
-
-export interface ShippingPreset {
-  id: string;
-  userId: string;
-  name: string;
-  packageType: PackageType;
-  length: number;
-  width: number;
-  height: number;
-  weightLbs: number;
-  weightOz: number;
-  isDefault: boolean;
-  sortOrder: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ShippingProvider {
-  id: string;
-  userId: string;
-  provider: ShippingProviderType;
-  isActive: boolean;
-  createdAt: Date;
-}
-
-export interface ShippingRate {
-  rateId: string;
-  carrier: string;
-  service: string;
-  price: number;
-  currency: string;
-  estimatedDays: number;
-  source: 'marketplace' | 'shippo' | 'easypost' | 'pirate_ship';
-}
 
 export interface DisclaimerAcceptance {
   id: string;

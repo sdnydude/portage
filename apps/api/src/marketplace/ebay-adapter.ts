@@ -780,6 +780,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     const data = await this.request<{
       orders?: Array<{
         orderId: string;
+        creationDate?: string;
         buyer: { username: string };
         pricingSummary: {
           total: { value: string; currency: string };
@@ -818,6 +819,9 @@ export class EbayAdapter implements MarketplaceAdapter {
         shippingCost: parseFloat(order.pricingSummary.deliveryCost?.value ?? '0'),
         marketplaceFees: parseFloat(order.totalFeeBasisAmount?.value ?? '0'),
         currency: order.pricingSummary.total.currency,
+        // eBay's actual sale date. Without this, orders.ts falls back to
+        // `new Date()` and every synced order shows today's date.
+        soldAt: order.creationDate ? new Date(order.creationDate) : undefined,
         shippingAddress: {
           name: shipTo?.fullName ?? '',
           street1: address?.addressLine1 ?? '',
