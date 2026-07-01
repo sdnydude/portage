@@ -80,7 +80,8 @@ export function SoldCelebration({
 
   const handleShipIt = useCallback(() => {
     onDismiss();
-    router.push(`/orders/${orderId}/ship`);
+    // Shipping happens on eBay — the order detail page carries the Ship-It link.
+    router.push(`/orders/${orderId}`);
   }, [onDismiss, orderId, router]);
 
   // Generate confetti pieces (set seed for SSR consistency)

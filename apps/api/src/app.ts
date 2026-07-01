@@ -20,7 +20,7 @@ import { ebayAuthRouter } from './routes/marketplace/ebay-auth.js';
 import { etsyAuthRouter } from './routes/marketplace/etsy-auth.js';
 import { reverbAuthRouter } from './routes/marketplace/reverb-auth.js';
 import { adminRouter } from './routes/admin.js';
-import { shippingRouter } from './routes/shipping.js';
+import { disclaimerRouter } from './routes/disclaimer.js';
 import { surveyRouter } from './routes/survey.js';
 import { draftsRouter } from './routes/drafts.js';
 import { preferencesRouter } from './routes/preferences.js';
@@ -102,7 +102,7 @@ export function createApp() {
   app.use('/marketplace/etsy', etsyAuthRouter);
   app.use('/marketplace/reverb', reverbAuthRouter);
   app.use('/admin', adminRouter);
-  app.use('/shipping', shippingRouter);
+  app.use('/disclaimer', disclaimerRouter);
   app.use('/survey', surveyRouter);
   app.use('/drafts', draftsRouter);
   app.use('/users/me', usersRouter);

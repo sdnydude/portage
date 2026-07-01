@@ -30,7 +30,7 @@ export function useDisclaimer() {
     setError(null);
 
     try {
-      const data = await api<DisclaimerVersion>("/shipping/disclaimer/version", { token });
+      const data = await api<DisclaimerVersion>("/disclaimer/version", { token });
       setCurrentVersion(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load disclaimer version");
@@ -49,7 +49,7 @@ export function useDisclaimer() {
     if (disclaimerVersion !== undefined) body.disclaimerVersion = disclaimerVersion;
 
     const data = await api<DisclaimerAcceptance>(
-      `/shipping/listings/${listingId}/accept-terms`,
+      `/disclaimer/listings/${listingId}/accept-terms`,
       { method: "POST", body, token },
     );
     return data;
