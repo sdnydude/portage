@@ -13,12 +13,11 @@ import type {
 import { API_BASE } from "@/lib/api";
 
 export interface StreamingBlock {
-  type: "text" | "tool" | "audio";
+  type: "text" | "tool";
   text?: string;
   toolId?: string;
   toolName?: string;
   toolStatus?: "running" | "complete";
-  audioUrl?: string;
 }
 
 export interface PorterStreamState {
@@ -26,10 +25,9 @@ export interface PorterStreamState {
   isStreaming: boolean;
   streamingBlocks: StreamingBlock[];
   pills: ActionPill[];
-  audioUrl: string | null;
   error: string | null;
   conversationId: string | null;
-  sendMessage: (message: string, onDone?: (text: string) => void) => Promise<void>;
+  sendMessage: (message: string) => Promise<void>;
   startNewChat: () => void;
 }
 
@@ -39,14 +37,13 @@ export function usePorterStream(): PorterStreamState {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingBlocks, setStreamingBlocks] = useState<StreamingBlock[]>([]);
   const [pills, setPills] = useState<ActionPill[]>([]);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
 
   // Accumulate streaming blocks without triggering a re-render per chunk
   const streamingRef = useRef<StreamingBlock[]>([]);
 
-  const sendMessage = useCallback(async (message: string, onDone?: (text: string) => void) => {
+  const sendMessage = useCallback(async (message: string) => {
     if (!token || isStreaming) return;
 
     const userMessage: RichMessage = {
@@ -58,7 +55,6 @@ export function usePorterStream(): PorterStreamState {
     setIsStreaming(true);
     setStreamingBlocks([]);
     setPills([]);
-    setAudioUrl(null);
     setError(null);
     streamingRef.current = [];
 
@@ -133,10 +129,6 @@ export function usePorterStream(): PorterStreamState {
           ...prev,
           { role: "assistant", blocks: finalBlocks },
         ]);
-        if (onDone) {
-          const finalText = finalBlocks.map((b) => (b as TextBlock).text).join(" ").trim();
-          if (finalText) onDone(finalText);
-        }
       }
 
       setStreamingBlocks([]);
@@ -178,8 +170,6 @@ export function usePorterStream(): PorterStreamState {
         setStreamingBlocks([...streamingRef.current]);
       } else if (event.type === "action_pills") {
         setPills(event.pills);
-      } else if (event.type === "audio_url") {
-        setAudioUrl(event.url);
       } else if (event.type === "done") {
         finalConvId = event.conversationId;
         setConversationId(event.conversationId);
@@ -193,7 +183,6 @@ export function usePorterStream(): PorterStreamState {
     setMessages([]);
     setConversationId(null);
     setPills([]);
-    setAudioUrl(null);
     setError(null);
     setStreamingBlocks([]);
     streamingRef.current = [];
@@ -204,7 +193,6 @@ export function usePorterStream(): PorterStreamState {
     isStreaming,
     streamingBlocks,
     pills,
-    audioUrl,
     error,
     conversationId,
     sendMessage,
