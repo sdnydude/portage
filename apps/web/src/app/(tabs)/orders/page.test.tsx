@@ -41,3 +41,22 @@ describe("OrdersPage — Ship It", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 });
+
+describe("OrdersPage — sold-list rows", () => {
+  it("renders the item thumbnail and title on each order row", () => {
+    useOrdersMock.mockReturnValue({
+      orders: [{
+        id: "o1", marketplace: "ebay", status: "payment_received", buyerUsername: "buyer1",
+        salePrice: 10, soldAt: new Date().toISOString(), trackingNumber: null, ebayItemId: "306972688941",
+        itemTitle: "Mic Kit", itemPhotos: [{ url: "https://x/p.jpg", isPrimary: true }],
+      }],
+      isLoading: false, error: null, syncError: null, isSyncing: false, syncOrders: vi.fn(),
+    });
+
+    render(<OrdersPage />);
+
+    expect(screen.getByText("Mic Kit")).toBeInTheDocument();
+    const thumb = screen.getByRole("img", { name: "Mic Kit" });
+    expect(thumb).toHaveAttribute("src", "https://x/p.jpg");
+  });
+});

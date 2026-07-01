@@ -114,6 +114,29 @@ describe('GET /orders (list)', () => {
     expect(res.status).toBe(200);
     expect(res.body.orders[0].ebayItemId).toBe('306972688941');
   });
+
+  it('selects the item title + photos so the sold list can render thumbnail rows', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueListSelect([{
+      id: 'o1', userId: 'user-1', itemId: 'i1', listingId: 'l1', marketplace: 'ebay',
+      marketplaceOrderId: '14-1', buyerUsername: 'b', salePrice: 10, shippingCost: 1,
+      currency: 'USD', status: 'payment_received', soldAt: new Date(),
+      ebayItemId: '306972688941', listingMarketplace: 'ebay',
+      itemTitle: 'Mic Kit', itemPhotos: [{ url: 'https://x/p.jpg', isPrimary: true }],
+    }]);
+
+    const res = await request(app)
+      .get('/orders')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // The mock passes rows through, so also pin the select() column set — the
+    // route must actually join items and project these fields.
+    const selectArg = vi.mocked(db.select).mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(selectArg)).toEqual(expect.arrayContaining(['itemTitle', 'itemPhotos', 'ebayItemId']));
+    expect(res.body.orders[0].itemTitle).toBe('Mic Kit');
+    expect(res.body.orders[0].itemPhotos).toHaveLength(1);
+  });
 });
 
 describe('POST /orders/sync', () => {

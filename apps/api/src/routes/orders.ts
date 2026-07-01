@@ -38,14 +38,18 @@ ordersRouter.get('/', async (req, res, next) => {
     }
 
     // Join the listing so each order carries its eBay ItemID (marketplaceListingId)
-    // + marketplace — the UI links "Ship It" to the eBay item page from these.
+    // + marketplace — the UI links "Ship It" to the eBay item page from these —
+    // and the item so the sold list can render thumbnail + title rows.
     const results = await db.select({
       ...getTableColumns(orders),
       ebayItemId: listings.marketplaceListingId,
       listingMarketplace: listings.marketplace,
+      itemTitle: items.title,
+      itemPhotos: items.photos,
     })
       .from(orders)
       .leftJoin(listings, eq(orders.listingId, listings.id))
+      .leftJoin(items, eq(orders.itemId, items.id))
       .where(and(...conditions))
       .orderBy(desc(orders.soldAt))
       .limit(limit)
