@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useCallback } from "react";
 import { ScanFlow } from "@/components/capture/scan-flow";
-import { FloatingMic } from "@/components/porter/floating-mic";
 import { useUnreadCount } from "@/hooks/use-messages";
 
 const tabs = [
@@ -34,7 +33,6 @@ export function TabBar() {
     if (result?.warning) setScanWarning(result.warning);
   }, []);
 
-  const isHome = pathname.startsWith("/home");
   const leftTabs = tabs.filter((t) => t.position === "left");
   const rightTabs = tabs.filter((t) => t.position === "right" && t.name !== "More");
 
@@ -182,10 +180,6 @@ export function TabBar() {
           </button>
         </div>
       )}
-
-      {/* Floating mic — suppressed where Porter chat already exists inline:
-          /home (inline Porter card) and /porter (the full Porter page). */}
-      {!isHome && !pathname.startsWith("/porter") && <FloatingMic />}
     </>
   );
 }

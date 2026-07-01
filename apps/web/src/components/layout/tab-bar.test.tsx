@@ -10,10 +10,6 @@ vi.mock("@/hooks/use-messages", () => ({
   useUnreadCount: () => ({ count: 0 }),
 }));
 
-vi.mock("@/components/porter/floating-mic", () => ({
-  FloatingMic: () => null,
-}));
-
 // Stub ScanFlow: a close button that reports a draft-fallback warning,
 // the way Save & List does when eBay rejects the publish.
 vi.mock("@/components/capture/scan-flow", () => ({
