@@ -34,8 +34,8 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 - [x] Infra: removed dhg-stt (8018) + dhg-tts (8019) + `dhg-stt-models` volume from docker-compose; dropped `DHG_STT_URL`/`DHG_TTS_URL` from `.env.example` (they were never in the env.ts Zod schema — porter read process.env directly)
 - [x] Tests: deleted porter-speak + porter-transcribe specs; replaced the stream TTS-failure test with a no-TTS regression guard (asserts no fetch + no audio_url frame); removed floating-mic mock from tab-bar test — API 537 + web 225 green
 - [ ] Docs: CLAUDE.md Services/AI sections; TODO.md
-- [ ] **Gate:** typecheck + lint + test:api/web green; rebuild portage-app + portage-api; e2e proving Porter text chat still streams end-to-end without the TTS path; proof screenshots
-- [ ] Open PR → merge on green CI
+- [x] **Gate:** typecheck + lint + test:api (537) / web (225) green; portage-app + portage-api rebuilt from the branch; live e2e `porter-text-chat.spec.ts` proves text chat streams end-to-end (assistant reply asserted as a 2nd marker occurrence — user bubble alone can't pass) + no voice UI on home/inventory/porter; authed `/porter/transcribe` + `/porter/speak` → 404 live; screenshots in `website/static/img/verification/voice-removal/`
+- [x] Open PR → merge on green CI (PR merges only when checks pass; dhg-stt/dhg-tts containers stopped+removed post-merge)
 
 (~5h)
 
