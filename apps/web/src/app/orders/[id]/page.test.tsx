@@ -61,3 +61,16 @@ describe("OrderDetailPage — Mark as Shipped", () => {
     );
   });
 });
+
+describe("OrderDetailPage — Financials", () => {
+  it("hides fees and profit when fees are unknown (0) — no bogus negative profit", async () => {
+    apiMock.mockResolvedValue({ ...baseOrder, marketplaceFees: 0 });
+
+    await renderPage();
+
+    expect(await screen.findByText("Sale Price")).toBeInTheDocument();
+    expect(screen.getByText("Shipping Cost")).toBeInTheDocument();
+    expect(screen.queryByText("Marketplace Fees")).not.toBeInTheDocument();
+    expect(screen.queryByText("Profit")).not.toBeInTheDocument();
+  });
+});

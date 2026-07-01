@@ -786,7 +786,6 @@ export class EbayAdapter implements MarketplaceAdapter {
           total: { value: string; currency: string };
           deliveryCost: { value: string };
         };
-        totalFeeBasisAmount?: { value: string };
         lineItems?: Array<{ legacyItemId: string; title?: string }>;
         fulfillmentStartInstructions?: Array<{
           shippingStep?: {
@@ -817,7 +816,11 @@ export class EbayAdapter implements MarketplaceAdapter {
         buyerUsername: order.buyer.username,
         salePrice: parseFloat(order.pricingSummary.total.value),
         shippingCost: parseFloat(order.pricingSummary.deliveryCost?.value ?? '0'),
-        marketplaceFees: parseFloat(order.totalFeeBasisAmount?.value ?? '0'),
+        // The Fulfillment API does NOT return the fee amount — its
+        // totalFeeBasisAmount is the fee BASIS (item + shipping the fee is
+        // calculated FROM), so mapping it here produced negative "profit".
+        // Real fees require the Finances API; until then fees are unknown (0).
+        marketplaceFees: 0,
         currency: order.pricingSummary.total.currency,
         // eBay's actual sale date. Without this, orders.ts falls back to
         // `new Date()` and every synced order shows today's date.

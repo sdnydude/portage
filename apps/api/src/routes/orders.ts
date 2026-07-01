@@ -184,7 +184,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
         const marketplaceOrders = await adapter.getOrders(since);
 
         for (const mOrder of marketplaceOrders) {
-          const [existing] = await db.select({ id: orders.id, soldAt: orders.soldAt })
+          const [existing] = await db.select({ id: orders.id, soldAt: orders.soldAt, marketplaceFees: orders.marketplaceFees })
             .from(orders)
             .where(and(
               eq(orders.userId, userId),
@@ -193,12 +193,21 @@ ordersRouter.post('/sync', async (req, res, next) => {
             .limit(1);
 
           if (existing) {
-            // Heal stale soldAt: rows imported before the creationDate→soldAt
-            // mapping existed were stamped with the sync time instead of the
-            // real sale date. Re-syncs correct them in place.
+            // Heal rows imported by older sync code in place on re-sync:
+            // - soldAt was stamped with the sync time before the
+            //   creationDate→soldAt mapping existed
+            // - marketplaceFees held eBay's fee BASIS (item+shipping) before
+            //   the adapter stopped mis-mapping totalFeeBasisAmount
+            const heal: Record<string, unknown> = {};
             if (mOrder.soldAt && Math.abs(new Date(existing.soldAt).getTime() - mOrder.soldAt.getTime()) > 1000) {
+              heal.soldAt = mOrder.soldAt;
+            }
+            if (existing.marketplaceFees !== mOrder.marketplaceFees) {
+              heal.marketplaceFees = mOrder.marketplaceFees;
+            }
+            if (Object.keys(heal).length > 0) {
               await db.update(orders)
-                .set({ soldAt: mOrder.soldAt })
+                .set(heal)
                 .where(eq(orders.id, existing.id));
             }
             continue;

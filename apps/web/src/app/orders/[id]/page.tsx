@@ -229,16 +229,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <span className="text-sm text-text-secondary">Shipping Cost</span>
               <span className="text-sm text-text-primary">-{formatCurrency(order.shippingCost)}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-text-secondary">Marketplace Fees</span>
-              <span className="text-sm text-text-primary">-{formatCurrency(order.marketplaceFees)}</span>
-            </div>
-            <div className="border-t border-border pt-2 flex items-center justify-between">
-              <span className="text-sm font-semibold text-text-primary">Profit</span>
-              <span className={`text-sm font-bold ${profit >= 0 ? "text-forest-green" : "text-accent-error"}`}>
-                {formatCurrency(profit)}
-              </span>
-            </div>
+            {/* Fees (and therefore profit) are unknown until the eBay Finances
+                API is integrated — the Fulfillment API never returns the fee
+                amount. Hide both rather than show a made-up profit. */}
+            {order.marketplaceFees > 0 && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">Marketplace Fees</span>
+                  <span className="text-sm text-text-primary">-{formatCurrency(order.marketplaceFees)}</span>
+                </div>
+                <div className="border-t border-border pt-2 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-text-primary">Profit</span>
+                  <span className={`text-sm font-bold ${profit >= 0 ? "text-forest-green" : "text-accent-error"}`}>
+                    {formatCurrency(profit)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
