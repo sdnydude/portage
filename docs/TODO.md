@@ -7,22 +7,22 @@
 
 ## Phased Execution Plan (2026-07-01)
 
-Ordered by dependency and value. Phase 1 lands the in-flight orders branch; Phase 2 rips out the voice feature (parked for a future release); Phase 3 closes the AI-specifics remnants; Phase 4 clears repo hygiene; Phases 5–7 burn down the backlog. A phase isn't done until its gate passes (DoD: rebuild containers + observe live behavior, not just green tests).
+Ordered by dependency and value. Phase 1 (✅ complete, PR #142); Phase 2 rips out the voice feature (parked for a future release); Phase 3 closes the AI-specifics remnants; Phase 4 clears repo hygiene; Phases 5–7 burn down the backlog. A phase isn't done until its gate passes (DoD: rebuild containers + observe live behavior, not just green tests).
 
-### Phase 1 — Simplified sold-orders panel + carrier cleanup (`feat/orders-ship-on-ebay`)
+### Phase 1 — Simplified sold-orders panel + carrier cleanup — ✅ COMPLETE (PR #142, merged 2026-07-01)
 
-**Rescoped 2026-07-01:** W2 (Fulfillment sync-back) and W4-as-feature are DEAD; W5 (ebay-api SDK) dies with W2 — sync-back was its only justification. The orders panel becomes a simple sold-items list; the dead carrier code gets its own weighted cleanup task.
+All items shipped and live-verified; containers rebuilt from merged main. W2 Fulfillment sync-back + W5 ebay-api SDK dropped per 2026-07-01 decision.
 
 - [x] W1 — sold-date fix: Fulfillment `creationDate` → `soldAt` (`e859abe`)
 - [x] W3 — Ship-It opens eBay item page: list (`4ec0a36`), detail (`40f5130`), API `ebayItemId` (`0c7bb67`)
-- [ ] Simplified sold-orders panel — list rows: photo thumbnail + title (items join, pattern exists in detail endpoint) + sold date + sold price + marketplace badge + status chip; row tap-through to eBay via `ebayItemId`; buyer/tracking/address remain on the detail view (~3h)
-- [ ] Carrier code cleanup (was W4) — delete `shipping_providers` table, rate/label/provider endpoints in shipping.ts (17 handlers), `useShipping*` hooks, `/orders/[id]/ship` page, shipping settings page + their tests. **Verified blast radius also includes:** `shippingRouter` mount in app.ts:23/105, sold-celebration `/ship` nav (sold-celebration.tsx:83), More-page `/settings/shipping` link (more/page.tsx:134), `useShippingLabel` import in orders/[id]/page.tsx (mark-shipped button), ship-page + order-detail test files, and a decision on `shipping_presets` fate (coupled via shipping.ts routes + settings page, not FK) (~4h)
-- [ ] ~~Net proceeds~~ — RESOLVED by evaluator: `marketplaceFees` maps from `totalFeeBasisAmount`, which eBay's Fulfillment API doesn't return in practice (fees require the Finances API); sold list shows gross price only
-- [ ] Sold-celebration Ship-It (plumb ItemID prop through caller)
-- [ ] **Gate:** rebuild containers, live-verify on 10.0.0.251 (sold list shows real dates/prices, tap-through opens eBay, no dead shipping links)
-- [ ] Open PR → merge on green CI
-- [ ] Update CLAUDE.md Progress + TODO.md
-- 🚫 Dropped: W2 Fulfillment sync-back, W5 ebay-api SDK adoption
+- [x] Simplified sold-orders panel — items join on GET /orders; rows: thumbnail + title + marketplace badge + status chip + relative sold date + gross price; buyer/tracking/address on detail view (`584f321`)
+- [x] Carrier code cleanup — shipping.ts (17 handlers), `shipping_presets` + `shipping_providers` tables + enum (verified empty, dropped live), `useShipping*` hooks, ship page, shipping settings page, shared carrier types, all references (−2,474 lines, `d22945e`). Disclaimer flow relocated to `/disclaimer` (4 route tests); Mark-as-Shipped → `PATCH /orders/:id`, offered from payment_received
+- [x] Net proceeds — resolved: Fulfillment API never returns fees (Finances API needed); gross price only
+- [x] Sold-celebration Ship-It → routes to order detail (component currently has no callers; eBay link lives on detail)
+- [x] **BONUS — soldAt heal (`84c6bb4`):** sync skipped existing rows forever, so pre-fix orders kept their import-date stamp; re-sync now heals soldAt in place. Live-proven: 11 orders healed 06-30 → real dates 06-02…06-23
+- [x] **Gate passed:** containers rebuilt, e2e 15 green (sold-list rows + reload re-assert + carrier-gone 404), live API verified with real data, screenshots in website/static/img/verification/sold-list/
+- [x] PR #142 merged on 6 green CI checks; main rebuilt + healthy; worktree + branch cleaned up
+- [x] CLAUDE.md Progress + TODO.md updated (this commit)
 
 ### Phase 2 — Rip out the voice feature (parked → future release; registry deferred item e37f4cd4)
 
@@ -331,7 +331,7 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 
 | Phase | Open items | Est |
 |-------|-----------|-----|
-| 1 — Sold-orders panel + carrier cleanup (`feat/orders-ship-on-ebay`) | sold list, carrier deletion (verified blast radius), sold-celebration, gate, PR, docs (6) | ~8h |
+| 1 — Sold-orders panel + carrier cleanup | ✅ COMPLETE — PR #142 merged 2026-07-01 (+ soldAt-heal bonus) | done |
 | 2 — Rip out voice feature (parked → future release) | tag, web strip, API strip, containers/env, tests, docs, gate, PR (8) | ~5h |
 | 3 — AI-specifics follow-through (PR #132 merged 06-23) | E-panel decision, fake-camera e2e, aspect auto-pick, SKU check, #126 (5) | ~6h |
 | 4 — Repo hygiene & Trade-First housekeeping | #127, Dependabot ×8, GTC renewal, verify-wiring decision, dead-code sweep, burndown+docs refresh (7) | ~5h |
