@@ -28,11 +28,11 @@ All items shipped and live-verified; containers rebuilt from merged main. W2 Ful
 
 Product descoping 2026-07-01: voice returns in a future release. Removal is independent of the orders branch — branch from main. All A1–A8 hardening fixes are verified present on main, so the parked code is the hardened version.
 
-- [ ] Tag pre-removal main tip (e.g. `voice-parked-2026-07`) so restore is a checkout
-- [ ] Web: remove `use-voice-input` + `use-porter-audio` hooks; VoiceButton, VoiceOverlay, AudioPlayback, FloatingMic, voice BottomSheet components; their wiring in FullChat/StreamingMessage/PorterProvider/home
-- [ ] API: remove `POST /porter/transcribe`, `POST /porter/speak`, TTS fire-and-forget in `POST /porter/stream`
-- [ ] Infra: remove dhg-stt (8018) + dhg-tts (8019) from docker-compose; drop `DHG_STT_URL`/`DHG_TTS_URL` from env schema + `.env.example`
-- [ ] Tests: delete voice specs; update porter route + web tests that touch removed surfaces
+- [x] Tag pre-removal main tip — `voice-parked-2026-07` pushed to origin; restore is a checkout
+- [x] Web: removed `use-voice-input` + `use-porter-audio` hooks; VoiceButton, VoiceOverlay, AudioPlayback, FloatingMic, voice BottomSheet components; their wiring in FullChat/StreamingMessage/PorterProvider/tab-bar/home/porter pages (BottomSheet had zero callers — deleted outright)
+- [x] API: removed `POST /porter/transcribe`, `POST /porter/speak`, TTS fire-and-forget in `POST /porter/stream`; shared types dropped `AudioEvent`/`audio_url`, `AudioPlayback`, `RichMessage.voiceTranscript`
+- [x] Infra: removed dhg-stt (8018) + dhg-tts (8019) + `dhg-stt-models` volume from docker-compose; dropped `DHG_STT_URL`/`DHG_TTS_URL` from `.env.example` (they were never in the env.ts Zod schema — porter read process.env directly)
+- [x] Tests: deleted porter-speak + porter-transcribe specs; replaced the stream TTS-failure test with a no-TTS regression guard (asserts no fetch + no audio_url frame); removed floating-mic mock from tab-bar test — API 537 + web 225 green
 - [ ] Docs: CLAUDE.md Services/AI sections; TODO.md
 - [ ] **Gate:** typecheck + lint + test:api/web green; rebuild portage-app + portage-api; e2e proving Porter text chat still streams end-to-end without the TTS path; proof screenshots
 - [ ] Open PR → merge on green CI
@@ -122,7 +122,7 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 - [x] **Task 24:** Porter AI backend — Claude Sonnet tool_use loop, 3 tools (search_inventory, get_inventory_stats, suggest_listing), conversation history in JSONB, free tier 20 msg/day. Fixed Zod validation bug rejecting null conversationId (9f8db4e).
 - [x] **Task 25:** Porter chat UI — message bubbles, typing indicator, suggestion chips, new chat, keyboard enter-to-send
 
-## Phase 10: Voice Chat Interface (PR #87) — complete, **PARKED 2026-07-01** (removal planned in Execution Phase 2; returns in a future release)
+## Phase 10: Voice Chat Interface (PR #87) — complete, **PARKED 2026-07-01** (removed in Execution Phase 2; code preserved at tag `voice-parked-2026-07`; returns in a future release)
 
 - [x] **Task 51:** Porter SSE streaming — `POST /porter/stream` using `client.messages.stream()`, live token streaming, tool transparency blocks, action pills, TTS fire-and-forget. JSONB upgraded to `blocks: ContentBlock[]` with lazy backward-compat migration.
 - [x] **Task 52:** Voice I/O — `POST /porter/transcribe` (Whisper via dhg-stt), `POST /porter/speak` (Chatterbox via dhg-tts), `useVoiceInput` hook (push-to-talk + silence detection), `usePorterAudio` hook.
@@ -361,8 +361,7 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 | Auth | JWT + refresh tokens, bcrypt |
 | Images | Cloudflare R2, Sharp |
 | AI | Claude Sonnet (vision + tool_use + SSE streaming via MessageStream) |
-| Voice STT | Whisper large-v3-turbo via dhg-stt container — PARKED, removal planned (Execution Phase 2) |
-| Voice TTS | Chatterbox Turbo via dhg-tts container — PARKED, removal planned (Execution Phase 2) |
+| Voice STT/TTS | REMOVED 2026-07-01 (Execution Phase 2) — parked at git tag `voice-parked-2026-07` for a future release |
 | BG Removal | @imgly/background-removal (WASM) |
 | Marketplaces | eBay (Trading API for listings + Fulfillment REST for orders), Etsy (REST + PKCE), Reverb (REST, token-paste auth; OAuth pending) |
 | Token encryption | AES-256-GCM |
@@ -375,8 +374,6 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 | portage-api | 8016 |
 | portage-app | 3002 |
 | dhg-docs (nginx) | 8017 |
-| dhg-stt (Whisper large-v3-turbo) | 8018 |
-| dhg-tts (Chatterbox Turbo) | 8019 |
 
 ## Demo Account
 
