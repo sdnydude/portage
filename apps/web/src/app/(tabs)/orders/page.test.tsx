@@ -23,3 +23,21 @@ describe("OrdersPage sync error", () => {
     expect(screen.getByText(/Sync failed: eBay 401: invalid scope/)).toBeInTheDocument();
   });
 });
+
+describe("OrdersPage — Ship It", () => {
+  it("links Ship-It to the eBay item page (new tab) for a pending eBay order", () => {
+    useOrdersMock.mockReturnValue({
+      orders: [{
+        id: "o1", marketplace: "ebay", status: "payment_received", buyerUsername: "buyer1",
+        salePrice: 10, soldAt: new Date().toISOString(), trackingNumber: null, ebayItemId: "306972688941",
+      }],
+      isLoading: false, error: null, syncError: null, isSyncing: false, syncOrders: vi.fn(),
+    });
+
+    render(<OrdersPage />);
+
+    const link = screen.getByRole("link", { name: "Ship It" });
+    expect(link).toHaveAttribute("href", "https://www.ebay.com/itm/306972688941");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+});

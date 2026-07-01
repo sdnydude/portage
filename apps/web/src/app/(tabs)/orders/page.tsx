@@ -151,12 +151,23 @@ export default function OrdersPage() {
                               {formatCurrency(order.salePrice)}
                             </p>
                           </div>
-                          <Link
-                            href={`/orders/${order.id}/ship`}
-                            className="px-4 py-2 rounded-xl bg-forest-green text-white text-sm font-medium"
-                          >
-                            Ship It
-                          </Link>
+                          {order.ebayItemId ? (
+                            <a
+                              href={`https://www.ebay.com/itm/${order.ebayItemId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-4 py-2 rounded-xl bg-forest-green text-white text-sm font-medium"
+                            >
+                              Ship It
+                            </a>
+                          ) : (
+                            <Link
+                              href={`/orders/${order.id}`}
+                              className="px-4 py-2 rounded-xl bg-forest-green text-white text-sm font-medium"
+                            >
+                              Ship It
+                            </Link>
+                          )}
                         </div>
                       </div>
                     );
