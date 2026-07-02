@@ -13,6 +13,11 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [shotCount, setShotCount] = useState(0);
   const [flash, setFlash] = useState(false);
+  // Shutter-flash timer must be cancelled on unmount — a stray setTimeout
+  // fires after teardown (vitest flags it as an unhandled error; in the app
+  // it's a setState-after-unmount warning).
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
 
   // One measurement drives BOTH the on-screen guide square and the capture
   // crop mapping (guideCaptureRect) — they can never disagree.
@@ -59,7 +64,8 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
       const file = new File([blob], `capture-${Date.now()}.jpg`, { type: "image/jpeg" });
       setShotCount((n) => n + 1);
       setFlash(true);
-      setTimeout(() => setFlash(false), 150);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      flashTimer.current = setTimeout(() => setFlash(false), 150);
       onCapture(file);
     }
     setIsCapturing(false);
