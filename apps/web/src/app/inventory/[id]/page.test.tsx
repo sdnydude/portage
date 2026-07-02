@@ -54,6 +54,10 @@ vi.mock("@/components/listing/create-listing-sheet", () => ({
   ),
 }));
 
+vi.mock("@/components/listing/listing-optimizer-panel", () => ({
+  ListingOptimizerPanel: ({ itemId }: { itemId: string }) => <div>optimizer:{itemId}</div>,
+}));
+
 import ItemDetailPage from "./page";
 
 describe("inventory detail — editable price", () => {
@@ -81,6 +85,11 @@ describe("inventory detail — editable price", () => {
     fireEvent.click(screen.getByText("List on Marketplace"));
     fireEvent.click(screen.getByText("finish-create"));
     expect(pushMock).toHaveBeenCalledWith("/inventory");
+  });
+
+  it("renders the Listing Optimizer panel for the item", () => {
+    render(<ItemDetailPage />);
+    expect(screen.getByText("optimizer:i1")).toBeInTheDocument();
   });
 });
 

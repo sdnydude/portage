@@ -22,6 +22,12 @@ describe("buildListingPayload", () => {
     });
   });
 
+  it("ebayDraft input forces publishMode 'ebay_draft' (overrides the profile default)", () => {
+    expect(
+      buildListingPayload({ ...baseInput, ebayDraft: true }, { ebayPublishMode: "live" }).publishMode,
+    ).toBe("ebay_draft");
+  });
+
   it("live mode carries categoryId and aspects in marketplaceSpecificFields", () => {
     expect(buildListingPayload(baseInput, { ebayPublishMode: "live" })).toEqual({
       itemId: "item-1",

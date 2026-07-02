@@ -14,7 +14,6 @@ export const listingStatusEnum = pgEnum('listing_status', ['draft', 'active', 's
 export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered']);
 export const notificationTypeEnum = pgEnum('notification_type', ['sale', 'buyer_message', 'listing_expiry', 'price_alert', 'shipping_reminder']);
 export const referenceTypeEnum = pgEnum('reference_type', ['order', 'listing', 'item']);
-export const shippingProviderEnum = pgEnum('shipping_provider', ['shippo', 'easypost', 'pirate_ship']);
 export const packageTypeEnum = pgEnum('package_type', ['box', 'envelope', 'poly_mailer']);
 export const messageDirectionEnum = pgEnum('message_direction', ['inbound', 'outbound']);
 export const messageTypeEnum = pgEnum('message_type', ['asq', 'rtq', 'aaq']);
@@ -50,6 +49,12 @@ export const users = pgTable('users', {
   listingForkPref: text('listing_fork_pref').notNull().default('ask'),
   listingForkCount: integer('listing_fork_count').notNull().default(0),
   listingCompactMode: boolean('listing_compact_mode').notNull().default(false),
+  // F3b: display-only suppression of the publish terms sheet ("don't show for 7
+  // days"). NOT a consent record — that lives in disclaimerAcceptances. Suppressed
+  // only when suppressUntil > now AND suppressVersion === CURRENT_DISCLAIMER_VERSION
+  // (a version bump voids it). Null = never suppressed.
+  disclaimerSuppressUntil: timestamp('disclaimer_suppress_until'),
+  disclaimerSuppressVersion: integer('disclaimer_suppress_version'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -65,6 +70,10 @@ export const items = pgTable('items', {
   brand: varchar('brand', { length: 255 }).notNull().default(''),
   model: varchar('model', { length: 255 }).notNull().default(''),
   features: jsonb('features').notNull().default([]),
+  // eBay item specifics (Brand, MPN, category aspects) keyed → string[] values.
+  // AI-filled at scan, carried into every publish path so the aspect pop-up never
+  // re-asks for data already captured. Existing rows default to {}.
+  aspects: jsonb('aspects').$type<Record<string, string[]>>().notNull().default({}),
   estimatedValueMin: doublePrecision('estimated_value_min'),
   estimatedValueMax: doublePrecision('estimated_value_max'),
   estimatedValueRecommended: doublePrecision('estimated_value_recommended'),
@@ -107,6 +116,11 @@ export const listings = pgTable('listings', {
   status: listingStatusEnum('status').notNull().default('draft'),
   price: doublePrecision('price').notNull(),
   currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  // Idempotency anchor (R3): the row is inserted FIRST with a null marketplaceListingId
+  // and this key, then eBay is called, then the row is UPDATEd. The partial unique
+  // index below serializes concurrent submits that share a key so a non-idempotent
+  // AddFixedPriceItem can't double-list. Null for non-publish drafts / legacy rows.
+  idempotencyKey: varchar('idempotency_key', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   publishedAt: timestamp('published_at'),
@@ -115,6 +129,9 @@ export const listings = pgTable('listings', {
   index('idx_listings_user_id').on(t.userId),
   index('idx_listings_item_id').on(t.itemId),
   index('idx_listings_marketplace_listing_id').on(t.marketplaceListingId),
+  uniqueIndex('uq_listings_idempotency_key')
+    .on(t.userId, t.idempotencyKey)
+    .where(sql`${t.idempotencyKey} IS NOT NULL`),
 ]);
 
 export const orders = pgTable('orders', {
@@ -196,35 +213,6 @@ export const appSettings = pgTable('app_settings', {
   value: jsonb('value').notNull(),
   updatedBy: uuid('updated_by').references(() => users.id),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
-
-export const shippingPresets = pgTable('shipping_presets', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  name: varchar('name', { length: 100 }).notNull(),
-  packageType: packageTypeEnum('package_type').notNull(),
-  length: real('length').notNull(),
-  width: real('width').notNull(),
-  height: real('height').notNull(),
-  weightLbs: integer('weight_lbs').notNull().default(0),
-  weightOz: real('weight_oz').notNull().default(0),
-  isDefault: boolean('is_default').notNull().default(false),
-  sortOrder: integer('sort_order').notNull().default(0),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, (t) => [
-  uniqueIndex('shipping_presets_one_default_per_user')
-    .on(t.userId)
-    .where(sql`is_default = true`),
-]);
-
-export const shippingProviders = pgTable('shipping_providers', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  provider: shippingProviderEnum('provider').notNull(),
-  apiKeyEncrypted: text('api_key_encrypted').notNull(),
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
 export const designSurveyResponses = pgTable('design_survey_responses', {

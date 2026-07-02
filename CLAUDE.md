@@ -28,14 +28,12 @@ npm workspaces monorepo with three packages:
 | portage-api | 8016 | Express 5 + TypeScript + pino |
 | portage-app | 3002 | Next.js 16 (standalone mode) |
 | dhg-docs | 8017 | nginx serving Docusaurus build |
-| dhg-stt | 8018 | Whisper large-v3-turbo (OpenAI-compatible STT, RTX 5080) |
-| dhg-tts | 8019 | Chatterbox Turbo (OpenAI-compatible TTS, RTX 5080) |
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 18 tables:
+Drizzle ORM, schema-push workflow (no migration files). 16 tables:
 
-users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, shipping_presets, shipping_providers, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages
+users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages
 
 Notable JSONB columns: `items.photos`, `items.marketplaceData` (eBay category/title cache), `orders.shippingAddress`.
 
@@ -46,7 +44,7 @@ JWT access + refresh tokens. bcrypt password hashing. Role column on users (`use
 ### Marketplace Adapters
 
 Shared TypeScript interface in `packages/shared/src/marketplace.ts`. Three adapters:
-- **eBay:** OAuth2 auth code grant, Inventory API (SKU/offer/publish), Fulfillment API, Taxonomy API
+- **eBay:** OAuth2 auth code grant. Listing lifecycle runs on the **Trading API** (Trade-First, PR #133, live-proven): AddFixedPriceItem / ReviseFixedPriceItem / ReviseInventoryStatus / EndFixedPriceItem / GetItem, inline shipping terms — no Business Policies, no Inventory-API offers (`ebayOfferId` removed from the adapter interface; DB column inert). Insert-first idempotency on publish (`listings.idempotency_key`). Fulfillment API for orders, Taxonomy API for categories/aspects
 - **Etsy:** PKCE OAuth2, Listings API with photo upload, Receipts API, Taxonomy API
 - **Reverb:** Adapter implemented (269 lines), comps search working, token-paste auth shipped (Personal Access Token validated against live API)
 
@@ -59,9 +57,8 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 ### AI
 
 - **Item scanning:** Claude Vision API via `apps/api/src/lib/vision.ts`
-- **Porter assistant:** Claude Sonnet SSE streaming via `client.messages.stream()`, 3 tools (search_inventory, get_inventory_stats, suggest_listing), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback), `POST /porter/transcribe` (STT proxy), `POST /porter/speak` (TTS proxy)
-- **Voice STT:** Whisper large-v3-turbo via dhg-stt container at `DHG_STT_URL`; `POST /porter/transcribe` → `GET /v1/audio/transcriptions`
-- **Voice TTS:** Chatterbox Turbo via dhg-tts container at `DHG_TTS_URL`; `POST /porter/speak` → `/audio/speech`; graceful fallback to text-only on 503
+- **Porter assistant:** Claude Sonnet SSE streaming via `client.messages.stream()`, 3 tools (search_inventory, get_inventory_stats, suggest_listing), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback)
+- **Voice (STT/TTS):** REMOVED 2026-07-01 (parked for a future release) — pre-removal code preserved at git tag `voice-parked-2026-07`
 - **Background removal:** Client-side WASM (@imgly/background-removal), billing-gated per tier
 - **Auto-enhance:** Server-side Sharp pipeline, billing-gated per tier
 - **Photo tools:** Rotate, crop, enhance, BG-remove with before/after preview slider
@@ -96,11 +93,8 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Prepare-listing route | apps/api/src/routes/prepare-listing.ts |
 | Seller profile route | apps/api/src/routes/seller-profile.ts |
 | Drafts route | apps/api/src/routes/drafts.ts |
-| Shipping routes | apps/api/src/routes/shipping.ts |
-| Shipping hooks | apps/web/src/hooks/use-shipping.ts, use-shipping-provider.ts |
-| Ship order page | apps/web/src/app/orders/[id]/ship/page.tsx |
+| Disclaimer routes | apps/api/src/routes/disclaimer.ts |
 | Seller profile settings | apps/web/src/app/settings/seller-profile/page.tsx |
-| Shipping settings | apps/web/src/app/settings/shipping/page.tsx |
 | Billing settings | apps/web/src/app/settings/billing/page.tsx |
 | Billing routes | apps/api/src/routes/billing.ts |
 | Reverb adapter | apps/api/src/marketplace/reverb-adapter.ts |
@@ -197,12 +191,17 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-42/52 tasks complete, 3 partial, 7 remaining. See `docs/TODO.md` for full roadmap.
+As of 2026-07-01: roadmap essentially complete — 48/52 tasks done, 1 superseded (carrier APIs), 1 partial (tunnel config not versioned), 2 open (integration testing, Reverb OAuth). See `docs/TODO.md` for the live backlog and in-flight branches.
 
-**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (8 pages: profile, marketplace, seller profile, shipping, notifications, help, admin, billing), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling), JWT auto-refresh, object URL leak fixes, test infra + 141 tests, auth middleware next(err), TOCTOU race fix, shared logger (28 files), AI SDK singletons, shippingAddress column, pagination, shared format helpers, listing flow component extraction, PWA (icons + favicon + service worker), admin observability (Prometheus + Grafana), bulk operations (select/delete/archive/activate/export), eBay CSV export (Seller Hub Reports draft format), onboarding flow (5-step carousel), Stripe billing (subscriptions + credits + enforcement gates), Reverb token-paste auth, photo tools UX (crop/rotate/enhance/BG-remove with before-after preview), eBay buyer messaging (inbox sync + conversation threads + reply via Trading API, 20 tests).
+**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (8 pages: profile, marketplace, seller profile, shipping, notifications, help, admin, billing), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling), JWT auto-refresh, object URL leak fixes, test infra (537 API + 225 web tests as of 2026-07-01), auth middleware next(err), TOCTOU race fix, shared logger (28 files), AI SDK singletons, shippingAddress column, pagination, shared format helpers, listing flow component extraction, PWA (icons + favicon + service worker), admin observability (Prometheus + Grafana), bulk operations (select/delete/archive/activate/export), eBay CSV export (Seller Hub Reports draft format), onboarding flow (5-step carousel), Stripe billing (subscriptions + credits + enforcement gates), Reverb token-paste auth, photo tools UX (crop/rotate/enhance/BG-remove with before-after preview), eBay buyer messaging (inbox sync + conversation threads + reply via Trading API, 20 tests), eBay orders sync (login-triggered + manual Sync button with visible errors; GetItem backfill ingests external eBay sales as one item+listing per ItemID — proven live importing 11 real orders, PR #139), eBay Trade-First migration (PR #133, 52 commits: full eBay listing lifecycle moved from Inventory API to Trading API with inline terms, no Business Policies; insert-first idempotency; live-proven publish/revise/end on real eBay ItemIDs 307034606520 + 307034773471), AI-specifics scan→publish (PR #132: scan-time aspect prefill, inline [AI] auto-fill + chips, quantity capture, MPN "Does Not Apply" sentinel, malformed-aspect guard + enum validation), orders Phase-1 rebuild (PR #142, merged + live-verified 2026-07-01: sold-date fix, Ship-It→eBay, simplified sold-orders panel with thumbnail/title/date/gross-price rows, soldAt heal on re-sync — 11 live orders healed from stamped 06-30 to real dates 06-02…06-23, and full carrier-subsystem deletion −2,474 lines with the disclaimer flow relocated to /disclaimer).
 
-**Partial:** Shipping (full UI + 16-endpoint API built, rates/labels stubbed — no real carrier API calls).
 
-**Remaining:** Carrier API integration (EasyPost/Shippo), Reverb OAuth code-grant (token-paste auth is shipped).
+Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as PR #132 on 2026-06-23 (scan-time eBay aspect prefill, inline [AI] auto-fill + chips, quantity capture, MPN sentinel, malformed-aspect guard). Stale journal syncs can misreport it as open.
+
+**Superseded:** Carrier API integration (EasyPost/Shippo) — replaced by redirect-to-eBay for labels (decision 2026-07-01); the stubbed carrier subsystem was deleted in PR #142. W2 Fulfillment sync-back and W5 ebay-api SDK were dropped with it.
+
+**Parked:** Voice feature (Whisper STT + Chatterbox TTS, Porter voice UI) — removed 2026-07-01 (Execution Phase 2) for a future release; the hardened pre-removal code (A1–A8 fixes included) is preserved at git tag `voice-parked-2026-07`.
+
+**Remaining:** Reverb OAuth code-grant (token-paste auth is shipped), integration testing (Task 35), version tunnel config into repo. See docs/TODO.md Phases 2–7.
 
 **Demo account:** demo@portage.app / demo1234demo1234

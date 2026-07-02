@@ -110,6 +110,32 @@ describe("useListingFlow.publish — draft-fallback warning", () => {
     expect(result.current.state.publishWarning).toContain("account locked");
   });
 
+  it("persists the flow quantity to the item on publish (existing item)", async () => {
+    let patchBody: { quantity?: number } | undefined;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {
+      if (path === "/items/i1" && opts?.method === "PATCH") { patchBody = opts?.body as typeof patchBody; return {}; }
+      if (path === "/items/i1") {
+        return {
+          id: "i1", title: "Mic Kit", description: "d", category: "electronics", condition: "new",
+          brand: "", model: "", features: [], quantity: 1,
+          photos: [{ url: "https://example.com/p.jpg", key: "k1" }],
+          estimatedValueRecommended: 50, price: 65,
+          weightOz: 24, lengthIn: null, widthIn: null, heightIn: null,
+          ebayPackageType: null, weightEstimated: false,
+        };
+      }
+      if (path === "/listings") return { id: "L1", status: "active" };
+      throw new Error("unavailable: " + path);
+    });
+
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => { await result.current.startFromItem("i1"); });
+    act(() => { result.current.setField("quantity", 4); });
+    await act(async () => { await result.current.publish(); });
+
+    expect(patchBody?.quantity).toBe(4);
+  });
+
   it("carries aspect-sheet aspects into the publish even when prepare-listing yields nothing (no silent drop)", async () => {
     let listingsBody: { marketplaceSpecificFields?: { aspects?: Record<string, string[]> } } | undefined;
     apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {

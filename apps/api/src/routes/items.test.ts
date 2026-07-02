@@ -12,11 +12,15 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
-vi.mock('../marketplace/ebay-adapter.js', () => ({
-  EbayAdapter: {
-    searchComps: vi.fn(),
-  },
-}));
+const { mockUpdateListing, mockGetTrafficReport } = vi.hoisted(() => ({ mockUpdateListing: vi.fn(), mockGetTrafficReport: vi.fn() }));
+vi.mock('../marketplace/ebay-adapter.js', () => {
+  const EbayAdapter = vi.fn(() => ({ updateListing: mockUpdateListing, getTrafficReport: mockGetTrafficReport }));
+  const statics = EbayAdapter as unknown as Record<string, ReturnType<typeof vi.fn>>;
+  statics.searchComps = vi.fn();
+  statics.getCategorySuggestion = vi.fn();
+  statics.getRequiredAspects = vi.fn();
+  return { EbayAdapter };
+});
 
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 
@@ -52,6 +56,9 @@ function mockSelectReturnOnce(rows: unknown[]) {
             offset: vi.fn().mockResolvedValue(rows),
           }),
         }),
+        // Awaiting the where-result directly (no .limit()) resolves to all rows,
+        // so a handler can iterate every matching row.
+        then: (resolve: (v: unknown) => unknown) => resolve(rows),
       }),
     }),
   } as any);
@@ -275,6 +282,35 @@ describe('POST /items', () => {
     );
   });
 
+  it('accepts aspects and passes them to the insert', async () => {
+    const valuesSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'] } }]),
+    });
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Sony WH-1000XM4', aspects: { Brand: ['Sony'] } });
+
+    expect(res.status).toBe(201);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ aspects: { Brand: ['Sony'] } }));
+  });
+
+  it('defaults aspects to {} when omitted', async () => {
+    const valuesSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM }]),
+    });
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'No aspects item' });
+
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ aspects: {} }));
+  });
+
   it('rejects quantity 0 — eBay requires at least 1', async () => {
     const res = await request(app)
       .post('/items')
@@ -331,6 +367,122 @@ describe('PATCH /items/:id', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('NOT_FOUND');
+  });
+
+  it('re-syncs the eBay listing when a listed item field is edited (title -> updateListing)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'New Title', quantity: 1, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebayOfferId: '193000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' }]); // listings for the item
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307000000001', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'New Title' });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateListing).toHaveBeenCalledTimes(1);
+    const [idArg, input] = mockUpdateListing.mock.calls[0] as [string, { title?: string }];
+    expect(input.title).toBe('New Title');
+    expect(idArg).toBe('307000000001'); // the Trading ItemID (marketplaceListingId), not an offer id
+  });
+
+  it('syncs the full eBay payload (price/condition/quantity/weight/aspects) so a live update is not rejected', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T', condition: 'good', quantity: 2, price: 50, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3, aspects: { Brand: ['Sony'] } }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebayOfferId: '193000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' }]);
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307000000001', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 50 });
+
+    expect(res.status).toBe(200);
+    const [, input] = mockUpdateListing.mock.calls[0] as [string, {
+      price?: number; condition?: string; quantity?: number; marketplaceSpecific?: Record<string, unknown>;
+    }];
+    expect(input.price).toBe(50);
+    expect(input.condition).toBe('good');
+    expect(input.quantity).toBe(2);
+    expect(input.marketplaceSpecific?.weight).toBeDefined();           // avoids eBay 25020
+    expect(input.marketplaceSpecific?.categoryId).toBe('175669');       // preserves listing specifics
+    expect((input.marketplaceSpecific?.aspects as Record<string, string[]>)?.Brand).toEqual(['Sony']);
+  });
+
+  it('still saves the item edit when the eBay sync fails (best-effort)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'Saved Locally' }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebayOfferId: '193000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: {}, currency: 'USD' }]);
+    mockUpdateListing.mockRejectedValue(new Error('eBay 25021'));
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Saved Locally' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('Saved Locally');
+  });
+
+  it('syncs only published eBay listings (active + Trading ItemID) and skips DB-only drafts', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'Edited' }]);
+    mockSelectReturnOnce([
+      { marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebaySku: 'PRT-A', marketplaceSpecificFields: {}, currency: 'USD' },
+      // Trade-First: a DB-only draft has no live listing to sync — must be skipped.
+      { marketplace: 'ebay', status: 'draft', marketplaceListingId: null, ebaySku: 'PRT-D', marketplaceSpecificFields: {}, currency: 'USD' },
+    ]);
+    mockUpdateListing.mockResolvedValue({ status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Edited' });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateListing).toHaveBeenCalledTimes(1);
+    expect(mockUpdateListing.mock.calls.map((c) => c[0])).toEqual(['307000000001']);
+  });
+
+  it('updates aspects via PATCH', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Color: ['Red'] } }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ aspects: { Color: ['Red'] } });
+
+    expect(res.status).toBe(200);
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ aspects: { Color: ['Red'] } }));
+  });
+
+  it('merges aspects on PATCH — a partial aspect update preserves existing keys', async () => {
+    // Existing item already carries scan-captured Brand/Model specifics. A partial
+    // aspect edit (adding Color) must not wipe them — aspects is JSONB like
+    // marketplaceData, so the partial PATCH must read-merge, not wholesale-replace.
+    mockSelectReturnOnce([{ id: 'item-1', aspects: { Brand: ['Sony'], Model: ['WH-1000XM4'] } }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'], Model: ['WH-1000XM4'], Color: ['Red'] } }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ aspects: { Color: ['Red'] } });
+
+    expect(res.status).toBe(200);
+    const written = setSpy.mock.calls[0][0].aspects;
+    expect(written).toEqual({ Brand: ['Sony'], Model: ['WH-1000XM4'], Color: ['Red'] });
   });
 
   it('persists marketplaceData.ebay.categoryId so publish can resolve the eBay leaf category', async () => {
@@ -565,5 +717,69 @@ describe('POST /items/photos/export/prepare', () => {
     expect(res.body.itemCount).toBe(1);
     expect(res.body.photoCount).toBe(60);
     expect(res.body.skippedCount).toBe(1);
+  });
+});
+
+describe('GET /items/:id/research', () => {
+  it('returns category, aspect gap (filled vs missing, required-first), and demand', async () => {
+    mockSelectReturnOnce([{
+      id: 'item-1', title: 'Sony WH-1000XM4', brand: 'Sony', model: 'WH-1000XM4',
+      category: 'Headphones', condition: 'good',
+      aspects: { Brand: ['Sony'] },
+      marketplaceData: { ebay: { categoryId: '112529', categoryName: 'Headphones' } },
+    }]);
+    (EbayAdapter as unknown as { getRequiredAspects: ReturnType<typeof vi.fn> }).getRequiredAspects.mockResolvedValue({
+      Brand: { required: true, values: ['Sony', 'Bose'], cardinality: 'SINGLE' },
+      Color: { required: false, values: ['Black', 'Silver'], cardinality: 'SINGLE' },
+      Type: { required: true, values: null, cardinality: 'SINGLE' },
+    });
+    (EbayAdapter as unknown as { searchComps: ReturnType<typeof vi.fn> }).searchComps.mockResolvedValue({
+      sold: [{}, {}], active: [{}],
+      stats: { soldMedian: 220, soldAvg: 215, activeMedian: 250, activeAvg: 240, sampleSize: 3, sellThrough: 0.67 },
+    });
+
+    const res = await request(app)
+      .get('/items/item-1/research')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    // Brand is filled (from item.aspects); Color + Type are missing, required-first
+    // (Type before Color), each carrying eBay's suggested values for one-tap fill.
+    expect(res.body).toEqual({
+      category: { categoryId: '112529', categoryName: 'Headphones' },
+      aspects: {
+        filled: [{ name: 'Brand', required: true, values: ['Sony'] }],
+        missing: [
+          { name: 'Type', required: true, suggestedValues: null, cardinality: 'SINGLE' },
+          { name: 'Color', required: false, suggestedValues: ['Black', 'Silver'], cardinality: 'SINGLE' },
+        ],
+      },
+      demand: { soldMedian: 220, soldAvg: 215, activeMedian: 250, activeAvg: 240, sampleSize: 3, sellThrough: 0.67, soldCount: 2, activeCount: 1 },
+      traffic: null,
+    });
+  });
+
+  it('includes the Analytics traffic report when the item has a published eBay listing', async () => {
+    mockSelectReturnOnce([{
+      id: 'item-1', title: 'Sony WH-1000XM4', brand: 'Sony', model: 'WH-1000XM4',
+      category: 'Headphones', condition: 'good', aspects: {},
+      marketplaceData: { ebay: { categoryId: '112529', categoryName: 'Headphones' } },
+    }]);
+    // listings lookup → a published eBay listing carrying a marketplaceListingId
+    mockSelectReturnOnce([{ marketplaceListingId: '307022338248' }]);
+    (EbayAdapter as unknown as { getRequiredAspects: ReturnType<typeof vi.fn> }).getRequiredAspects.mockResolvedValue({});
+    (EbayAdapter as unknown as { searchComps: ReturnType<typeof vi.fn> }).searchComps.mockResolvedValue({
+      sold: [], active: [], stats: { soldMedian: null, soldAvg: null, activeMedian: null, activeAvg: null, sampleSize: 0, sellThrough: null },
+    });
+    const report = { listingId: '307022338248', impressions: 1500, clickThroughRate: 2.4, views: 36, transactions: 3, salesConversionRate: 8.3, range: { from: '20260526', to: '20260625' } };
+    mockGetTrafficReport.mockResolvedValue(report);
+
+    const res = await request(app)
+      .get('/items/item-1/research')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.traffic).toEqual(report);
+    expect(mockGetTrafficReport).toHaveBeenCalledWith('307022338248');
   });
 });

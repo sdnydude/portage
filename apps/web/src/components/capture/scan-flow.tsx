@@ -11,11 +11,11 @@ import { CropTool } from "@/components/listing-flow/crop-tool";
 import { ScanReviewActions } from "./scan-review-actions";
 import { ScanAspectsSection } from "./scan-aspects-section";
 import { useScanAspects } from "@/hooks/use-scan-aspects";
-import { resolvePublishPrice } from "@/lib/price";
+import { resolvePublishPriceWithSource } from "@/lib/price";
 import { demandLabel } from "@/lib/demand";
 import { PhotoGalleryStrip } from "./photo-gallery-strip";
 import { PhotoEditPanel } from "./photo-edit-panel";
-import { buildListingPayload } from "@/lib/scan-listing-payload";
+import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
 import {
   getAvailablePortageConditions,
@@ -91,6 +91,10 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [editDescription, setEditDescription] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editCondition, setEditCondition] = useState<string>("good");
+  // Listing quantity as a raw string so the field can be cleared/retyped freely;
+  // coerced to a whole number ≥ 1 on blur and at save. Persisted on the item so
+  // the item-detail page reflects it (not hard-coded to 1).
+  const [editQuantity, setEditQuantity] = useState("1");
   const [editConditionNotes, setEditConditionNotes] = useState("");
   const [editValueLow, setEditValueLow] = useState("");
   const [editValueHigh, setEditValueHigh] = useState("");
@@ -117,6 +121,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [compsLoading, setCompsLoading] = useState(false);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const [isListingForSale, setIsListingForSale] = useState(false);
+  // F1: after "Save & List" creates the item, open the unified publish-confirm
+  // sheet (seeded) instead of posting the listing directly from scan.
+  const [publishItemId, setPublishItemId] = useState<string | null>(null);
+  const [publishEbayDraft, setPublishEbayDraft] = useState(false);
+  const [publishNowSeed, setPublishNowSeed] = useState(false);
   // Seller-set sale price for the review step (null = use the resolved default).
   const [listPrice, setListPrice] = useState<number | null>(null);
   // Packaged weight (decimal lb) + dims, seeded from the AI estimate; manual
@@ -144,12 +153,18 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     aspectValues,
     setAspectValue,
     suggestions,
+    aiFilledNames,
     confirmSuggestion,
     missingRequired,
     buildAspects,
     aspectsBlockPublish,
     conditionIds,
-  } = useScanAspects(editName, `${editName} ${editDescription}`);
+  } = useScanAspects(
+    editName,
+    `${editName} ${editDescription}`,
+    // Phase A AI-filled specifics from the selected candidate → surfaced as [AI] chips.
+    candidates[selectedCandidateIndex]?.aspects,
+  );
 
   // Constrain the condition pills to what the resolved eBay category accepts;
   // empty conditionIds (no category / no metadata) fails open to all five.
@@ -466,10 +481,28 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const valueLowNum = parseFloat(editValueLow) || 0;
   const valueHighNum = parseFloat(editValueHigh) || 0;
   const recommendedNum = Math.round((valueLowNum + valueHighNum) / 2) || null;
-  const reviewPrice = listPrice ?? resolvePublishPrice(
-    { estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
+  const { price: reviewPrice, source: reviewPriceSource } = resolvePublishPriceWithSource(
+    { price: listPrice, estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
     comps?.stats,
   );
+
+  // Required fields (Name, Category, Condition, Price) gate Save; each incomplete
+  // one shows a red asterisk on its label. eBay item specifics gate Save & List
+  // separately via aspectsBlockPublish.
+  const nameMissing = editName.trim() === "";
+  const categoryMissing = resolvedCategoryId === null;
+  const conditionMissing = editCondition.trim() === "";
+  const priceMissing = !(reviewPrice != null && reviewPrice > 0);
+  const missingRequiredFields = [
+    nameMissing && "Name",
+    categoryMissing && "Category",
+    conditionMissing && "Condition",
+    priceMissing && "Price",
+  ].filter(Boolean) as string[];
+  const requiredComplete = missingRequiredFields.length === 0;
+  const saveDisabledReason = requiredComplete
+    ? null
+    : `Complete required field${missingRequiredFields.length === 1 ? "" : "s"}: ${missingRequiredFields.join(", ")}`;
 
   const handleSave = useCallback(async () => {
     if (!token || photos.length === 0) return;
@@ -508,9 +541,13 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             : {}),
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes,
+          quantity: Math.max(1, Math.floor(Number(editQuantity)) || 1),
           brand: editBrand || undefined,
           model: editModel || undefined,
           features: selectedCandidate?.features ?? [],
+          // Persist the eBay item specifics captured at scan so a later publish
+          // carries them and the aspect pop-up never re-asks (Phase C carry-through).
+          aspects: buildAspects(),
           estimatedValueMin: valueLow,
           estimatedValueMax: valueHigh,
           estimatedValueRecommended: valueRecommended,
@@ -537,12 +574,12 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     }
   }, [
     token, photos, editName, editDescription, editCategory,
-    editCondition, editConditionNotes, editValueLow, editValueHigh,
+    editCondition, editConditionNotes, editQuantity, editValueLow, editValueHigh,
     editBrand, editModel, candidates, selectedCandidateIndex, onClose, reviewPrice,
-    weightDims, weightEstimated, resolvedCategoryName,
+    weightDims, weightEstimated, resolvedCategoryName, buildAspects,
   ]);
 
-  const handleSaveAndList = useCallback(async () => {
+  const handleSaveAndList = useCallback(async (ebayDraft = false) => {
     if (!token || photos.length === 0 || isListingForSale) return;
     setIsListingForSale(true);
     setState("saving");
@@ -555,8 +592,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         body: {
           title: editName, description: editDescription, category: resolvedCategoryName ?? editCategory,
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
-          conditionNotes: editConditionNotes, brand: editBrand || undefined, model: editModel || undefined,
+          conditionNotes: editConditionNotes, quantity: Math.max(1, Math.floor(Number(editQuantity)) || 1), brand: editBrand || undefined, model: editModel || undefined,
           features: selectedCandidate?.features ?? [],
+          // Persist captured eBay specifics on the item too (the listing payload
+          // below already carries them) — so a later re-list also has them.
+          aspects: buildAspects(),
           estimatedValueMin: valueLowNum, estimatedValueMax: valueHighNum, estimatedValueRecommended: recommendedNum ?? 0,
           aiConfidenceScore: selectedCandidate?.confidence ?? 0.85, photos: itemPhotos,
           // Cache the resolved eBay leaf id on the item too (not just the listing
@@ -575,23 +615,20 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           ...(weightDims.ebayPackageType ? { ebayPackageType: weightDims.ebayPackageType } : {}),
         },
       });
-      // Honor the seller's draft/live preference; a failed profile fetch falls
-      // back to draft inside buildListingPayload (never an accidental live).
-      const profile = await api<{ profile: { ebayPublishMode?: "draft" | "live" | null } }>(
+      // F1: seed the confirm sheet from the seller profile (live -> publish-now
+      // on); a failed profile fetch falls back to draft (never an accidental live).
+      const profileLive = await api<{ profile: { ebayPublishMode?: "draft" | "live" | null } }>(
         "/seller-profile",
         { token },
       )
-        .then((d) => d.profile)
-        .catch(() => null);
-      const listing = await api<{ id: string; status: string; warning?: string }>("/listings", {
-        method: "POST",
-        token,
-        body: buildListingPayload(
-          { itemId: newItem.id, price: price ?? null, resolvedCategoryId, aspects: buildAspects() },
-          profile,
-        ),
-      });
-      onClose(listing.warning ? { warning: listing.warning } : undefined);
+        .then((d) => d.profile?.ebayPublishMode === "live")
+        .catch(() => false);
+      setPublishEbayDraft(ebayDraft);
+      // An explicit eBay-draft choice overrides a live profile default (do not go live).
+      setPublishNowSeed(profileLive && !ebayDraft);
+      setPublishItemId(newItem.id);
+      setState("review");
+      setIsListingForSale(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
       setState("review");
@@ -599,7 +636,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     }
   }, [
     token, photos, isListingForSale, candidates, selectedCandidateIndex, reviewPrice,
-    editName, editDescription, editCategory, editCondition, editConditionNotes,
+    editName, editDescription, editCategory, editCondition, editConditionNotes, editQuantity,
     editBrand, editModel, valueLowNum, valueHighNum, recommendedNum,
     resolvedCategoryId, resolvedCategoryName, buildAspects, onClose, weightDims, weightEstimated,
   ]);
@@ -916,7 +953,12 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           {/* Full-height details panel — the always-on inline editor is gone;
               photos live in the gallery strip above the form, editing happens
               in the full-screen editor overlay. */}
-          <div className="flex-1 overflow-y-auto bg-background relative z-10 pb-28">
+          <div
+            className="flex-1 overflow-y-auto bg-background relative z-10"
+            // Clear the fixed action bar (price + Rescan/Save/List + safe area);
+            // pb-28 was shorter than the bar, hiding the last fields (Description).
+            style={{ paddingBottom: "calc(14rem + var(--safe-area-bottom))" }}
+          >
             <div className="w-12 h-1 rounded-full bg-border mx-auto mt-3 mb-4" />
             <div className="px-4 space-y-4">
               {error && (
@@ -991,7 +1033,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
               {/* Name */}
               <div>
-                <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Item Name</label>
+                <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Item Name{nameMissing && <span className="text-[var(--accent-error)]"> *</span>}</label>
                 <input
                   type="text"
                   value={editName}
@@ -1167,7 +1209,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
               {/* Condition */}
               <div>
-                <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Condition</label>
+                <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Condition{conditionMissing && <span className="text-[var(--accent-error)]"> *</span>}</label>
                 {availableConditions.length === 0 && (
                   <p className="mb-1 text-xs text-text-secondary">
                     This eBay category uses condition grades Portage doesn&apos;t map yet — condition will be captured at listing time.
@@ -1219,7 +1261,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   internal list is deprecated). Auto-resolved from the item
                   name; the search overrides with any eBay leaf category. */}
               <div>
-                <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Category</label>
+                <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Category{categoryMissing && <span className="text-[var(--accent-error)]"> *</span>}</label>
                 <div className="px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary text-sm">
                   {isCategoryResolving
                     ? "Resolving eBay category…"
@@ -1258,6 +1300,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 aspectValues={aspectValues}
                 setAspectValue={setAspectValue}
                 suggestions={suggestions}
+                aiFilledNames={aiFilledNames}
                 confirmSuggestion={confirmSuggestion}
                 missingRequired={missingRequired}
                 isCategoryResolving={isCategoryResolving}
@@ -1293,8 +1336,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 <textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary resize-none focus:border-border-focus focus:outline-none transition-colors"
+                  rows={5}
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary resize-y min-h-[7rem] focus:border-border-focus focus:outline-none transition-colors"
                 />
               </div>
             </div>
@@ -1304,12 +1347,16 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           <ScanReviewActions
             price={reviewPrice}
             onPriceChange={setListPrice}
+            quantity={editQuantity}
+            onQuantityChange={setEditQuantity}
             onRescan={handleRescan}
             onSave={handleSave}
             onSaveAndList={handleSaveAndList}
             isSaving={isSaving}
             isListing={isListingForSale}
-            canSave={!!editName.trim()}
+            canSave={requiredComplete}
+            saveDisabledReason={saveDisabledReason}
+            priceRequired={priceMissing}
             canList={!aspectsBlockPublish}
             listDisabledReason={
               aspectsBlockPublish
@@ -1320,6 +1367,22 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             }
           />
         </div>
+      )}
+
+      {/* F1: unified publish-confirm sheet, opened after Save & List creates the
+          item — seeded with the scan's price/category/aspects + draft/live choice. */}
+      {publishItemId && (
+        <CreateListingSheet
+          itemId={publishItemId}
+          suggestedPrice={reviewPrice ?? undefined}
+          priceSource={reviewPriceSource ?? undefined}
+          categoryId={resolvedCategoryId ?? undefined}
+          initialAspects={buildAspects()}
+          initialEbayDraft={publishEbayDraft}
+          initialPublishNow={publishNowSeed}
+          onCreated={() => { setPublishItemId(null); onClose(); }}
+          onClose={() => setPublishItemId(null)}
+        />
       )}
 
       {/* ─── SAVING STATE ──────────────────────────────────────────────── */}

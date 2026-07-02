@@ -68,6 +68,9 @@ export interface Item {
   brand: string;
   model: string;
   features: string[];
+  // eBay item specifics keyed → string[] (Brand, MPN, category aspects). Filled at
+  // scan, carried into publish. Defaults to {} for existing rows.
+  aspects?: Record<string, string[]>;
   estimatedValueMin?: number;
   estimatedValueMax?: number;
   estimatedValueRecommended?: number;
@@ -270,41 +273,6 @@ export interface ShipFromAddress {
 }
 
 export type PackageType = 'box' | 'envelope' | 'poly_mailer';
-export type ShippingProviderType = 'shippo' | 'easypost' | 'pirate_ship';
-
-export interface ShippingPreset {
-  id: string;
-  userId: string;
-  name: string;
-  packageType: PackageType;
-  length: number;
-  width: number;
-  height: number;
-  weightLbs: number;
-  weightOz: number;
-  isDefault: boolean;
-  sortOrder: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ShippingProvider {
-  id: string;
-  userId: string;
-  provider: ShippingProviderType;
-  isActive: boolean;
-  createdAt: Date;
-}
-
-export interface ShippingRate {
-  rateId: string;
-  carrier: string;
-  service: string;
-  price: number;
-  currency: string;
-  estimatedDays: number;
-  source: 'marketplace' | 'shippo' | 'easypost' | 'pirate_ship';
-}
 
 export interface DisclaimerAcceptance {
   id: string;
@@ -323,6 +291,8 @@ export interface RecognitionCandidate {
   conditionNotes: string;
   brand: string | null;
   model: string | null;
+  mpn?: string | null;
+  aspects?: Record<string, string[]>;
   features: string[];
   estimatedValueLow: number;
   estimatedValueHigh: number;
@@ -417,6 +387,8 @@ export interface UserPreferences {
   listingForkPref: ListingForkPref;
   listingForkCount: number;
   listingCompactMode: boolean;
+  /** F3b: true while the publish terms sheet is suppressed (7-day window, current version). */
+  disclaimerSuppressed?: boolean;
 }
 
 export type ItemCondition = 'new' | 'like_new' | 'good' | 'fair' | 'poor';
@@ -586,19 +558,12 @@ export interface ActionPill {
 export interface RichMessage {
   role: 'user' | 'assistant';
   blocks: ContentBlock[];
-  voiceTranscript?: string;
-}
-
-export interface AudioPlayback {
-  url: string;
-  duration?: number;
 }
 
 export type TextDeltaEvent = { type: 'text_delta'; text: string };
 export type ToolStartEvent = { type: 'tool_start'; toolId: string; toolName: string };
 export type ToolResultEvent = { type: 'tool_result'; toolId: string; toolName: string; structured?: unknown };
 export type ActionPillsEvent = { type: 'action_pills'; pills: ActionPill[] };
-export type AudioEvent = { type: 'audio_url'; url: string };
 export type DoneEvent = { type: 'done'; conversationId: string; model: string; inputTokens: number; outputTokens: number };
 export type ErrorEvent = { type: 'error'; message: string };
 
@@ -607,6 +572,5 @@ export type StreamEvent =
   | ToolStartEvent
   | ToolResultEvent
   | ActionPillsEvent
-  | AudioEvent
   | DoneEvent
   | ErrorEvent;

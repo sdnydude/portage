@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, desc, and, ilike, sql } from 'drizzle-orm';
-import multer from 'multer';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { conversations, items, listings, users } from '../db/schema.js';
@@ -379,39 +378,14 @@ porterRouter.post('/stream', async (req, res, next) => {
     );
 
     const { pills, cleanText } = parseActionPills(accumulatedText);
-    const spokenText = cleanText.trim();
+    const finalText = cleanText.trim();
     if (pills.length > 0) writeSSE({ type: 'action_pills', pills });
-
-    // Fire-and-forget TTS: emit audio_url on success, silently ignore on failure
-    const ttsBase = process.env.DHG_TTS_URL;
-    if (ttsBase && spokenText.trim()) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-        try {
-          const ttsRes = await fetch(`${ttsBase}/audio/speech`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ input: spokenText, model: 'turbo' }),
-            signal: controller.signal,
-          });
-          if (ttsRes.ok) {
-            const data = (await ttsRes.json()) as { url?: string };
-            if (typeof data.url === 'string') {
-              writeSSE({ type: 'audio_url', url: data.url });
-            }
-          }
-        } finally {
-          clearTimeout(timeout);
-        }
-      } catch { /* silently ignore TTS failures */ }
-    }
 
     // Persist conversation using new blocks format
     const newMessages: NormalizedMessage[] = [
       ...conv.messages,
       { role: 'user', blocks: [{ type: 'text', text: message }] },
-      { role: 'assistant', blocks: [{ type: 'text', text: spokenText }] },
+      { role: 'assistant', blocks: [{ type: 'text', text: finalText }] },
     ];
     await db.update(conversations)
       .set({ messages: newMessages, updatedAt: new Date() })
@@ -515,60 +489,5 @@ porterRouter.post('/message', async (req, res, next) => {
     });
   } catch (err) {
     next(err);
-  }
-});
-
-const upload = multer({ storage: multer.memoryStorage() });
-
-porterRouter.post('/transcribe', upload.single('audio'), async (req, res, next) => {
-  try {
-    if (!req.file) {
-      res.status(400).json({ error: 'No audio file uploaded' });
-      return;
-    }
-    const sttBase = process.env.DHG_STT_URL ?? 'http://dhg-stt:8000';
-    const form = new FormData();
-    form.append('file', new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname);
-    form.append('model', 'whisper-1');
-    const response = await fetch(`${sttBase}/v1/audio/transcriptions`, { method: 'POST', body: form });
-    if (!response.ok) {
-      res.status(502).json({ error: 'Transcription failed' });
-      return;
-    }
-    const data = await response.json() as { text: string; duration?: number };
-    res.json({ text: data.text, duration: data.duration });
-  } catch (err) {
-    next(err);
-  }
-});
-
-const speakSchema = z.object({ text: z.string().min(1).max(5000) });
-
-porterRouter.post('/speak', requireAuth, async (req, res) => {
-  const parsed = speakSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request', details: parsed.error.errors });
-    return;
-  }
-  const ttsBase = process.env.DHG_TTS_URL ?? 'http://dhg-tts:8000';
-  let ttsRes: Response;
-  try {
-    ttsRes = await fetch(`${ttsBase}/audio/speech`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: parsed.data.text, model: 'turbo' }),
-    });
-  } catch {
-    res.status(503).json({ error: 'TTS unavailable' });
-    return;
-  }
-  if (!ttsRes.ok) { res.status(503).json({ error: 'TTS unavailable' }); return; }
-  res.setHeader('Content-Type', ttsRes.headers.get('content-type') ?? 'audio/mpeg');
-  res.status(200);
-  if (ttsRes.body) {
-    const { Writable } = await import('node:stream');
-    await ttsRes.body.pipeTo(Writable.toWeb(res) as WritableStream);
-  } else {
-    res.end();
   }
 });

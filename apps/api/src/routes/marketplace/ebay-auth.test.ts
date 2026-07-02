@@ -73,6 +73,15 @@ describe('GET /marketplace/ebay/connect credential selection', () => {
     expect(res.status).toBe(200);
     expect(res.body.authUrl).toContain('prompt=login');
   });
+
+  it('requests the sell.analytics.readonly scope for the listing-optimizer traffic report', async () => {
+    const res = await request(app)
+      .get('/marketplace/ebay/connect')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(decodeURIComponent(res.body.authUrl)).toContain('sell.analytics.readonly');
+  });
 });
 
 describe('POST /marketplace/ebay/callback identity capture', () => {

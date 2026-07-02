@@ -3,6 +3,8 @@ import { computePriceBands } from '../lib/pricing.js';
 import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
+import { callTradingApi } from './ebay-trading-client.js';
+import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml, buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
 import { EBAY_USER_AGENT } from './ebay-constants.js';
 import type {
   MarketplaceAdapter,
@@ -141,6 +143,27 @@ const CONDITION_PREFERENCE_CHAINS: Record<string, string[]> = {
   poor: ['6000', '3000', '5000'],
 };
 
+const EBAY_ENUM_TO_CONDITION_ID: Record<string, string> = Object.fromEntries(
+  Object.entries(EBAY_CONDITION_ID_TO_ENUM).map(([id, en]) => [en, id]),
+);
+
+/**
+ * Numeric eBay ConditionID for the Trading API (N2 — Trading uses numeric ids, not
+ * the Inventory API's enum strings). Precedence mirrors resolveEbayCondition: an
+ * explicit numeric conditionId (per-category validated) wins, then a supplied enum
+ * is reverse-mapped, then the Portage grade's first preferred id, falling back to
+ * 3000 (generic Used) for an unknown grade.
+ */
+export function resolveEbayConditionId(portageCondition: string, specific?: Record<string, unknown>): string {
+  const explicitId = specific?.conditionId;
+  if (typeof explicitId === 'string' && explicitId.length > 0) return explicitId;
+  const enumOverride = specific?.condition;
+  if (typeof enumOverride === 'string' && EBAY_ENUM_TO_CONDITION_ID[enumOverride]) {
+    return EBAY_ENUM_TO_CONDITION_ID[enumOverride];
+  }
+  return CONDITION_PREFERENCE_CHAINS[portageCondition]?.[0] ?? '3000';
+}
+
 // Snap a Portage condition to the closest eBay grade a category supports.
 // Returns null when no preferred grade is offered (including an empty list); the
 // caller decides whether that means "ignore" (Metadata API gave nothing) or
@@ -189,6 +212,54 @@ export interface EbayListingFields {
   returnPolicyId: string;
 }
 
+/**
+ * Shape returned by the F-GATE verification read — the live eBay state for one SKU:
+ * the inventory_item's item specifics (aspects, incl. MPN) plus the offer's identity
+ * and status. Fields are optional because a never-published / orphaned offer or a
+ * missing inventory_item can each be absent independently.
+ */
+export interface EbayItemVerification {
+  /** The listing's SKU as reported by eBay, or null when GetItem returns no SKU. */
+  sku: string | null;
+  found: boolean;
+  aspects: Record<string, string[]>;
+  mpn: string | null;
+  brand: string | null;
+  status: string | null;
+  /** The Trading ItemID (eBay listing id) echoed back by GetItem, or null. */
+  listingId: string | null;
+  /** The live StartPrice on eBay, or null. */
+  price: string | null;
+}
+
+/**
+ * Minimal live-listing snapshot used to reconstruct a local item+listing when an
+ * order references a listing Portage never stored. `found:false` means GetItem
+ * failed (ended/purged/unknown ItemID) — caller falls back to the order payload.
+ */
+export interface EbayItemDetail {
+  found: boolean;
+  title: string | null;
+  photos: string[];
+  price: number | null;
+  brand: string | null;
+  aspects: Record<string, string[]>;
+}
+
+/**
+ * Analytics API traffic metrics for one listing over a date window. Any metric can
+ * be null when eBay has no data for it in the window.
+ */
+export interface EbayTrafficReport {
+  listingId: string;
+  impressions: number | null;
+  clickThroughRate: number | null;
+  views: number | null;
+  transactions: number | null;
+  salesConversionRate: number | null;
+  range: { from: string; to: string };
+}
+
 export function validateEbayListingFields(specific: Record<string, unknown>): EbayListingFields {
   const categoryId = specific.categoryId as string | undefined;
   if (!categoryId || categoryId === '99') {
@@ -232,6 +303,37 @@ export async function resolveEbayCategoryId(
     categoryName: suggestion?.categoryName ?? null,
     newlyResolved: !!suggestion?.categoryId,
   };
+}
+
+/**
+ * Normalize a marketplaceSpecific.aspects bag to eBay's array-of-strings shape
+ * (the prepare-listing AI sometimes emits a scalar per aspect, which crashed the
+ * publish path), and backfill Brand/Model/MPN from the product identity. Shared by
+ * createListing and updateListing so both send identical, valid specifics. The MPN
+ * passed here is product.mpn (real part number, or the "Does Not Apply" sentinel),
+ * mirrored into the MPN item-specific so the eBay listing actually shows it.
+ */
+function normalizeAspects(
+  rawAspects: Record<string, unknown> | undefined,
+  identity: { brand?: string | null; model?: string | null; mpn?: string },
+): Record<string, string[]> {
+  const aspects: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(rawAspects ?? {})) {
+    const arr = (Array.isArray(v) ? v : [v])
+      .map((x) => (typeof x === 'number' || typeof x === 'boolean' ? String(x) : x))
+      .filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+    if (arr.length > 0) {
+      aspects[k] = arr;
+    } else {
+      // Dropping silently would resurface as a misleading "missing aspect" error
+      // at the publish gate — make the discard observable.
+      logger.warn({ aspect: k }, 'Discarded non-string aspect value from marketplaceSpecific.aspects');
+    }
+  }
+  if (identity.brand && !aspects.Brand) aspects.Brand = [identity.brand];
+  if (identity.model && !aspects.Model) aspects.Model = [identity.model];
+  if (identity.mpn && !aspects.MPN) aspects.MPN = [identity.mpn];
+  return aspects;
 }
 
 export class EbayAdapter implements MarketplaceAdapter {
@@ -335,438 +437,338 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
   }
 
-  async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
-    const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  /**
+   * Build the Trading item payload shared by AddFixedPriceItem (publish) and
+   * ReviseFixedPriceItem (content edit). Enforces the publish guards: valid leaf
+   * category, ship-from origin ZIP + package weight/dims (inline Calculated shipping),
+   * required-aspect gate, and per-category ConditionID snap. `sku` is passed through to
+   * the item body; pass undefined on a revise with no SKU so eBay keeps the existing one.
+   */
+  private async buildTradingInput(input: MarketplaceListingInput, sku: string | undefined): Promise<TradingListingInput> {
     const specific = input.marketplaceSpecific ?? {};
-    let ebayCondition = resolveEbayCondition(input.condition, specific);
-    const fields = validateEbayListingFields(specific);
 
-    // Calculated shipping requires a package weight + dimensions (eBay error
-    // 25020). Gate pre-flight with a clear 422 instead of eBay's opaque reject.
-    // Drafts are exempt — eBay only enforces this at live publish (mirrors the
-    // aspects gate). Only fetch the policy when weight/dims are absent or invalid
-    // — the happy path adds no extra API call.
-    if (input.publishMode !== 'draft') {
-      const rawWeight = specific.weight as { value?: unknown } | undefined;
-      const weightOk = typeof rawWeight?.value === 'number' && rawWeight.value > 0;
-      const d = specific.dimensions as { length?: number; width?: number; height?: number } | undefined;
-      const dimsOk = !!d && (d.length ?? 0) > 0 && (d.width ?? 0) > 0 && (d.height ?? 0) > 0;
-      if ((!weightOk || !dimsOk) && (await this.getFulfillmentPolicy(fields.fulfillmentPolicyId))) {
-        throw new EbayWeightRequiredError();
-      }
+    // A valid leaf category is required ('99' is eBay's unset placeholder).
+    const categoryId = specific.categoryId as string | undefined;
+    if (!categoryId || categoryId === '99') {
+      throw new AppError(400, 'EBAY_CATEGORY_REQUIRED', 'A valid eBay leaf category is required to list this item.');
     }
 
-    const product: Record<string, unknown> = {
+    // Inline Calculated shipping (Decision 5) needs the seller ship-from origin ZIP
+    // plus package weight + dimensions — eBay rejects a Calculated listing without
+    // them (errors 25020/21915). These replace the old four-policy setup gate: with
+    // the account opted OUT of Business Policies there are no policy IDs to require.
+    const originPostalCode = specific.originPostalCode as string | undefined;
+    if (!originPostalCode) {
+      throw new AppError(422, 'EBAY_SHIP_FROM_REQUIRED', 'Add a ship-from ZIP to your seller profile — eBay needs it for calculated shipping.');
+    }
+    const rawWeight = specific.weight as { value?: unknown } | undefined;
+    const weightOk = typeof rawWeight?.value === 'number' && rawWeight.value > 0;
+    const dims = specific.dimensions as { length?: number; width?: number; height?: number } | undefined;
+    const dimsOk = !!dims && (dims.length ?? 0) > 0 && (dims.width ?? 0) > 0 && (dims.height ?? 0) > 0;
+    if (!weightOk || !dimsOk) {
+      throw new EbayWeightRequiredError();
+    }
+
+    // MPN mirrors into aspects; a branded item with no real part number gets eBay's
+    // "Does Not Apply" sentinel so the BrandMPN rule (25002) doesn't reject publish.
+    let mpn = input.mpn ?? undefined;
+    if (input.brand && !mpn) mpn = 'Does Not Apply';
+    const aspects = normalizeAspects(specific.aspects as Record<string, unknown> | undefined, {
+      brand: input.brand,
+      model: input.model,
+      mpn,
+    });
+
+    // Numeric ConditionID (N2); refined to a category-valid grade below.
+    let conditionId = resolveEbayConditionId(input.condition, specific);
+
+    // Publish gate: required category aspects must be present (before any eBay write),
+    // and each value is canonicalized under eBay's exact aspect name (SINGLE-cardinality
+    // collapsed to one value). Mirrors the prior Inventory gate.
+    const required = await EbayAdapter.getRequiredAspects(categoryId);
+    const byLower = new Map(Object.keys(aspects).map((k) => [k.toLowerCase(), k]));
+    const missing: Array<{ name: string; values: string[] | null }> = [];
+    const canonical: Record<string, string[]> = {};
+    for (const [name, meta] of Object.entries(required)) {
+      const ourKey = byLower.get(name.toLowerCase());
+      const vals = ourKey ? aspects[ourKey].filter((v) => v && v.trim()) : [];
+      if (vals.length === 0) {
+        if (meta.required) missing.push({ name, values: meta.values });
+        continue;
+      }
+      canonical[name] = meta.cardinality === 'MULTI' ? vals : [vals[0]];
+      byLower.delete(name.toLowerCase());
+    }
+    if (missing.length > 0) throw new EbayAspectsRequiredError(missing);
+    for (const [, key] of byLower) {
+      const vals = aspects[key].filter((v) => v && v.trim());
+      if (vals.length > 0) canonical[key] = vals;
+    }
+
+    // Snap condition to the closest grade the category accepts (error 25021), unless
+    // the caller supplied an explicit, already-valid condition/conditionId.
+    if (!specific.condition && !specific.conditionId) {
+      const validConditionIds = await EbayAdapter.getValidConditions(categoryId);
+      const selected = selectValidEbayCondition(input.condition, validConditionIds);
+      if (selected) conditionId = selected.conditionId;
+    }
+
+    const { weightMajor, weightMinor } = splitOunces(rawWeight!.value as number);
+    return {
       title: input.title,
       description: input.description,
-      imageUrls: input.photos.map((p) => p.url),
-    };
-
-    if (input.brand) product.brand = input.brand;
-    if (input.model) product.mpn = input.model;
-    if (specific.upc) product.upc = [specific.upc as string];
-    if (specific.epid) product.epid = specific.epid;
-
-    // eBay validates category-required item specifics from `aspects` (not the
-    // legacy product.brand/mpn fields), so a missing Brand aspect fails publish
-    // with error 25002. Surface Brand/Model here, but let explicit AI-prepared
-    // aspects win — curated values are authoritative over the derived fallbacks.
-    // Normalize aspect values to eBay's array-of-strings shape — the
-    // prepare-listing AI sometimes emits a single string per aspect, which
-    // previously crashed the publish path (.filter on a string).
-    const rawAspects = (specific.aspects as Record<string, unknown> | undefined) ?? {};
-    const aspects: Record<string, string[]> = {};
-    for (const [k, v] of Object.entries(rawAspects)) {
-      const arr = (Array.isArray(v) ? v : [v])
-        .map((x) => (typeof x === 'number' || typeof x === 'boolean' ? String(x) : x))
-        .filter((x): x is string => typeof x === 'string' && x.trim() !== '');
-      if (arr.length > 0) {
-        aspects[k] = arr;
-      } else {
-        // Dropping silently would resurface as a misleading "missing aspect"
-        // error at the publish gate — make the discard observable.
-        logger.warn({ aspect: k }, 'Discarded non-string aspect value from marketplaceSpecific.aspects');
-      }
-    }
-    if (input.brand && !aspects.Brand) aspects.Brand = [input.brand];
-    if (input.model && !aspects.Model) aspects.Model = [input.model];
-
-    // Publish gate: eBay rejects publish (error 25002) when a category-required
-    // item specific has no value. Check here — before any inventory/offer write
-    // — so the caller can collect the missing specifics from the user instead of
-    // creating a dead offer and surfacing eBay's opaque error. We also canonicalize
-    // each value under eBay's exact aspect name (matching is case-insensitive) and
-    // collapse SINGLE-cardinality aspects to one value, since eBay rejects extras.
-    if (input.publishMode !== 'draft') {
-      const required = await EbayAdapter.getRequiredAspects(fields.categoryId);
-      const byLower = new Map(Object.keys(aspects).map((k) => [k.toLowerCase(), k]));
-      const missing: Array<{ name: string; values: string[] | null }> = [];
-      const canonical: Record<string, string[]> = {};
-
-      for (const [name, meta] of Object.entries(required)) {
-        const ourKey = byLower.get(name.toLowerCase());
-        const vals = ourKey ? aspects[ourKey].filter((v) => v && v.trim()) : [];
-        if (vals.length === 0) {
-          if (meta.required) missing.push({ name, values: meta.values });
-          continue;
-        }
-        canonical[name] = meta.cardinality === 'MULTI' ? vals : [vals[0]];
-        byLower.delete(name.toLowerCase());
-      }
-      if (missing.length > 0) throw new EbayAspectsRequiredError(missing);
-
-      // Preserve any extra specifics we hold that aren't part of the category schema.
-      for (const [, key] of byLower) {
-        const vals = aspects[key].filter((v) => v && v.trim());
-        if (vals.length > 0) canonical[key] = vals;
-      }
-      if (Object.keys(canonical).length > 0) product.aspects = canonical;
-
-      // eBay rejects a condition that isn't valid for the category (error 25021).
-      // Snap the item to the closest grade this category actually accepts — but
-      // never override an explicit, already-valid eBay enum the caller supplied.
-      if (!specific.condition) {
-        const validConditionIds = await EbayAdapter.getValidConditions(fields.categoryId);
-        const conditionFix = resolveEbayCategoryCondition(input.condition, validConditionIds);
-        if (conditionFix.condition) ebayCondition = conditionFix.condition;
-      }
-    } else if (Object.keys(aspects).length > 0) {
-      product.aspects = aspects;
-    }
-
-    const inventoryItem: Record<string, unknown> = {
-      availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
-      condition: ebayCondition,
-      product,
-    };
-
-    if (specific.conditionDescription) {
-      inventoryItem.conditionDescription = specific.conditionDescription;
-    }
-
-    if (specific.weight || specific.dimensions) {
-      // packageType is deliberately NOT sent. eBay rejects the whole
-      // <ShippingPackage> (error 25101 / 216305) when the packageType isn't
-      // supported by the courier in the resolved fulfillment policy, and it's
-      // optional — calculated shipping computes rates from weight + dimensions
-      // alone. We keep the seller's chosen packageType stored as metadata only.
-      const pkg: Record<string, unknown> = {};
-      if (specific.weight) {
-        pkg.weight = specific.weight;
-      }
-      if (specific.dimensions) {
-        pkg.dimensions = specific.dimensions;
-      }
-      inventoryItem.packageWeightAndSize = pkg;
-    }
-
-    await this.request(`/sell/inventory/v1/inventory_item/${sku}`, {
-      method: 'PUT',
-      body: JSON.stringify(inventoryItem),
-    });
-
-    logger.info({ userId: this.userId, sku }, 'eBay inventory item created');
-
-    // Re-publish reuses the existing offer (no duplicate); a first-time listing POSTs a new one.
-    const boTerms = EbayAdapter.bestOfferTerms(specific, input.price, input.currency);
-    const offerBody = (withBestOffer: boolean): string => JSON.stringify({
+      categoryId,
+      price: input.price,
+      currency: input.currency,
+      quantity: input.quantity ?? 1,
+      conditionId,
+      conditionDescription: specific.conditionDescription as string | undefined,
       sku,
-      marketplaceId: 'EBAY_US',
-      format: 'FIXED_PRICE',
-      listingDescription: input.description,
-      pricingSummary: {
-        price: { value: String(input.price), currency: input.currency },
+      pictureUrls: input.photos.map((p) => p.url),
+      aspects: canonical,
+      shipping: {
+        originPostalCode,
+        weightMajor,
+        weightMinor,
+        dimensions: { length: dims!.length!, width: dims!.width!, height: dims!.height! },
       },
-      categoryId: fields.categoryId,
-      merchantLocationKey: fields.merchantLocationKey,
-      listingPolicies: {
-        fulfillmentPolicyId: fields.fulfillmentPolicyId,
-        paymentPolicyId: fields.paymentPolicyId,
-        returnPolicyId: fields.returnPolicyId,
-        ...(withBestOffer ? boTerms : {}),
-      },
-    });
+      bestOfferAutoAcceptPrice: (specific as Partial<EbayPreparedFields>).bestOfferAutoAcceptPrice,
+    };
+  }
 
-    // Set when the retry-without fallback fires — the seller opted into Best
-    // Offer and the listing went up without it, so the result must say so.
+  async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
+    const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const tradingInput = await this.buildTradingInput(input, sku);
+
+    const token = await getEbayAccessToken(this.userId);
+
+    // Best Offer category support is not verifiable pre-flight — on a best-offer
+    // rejection, retry once without it rather than failing the whole listing.
     let bestOfferDowngraded = false;
-    const BEST_OFFER_DOWNGRADE_WARNING =
-      'Listed without Best Offer auto-accept — eBay rejected it for this listing.';
+    const BEST_OFFER_DOWNGRADE_WARNING = 'Listed without Best Offer auto-accept — eBay rejected it for this listing.';
+    const callAdd = (withBestOffer: boolean): Promise<Record<string, unknown>> =>
+      callTradingApi(
+        'AddFixedPriceItem',
+        buildAddFixedPriceItemXml(
+          withBestOffer ? tradingInput : { ...tradingInput, bestOfferAutoAcceptPrice: undefined },
+          token,
+        ),
+        token,
+      );
 
-    const postOffer = async (): Promise<{ offerId: string }> => {
-      try {
-        return await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
-          method: 'POST',
-          body: offerBody(true),
-        });
-      } catch (err) {
-        // Best-Offer category support is not verifiable pre-flight — on a
-        // best-offer-specific rejection, retry once without the terms rather
-        // than failing the whole listing.
-        if (Object.keys(boTerms).length > 0 && EbayAdapter.isBestOfferRejection(err)) {
-          logger.warn({ userId: this.userId, sku, error: (err as Error).message, details: err instanceof AppError ? err.details : undefined }, 'eBay rejected bestOfferTerms — retrying offer without Best Offer');
-          bestOfferDowngraded = true;
-          return await this.request<{ offerId: string }>('/sell/inventory/v1/offer', {
-            method: 'POST',
-            body: offerBody(false),
-          });
-        }
-        // Stable SKU: a prior attempt (that later failed at publish) may have
-        // already created this offer. eBay rejects the duplicate with error 25002;
-        // recover by reusing the existing offer instead of failing the publish —
-        // and without churning a second offer (an ATO signal).
-        if (EbayAdapter.isOfferExistsError(err)) {
-          const existing = await this.request<{ offers?: Array<{ offerId: string }> }>(
-            `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=EBAY_US`,
-            { method: 'GET' },
-          );
-          const existingOfferId = existing.offers?.[0]?.offerId;
-          if (existingOfferId) {
-            // The existing offer still carries the PRIOR attempt's price/policies/Best
-            // Offer. PUT the freshly-built body so the subsequent /publish activates the
-            // seller's CURRENT intent rather than stale terms — mirroring updateListing's
-            // retry-without-Best-Offer fallback.
-            try {
-              await this.request(`/sell/inventory/v1/offer/${existingOfferId}`, {
-                method: 'PUT',
-                body: offerBody(true),
-              });
-            } catch (putErr) {
-              if (Object.keys(boTerms).length > 0 && EbayAdapter.isBestOfferRejection(putErr)) {
-                logger.warn({ userId: this.userId, sku, offerId: existingOfferId, error: (putErr as Error).message }, 'eBay rejected bestOfferTerms on offer-exists recovery — retrying without Best Offer');
-                bestOfferDowngraded = true;
-                await this.request(`/sell/inventory/v1/offer/${existingOfferId}`, {
-                  method: 'PUT',
-                  body: offerBody(false),
-                });
-              } else {
-                throw putErr;
-              }
-            }
-            return { offerId: existingOfferId };
-          }
-        }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = await callAdd(true);
+    } catch (err) {
+      if (tradingInput.bestOfferAutoAcceptPrice && EbayAdapter.isBestOfferRejection(err)) {
+        logger.warn({ userId: this.userId, sku, error: (err as Error).message }, 'eBay rejected Best Offer — retrying AddFixedPriceItem without it');
+        bestOfferDowngraded = true;
+        parsed = await callAdd(false);
+      } else {
         throw err;
       }
-    };
-
-    const offerData: { offerId: string } = input.ebayOfferId
-      ? { offerId: input.ebayOfferId }
-      : await postOffer();
-
-    // Draft mode: the unpublished offer exists on eBay (offerId + SKU) but we
-    // deliberately skip /publish. This is an intentional draft, not a publish
-    // failure, so it carries no warning — except a Best Offer downgrade.
-    if (input.publishMode === 'draft') {
-      logger.info({ userId: this.userId, sku, offerId: offerData.offerId }, 'eBay offer saved as draft (publish skipped)');
-      return {
-        marketplaceListingId: offerData.offerId,
-        ebayOfferId: offerData.offerId,
-        ebaySku: sku,
-        status: 'draft',
-        ...(bestOfferDowngraded ? { warning: BEST_OFFER_DOWNGRADE_WARNING } : {}),
-      };
     }
 
-    let listingId: string;
-    let status: 'active' | 'draft' | 'pending' = 'draft';
-
-    let marketplaceUrl: string | undefined;
-    let warning: string | undefined;
-
-    try {
-      const publishResult = await this.request<{ listingId: string }>(
-        `/sell/inventory/v1/offer/${offerData.offerId}/publish`,
-        { method: 'POST' },
-      );
-      listingId = publishResult.listingId;
-      status = 'active';
-      marketplaceUrl = `https://www.ebay.com/itm/${listingId}`;
-      logger.info({ userId: this.userId, listingId }, 'eBay listing published');
-    } catch (err) {
-      listingId = offerData.offerId;
-      status = 'draft';
-      // request() already parsed eBay's error body into a sanitized message —
-      // surface the actual reason (account lock, missing weight, …), not just
-      // the generic fallback line.
-      warning = `Listing created as draft — publish to eBay failed: ${err instanceof Error ? err.message : String(err)}`;
-      logger.warn({ userId: this.userId, offerId: offerData.offerId, err: (err as Error).message }, 'eBay listing created as draft — publish failed');
+    // Warning/PartialFailure still carries an ItemID (M7) — callTradingApi only
+    // throws on Failure, so a returned parse means the listing exists.
+    const itemId = parseAddItemResponse(parsed);
+    if (!itemId) {
+      throw new AppError(502, 'EBAY_PUBLISH_FAILED', 'eBay accepted the request but returned no ItemID.');
     }
-
-    if (bestOfferDowngraded) {
-      warning = warning ? `${warning} ${BEST_OFFER_DOWNGRADE_WARNING}` : BEST_OFFER_DOWNGRADE_WARNING;
-    }
+    logger.info({ userId: this.userId, itemId, sku }, 'eBay listing published via AddFixedPriceItem');
 
     return {
-      marketplaceListingId: listingId,
-      marketplaceUrl,
-      status,
-      warning,
-      ebayOfferId: offerData.offerId,
+      marketplaceListingId: itemId,
+      marketplaceUrl: `https://www.ebay.com/itm/${itemId}`,
+      status: 'active',
       ebaySku: sku,
+      ...(bestOfferDowngraded ? { warning: BEST_OFFER_DOWNGRADE_WARNING } : {}),
     };
   }
 
   async updateListing(marketplaceListingId: string, input: Partial<MarketplaceListingInput>): Promise<MarketplaceListingResult> {
-    if (input.ebaySku) {
-      let ebayCondition = resolveEbayCondition(input.condition ?? 'good', input.marketplaceSpecific);
-      const specific = input.marketplaceSpecific ?? {};
+    const token = await getEbayAccessToken(this.userId);
+    const marketplaceUrl = `https://www.ebay.com/itm/${marketplaceListingId}`;
+    const specific = (input.marketplaceSpecific ?? {}) as Record<string, unknown>;
 
-      // Same per-category guard as publish (eBay error 25021): snap to a grade the
-      // category accepts, unless an explicit valid enum was supplied.
-      if (specific.categoryId && !specific.condition) {
-        const validConditionIds = await EbayAdapter.getValidConditions(specific.categoryId as string);
-        const conditionFix = resolveEbayCategoryCondition(input.condition ?? 'good', validConditionIds);
-        if (conditionFix.condition) ebayCondition = conditionFix.condition;
-      }
-
-      const product: Record<string, unknown> = {};
-      if (input.title) product.title = input.title;
-      if (input.description) product.description = input.description;
-      if (input.photos) product.imageUrls = input.photos.map((p) => p.url);
-      if (input.brand) product.brand = input.brand;
-      if (input.model) product.mpn = input.model;
-      if (specific.upc) product.upc = [specific.upc as string];
-      if (specific.epid) product.epid = specific.epid;
-      if (specific.aspects) product.aspects = specific.aspects;
-
-      const inventoryItem: Record<string, unknown> = {
-        availability: { shipToLocationAvailability: { quantity: input.quantity ?? 1 } },
-        condition: ebayCondition,
-        product,
-      };
-
-      if (specific.conditionDescription) {
-        inventoryItem.conditionDescription = specific.conditionDescription;
-      }
-
-      if (specific.weight || specific.dimensions) {
-        // packageType is deliberately NOT sent — symmetry with createListing.
-        // eBay rejects the whole <ShippingPackage> (error 25101 / 216305) when
-        // packageType isn't supported by the courier in the resolved fulfillment
-        // policy, and it's optional: calculated shipping computes rates from
-        // weight + dimensions alone. The seller's packageType stays metadata-only.
-        const pkg: Record<string, unknown> = {};
-        if (specific.weight) pkg.weight = specific.weight;
-        if (specific.dimensions) pkg.dimensions = specific.dimensions;
-        inventoryItem.packageWeightAndSize = pkg;
-      }
-
-      await this.request(`/sell/inventory/v1/inventory_item/${input.ebaySku}`, {
-        method: 'PUT',
-        body: JSON.stringify(inventoryItem),
-      });
-
-      logger.info({ userId: this.userId, sku: input.ebaySku }, 'eBay inventory item updated');
-    }
-
-    const offerId = input.ebayOfferId ?? marketplaceListingId;
-    const updates: Record<string, unknown> = {};
-    if (input.title) updates.title = input.title;
-    if (input.description) updates.listingDescription = input.description;
-    if (input.price) {
-      updates.pricingSummary = {
-        price: { value: String(input.price), currency: input.currency ?? 'USD' },
-      };
-    }
-
-    // Best Offer on update: only when the COMPLETE policy set is in hand —
-    // eBay's offer PUT replaces listingPolicies wholesale (per updateOffer
-    // docs: complex provided fields are replaced, not merged), so a partial
-    // block (bestOfferTerms alone) would strip the policy ids off the live offer.
-    const updateSpecific = (input.marketplaceSpecific ?? {}) as Record<string, unknown>;
-    const updateBoTerms = input.price
-      ? EbayAdapter.bestOfferTerms(updateSpecific, input.price, input.currency ?? 'USD')
-      : {};
-    const hasFullPolicies = Boolean(
-      updateSpecific.fulfillmentPolicyId && updateSpecific.paymentPolicyId && updateSpecific.returnPolicyId,
+    // A content edit (anything that changes the item body) goes through
+    // ReviseFixedPriceItem with the full item payload. A price/quantity-only edit
+    // takes the ReviseInventoryStatus fast path — no item rebuild, no aspect gate.
+    const hasContentChange = Boolean(
+      input.title || input.description || input.photos || input.brand || input.model || input.mpn ||
+      input.condition || input.features ||
+      specific.aspects || specific.weight || specific.dimensions || specific.categoryId ||
+      specific.conditionId || specific.condition || specific.conditionDescription,
     );
-    if (Object.keys(updateBoTerms).length > 0 && hasFullPolicies) {
-      updates.listingPolicies = {
-        fulfillmentPolicyId: updateSpecific.fulfillmentPolicyId,
-        paymentPolicyId: updateSpecific.paymentPolicyId,
-        returnPolicyId: updateSpecific.returnPolicyId,
-        ...updateBoTerms,
-      };
+
+    if (!hasContentChange && (input.price !== undefined || input.quantity !== undefined)) {
+      await callTradingApi(
+        'ReviseInventoryStatus',
+        buildReviseInventoryStatusXml(
+          marketplaceListingId,
+          { price: input.price, quantity: input.quantity, currency: input.currency ?? 'USD' },
+          token,
+        ),
+        token,
+      );
+      logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay price/qty revised via ReviseInventoryStatus');
+      return { marketplaceListingId, marketplaceUrl, status: 'active' };
     }
 
-    let updateWarning: string | undefined;
-    if (Object.keys(updates).length > 0) {
-      try {
-        await this.request(`/sell/inventory/v1/offer/${offerId}`, {
-          method: 'PUT',
-          body: JSON.stringify(updates),
-        });
-      } catch (err) {
-        // Same retry-once pattern as createListing, but here the WHOLE
-        // listingPolicies block is dropped — bestOfferTerms can't be removed
-        // without resending the block, and a partial block would strip ids.
-        if (!updates.listingPolicies || !EbayAdapter.isBestOfferRejection(err)) {
-          throw err;
-        }
-        logger.warn({ userId: this.userId, offerId, error: (err as Error).message, details: err instanceof AppError ? err.details : undefined }, 'eBay rejected bestOfferTerms on update — retrying without Best Offer');
-        updateWarning = 'Updated without Best Offer auto-accept — eBay rejected it for this listing.';
-        delete updates.listingPolicies;
-        if (Object.keys(updates).length > 0) {
-          await this.request(`/sell/inventory/v1/offer/${offerId}`, {
-            method: 'PUT',
-            body: JSON.stringify(updates),
-          });
-        }
+    // Full content revise: rebuild the item body with the same guards as publish. The
+    // SKU is only re-sent when the caller supplies one, so a revise never rewrites it.
+    const tradingInput = await this.buildTradingInput(input as MarketplaceListingInput, input.ebaySku);
+
+    // Best Offer category support isn't verifiable pre-flight — on a best-offer
+    // rejection, retry the revise once without it rather than failing the whole edit.
+    let bestOfferDowngraded = false;
+    const BEST_OFFER_DOWNGRADE_WARNING = 'Updated without Best Offer auto-accept — eBay rejected it for this listing.';
+    const callRevise = (withBestOffer: boolean): Promise<Record<string, unknown>> =>
+      callTradingApi(
+        'ReviseFixedPriceItem',
+        buildReviseFixedPriceItemXml(
+          marketplaceListingId,
+          withBestOffer ? tradingInput : { ...tradingInput, bestOfferAutoAcceptPrice: undefined },
+          token,
+        ),
+        token,
+      );
+
+    try {
+      await callRevise(true);
+    } catch (err) {
+      if (tradingInput.bestOfferAutoAcceptPrice && EbayAdapter.isBestOfferRejection(err)) {
+        logger.warn({ userId: this.userId, itemId: marketplaceListingId, error: (err as Error).message }, 'eBay rejected Best Offer — retrying ReviseFixedPriceItem without it');
+        bestOfferDowngraded = true;
+        await callRevise(false);
+      } else {
+        throw err;
       }
     }
 
-    logger.info({ userId: this.userId, marketplaceListingId }, 'eBay listing updated');
-
+    logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay listing revised via ReviseFixedPriceItem');
     return {
       marketplaceListingId,
-      marketplaceUrl: `https://www.ebay.com/itm/${marketplaceListingId}`,
+      marketplaceUrl,
       status: 'active',
-      ...(updateWarning ? { warning: updateWarning } : {}),
+      ...(bestOfferDowngraded ? { warning: BEST_OFFER_DOWNGRADE_WARNING } : {}),
     };
   }
 
-  async bulkPublishOffers(offerIds: string[]): Promise<Array<{ offerId: string; listingId?: string; success: boolean; error?: string }>> {
-    const data = await this.request<{
-      responses: Array<{
-        statusCode: number;
-        offerId: string;
-        listingId?: string;
-        errors?: Array<{ message: string }>;
-      }>;
-    }>('/sell/inventory/v1/bulk_publish_offer', {
-      method: 'POST',
-      body: JSON.stringify({ requests: offerIds.map((offerId) => ({ offerId })) }),
-    });
-
-    return data.responses.map((r) => ({
-      offerId: r.offerId,
-      listingId: r.statusCode === 200 ? r.listingId : undefined,
-      success: r.statusCode === 200,
-      error: r.statusCode !== 200 ? r.errors?.[0]?.message : undefined,
-    }));
-  }
-
+  /**
+   * End a live eBay listing via Trading EndFixedPriceItem. Under Trade-First the
+   * ItemID is the listing id — there is no offer to withdraw or DELETE (the old
+   * Inventory offer paths 404 on a Trading ItemID).
+   */
   async deleteListing(marketplaceListingId: string): Promise<void> {
-    await this.request(`/sell/inventory/v1/offer/${marketplaceListingId}`, {
-      method: 'DELETE',
-    });
+    const token = await getEbayAccessToken(this.userId);
+    await callTradingApi('EndFixedPriceItem', buildEndFixedPriceItemXml(marketplaceListingId, token), token);
 
-    logger.info({ userId: this.userId, marketplaceListingId }, 'eBay listing deleted');
+    logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay listing ended via EndFixedPriceItem');
   }
 
   async getListingStatus(marketplaceListingId: string): Promise<'active' | 'sold' | 'ended' | 'unknown'> {
     try {
-      const data = await this.request<{ status: string }>(`/sell/inventory/v1/offer/${marketplaceListingId}`);
-
-      switch (data.status) {
-        case 'PUBLISHED': return 'active';
-        case 'ENDED': return 'ended';
-        default: return 'unknown';
-      }
+      const token = await getEbayAccessToken(this.userId);
+      const parsed = await callTradingApi('GetItem', buildGetItemXml(marketplaceListingId, token), token);
+      return parseGetItemStatus(parsed);
     } catch {
       return 'unknown';
     }
+  }
+
+  /**
+   * Read back the live eBay state for a published listing via Trading GetItem,
+   * keyed by the Trading ItemID (= marketplaceListingId). Returns item specifics
+   * (aspects), Brand/MPN, ListingStatus and price. There is no Inventory offer to
+   * read under Trade-First — GetItem is the single source of truth. A read failure
+   * (ended/unknown ItemID) reports found:false rather than throwing.
+   */
+  async getEbayItemVerification(itemId: string): Promise<EbayItemVerification> {
+    try {
+      const token = await getEbayAccessToken(this.userId);
+      const parsed = await callTradingApi('GetItem', buildGetItemXml(itemId, token), token);
+      const v = parseGetItemVerification(parsed);
+      return { sku: v.sku, found: v.found, aspects: v.aspects, mpn: v.mpn, brand: v.brand, status: v.status, listingId: v.listingId, price: v.price };
+    } catch {
+      return { sku: null, found: false, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null };
+    }
+  }
+
+  /**
+   * Fetch enough of a live eBay listing (via Trading GetItem) to reconstruct a
+   * local item+listing when an order arrives for a listing Portage never stored
+   * (orphan-order backfill in /orders/sync). Returns found:false on any read
+   * failure so the caller can fall back to the order payload.
+   */
+  async getItemDetail(itemId: string): Promise<EbayItemDetail> {
+    try {
+      const token = await getEbayAccessToken(this.userId);
+      const parsed = await callTradingApi('GetItem', buildGetItemXml(itemId, token), token);
+      const v = parseGetItemVerification(parsed);
+      const price = v.price != null && v.price !== '' ? Number(v.price) : null;
+      return {
+        found: v.found,
+        title: v.title,
+        photos: v.photos,
+        price: price != null && Number.isFinite(price) ? price : null,
+        brand: v.brand,
+        aspects: v.aspects,
+      };
+    } catch {
+      return { found: false, title: null, photos: [], price: null, brand: null, aspects: {} };
+    }
+  }
+
+  // Analytics API traffic report for a single published listing — impressions,
+  // click-through rate, views, transactions, conversion. Requires the user token
+  // to carry the sell.analytics.readonly scope (added 2026-06; pre-existing
+  // connections must reconnect to re-consent). Returns null when eBay has no
+  // record for the listing in the window.
+  async getTrafficReport(listingId: string, days = 30): Promise<EbayTrafficReport | null> {
+    // eBay traffic data lags ~a day; end the window at yesterday so the range is
+    // always fully populated and never rejected as "future".
+    const ymd = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
+    const to = new Date();
+    to.setUTCDate(to.getUTCDate() - 1);
+    const from = new Date(to);
+    from.setUTCDate(from.getUTCDate() - (days - 1));
+
+    const metricKeys = ['LISTING_IMPRESSION_TOTAL', 'CLICK_THROUGH_RATE', 'LISTING_VIEWS_TOTAL', 'TRANSACTION', 'SALES_CONVERSION_RATE'];
+    const params = new URLSearchParams();
+    params.set('dimension', 'LISTING');
+    params.set('metric', metricKeys.join(','));
+    params.append('filter', 'marketplace_ids:{EBAY_US}');
+    params.append('filter', `listing_ids:{${listingId}}`);
+    params.append('filter', `date_range:[${ymd(from)}..${ymd(to)}]`);
+
+    const data = await this.request<{
+      header?: { metrics?: Array<{ key: string }> };
+      records?: Array<{ dimensionValues?: Array<{ value: string }>; metricValues?: Array<{ value: number | null }> }>;
+    }>(`/sell/analytics/v1/traffic_report?${params.toString()}`);
+
+    const record = (data.records ?? []).find(
+      (r) => r.dimensionValues?.[0]?.value === listingId,
+    ) ?? data.records?.[0];
+    if (!record) return null;
+
+    // metricValues are positional, parallel to header.metrics; map by key so we
+    // are not dependent on eBay's column order.
+    const keys = (data.header?.metrics ?? []).map((m) => m.key);
+    const valueFor = (key: string): number | null => {
+      const i = keys.indexOf(key);
+      return i >= 0 ? record.metricValues?.[i]?.value ?? null : null;
+    };
+
+    return {
+      listingId,
+      impressions: valueFor('LISTING_IMPRESSION_TOTAL'),
+      clickThroughRate: valueFor('CLICK_THROUGH_RATE'),
+      views: valueFor('LISTING_VIEWS_TOTAL'),
+      transactions: valueFor('TRANSACTION'),
+      salesConversionRate: valueFor('SALES_CONVERSION_RATE'),
+      range: { from: ymd(from), to: ymd(to) },
+    };
   }
 
   async getOrders(since?: Date): Promise<MarketplaceOrderResult[]> {
@@ -778,13 +780,13 @@ export class EbayAdapter implements MarketplaceAdapter {
     const data = await this.request<{
       orders?: Array<{
         orderId: string;
+        creationDate?: string;
         buyer: { username: string };
         pricingSummary: {
           total: { value: string; currency: string };
           deliveryCost: { value: string };
         };
-        totalFeeBasisAmount?: { value: string };
-        lineItems?: Array<{ legacyItemId: string }>;
+        lineItems?: Array<{ legacyItemId: string; title?: string }>;
         fulfillmentStartInstructions?: Array<{
           shippingStep?: {
             shipTo?: {
@@ -810,11 +812,19 @@ export class EbayAdapter implements MarketplaceAdapter {
       return {
         marketplaceOrderId: order.orderId,
         marketplaceListingId: order.lineItems?.[0]?.legacyItemId ?? null,
+        title: order.lineItems?.[0]?.title,
         buyerUsername: order.buyer.username,
         salePrice: parseFloat(order.pricingSummary.total.value),
         shippingCost: parseFloat(order.pricingSummary.deliveryCost?.value ?? '0'),
-        marketplaceFees: parseFloat(order.totalFeeBasisAmount?.value ?? '0'),
+        // The Fulfillment API does NOT return the fee amount — its
+        // totalFeeBasisAmount is the fee BASIS (item + shipping the fee is
+        // calculated FROM), so mapping it here produced negative "profit".
+        // Real fees require the Finances API; until then fees are unknown (0).
+        marketplaceFees: 0,
         currency: order.pricingSummary.total.currency,
+        // eBay's actual sale date. Without this, orders.ts falls back to
+        // `new Date()` and every synced order shows today's date.
+        soldAt: order.creationDate ? new Date(order.creationDate) : undefined,
         shippingAddress: {
           name: shipTo?.fullName ?? '',
           street1: address?.addressLine1 ?? '',

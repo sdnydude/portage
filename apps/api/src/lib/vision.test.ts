@@ -1,4 +1,4 @@
-import { identifyItem, identifyItemDetailed, identifyItemsMulti } from './vision.js';
+import { identifyItem, identifyItemDetailed, identifyItemsMulti, generateListingFields } from './vision.js';
 import { AppError } from '../middleware/error.js';
 
 vi.mock('./ai-client.js', () => ({
@@ -7,7 +7,7 @@ vi.mock('./ai-client.js', () => ({
   chatText: vi.fn(),
 }));
 
-import { analyzeImage, analyzeImages } from './ai-client.js';
+import { analyzeImage, analyzeImages, chatText } from './ai-client.js';
 
 const VALID_VISION_JSON = {
   name: 'Sony WH-1000XM4 Headphones',
@@ -192,6 +192,40 @@ describe('identifyItemDetailed', () => {
     expect(result.candidates[0].packageType).toBe('MAILING_BOX');
   });
 
+  it('parses a real MPN (part number) on a candidate', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify({
+        candidates: [{
+          name: 'Sony WH-1000XM4', description: 'd', category: 'electronics', condition: 'good',
+          brand: 'Sony', model: 'WH-1000XM4', mpn: 'WH1000XM4/B',
+          estimatedValueLow: 150, estimatedValueHigh: 200, confidence: 0.9,
+        }],
+        reasoning: [],
+      }),
+      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await identifyItemDetailed('base64data', 'image/jpeg');
+    expect(result.candidates[0].mpn).toBe('WH1000XM4/B');
+  });
+
+  it('preserves a provided candidate aspects bag', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify({
+        candidates: [{
+          name: 'Sony WH-1000XM4', description: 'd', category: 'electronics', condition: 'good',
+          brand: 'Sony', model: 'WH-1000XM4', aspects: { Brand: ['Sony'] },
+          estimatedValueLow: 150, estimatedValueHigh: 200, confidence: 0.9,
+        }],
+        reasoning: [],
+      }),
+      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await identifyItemDetailed('base64data', 'image/jpeg');
+    expect(result.candidates[0].aspects).toEqual({ Brand: ['Sony'] });
+  });
+
   it('falls back to single-candidate VisionResult when detailed parse fails', async () => {
     vi.mocked(analyzeImage).mockResolvedValue({
       text: JSON.stringify(VALID_VISION_JSON),
@@ -320,5 +354,73 @@ describe('identifyItemsMulti', () => {
 
     const result = await identifyItemsMulti(mockImages);
     expect(result.candidates[0].condition).toBe('like_new');
+  });
+});
+
+describe('generateListingFields', () => {
+  const baseInput = {
+    scanData: { brand: 'Sony', model: 'WH-1000XM4', category: 'electronics', condition: 'good', conditionNotes: '', features: [], description: 'd' },
+    photoUrls: [],
+    ebayCategorySuggestion: { categoryId: '9355', categoryName: 'Headphones' },
+    requiredAspects: {},
+    soldComps: [], activeComps: [], reverbComps: [],
+    sellerDefaults: { weightUnit: 'oz', dimensionUnit: 'in', packageType: 'box', currency: 'USD' },
+  };
+
+  it('uses provided images via the vision path instead of fetching from photoUrls', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: ['Sony'] } } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    const images = [{ base64: 'b64', mediaType: 'image/jpeg' }];
+    await generateListingFields({ ...baseInput, images });
+
+    expect(analyzeImages).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(analyzeImages).mock.calls[0][0]).toEqual(images);
+  });
+
+  it('coerces scalar-string aspect values to string arrays', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: 'Sony', Color: ['Black'] } } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    expect(result.ebay?.aspects).toEqual({ Brand: ['Sony'], Color: ['Black'] });
+  });
+
+  it('degrades a malformed aspect value instead of throwing a 502 — good values survive', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: ['Sony'], Bad: null } } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    expect(result.ebay?.aspects?.Brand).toEqual(['Sony']);
+  });
+
+  it('runs the constrained pick pass for a required enum aspect the first call left unfilled', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: ['Sony'] } } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+    vi.mocked(chatText).mockResolvedValue({
+      text: '{"Type":"Canal Earbud (In Ear Canal)"}',
+      provider: 'gemini', model: 'gemini-2.5-flash',
+    });
+
+    const result = await generateListingFields({
+      ...baseInput,
+      images: [{ base64: 'b64', mediaType: 'image/jpeg' }],
+      requiredAspects: {
+        Type: { required: true, values: ['Canal Earbud (In Ear Canal)', 'Ear-Cup (Over the Ear)', 'Ear-Pad (On the Ear)'] },
+        Brand: { required: true, values: null },
+      },
+    });
+
+    expect(result.ebay?.aspects).toEqual({ Brand: ['Sony'], Type: ['Canal Earbud (In Ear Canal)'] });
   });
 });

@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
+import { CURRENT_DISCLAIMER_VERSION } from '@portage/shared';
 
 const updatePrefsSchema = z.object({
   listingInterface: z.enum(['conversational', 'swipe', 'hybrid']).optional(),
@@ -24,10 +25,21 @@ preferencesRouter.get('/', async (req, res, next) => {
       listingForkPref: users.listingForkPref,
       listingForkCount: users.listingForkCount,
       listingCompactMode: users.listingCompactMode,
+      disclaimerSuppressUntil: users.disclaimerSuppressUntil,
+      disclaimerSuppressVersion: users.disclaimerSuppressVersion,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
-    res.json(user);
+
+    // F3b: the terms sheet is suppressed only while the window is open AND the
+    // stored version matches current (a disclaimer bump voids suppression).
+    const { disclaimerSuppressUntil, disclaimerSuppressVersion, ...prefs } = user;
+    const disclaimerSuppressed =
+      disclaimerSuppressUntil != null &&
+      disclaimerSuppressUntil.getTime() > Date.now() &&
+      disclaimerSuppressVersion === CURRENT_DISCLAIMER_VERSION;
+
+    res.json({ ...prefs, disclaimerSuppressed });
   } catch (err) {
     next(err);
   }

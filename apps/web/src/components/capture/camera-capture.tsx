@@ -93,6 +93,7 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
         <button
           onClick={handleCapture}
           disabled={!isReady || isCapturing}
+          aria-label="Capture photo"
           className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center disabled:opacity-40 transition-opacity active:scale-95"
         >
           <div className={`w-16 h-16 rounded-full ${isCapturing ? "bg-red-500" : "bg-white"} transition-colors`} />

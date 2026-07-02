@@ -131,20 +131,6 @@ export default function MorePage() {
           />
 
           <SettingsLink
-            href="/settings/shipping"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="1" y="3" width="15" height="13" rx="2" />
-                <path d="M16 8h4l3 3v5a2 2 0 01-2 2h-1" />
-                <circle cx="5.5" cy="18.5" r="2.5" />
-                <circle cx="18.5" cy="18.5" r="2.5" />
-              </svg>
-            }
-            title="Shipping"
-            description="Ship-from address, presets, provider"
-          />
-
-          <SettingsLink
             href="/settings/notifications"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

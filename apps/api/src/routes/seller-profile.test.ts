@@ -4,7 +4,6 @@ import { loadEnv } from '../lib/env.js';
 import { db } from '../db/index.js';
 import { getEbayAccessToken } from '../marketplace/token-manager.js';
 import { createTestToken } from '../test/helpers.js';
-import { EBAY_USER_AGENT } from '../marketplace/ebay-constants.js';
 
 vi.mock('../db/index.js', () => ({
   db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn() },
@@ -13,16 +12,6 @@ vi.mock('../db/index.js', () => ({
 vi.mock('../marketplace/token-manager.js', () => ({
   getEbayAccessToken: vi.fn(),
 }));
-
-const SHIP_FROM = {
-  name: 'Jane Seller',
-  street1: '123 Main St',
-  street2: 'Apt 4',
-  city: 'Austin',
-  state: 'TX',
-  zip: '78701',
-  country: 'US',
-};
 
 // db.select() is called once per table; queue a result per call in order.
 function mockSelectOnce(rows: unknown[]) {
@@ -43,38 +32,6 @@ function mockUpdateReturns(rows: unknown[]) {
       }),
     }),
   } as any);
-}
-
-// URL + method routed fetch — the REAL adapter runs against this, so the same
-// stub serves both the GET idempotency reads and the POST create calls.
-function routedFetch(overrides: Record<string, Response> = {}) {
-  return vi.fn(async (url: any, opts: any) => {
-    const u = String(url);
-    const method = (opts?.method ?? 'GET').toUpperCase();
-    const key = `${method} ${
-      u.includes('/fulfillment_policy') ? 'fulfillment' :
-      u.includes('/payment_policy') ? 'payment' :
-      u.includes('/return_policy') ? 'return' :
-      (u.includes('/inventory/v1/location') && !u.includes('/location/')) ? 'location-list' :
-      u.includes('/location/') ? 'location' :
-      u.includes('/commerce/identity') ? 'identity' : 'other'
-    }`;
-    if (overrides[key]) return overrides[key].clone();
-    // sensible defaults: empty policy lists, location absent, creates succeed
-    switch (key) {
-      case 'GET fulfillment': return new Response(JSON.stringify({ fulfillmentPolicies: [] }), { status: 200 });
-      case 'GET payment': return new Response(JSON.stringify({ paymentPolicies: [] }), { status: 200 });
-      case 'GET return': return new Response(JSON.stringify({ returnPolicies: [] }), { status: 200 });
-      case 'POST fulfillment': return new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-1' }), { status: 201 });
-      case 'POST payment': return new Response(JSON.stringify({ paymentPolicyId: 'pp-1' }), { status: 201 });
-      case 'POST return': return new Response(JSON.stringify({ returnPolicyId: 'rp-1' }), { status: 201 });
-      case 'GET location-list': return new Response(JSON.stringify({ locations: [] }), { status: 200 });
-      case 'GET identity': return new Response(JSON.stringify({ userId: 'ebay-u' }), { status: 200 });
-      case 'GET location': return new Response('', { status: 404 });
-      case 'POST location': return new Response(null, { status: 204 });
-      default: return new Response('{}', { status: 200 });
-    }
-  });
 }
 
 let app: ReturnType<typeof createApp>;
@@ -159,171 +116,8 @@ describe('PATCH /seller-profile', () => {
 });
 
 describe('POST /seller-profile/ebay/auto-setup', () => {
-  it('returns 400 when no eBay account is connected', async () => {
-    mockSelectOnce([]); // marketplaceAccounts: not connected
-
-    const res = await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('EBAY_NOT_CONNECTED');
-  });
-
-  it('sends a User-Agent on every eBay call (anonymous requests are an ATO signal)', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: SHIP_FROM, ebayMerchantLocationKey: null }]);
-    vi.mocked(db.update).mockReturnValue({
-      set: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'sp-1' }]) }) }),
-    } as any);
-
-    const fetchMock = routedFetch();
-    vi.stubGlobal('fetch', fetchMock);
-
-    await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    const ebayCalls = fetchMock.mock.calls.filter(([u]: [any, any]) => String(u).includes('ebay.com'));
-    expect(ebayCalls.length).toBeGreaterThan(0);
-    for (const [, opts] of ebayCalls) {
-      expect((opts?.headers as Record<string, string>)?.['User-Agent']).toBe(EBAY_USER_AGENT);
-    }
-  });
-
-  it('creates the 3 Portage Standard policies + inventory location, persists, and returns setup', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: SHIP_FROM, ebayMerchantLocationKey: null }]);
-    const updateSet = vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'sp-1' }]) }),
-    });
-    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
-
-    const fetchMock = routedFetch();
-    vi.stubGlobal('fetch', fetchMock);
-
-    const res = await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.setup.fulfillmentPolicyId).toBe('fp-1');
-    expect(res.body.setup.paymentPolicyId).toBe('pp-1');
-    expect(res.body.setup.returnPolicyId).toBe('rp-1');
-    expect(res.body.setup.merchantLocationKey).toBe('portage-primary');
-    expect(res.body.setup.locationConfigured).toBe(true);
-
-    // the location was actually created (POST) with the seller's mapped address
-    const locationPost = fetchMock.mock.calls.find(
-      ([u, o]: any[]) => String(u).includes('/location/portage-primary') && (o?.method ?? 'GET').toUpperCase() === 'POST',
-    );
-    expect(locationPost).toBeTruthy();
-    const locationBody = JSON.parse((locationPost![1] as any).body);
-    expect(locationBody.location.address).toEqual({
-      addressLine1: '123 Main St',
-      addressLine2: 'Apt 4',
-      city: 'Austin',
-      stateOrProvince: 'TX',
-      postalCode: '78701',
-      country: 'US',
-    });
-
-    // the ids were persisted to the seller profile
-    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
-      ebayFulfillmentPolicyId: 'fp-1',
-      ebayPaymentPolicyId: 'pp-1',
-      ebayReturnPolicyId: 'rp-1',
-      ebayMerchantLocationKey: 'portage-primary',
-    }));
-  });
-
-  it('reuses existing Portage Standard policies + location instead of creating duplicates', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: SHIP_FROM, ebayMerchantLocationKey: 'portage-primary' }]);
-    mockUpdateReturns([{ id: 'sp-1' }]);
-
-    const fetchMock = routedFetch({
-      // Already CALCULATED → pure reuse, no migration PUT.
-      'GET fulfillment': new Response(JSON.stringify({ fulfillmentPolicies: [{ fulfillmentPolicyId: 'fp-existing', name: 'Portage Standard Fulfillment', shippingOptions: [{ costType: 'CALCULATED' }] }] }), { status: 200 }),
-      'GET payment': new Response(JSON.stringify({ paymentPolicies: [{ paymentPolicyId: 'pp-existing', name: 'Portage Standard Payment' }] }), { status: 200 }),
-      'GET return': new Response(JSON.stringify({ returnPolicies: [{ returnPolicyId: 'rp-existing', name: 'Portage Standard Return' }] }), { status: 200 }),
-      'GET location': new Response(JSON.stringify({ merchantLocationKey: 'portage-primary' }), { status: 200 }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const res = await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.setup.fulfillmentPolicyId).toBe('fp-existing');
-    expect(res.body.setup.paymentPolicyId).toBe('pp-existing');
-    expect(res.body.setup.returnPolicyId).toBe('rp-existing');
-
-    // nothing was created — no POST to any policy or location endpoint
-    const anyCreate = fetchMock.mock.calls.find(([, o]: any[]) => (o?.method ?? 'GET').toUpperCase() === 'POST');
-    expect(anyCreate).toBeUndefined();
-  });
-
-  it('migrates a stale FLAT_RATE Portage Standard Fulfillment to CALCULATED in place (PUT, same id, no duplicate)', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: SHIP_FROM, ebayMerchantLocationKey: 'portage-primary' }]);
-    mockUpdateReturns([{ id: 'sp-1' }]);
-
-    const fetchMock = routedFetch({
-      // Legacy flat-rate policy from before the calculated default — must be migrated.
-      'GET fulfillment': new Response(JSON.stringify({ fulfillmentPolicies: [{ fulfillmentPolicyId: 'fp-existing', name: 'Portage Standard Fulfillment', shippingOptions: [{ costType: 'FLAT_RATE' }] }] }), { status: 200 }),
-      'GET location': new Response(JSON.stringify({ merchantLocationKey: 'portage-primary' }), { status: 200 }),
-      'PUT fulfillment': new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-existing' }), { status: 200 }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const res = await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    expect(res.status).toBe(200);
-    // Same policy id — migrated in place, not duplicated.
-    expect(res.body.setup.fulfillmentPolicyId).toBe('fp-existing');
-
-    // A PUT to the fulfillment-policy id path migrated it; no POST create happened.
-    const put = fetchMock.mock.calls.find(([u, o]: any[]) =>
-      String(u).includes('/fulfillment_policy/fp-existing') && (o?.method ?? '').toUpperCase() === 'PUT');
-    expect(put).toBeDefined();
-    const putBody = JSON.parse((put![1] as RequestInit).body as string);
-    expect(putBody.shippingOptions[0].costType).toBe('CALCULATED');
-    const postCreate = fetchMock.mock.calls.find(([u, o]: any[]) =>
-      String(u).endsWith('/fulfillment_policy') && (o?.method ?? '').toUpperCase() === 'POST');
-    expect(postCreate).toBeUndefined();
-  });
-
-  it('self-heals a stored merchant location key that no longer resolves on eBay (404) instead of trusting it', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    // Profile holds a corrupted key ("portagef-primary") that 404s on eBay — every
-    // publish then fails with 25002. Setup must re-resolve a valid location.
-    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: SHIP_FROM, ebayMerchantLocationKey: 'portagef-primary' }]);
-    mockUpdateReturns([{ id: 'sp-1' }]);
-
-    const fetchMock = routedFetch({
-      'GET location': new Response('', { status: 404 }), // stored key does not exist on eBay
-      'GET location-list': new Response(JSON.stringify({ locations: [{ merchantLocationKey: 'portage-primary' }] }), { status: 200 }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const res = await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    expect(res.status).toBe(200);
-    // Healed to the real, existing location — NOT the broken stored key.
-    expect(res.body.setup.merchantLocationKey).toBe('portage-primary');
-  });
-
-  it('returns 400 when no seller profile exists (null guard)', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    mockSelectOnce([]); // no seller profile
-
-    const fetchMock = routedFetch();
+  it('is demoted under inline terms — returns 400 EBAY_SETUP_NOT_REQUIRED and creates no Business Policies', async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     const res = await request(app)
@@ -331,93 +125,8 @@ describe('POST /seller-profile/ebay/auto-setup', () => {
       .set('Authorization', `Bearer ${authToken}`);
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe('SELLER_PROFILE_REQUIRED');
+    expect(res.body.code).toBe('EBAY_SETUP_NOT_REQUIRED');
+    expect(fetchMock).not.toHaveBeenCalled(); // no eBay calls at all (no policy/location create)
   });
 
-  it('rejects setup with SHIP_FROM_REQUIRED when no ship-from address is set (no silent partial setup)', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: null, ebayMerchantLocationKey: null }]);
-
-    const fetchMock = routedFetch();
-    vi.stubGlobal('fetch', fetchMock);
-
-    const res = await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('SHIP_FROM_REQUIRED');
-
-    // nothing was persisted (no partial setup) and no location was created
-    expect(vi.mocked(db.update)).not.toHaveBeenCalled();
-    const locationPost = fetchMock.mock.calls.find(
-      ([u, o]: any[]) => String(u).includes('/location/') && (o?.method ?? 'GET').toUpperCase() === 'POST',
-    );
-    expect(locationPost).toBeUndefined();
-  });
-
-  it('pulls and uses an existing eBay inventory location (no manual ship-from needed)', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: null, ebayMerchantLocationKey: null }]);
-    mockUpdateReturns([{ id: 'sp-1' }]);
-
-    const fetchMock = routedFetch({
-      'GET location-list': new Response(JSON.stringify({ locations: [{ merchantLocationKey: 'ebay-loc-7' }] }), { status: 200 }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const res = await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.setup.merchantLocationKey).toBe('ebay-loc-7');
-    expect(res.body.setup.locationConfigured).toBe(true);
-  });
-
-  it('sends a non-empty location name when the ship-from name is blank (eBay 25802 rejects empty name)', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: { name: '', zip: '33308', country: 'US' }, ebayMerchantLocationKey: null }]);
-    mockUpdateReturns([{ id: 'sp-1' }]);
-
-    const fetchMock = routedFetch();
-    vi.stubGlobal('fetch', fetchMock);
-
-    const res = await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    expect(res.status).toBe(200);
-    const locationPost = fetchMock.mock.calls.find(
-      ([u, o]: any[]) => String(u).includes('/location/') && (o?.method ?? 'GET').toUpperCase() === 'POST',
-    );
-    expect(locationPost).toBeTruthy();
-    expect(JSON.parse((locationPost![1] as any).body).name).toBeTruthy();
-  });
-
-  it('pulls the ship-from address from eBay registration and creates the location (one-click, no manual entry)', async () => {
-    mockSelectOnce([{ id: 'acc-1' }]); // connected
-    mockSelectOnce([{ id: 'sp-1', userId: 'test-user-id', shipFromAddress: null, ebayMerchantLocationKey: null }]);
-    mockUpdateReturns([{ id: 'sp-1' }]);
-
-    const fetchMock = routedFetch({
-      'GET identity': new Response(JSON.stringify({
-        userId: 'ebay-u',
-        businessAccount: { address: { addressLine1: '500 Oak Ave', city: 'Denver', stateOrProvince: 'CO', postalCode: '80202', country: 'US' } },
-      }), { status: 200 }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const res = await request(app)
-      .post('/seller-profile/ebay/auto-setup')
-      .set('Authorization', `Bearer ${authToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.setup.locationConfigured).toBe(true);
-    const locationPost = fetchMock.mock.calls.find(
-      ([u, o]: any[]) => String(u).includes('/location/') && (o?.method ?? 'GET').toUpperCase() === 'POST',
-    );
-    expect(locationPost).toBeTruthy();
-    expect(JSON.parse((locationPost![1] as any).body).location.address.postalCode).toBe('80202');
-  });
 });
