@@ -47,7 +47,7 @@ Rich chat UI + SSE streaming via client.messages.stream() + home redesign + voic
 ## Decisions
 
 - SSE over WebSocket for streaming — simpler auth, works with fetch() Bearer, no protocol upgrade needed
-- client.messages.stream() over create({stream:true}) — higher-level API with on(text)/on(contentBlock)/finalMessage()
+- `client.messages.stream()` over `create({stream:true})` — higher-level API with on(text)/on(contentBlock)/finalMessage()
 - sseStarted flag for SSE error handling fork — next(err) pre-headers, SSE error event post-headers
 - PorterProvider React Context — lifts usePorterStream into tabs layout so home and FloatingMic share state
 - lazy JSONB migration — normalizeConversationMessages() on load, zero-downtime backward compat
