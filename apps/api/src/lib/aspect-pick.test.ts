@@ -75,6 +75,29 @@ describe('pickMissingRequiredAspects', () => {
     expect(result).toEqual({});
   });
 
+  it('skips huge enums (e.g. Brand, 844 values) and still picks the small ones', async () => {
+    vi.mocked(chatText).mockResolvedValue({
+      text: '{"Type":"Overdrive"}',
+      provider: 'test',
+      model: 'test',
+    });
+
+    const hugeEnum = Array.from({ length: 500 }, (_, i) => `Brand${i}`);
+    const result = await pickMissingRequiredAspects({
+      aspects: {},
+      requiredAspects: {
+        Brand: { required: true, values: hugeEnum },
+        Type: { required: true, values: ['Overdrive', 'Delay'] },
+      },
+      itemContext: { brand: 'Boss', model: 'SD-1', category: 'guitar pedal', title: 'Boss SD-1' },
+    });
+
+    expect(result).toEqual({ Type: ['Overdrive'] });
+    const [, userPrompt] = vi.mocked(chatText).mock.calls[0];
+    expect(userPrompt).not.toContain('Brand0'); // huge enum never sent to the model
+    expect(userPrompt).toContain('"Type"');
+  });
+
   it('returns aspects unchanged when the pick call fails — never throws into the listing flow', async () => {
     vi.mocked(chatText).mockRejectedValue(new Error('provider down'));
 

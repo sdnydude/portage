@@ -18,10 +18,18 @@ const PICK_SYSTEM_PROMPT = `You classify a product into marketplace item-specifi
 For EVERY aspect listed, pick EXACTLY ONE value from that aspect's ALLOWED VALUES — the closest match for the item. Never invent a value, never leave one out.
 Reply with ONLY a JSON object mapping each aspect name to the chosen value string. No markdown, no explanation.`;
 
+// Enums beyond this size (e.g. Brand with 844 suggested values) aren't a
+// classification task — sending them bloats the prompt and starves thinking
+// models of output tokens (observed live: qwen3 spent the whole budget on
+// reasoning and returned empty content). The pick pass only handles
+// pill-sized enums like Type / Form Factor.
+const MAX_ENUM_VALUES = 120;
+
 export async function pickMissingRequiredAspects(
   input: PickAspectsInput,
 ): Promise<Record<string, string[]>> {
-  const missing = findMissingEnumAspects(input.aspects, input.requiredAspects);
+  const missing = findMissingEnumAspects(input.aspects, input.requiredAspects)
+    .filter((m) => m.values.length <= MAX_ENUM_VALUES);
   if (missing.length === 0) return input.aspects;
 
   const userPrompt = `ITEM:
@@ -34,7 +42,9 @@ Pick one allowed value per aspect. JSON object only.`;
 
   let text: string;
   try {
-    ({ text } = await chatText(PICK_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 512 }));
+    // Thinking models spend completion tokens on reasoning before any content —
+    // 512 was observed to produce empty content live; give real headroom.
+    ({ text } = await chatText(PICK_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 2048 }));
   } catch (err) {
     logger.warn({ error: (err as Error).message }, 'Aspect pick call failed — keeping aspects unchanged');
     return input.aspects;
