@@ -49,15 +49,17 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 - [x] SKU "Custom label" check (burndown 3.5) — live GetItem proof: ended ItemIDs 307034606520/307034773471 return SKU `PRT-000016`/`PRT-000017`; Seller Hub Custom label = Trading SKU field (no new publish needed)
 - [x] Plan-doc PR #126 CLOSED unmerged 2026-07-01 — plan superseded by the shipped shape (inline chips, Trade-First transport); history in registry ship sessions
 
-### Phase 4 — Repo hygiene & Trade-First housekeeping
+### Phase 4 — Repo hygiene & Trade-First housekeeping — ✅ COMPLETE (2026-07-01)
 
-- [ ] Decide PR #127 (capture-guarantee Stop hook, open since 06-21)
-- [ ] Triage 8 Dependabot PRs (#128–#130, #134–#138)
-- [ ] GTC / no-auto-renewal reconciliation — prevent silent fee-incurring renewals where eBay forces GTC (burndown 1.17, med risk; evaluator-verified unimplemented: zero GTC/ListingDuration handling in adapter or publish route)
-- [ ] Verify pre-flight wiring decision — dry-run every publish vs proof-only (burndown 1.19; VerifyAddFixedPriceItem exists only as script + builder, never called from the publish path)
-- [ ] Dead Inventory helper sweep — `isOfferExistsError` + `bestOfferTerms` ONLY (verified zero call sites). **NOT dead:** `resolveEbayCondition`/`resolveEbayCategoryCondition` (live via prepare-listing.ts:333); `listings.ebayOfferId` is still written (`null`) on every insert (listings.ts:256) — dropping the column also removes that write (burndown 1.20 overstated)
-- [ ] Update `docs/trade-first-burndown.md` (2.4 shipped in PR #132; 1.20 sub-claims c+d wrong; 2.6/2.7 branch refs stale)
-- [ ] Refresh CLAUDE.md/TODO.md after Phases 1–3 land
+- [x] PR #127 decided — superseded by PR #149: capture-guarantee Stop hook wired into the CURRENT settings.json (the stale diff would have created a duplicate `Stop` key vs the agentlint block)
+- [x] Dependabot triage — single lockfile PR #148 (`npm audit fix` + tsx bump) resolved 22 of 23 alerts incl. 3 PR-less transitives; alert 11 (@anthropic-ai/sdk nested under tdd-guard) waits on upstream tdd-guard unpinning `claude-agent-sdk <0.2.113`. Merged #129 (checkout v7), #99 (upload-artifact v7), #150 (anthropic-sdk 0.109.1 + sharp 0.35.3, superseding Dependabot #115 whose lockfile generation is broken for this workspaces monorepo). 17 PRs closed; 6 deliberate defers remain open (#53/#55/#58/#60/#134/#135: zod 4, pino-http 11, eslint 10, TS 6, types majors — registry deferred items)
+- [x] GTC / no-auto-renewal reconciliation — PR #151: opt-in `gtc_auto_end` toggle, login-triggered `/listings/gtc-sweep` ends listings via EndFixedPriceItem 2 days before the monthly anniversary, archives + notifies; no auto-relist (same insertion fee). Error path live-proven on the real account
+- [x] Verify pre-flight wiring — DECIDED proof-only (registry decision log; revisit trigger = fee-preview UX)
+- [x] Dead Inventory helper sweep — `isOfferExistsError` + `bestOfferTerms` deleted (Serena zero-reference proven). `resolveEbayCategoryCondition` confirmed live (prepare-listing.ts:333); `ebayOfferId` column deliberately kept
+- [x] `docs/trade-first-burndown.md` refreshed — 1.17/1.19/1.20 closed, 2.4/2.7 marked shipped, 2.6 branch ref fixed
+- [x] CLAUDE.md/TODO.md refreshed (this commit)
+
+**Discovered + deferred (registry):** reconcile externally-ended eBay listings (Seller-Hub-ended rows stay `active` locally; only sold listings get healed).
 
 ### Phase 5 — Deferred product gaps (registry backlog)
 

@@ -409,35 +409,6 @@ export class EbayAdapter implements MarketplaceAdapter {
   }
 
   /**
-   * "eBay rejected this offer POST because one already exists for the SKU"
-   * (error 25002). Drives the reuse-existing-offer recovery so a stable-SKU
-   * retry doesn't fail or churn a duplicate offer.
-   */
-  private static isOfferExistsError(err: unknown): boolean {
-    // eBay reuses errorId 25002 for several distinct "user errors" (e.g. a
-    // missing item specific), so match the duplicate-offer phrasing rather than
-    // the id — matching the id would false-positive and swallow a real error.
-    return err instanceof AppError && /already exists/i.test(err.message);
-  }
-
-  private static bestOfferTerms(
-    specific: Record<string, unknown>,
-    price: number,
-    currency: string,
-  ): Record<string, unknown> {
-    // Typed read binds the key to EbayPreparedFields.bestOfferAutoAcceptPrice —
-    // a rename/typo becomes a compile error instead of silent "no Best Offer".
-    const floor = (specific as Partial<EbayPreparedFields>).bestOfferAutoAcceptPrice;
-    if (typeof floor !== 'number' || floor <= 0 || floor >= price) return {};
-    return {
-      bestOfferTerms: {
-        bestOfferEnabled: true,
-        autoAcceptPrice: { currency, value: String(floor) },
-      },
-    };
-  }
-
-  /**
    * Build the Trading item payload shared by AddFixedPriceItem (publish) and
    * ReviseFixedPriceItem (content edit). Enforces the publish guards: valid leaf
    * category, ship-from origin ZIP + package weight/dims (inline Calculated shipping),
