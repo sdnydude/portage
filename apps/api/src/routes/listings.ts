@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { eq, desc, and, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { listings, items, sellerProfiles, disclaimerAcceptances, users } from '../db/schema.js';
+import { listings, items, sellerProfiles, disclaimerAcceptances, users, notifications } from '../db/schema.js';
+import { shouldAutoEnd } from '../lib/gtc-renewal.js';
 import { CURRENT_DISCLAIMER_VERSION } from '@portage/shared';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
@@ -142,6 +143,73 @@ const listQuerySchema = z.object({
 export const listingsRouter = Router();
 
 listingsRouter.use(requireAuth);
+
+// GTC listings renew monthly with an insertion fee each cycle. When the seller
+// opts in, end active eBay listings just before their renewal anniversary.
+listingsRouter.post('/gtc-sweep', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    const [profile] = await db.select()
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.userId, userId))
+      .limit(1);
+
+    if (!profile?.gtcAutoEnd) {
+      res.json({ enabled: false, checked: 0, ended: 0, errors: [] });
+      return;
+    }
+
+    const candidates = await db.select()
+      .from(listings)
+      .where(and(
+        eq(listings.userId, userId),
+        eq(listings.marketplace, 'ebay'),
+        eq(listings.status, 'active'),
+      ));
+
+    const now = new Date();
+    const adapter = new EbayAdapter(userId);
+    let ended = 0;
+    let checked = 0;
+    const errors: Array<{ listingId: string; error: string }> = [];
+
+    for (const listing of candidates) {
+      if (!listing.marketplaceListingId || !listing.publishedAt) continue;
+      checked += 1;
+      if (!shouldAutoEnd(listing.publishedAt, now)) continue;
+
+      try {
+        await adapter.deleteListing(listing.marketplaceListingId);
+        await db.update(listings)
+          .set({ status: 'archived', updatedAt: now })
+          .where(eq(listings.id, listing.id));
+        try {
+          await db.insert(notifications).values({
+            userId,
+            type: 'listing_expiry',
+            title: 'Listing ended before GTC renewal',
+            body: `Ended eBay listing ${listing.marketplaceListingId} ahead of its monthly Good 'Til Cancelled renewal to avoid the insertion fee. Relist any time from the listing page.`,
+            referenceType: 'listing',
+            referenceId: listing.id,
+          });
+        } catch (notifyErr) {
+          logger.warn({ err: notifyErr, listingId: listing.id }, 'GTC sweep: notification insert failed');
+        }
+        ended += 1;
+      } catch (endErr) {
+        const message = endErr instanceof Error ? endErr.message : String(endErr);
+        logger.warn({ err: endErr, listingId: listing.id }, 'GTC sweep: EndFixedPriceItem failed');
+        errors.push({ listingId: listing.id, error: message });
+      }
+    }
+
+    logger.info({ userId, checked, ended, failed: errors.length }, 'GTC sweep completed');
+    res.json({ enabled: true, checked, ended, errors });
+  } catch (err) {
+    next(err);
+  }
+});
 
 listingsRouter.get('/', async (req, res, next) => {
   try {

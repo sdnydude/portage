@@ -78,6 +78,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // caller redirects (router.replace) immediately after login(), and without
     // it that navigation cancels this in-flight request before it's sent.
     void api("/orders/sync", { method: "POST", token: newToken, keepalive: true }).catch(() => {});
+
+    // Same fire-and-forget contract: end GTC eBay listings nearing their
+    // monthly renewal (profile-gated server-side; no-op when the toggle is off).
+    void api("/listings/gtc-sweep", { method: "POST", token: newToken, keepalive: true }).catch(() => {});
   }, []);
 
   const logout = useCallback(async () => {

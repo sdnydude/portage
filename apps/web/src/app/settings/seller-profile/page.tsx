@@ -369,6 +369,15 @@ export default function SellerProfilePage() {
           />
           <span>Auto-publish listings (skip review)</span>
         </label>
+        <label className="flex items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={profile.gtcAutoEnd ?? false}
+            onChange={e => updateField("gtcAutoEnd", e.target.checked)}
+            className="rounded"
+          />
+          <span>eBay GTC — auto-end listings just before the monthly renewal to avoid the insertion fee (relist any time)</span>
+        </label>
       </section>
 
       <section className="rounded-xl p-4 space-y-3" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
