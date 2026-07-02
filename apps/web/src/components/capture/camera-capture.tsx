@@ -11,6 +11,8 @@ interface CameraCaptureProps {
 export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   const { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera } = useCamera();
   const [isCapturing, setIsCapturing] = useState(false);
+  const [shotCount, setShotCount] = useState(0);
+  const [flash, setFlash] = useState(false);
 
   // One measurement drives BOTH the on-screen guide square and the capture
   // crop mapping (guideCaptureRect) — they can never disagree.
@@ -42,6 +44,10 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
     [videoRef],
   );
 
+  // Multi-shot: the stream stays ALIVE between shots. Stopping + re-requesting
+  // getUserMedia per photo is what made iOS/macOS Safari re-prompt for camera
+  // permission (and show the access banner) on every 2nd+ photo. One session,
+  // many shutters; Done (or ✕ / unmount) releases the camera exactly once.
   const handleCapture = useCallback(async () => {
     if (isCapturing) return;
     setIsCapturing(true);
@@ -51,11 +57,13 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
     );
     if (blob) {
       const file = new File([blob], `capture-${Date.now()}.jpg`, { type: "image/jpeg" });
-      stop();
+      setShotCount((n) => n + 1);
+      setFlash(true);
+      setTimeout(() => setFlash(false), 150);
       onCapture(file);
     }
     setIsCapturing(false);
-  }, [capture, stop, onCapture, isCapturing, viewport]);
+  }, [capture, onCapture, isCapturing, viewport]);
 
   const handleClose = useCallback(() => {
     stop();
@@ -107,6 +115,8 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
           </div>
         </div>
 
+        {flash && <div className="absolute inset-0 bg-white/70 pointer-events-none" aria-hidden />}
+
         {error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6">
             <div className="text-center">
@@ -139,16 +149,32 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
       </div>
 
       {/* Controls */}
-      <div className="bg-black px-6 py-8 flex items-center justify-center"
+      <div className="bg-black px-6 py-8 grid grid-cols-3 items-center"
         style={{ paddingBottom: "calc(2rem + var(--safe-area-bottom))" }}
       >
+        <div />
         <button
           onClick={handleCapture}
           disabled={!isReady || isCapturing}
           aria-label="Capture photo"
-          className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center disabled:opacity-40 transition-opacity active:scale-95"
+          className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center disabled:opacity-40 transition-opacity active:scale-95 justify-self-center"
         >
           <div className={`w-16 h-16 rounded-full ${isCapturing ? "bg-red-500" : "bg-white"} transition-colors`} />
+        </button>
+        <button
+          onClick={handleClose}
+          aria-label={`Done — ${shotCount} photo${shotCount === 1 ? "" : "s"}`}
+          className="justify-self-end relative w-14 h-14 rounded-full flex items-center justify-center"
+          style={{ background: "var(--teal, #1A7A6D)" }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+          {shotCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-6 h-6 px-1 rounded-full bg-white text-black text-sm font-bold flex items-center justify-center">
+              {shotCount}
+            </span>
+          )}
         </button>
       </div>
     </div>

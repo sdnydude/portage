@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { ScanFlow } from "./scan-flow";
 
 // ─── Heavy children / browser-API hooks mocked; wiring under test is real ───
@@ -8,8 +8,12 @@ vi.mock("@/hooks/use-auth", () => ({
   useAuth: () => ({ token: "test-token" }),
 }));
 
+const camHolder = vi.hoisted(() => ({ props: null as null | { onCapture: (f: File) => void; onClose: () => void } }));
 vi.mock("./camera-capture", () => ({
-  CameraCapture: () => null,
+  CameraCapture: (props: { onCapture: (f: File) => void; onClose: () => void }) => {
+    camHolder.props = props;
+    return <div data-testid="camera-open" />;
+  },
 }));
 
 vi.mock("./image-picker", () => ({
@@ -480,5 +484,33 @@ describe("ScanFlow review wiring", () => {
       return call;
     });
     expect(itemsCall?.[1].body).toMatchObject({ condition: "good" });
+  });
+});
+
+describe("ScanFlow multi-shot camera session", () => {
+  it("stays in the camera across shots (no per-photo close → no iOS re-prompt); Done returns with all photos", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+
+    render(<ScanFlow onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Take Photo"));
+    expect(screen.getByTestId("camera-open")).toBeInTheDocument();
+
+    await act(async () => {
+      camHolder.props!.onCapture(new File(["a"], "1.jpg", { type: "image/jpeg" }));
+    });
+    await act(async () => {
+      camHolder.props!.onCapture(new File(["b"], "2.jpg", { type: "image/jpeg" }));
+    });
+
+    // The camera never unmounted between shots.
+    expect(screen.getByTestId("camera-open")).toBeInTheDocument();
+
+    await act(async () => {
+      camHolder.props!.onClose();
+    });
+    expect(await screen.findByText(/Scan 2 Photos with Porter/)).toBeInTheDocument();
   });
 });

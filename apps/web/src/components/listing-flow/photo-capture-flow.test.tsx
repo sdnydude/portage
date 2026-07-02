@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({ apiMock: vi.fn() }));
+const camHolder = vi.hoisted(() => ({ props: null as null | { onCapture: (f: File) => void; onClose: () => void } }));
+vi.mock("@/components/capture/camera-capture", () => ({
+  CameraCapture: (props: { onCapture: (f: File) => void; onClose: () => void }) => {
+    camHolder.props = props;
+    return <div data-testid="camera-open" />;
+  },
+}));
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -68,5 +75,38 @@ describe("PhotoCaptureFlow — unified editor overlay (S2.5-11)", () => {
     await waitFor(() => {
       expect(screen.getByAltText("Photo 1")).toHaveAttribute("src", "https://example.com/1-rot.jpg");
     });
+  });
+});
+
+describe("PhotoCaptureFlow — multi-shot camera session", () => {
+  it("camera stays open across shots; Done lands all photos in the grid", async () => {
+    h.apiMock.mockResolvedValue({});
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "https://img/x.jpg", key: "kx", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+
+    render(
+      <PhotoCaptureFlow onComplete={vi.fn()} onCancel={vi.fn()} initialPhotos={photos} minPhotos={1} />,
+    );
+
+    fireEvent.click(screen.getByText("Add"));
+    fireEvent.click(screen.getByText("Take Photo"));
+    expect(screen.getByTestId("camera-open")).toBeInTheDocument();
+
+    await act(async () => {
+      camHolder.props!.onCapture(new File(["a"], "1.jpg", { type: "image/jpeg" }));
+    });
+    await act(async () => {
+      camHolder.props!.onCapture(new File(["b"], "2.jpg", { type: "image/jpeg" }));
+    });
+    // Never unmounted between shots — no iOS/macOS permission re-prompt.
+    expect(screen.getByTestId("camera-open")).toBeInTheDocument();
+
+    await act(async () => {
+      camHolder.props!.onClose();
+    });
+    // Back in the grid with the two new photos (1 initial + 2 captured).
+    expect(screen.getAllByRole("img")).toHaveLength(3);
   });
 });

@@ -287,19 +287,20 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
   // ─── Capture handlers ──────────────────────────────────────────────────────
 
+  // Multi-shot: the camera stays OPEN across shots (closing per photo forced a
+  // new getUserMedia — iOS/macOS Safari re-prompted for camera permission on
+  // every 2nd+ photo). Uploads run behind the viewfinder; Done/✕ closes once.
   const handleCameraCapture = useCallback(
     async (file: File) => {
-      setShowCamera(false);
+      if (photos.length >= MAX_PHOTOS - 1) setShowCamera(false);
       if (photos.length >= MAX_PHOTOS) return;
 
-      setState("uploading");
       setError(null);
       const photo = await uploadPhoto(file);
       if (photo) {
         setPhotos((prev) => [...prev, photo]);
         setSelectedPhotoIndex(photos.length);
       }
-      setState("capture");
     },
     [photos.length, uploadPhoto],
   );
