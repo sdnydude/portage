@@ -130,3 +130,21 @@ describe("ListingPreviewCard — required item specifics gating", () => {
     });
   });
 });
+
+describe("ListingPreviewCard — hero tap opens the editor", () => {
+  beforeEach(() => {
+    mockUseRequiredAspects.mockReturnValue({ aspects: {}, isLoading: false });
+  });
+
+  it("tapping the hero photo opens the full-screen editor on the current photo; a visible edit affordance exists", () => {
+    render(<ListingPreviewCard {...baseProps} onPublish={() => {}} onPhotoUpdated={() => {}} />);
+    expect(screen.getByRole("button", { name: /edit this photo/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("img", { name: /listing/i }));
+    expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+  });
+
+  it("without onPhotoUpdated (no editor host) the hero is not tappable and no affordance shows", () => {
+    render(<ListingPreviewCard {...baseProps} onPublish={() => {}} />);
+    expect(screen.queryByRole("button", { name: /edit this photo/i })).not.toBeInTheDocument();
+  });
+});

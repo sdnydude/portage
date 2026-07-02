@@ -15,6 +15,9 @@ interface ItemPhoto {
 export interface Item {
   id: string;
   userId: string;
+  /** From GET /items: item has an active or sold listing. Absent on other
+   *  endpoints — the Unlisted chip only renders on an explicit false. */
+  listed?: boolean;
   title: string;
   description: string;
   category: string;

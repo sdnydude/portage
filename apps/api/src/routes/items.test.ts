@@ -167,6 +167,22 @@ describe('GET /items', () => {
     const res = await request(app).get('/items');
     expect(res.status).toBe(401);
   });
+
+  it('selects a listed flag alongside the item columns (Unlisted chip data)', async () => {
+    mockSelectForList([{ ...MOCK_ITEM, listed: false }], [{ count: '1' }]);
+
+    const res = await request(app)
+      .get('/items')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    // The list query must project an explicit column map including `listed`
+    // (an EXISTS subquery) — a bare select() cannot produce it.
+    const firstSelectArg = vi.mocked(db.select).mock.calls[0][0] as Record<string, unknown> | undefined;
+    expect(firstSelectArg).toBeDefined();
+    expect(firstSelectArg).toHaveProperty('listed');
+    expect(res.body.items[0].listed).toBe(false);
+  });
 });
 
 describe('GET /items/:id', () => {

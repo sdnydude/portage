@@ -270,24 +270,27 @@ export function useListingFlow() {
   }, [getDraft]);
 
   const confirmRecognition = useCallback((index: number) => {
-    setState(prev => {
-      const candidate = prev.recognition.candidates[index];
-      if (!candidate) return prev;
+    // Computed from the ref (not a functional updater) and synced back to it
+    // EAGERLY: the confirm-pill handlers call ensureItemCreated() in the same
+    // tick, before React commits — the useEffect ref sync is one render late.
+    const prev = stateRef.current;
+    const candidate = prev.recognition.candidates[index];
+    if (!candidate) return;
 
-      const next: ListingFlowState = {
-        ...prev,
-        recognition: { ...prev.recognition, selectedIndex: index },
-        title: candidate.name,
-        description: candidate.description,
-        category: candidate.category,
-        condition: candidate.condition,
-        brand: candidate.brand ?? '',
-        model: candidate.model ?? '',
-        features: candidate.features ?? [],
-      };
-      triggerAutoSave(next, 'confirmed');
-      return next;
-    });
+    const next: ListingFlowState = {
+      ...prev,
+      recognition: { ...prev.recognition, selectedIndex: index },
+      title: candidate.name,
+      description: candidate.description,
+      category: candidate.category,
+      condition: candidate.condition,
+      brand: candidate.brand ?? '',
+      model: candidate.model ?? '',
+      features: candidate.features ?? [],
+    };
+    triggerAutoSave(next, 'confirmed');
+    stateRef.current = next;
+    setState(next);
     setLastStep('confirmed');
   }, [triggerAutoSave]);
 
@@ -370,6 +373,53 @@ export function useListingFlow() {
     });
   }, [triggerAutoSave]);
 
+  // Create the inventory item from current flow state exactly once. Fired at
+  // recognition-confirm (fresh scans) so prepare() has an itemId to run against;
+  // publish() reuses it as the single POST /items shape (no drift).
+  const ensureItemCreated = useCallback(async (): Promise<string | null> => {
+    if (!token) return null;
+    const s = stateRef.current;
+    if (s.inventoryItemId) return s.inventoryItemId;
+    if (!s.title) return null;
+
+    // weight column is ounces; flow state carries decimal pounds (often still
+    // null at confirm-time — the shipping step runs later and publish PATCHes).
+    const rawOz = s.weight != null ? Math.round(s.weight * 16) : 0;
+    const weightOz = rawOz > 0 ? rawOz : null;
+
+    const item = await api<{ id: string }>('/items', {
+      method: 'POST',
+      body: {
+        title: s.title,
+        description: s.description,
+        category: s.category,
+        condition: s.condition,
+        brand: s.brand,
+        model: s.model,
+        features: s.features,
+        quantity: s.quantity,
+        photos: s.photos,
+        estimatedValueRecommended: s.price ?? undefined,
+        aiConfidenceScore: s.recognition.confidence,
+        ...(weightOz != null && {
+          weightOz,
+          // route schema is positive().optional() — send undefined, never null.
+          lengthIn: s.dimLength ?? undefined,
+          widthIn: s.dimWidth ?? undefined,
+          heightIn: s.dimHeight ?? undefined,
+          ebayPackageType: s.ebayPackageType ?? undefined,
+          weightEstimated: s.weightEstimated,
+        }),
+      },
+      token,
+    });
+    // Eager ref sync: publish() may run before the next commit and must not
+    // re-create the item.
+    stateRef.current = { ...stateRef.current, inventoryItemId: item.id };
+    setState(prev => ({ ...prev, inventoryItemId: item.id }));
+    return item.id;
+  }, [token]);
+
   const publish = useCallback(async (
     options?: PublishOptions,
   ): Promise<{ success: boolean; listingId?: string; error?: string; warning?: string; aspectsRequired?: AspectRequirement[]; weightRequired?: boolean }> => {
@@ -399,55 +449,36 @@ export function useListingFlow() {
       const weightOz = rawOz > 0 ? rawOz : null;
 
       if (!itemId) {
-        const item = await api<{ id: string }>('/items', {
-          method: 'POST',
-          body: {
-            title: s.title,
-            description: s.description,
-            category: s.category,
-            condition: s.condition,
-            brand: s.brand,
-            model: s.model,
-            features: s.features,
-            quantity: s.quantity,
-            photos: s.photos,
-            estimatedValueRecommended: s.price,
-            aiConfidenceScore: s.recognition.confidence,
-            ...(weightOz != null && {
-              weightOz,
-              // route schema is positive().optional() — send undefined, never null.
-              lengthIn: dimL ?? undefined,
-              widthIn: dimW ?? undefined,
-              heightIn: dimH ?? undefined,
-              ebayPackageType: pkgType ?? undefined,
-              weightEstimated: estimated,
-            }),
-          },
-          token,
-        });
-        itemId = item.id;
-        setState(prev => ({ ...prev, inventoryItemId: itemId }));
-      } else {
-        // Existing item: persist the flow's quantity (item.quantity is the single
-        // source of truth — publish reads it) and, when present, weight/dims so
-        // the publish-time merge (listings route) can emit packageWeightAndSize.
-        await api(`/items/${itemId}`, {
-          method: 'PATCH',
-          body: {
-            quantity: s.quantity,
-            ...(weightOz != null && {
-              weightOz,
-              // route schema is positive().optional() — send undefined, never null.
-              lengthIn: dimL ?? undefined,
-              widthIn: dimW ?? undefined,
-              heightIn: dimH ?? undefined,
-              ebayPackageType: pkgType ?? undefined,
-              weightEstimated: estimated,
-            }),
-          },
-          token,
-        });
+        // Single creation shape lives in ensureItemCreated (also fired at
+        // recognition-confirm on fresh scans, where it usually already ran).
+        itemId = await ensureItemCreated();
+        if (!itemId) {
+          setState(prev => ({ ...prev, publishStatus: 'failed' }));
+          return { success: false, error: 'Could not save the item' };
+        }
       }
+
+      // Persist the flow's quantity (item.quantity is the single source of
+      // truth — publish reads it) and, when present, weight/dims so the
+      // publish-time merge (listings route) can emit packageWeightAndSize.
+      // Runs for confirm-created items too — they were created before the
+      // shipping step, so this PATCH is what lands their weight/dims.
+      await api(`/items/${itemId}`, {
+        method: 'PATCH',
+        body: {
+          quantity: s.quantity,
+          ...(weightOz != null && {
+            weightOz,
+            // route schema is positive().optional() — send undefined, never null.
+            lengthIn: dimL ?? undefined,
+            widthIn: dimW ?? undefined,
+            heightIn: dimH ?? undefined,
+            ebayPackageType: pkgType ?? undefined,
+            weightEstimated: estimated,
+          }),
+        },
+        token,
+      });
 
       let ebayPreparedFields = options?.ebayPreparedFields;
       const publishMode = options?.publishMode;
@@ -543,7 +574,7 @@ export function useListingFlow() {
       setState(prev => ({ ...prev, publishStatus: 'failed' }));
       return { success: false, error: msg };
     }
-  }, [token, deleteDraft, saveDraft]);
+  }, [token, deleteDraft, saveDraft, ensureItemCreated]);
 
   const cancel = useCallback(async () => {
     await saveDraft(stateRef.current, {
@@ -580,6 +611,7 @@ export function useListingFlow() {
     applyPricingStrategy,
     addPhotos,
     updatePhoto,
+    ensureItemCreated,
     publish,
     cancel,
     reset,

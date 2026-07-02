@@ -175,3 +175,102 @@ describe("useListingFlow.publish — draft-fallback warning", () => {
     });
   });
 });
+
+describe("useListingFlow.ensureItemCreated — confirm-time item creation", () => {
+  it("POSTs /items once from flow state, stores inventoryItemId, and is idempotent", async () => {
+    apiMock.mockResolvedValue({ id: "item-9" });
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.setField("title", "SCONPHO M-4 Pan Tilt Head");
+      result.current.setField("category", "cameras");
+      result.current.setField("condition", "good");
+      result.current.addPhotos([{ url: "https://example.com/1.jpg", key: "k1" }]);
+    });
+
+    let id: string | null = null;
+    await act(async () => {
+      id = await result.current.ensureItemCreated();
+    });
+    expect(id).toBe("item-9");
+    expect(result.current.state.inventoryItemId).toBe("item-9");
+    const posts = apiMock.mock.calls.filter(([p, o]) => p === "/items" && (o as { method?: string })?.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect((posts[0][1] as { body: { title: string } }).body.title).toBe("SCONPHO M-4 Pan Tilt Head");
+
+    await act(async () => {
+      id = await result.current.ensureItemCreated();
+    });
+    expect(apiMock.mock.calls.filter(([p, o]) => p === "/items" && (o as { method?: string })?.method === "POST")).toHaveLength(1);
+  });
+});
+
+describe("useListingFlow.publish — fresh flow goes through ensureItemCreated", () => {
+  it("POSTs /items once then PATCHes quantity onto it (single creation shape)", async () => {
+    apiMock.mockClear();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/items" && opts?.method === "POST") return { id: "item-7" };
+      if (path === "/listings" && opts?.method === "POST") return { id: "l1", status: "active" };
+      return {};
+    });
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.setField("title", "Widget");
+      result.current.setField("price", 25);
+      result.current.addPhotos([{ url: "https://example.com/1.jpg", key: "k1" }]);
+    });
+
+    await act(async () => {
+      await result.current.publish();
+    });
+
+    const posts = apiMock.mock.calls.filter(([p, o]) => p === "/items" && (o as { method?: string })?.method === "POST");
+    expect(posts).toHaveLength(1);
+    const patches = apiMock.mock.calls.filter(([p, o]) => p === "/items/item-7" && (o as { method?: string })?.method === "PATCH");
+    expect(patches).toHaveLength(1);
+    expect((patches[0][1] as { body: { quantity: number } }).body.quantity).toBe(1);
+  });
+});
+
+describe("useListingFlow.confirmRecognition — same-tick ensureItemCreated", () => {
+  it("ensureItemCreated fired in the confirm click handler POSTs the candidate's fields (stateRef must be eagerly synced)", async () => {
+    apiMock.mockClear();
+    apiMock.mockResolvedValue({ id: "item-3" });
+    // startFromPhoto uses raw fetch: first for the blob, then POST /scan.
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes("/scan")) {
+        return {
+          ok: true,
+          json: async () => ({
+            identification: {},
+            detailed: {
+              candidates: [{
+                name: "Tascam DR-05", description: "rec", category: "electronics",
+                condition: "good", brand: "Tascam", model: "DR-05", features: [], confidence: 0.9,
+              }],
+              reasoning: [],
+            },
+            image: null,
+          }),
+        };
+      }
+      return { ok: true, blob: async () => new Blob(["x"]) };
+    }));
+
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => {
+      await result.current.startFromPhoto([{ url: "https://example.com/1.jpg", key: "k1" }]);
+    });
+
+    // Mirrors the flows' confirm-pill onClick: confirm + ensure in ONE tick,
+    // no intervening commit — the ref sync must not lag a render.
+    await act(async () => {
+      result.current.confirmRecognition(0);
+      await result.current.ensureItemCreated();
+    });
+
+    const posts = apiMock.mock.calls.filter(([p, o]) => p === "/items" && (o as { method?: string })?.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect((posts[0][1] as { body: { title: string } }).body.title).toBe("Tascam DR-05");
+    vi.unstubAllGlobals();
+  });
+});
