@@ -31,6 +31,25 @@ describe("CameraCapture — 1:1 guide discipline", () => {
     expect(screen.getByTestId("square-guide")).toBeInTheDocument();
   });
 
+  it("multi-shot: capturing keeps the camera session alive; Done closes once", async () => {
+    const { fireEvent, waitFor } = await import("@testing-library/react");
+    const onCapture = vi.fn();
+    const onClose = vi.fn();
+    render(<CameraCapture onCapture={onCapture} onClose={onClose} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /capture photo/i }));
+    await waitFor(() => expect(onCapture).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: /capture photo/i }));
+    await waitFor(() => expect(onCapture).toHaveBeenCalledTimes(2));
+
+    // The session never closed between shots — no re-prompt on iOS/macOS.
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText("2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /done/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("passes the measured viewfinder size to capture so the crop matches the guide", async () => {
     globalThis.ResizeObserver = class {
       observe() {}

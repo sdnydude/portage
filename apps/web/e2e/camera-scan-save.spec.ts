@@ -100,6 +100,14 @@ test("camera-driven scan → review → save lands a real item", async ({ page }
   await page.screenshot({ path: path.join(SHOT, "1-viewfinder.png") });
   await shutter.click();
 
+  // Multi-shot: the camera session stays open after the shutter (one
+  // getUserMedia per session — no iOS/macOS permission re-prompt on photo
+  // 2+). The shot lands on the Done badge; Done closes the session.
+  const done = page.getByRole("button", { name: /Done — 1 photo/ });
+  await expect(done).toBeVisible({ timeout: 15_000 });
+  await page.screenshot({ path: path.join(SHOT, "1b-multishot-done.png") });
+  await done.click();
+
   // Captured frame uploads (mocked) and appears in the photo strip
   await expect(page.getByRole("button", { name: /Scan 1 Photo/ })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: /Scan 1 Photo/ }).click();

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useCamera } from "@/hooks/use-camera";
 import { useAuth } from "@/hooks/use-auth";
 import { API_BASE } from "@/lib/api";
 import { PhotoGrid } from "./photo-grid";
+import { CameraCapture } from "../capture/camera-capture";
 import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
 
@@ -53,15 +53,6 @@ function ChevronLeftIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}
-
-function SwitchCameraIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 3h5v5M8 21H3v-5" />
-      <path d="M21 3l-7 7M3 21l7-7" />
     </svg>
   );
 }
@@ -214,101 +205,6 @@ function ChooseMode({ onTakePhoto, onFileSelected, onBack }: ChooseModeProps) {
   );
 }
 
-// ─── Camera Mode ──────────────────────────────────────────────────────────────
-
-interface CameraModeProps {
-  onCaptured: (blob: Blob) => void;
-  onBack: () => void;
-}
-
-function CameraMode({ onCaptured, onBack }: CameraModeProps) {
-  const { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera } = useCamera();
-  const [isCapturing, setIsCapturing] = useState(false);
-
-  useEffect(() => {
-    start();
-    return () => { stop(); };
-  }, [start, stop]);
-
-  const handleVideoRef = useCallback(
-    (el: HTMLVideoElement | null) => {
-      videoRef.current = el;
-    },
-    [videoRef],
-  );
-
-  const handleCapture = useCallback(async () => {
-    if (isCapturing || !isReady) return;
-    setIsCapturing(true);
-    const blob = await capture();
-    if (blob) {
-      stop();
-      onCaptured(blob);
-    }
-    setIsCapturing(false);
-  }, [capture, stop, onCaptured, isCapturing, isReady]);
-
-  const handleBack = useCallback(() => {
-    stop();
-    onBack();
-  }, [stop, onBack]);
-
-  return (
-    <div className="fixed inset-0 z-[70] bg-black flex flex-col">
-      <div className="flex-1 relative overflow-hidden">
-        <video
-          ref={handleVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-        <canvas ref={canvasRef} className="hidden" />
-
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6">
-            <div className="text-center">
-              <p className="text-white text-lg mb-2">Camera unavailable</p>
-              <p className="text-white/60 text-sm">{error}</p>
-            </div>
-          </div>
-        )}
-
-        <button
-          onClick={handleBack}
-          className="absolute top-4 left-4 w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
-          style={{ top: "calc(1rem + var(--safe-area-top, 0px))" }}
-        >
-          <ChevronLeftIcon />
-        </button>
-
-        <button
-          onClick={switchCamera}
-          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
-          style={{ top: "calc(1rem + var(--safe-area-top, 0px))" }}
-        >
-          <SwitchCameraIcon />
-        </button>
-      </div>
-
-      <div
-        className="bg-black px-6 py-8 flex items-center justify-center"
-        style={{ paddingBottom: "calc(2rem + var(--safe-area-bottom, 0px))" }}
-      >
-        <button
-          onClick={handleCapture}
-          disabled={!isReady || isCapturing}
-          className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center disabled:opacity-40 transition-opacity active:scale-95"
-        >
-          <div
-            className={`w-16 h-16 rounded-full transition-colors ${isCapturing ? "bg-red-500" : "bg-white"}`}
-          />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Orchestrator ────────────────────────────────────────────────────────
 
 export function PhotoCaptureFlow({
@@ -444,24 +340,28 @@ export function PhotoCaptureFlow({
 
   // ─── Camera handler ────────────────────────────────────────────────────────
 
+  // Multi-shot: the shared CameraCapture keeps ONE stream for the whole
+  // session (per-shot teardown made iOS/macOS Safari re-prompt for camera
+  // permission on every added photo). Shots upload behind the viewfinder;
+  // Done/✕ closes the camera once and returns to the grid.
   const handleCameraCaptured = useCallback(
-    async (blob: Blob) => {
-      const photo = await uploadBlob(blob);
+    async (file: File) => {
+      if (photos.length >= maxPhotos) return;
+      const photo = await uploadBlob(file);
       if (photo) {
         setPhotos((prev) => [...prev, photo]);
-        setMode("grid");
       }
     },
-    [uploadBlob],
+    [uploadBlob, photos.length, maxPhotos],
   );
 
   // ─── Render: Camera ────────────────────────────────────────────────────────
 
   if (mode === "camera") {
     return (
-      <CameraMode
-        onCaptured={handleCameraCaptured}
-        onBack={() => setMode("choose")}
+      <CameraCapture
+        onCapture={handleCameraCaptured}
+        onClose={() => setMode("grid")}
       />
     );
   }
