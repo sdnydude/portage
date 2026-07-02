@@ -7,7 +7,7 @@ vi.mock('./ai-client.js', () => ({
   chatText: vi.fn(),
 }));
 
-import { analyzeImage, analyzeImages } from './ai-client.js';
+import { analyzeImage, analyzeImages, chatText } from './ai-client.js';
 
 const VALID_VISION_JSON = {
   name: 'Sony WH-1000XM4 Headphones',
@@ -400,5 +400,27 @@ describe('generateListingFields', () => {
     const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
 
     expect(result.ebay?.aspects?.Brand).toEqual(['Sony']);
+  });
+
+  it('runs the constrained pick pass for a required enum aspect the first call left unfilled', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: ['Sony'] } } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+    vi.mocked(chatText).mockResolvedValue({
+      text: '{"Type":"Canal Earbud (In Ear Canal)"}',
+      provider: 'gemini', model: 'gemini-2.5-flash',
+    });
+
+    const result = await generateListingFields({
+      ...baseInput,
+      images: [{ base64: 'b64', mediaType: 'image/jpeg' }],
+      requiredAspects: {
+        Type: { required: true, values: ['Canal Earbud (In Ear Canal)', 'Ear-Cup (Over the Ear)', 'Ear-Pad (On the Ear)'] },
+        Brand: { required: true, values: null },
+      },
+    });
+
+    expect(result.ebay?.aspects).toEqual({ Brand: ['Sony'], Type: ['Canal Earbud (In Ear Canal)'] });
   });
 });
