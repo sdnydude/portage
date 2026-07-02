@@ -58,9 +58,9 @@ not accepted.
 |---|------|--------|-------------------------------|-------|
 | 3.1 | Seller-configurable inline shipping/return fields | 🚫 low | Trade-First ships fixed defaults to stay shippable; promote to seller settings later | from seller_profiles/shipping_presets |
 | 3.2 | Carrier label integration (EasyPost/Shippo) | 🚫 | Superseded by Phase I removal | mock rates today |
-| 3.3 | Camera-driven scan→save Playwright e2e | ⬜ | Proves Phase E end-to-end without real camera | fake camera + intercept /scan/refine |
-| 3.4 | Type AI auto-pick on high-cardinality aspects | ⬜ | Best-effort prompt shipped; AI-dependent | — |
-| 3.5 | SKU "Custom label" Seller-Hub check | ⬜ | Confirm SKU shows in Seller Hub | — |
+| 3.3 | Camera-driven scan→save Playwright e2e | ✅ | Proves Phase E end-to-end without real camera | `camera-scan-save.spec.ts` (2026-07-01): canvas.captureStream getUserMedia polyfill (plain-HTTP :3002 has no mediaDevices), mocked /scan/refine + /images + taxonomy reads, REAL /items save asserted after reload, cleanup delete |
+| 3.4 | Type AI auto-pick on high-cardinality aspects | ✅ | Best-effort prompt shipped; AI-dependent | `aspect-pick.ts` (2026-07-01): deterministic constrained second pass inside generateListingFields — unfilled/out-of-enum required enum aspects re-asked one cheap text call, picks validated + canonical-cased, never throws; 6 tests |
+| 3.5 | SKU "Custom label" Seller-Hub check | ✅ | Confirm SKU shows in Seller Hub | Live GetItem 2026-07-01: 307034606520 → SKU `PRT-000016`, 307034773471 → `PRT-000017` (Seller Hub "Custom label" IS the Trading SKU field); probe-sku-getitem.ts |
 
 ---
 

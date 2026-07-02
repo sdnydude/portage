@@ -44,9 +44,9 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 **Correction 2026-07-01:** `feat/ai-specifics-and-publish-result` MERGED as PR #132 on 2026-06-23 (reached main via #133's merge of main). Scan-time aspect prefill, inline [AI] auto-fill + chips, quantity capture, MPN "Does Not Apply" sentinel, F2 malformed-aspect guard, F9 enum validation are all live. Remaining from that epic (burndown 2.1, 3.3–3.5):
 
 - [x] E-panel decision (burndown 2.1): CLOSED AS SUPERSEDED 2026-07-01 — inline `[AI]` auto-fill + chips (PR #132) is the consumer of AI-suggested aspects; `AiIdentificationPanel` was never built and won't be
-- [ ] Camera-driven scan→save Playwright e2e — fake camera + intercept `/scan/refine` (burndown 3.3)
-- [ ] Type-AI auto-pick on high-cardinality aspects (burndown 3.4)
-- [ ] SKU "Custom label" Seller-Hub check (burndown 3.5)
+- [x] Camera-driven scan→save Playwright e2e (burndown 3.3) — `camera-scan-save.spec.ts`: canvas-stream getUserMedia polyfill, mocked AI/taxonomy boundary, real `/items` save asserted after reload + cleanup
+- [x] Type-AI auto-pick on high-cardinality aspects (burndown 3.4) — `aspect-pick.ts` constrained second pass wired into `generateListingFields` (covers scan prefill + prepare-listing); enum-validated, canonical casing, never throws
+- [x] SKU "Custom label" check (burndown 3.5) — live GetItem proof: ended ItemIDs 307034606520/307034773471 return SKU `PRT-000016`/`PRT-000017`; Seller Hub Custom label = Trading SKU field (no new publish needed)
 - [x] Plan-doc PR #126 CLOSED unmerged 2026-07-01 — plan superseded by the shipped shape (inline chips, Trade-First transport); history in registry ship sessions
 
 ### Phase 4 — Repo hygiene & Trade-First housekeeping
