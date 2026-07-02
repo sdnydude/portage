@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
+import { squareCaptureRect, guideCaptureRect } from "@/lib/square-capture";
 
 interface UseCameraOptions {
   facingMode?: "user" | "environment";
@@ -15,7 +16,7 @@ interface UseCameraReturn {
   error: string | null;
   start: () => Promise<void>;
   stop: () => void;
-  capture: () => Promise<Blob | null>;
+  capture: (container?: { width: number; height: number }) => Promise<Blob | null>;
   switchCamera: () => Promise<void>;
 }
 
@@ -75,17 +76,24 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
     }
   }, [stop, width, height]);
 
-  const capture = useCallback(async (): Promise<Blob | null> => {
+  const capture = useCallback(async (container?: { width: number; height: number }): Promise<Blob | null> => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || !streamRef.current) return null;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Square discipline: capture the 1:1 region the viewfinder guide frames,
+    // capped at eBay's 2000×2000 photo maximum. With the viewport dimensions
+    // the crop matches the on-screen guide exactly (object-cover mapping);
+    // without them it falls back to the frame's centered square.
+    const { sx, sy, size, out } = container
+      ? guideCaptureRect(video.videoWidth, video.videoHeight, container.width, container.height)
+      : squareCaptureRect(video.videoWidth, video.videoHeight);
+    canvas.width = out;
+    canvas.height = out;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, sx, sy, size, size, 0, 0, out, out);
 
     return new Promise((resolve) => {
       canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.92);

@@ -94,6 +94,9 @@ test("camera-driven scan → review → save lands a real item", async ({ page }
 
   const shutter = page.getByRole("button", { name: "Capture photo" });
   await expect(shutter).toBeEnabled({ timeout: 15_000 }); // fake stream ready
+  // 1:1 discipline: the square capture guide overlays the viewfinder, and
+  // capture() crops exactly the guided region (guideCaptureRect).
+  await expect(page.getByTestId("square-guide")).toBeVisible();
   await page.screenshot({ path: path.join(SHOT, "1-viewfinder.png") });
   await shutter.click();
 
