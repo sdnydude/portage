@@ -3,6 +3,7 @@ import { analyzeImage, analyzeImages, chatText } from './ai-client.js';
 import { createLogger } from './logger.js';
 import type { ImageInput } from './ai-client.js';
 import { AppError } from '../middleware/error.js';
+import { pickMissingRequiredAspects } from './aspect-pick.js';
 import type { RecognitionCandidate } from '@portage/shared';
 
 const logger = createLogger('vision');
@@ -440,5 +441,21 @@ Generate all listing fields as JSON.`;
   if (!validated.success) {
     throw new AppError(502, 'AI_RESPONSE_INVALID', `AI listing fields returned invalid response: ${validated.error.message}`);
   }
-  return validated.data as ListingFieldsOutput;
+  const fields = validated.data as ListingFieldsOutput;
+
+  // Constrained second pass (burndown 3.4): high-cardinality enum aspects like
+  // "Type" routinely come back unfilled from the single-shot call. Never throws.
+  if (fields.ebay) {
+    fields.ebay.aspects = await pickMissingRequiredAspects({
+      aspects: fields.ebay.aspects ?? {},
+      requiredAspects: input.requiredAspects,
+      itemContext: {
+        brand: input.scanData.brand,
+        model: input.scanData.model,
+        category: input.scanData.category,
+        title: fields.ebay.title ?? fields.title ?? '',
+      },
+    });
+  }
+  return fields;
 }

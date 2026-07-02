@@ -43,7 +43,7 @@ not accepted.
 
 | # | Phase | Status | Depends on | Why necessary | Proof / Done-when | Risk |
 |---|-------|--------|-----------|---------------|-------------------|------|
-| 2.1 | E — AiIdentificationPanel (`[AI]` aspect confirm) | ⬜ | 1.10 | AI-suggested aspects have no consumer; makes Phase A land + fully closes the aspect pop-up | scan→panel→confirm→publish carries aspects; fake-camera e2e | med |
+| 2.1 | E — AiIdentificationPanel (`[AI]` aspect confirm) | 🚫 superseded | — | Decision 2026-07-01: inline `[AI]` auto-fill + chips (PR #132) is the consumer of AI-suggested aspects; a separate confirm panel would duplicate the UX. Plan-doc PR #126 closed unmerged. | n/a | — |
 | 2.2 | F — Unify publish panels + price/terms + 2-state result | ✅ | — | Done F0–F4 / PR #132 (UI). Transport now superseded by Epic 1 | shipped | done |
 | 2.3 | F6 — `updateListing` aspect-normalize parity | ✅ | 1.13 | updateListing set aspects raw — a scalar/null could reach eBay on edit | folded into 1.13: `buildTradingInput` (normalizeAspects + required-aspect gate) is the single shared path for create + content-revise; `6dc63fe` | done |
 | 2.4 | F2 / F9 — prepare-listing malformed-aspect guard / enum filter | ⬜ | — | Low: present-but-malformed aspect throws 502; AI value not checked vs enum | guard or comment fix; enum filter | low |
@@ -58,9 +58,9 @@ not accepted.
 |---|------|--------|-------------------------------|-------|
 | 3.1 | Seller-configurable inline shipping/return fields | 🚫 low | Trade-First ships fixed defaults to stay shippable; promote to seller settings later | from seller_profiles/shipping_presets |
 | 3.2 | Carrier label integration (EasyPost/Shippo) | 🚫 | Superseded by Phase I removal | mock rates today |
-| 3.3 | Camera-driven scan→save Playwright e2e | ⬜ | Proves Phase E end-to-end without real camera | fake camera + intercept /scan/refine |
-| 3.4 | Type AI auto-pick on high-cardinality aspects | ⬜ | Best-effort prompt shipped; AI-dependent | — |
-| 3.5 | SKU "Custom label" Seller-Hub check | ⬜ | Confirm SKU shows in Seller Hub | — |
+| 3.3 | Camera-driven scan→save Playwright e2e | ✅ | Proves Phase E end-to-end without real camera | `camera-scan-save.spec.ts` (2026-07-01): canvas.captureStream getUserMedia polyfill (plain-HTTP :3002 has no mediaDevices), mocked /scan/refine + /images + taxonomy reads, REAL /items save asserted after reload, cleanup delete |
+| 3.4 | Type AI auto-pick on high-cardinality aspects | ✅ | Best-effort prompt shipped; AI-dependent | `aspect-pick.ts` (2026-07-01): deterministic constrained second pass inside generateListingFields — unfilled/out-of-enum required enum aspects re-asked one cheap text call, picks validated + canonical-cased, never throws; 6 tests |
+| 3.5 | SKU "Custom label" Seller-Hub check | ✅ | Confirm SKU shows in Seller Hub | Live GetItem 2026-07-01: 307034606520 → SKU `PRT-000016`, 307034773471 → `PRT-000017` (Seller Hub "Custom label" IS the Trading SKU field); probe-sku-getitem.ts |
 
 ---
 
