@@ -24,9 +24,11 @@ jobs:
           cp -r website/docs "$DOCS_SITE/projects/portage"
           # Fix cross-references from /docs/ to /portage/
           find "$DOCS_SITE/projects/portage" -name "*.md" -exec sed -i 's|](/docs/|](/portage/|g' {} \;
-          # Copy static images referenced by docs
+          # Copy static assets referenced by docs (recursive: subdirs like
+          # img/sitemap and img/verification, plus PDFs — the old *.svg glob
+          # silently dropped everything in subdirectories)
           mkdir -p "$DOCS_SITE/static/portage/img"
-          cp -r website/static/img/*.svg "$DOCS_SITE/static/portage/img/" 2>/dev/null || true
+          cp -r website/static/img/. "$DOCS_SITE/static/portage/img/" 2>/dev/null || true
 
       - name: Build Docusaurus
         timeout-minutes: 15
