@@ -32,7 +32,7 @@ Built marketplace-adapter-reviewer subagent (.claude/agents/) + guard-schema-pus
 
 ## Decisions
 
-- EnhanceAllButton takes {photos, replacePhotos} props — never self-calls useListingFlow (plain useState hook, self-call = dead isolated instance)
+- EnhanceAllButton takes `{photos, replacePhotos}` props — never self-calls useListingFlow (plain useState hook, self-call = dead isolated instance)
 - Conversational mode batch-enhance via ListingPreviewCard trigger, not a new photo grid
 
 ## Verification
