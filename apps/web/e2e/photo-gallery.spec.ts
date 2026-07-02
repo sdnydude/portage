@@ -57,6 +57,14 @@ test("item detail: gallery strip opens editor overlay, close returns, strip surv
   await expect(page.getByText("Crop")).toBeVisible();
   await page.screenshot({ path: path.join(SHOT_DIR, "pg-2-editor-overlay.png") });
 
+  // Crop opens the pan/zoom tool: stationary 1:1 window, movable image.
+  await page.getByText("Crop").click();
+  await expect(page.getByText(/drag to position/i)).toBeVisible();
+  await expect(page.getByTestId("crop-window")).toBeVisible();
+  await page.screenshot({ path: path.join(SHOT_DIR, "pg-2b-crop-panzoom.png") });
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText(/drag to position/i)).toHaveCount(0);
+
   // Close discards and returns to the detail page with the strip intact.
   await page.getByRole("button", { name: "Close editor" }).click();
   await expect(page.getByText(/Edit photo 1 of \d+/)).toHaveCount(0);

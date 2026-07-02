@@ -53,6 +53,7 @@ describe("SwipeFlow ReviewPhase — photo gallery strip + editor overlay (S2.5-9
     fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
     fireEvent.click(screen.getByRole("button", { name: /^crop$/i }));
     // CropTool overlay replaces the editor: aspect-ratio presets are its signature controls.
-    expect(screen.getByText("1:1")).toBeInTheDocument();
+    // New pan/zoom crop tool: aspect chips are gone (fixed 1:1 window).
+      expect(screen.getByText(/drag to position/i)).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useCamera } from "@/hooks/use-camera";
 
 interface CameraCaptureProps {
@@ -11,6 +11,24 @@ interface CameraCaptureProps {
 export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   const { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera } = useCamera();
   const [isCapturing, setIsCapturing] = useState(false);
+
+  // One measurement drives BOTH the on-screen guide square and the capture
+  // crop mapping (guideCaptureRect) — they can never disagree.
+  const viewfinderRef = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = viewfinderRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setViewport({ width: r.width, height: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const guideSide = Math.min(viewport.width, viewport.height);
 
   useEffect(() => {
     start();
@@ -28,14 +46,16 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
     if (isCapturing) return;
     setIsCapturing(true);
 
-    const blob = await capture();
+    const blob = await capture(
+      viewport.width > 0 && viewport.height > 0 ? viewport : undefined,
+    );
     if (blob) {
       const file = new File([blob], `capture-${Date.now()}.jpg`, { type: "image/jpeg" });
       stop();
       onCapture(file);
     }
     setIsCapturing(false);
-  }, [capture, stop, onCapture, isCapturing]);
+  }, [capture, stop, onCapture, isCapturing, viewport]);
 
   const handleClose = useCallback(() => {
     stop();
@@ -45,7 +65,7 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   return (
     <div className="fixed inset-0 z-[70] bg-black flex flex-col">
       {/* Viewfinder */}
-      <div className="flex-1 relative overflow-hidden">
+      <div ref={viewfinderRef} className="flex-1 relative overflow-hidden">
         <video
           ref={handleVideoRef}
           autoPlay
@@ -54,6 +74,38 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
           className="absolute inset-0 w-full h-full object-cover"
         />
         <canvas ref={canvasRef} className="hidden" />
+
+        {/* 1:1 capture guide: the largest centered square in the viewfinder.
+            capture() maps exactly this region to the photo (guideCaptureRect),
+            so what's inside the frame is what lands on eBay — square, ≤2000px.
+            Sized from the measured viewport (never CSS aspect-ratio — iOS
+            WebKit collapses it inside flex+overflow); the box-shadow dims
+            everything outside the square. */}
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center" aria-hidden>
+          <div
+            data-testid="square-guide"
+            className="relative"
+            style={{
+              width: guideSide > 0 ? `${guideSide}px` : "100%",
+              height: guideSide > 0 ? `${guideSide}px` : "100%",
+              boxShadow: "0 0 0 9999px rgba(0,0,0,0.45)",
+            }}
+          >
+            {/* Corner ticks */}
+            {[
+              { top: 0, left: 0, borderWidth: "2px 0 0 2px" },
+              { top: 0, right: 0, borderWidth: "2px 2px 0 0" },
+              { bottom: 0, left: 0, borderWidth: "0 0 2px 2px" },
+              { bottom: 0, right: 0, borderWidth: "0 2px 2px 0" },
+            ].map((pos, i) => (
+              <span
+                key={i}
+                className="absolute w-6 h-6 border-white/90"
+                style={{ ...pos, borderStyle: "solid", borderColor: "rgba(255,255,255,0.9)" }}
+              />
+            ))}
+          </div>
+        </div>
 
         {error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6">
