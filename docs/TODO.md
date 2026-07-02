@@ -43,11 +43,11 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 
 **Correction 2026-07-01:** `feat/ai-specifics-and-publish-result` MERGED as PR #132 on 2026-06-23 (reached main via #133's merge of main). Scan-time aspect prefill, inline [AI] auto-fill + chips, quantity capture, MPN "Does Not Apply" sentinel, F2 malformed-aspect guard, F9 enum validation are all live. Remaining from that epic (burndown 2.1, 3.3–3.5):
 
-- [ ] E-panel decision (burndown 2.1): inline auto-fill shipped instead of the AiIdentificationPanel confirm step — decide whether the panel is still wanted or close as superseded
+- [x] E-panel decision (burndown 2.1): CLOSED AS SUPERSEDED 2026-07-01 — inline `[AI]` auto-fill + chips (PR #132) is the consumer of AI-suggested aspects; `AiIdentificationPanel` was never built and won't be
 - [ ] Camera-driven scan→save Playwright e2e — fake camera + intercept `/scan/refine` (burndown 3.3)
 - [ ] Type-AI auto-pick on high-cardinality aspects (burndown 3.4)
 - [ ] SKU "Custom label" Seller-Hub check (burndown 3.5)
-- [ ] Merge or close plan-doc PR #126 (superseded by shipped work?)
+- [x] Plan-doc PR #126 CLOSED unmerged 2026-07-01 — plan superseded by the shipped shape (inline chips, Trade-First transport); history in registry ship sessions
 
 ### Phase 4 — Repo hygiene & Trade-First housekeeping
 

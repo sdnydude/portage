@@ -43,7 +43,7 @@ not accepted.
 
 | # | Phase | Status | Depends on | Why necessary | Proof / Done-when | Risk |
 |---|-------|--------|-----------|---------------|-------------------|------|
-| 2.1 | E — AiIdentificationPanel (`[AI]` aspect confirm) | ⬜ | 1.10 | AI-suggested aspects have no consumer; makes Phase A land + fully closes the aspect pop-up | scan→panel→confirm→publish carries aspects; fake-camera e2e | med |
+| 2.1 | E — AiIdentificationPanel (`[AI]` aspect confirm) | 🚫 superseded | — | Decision 2026-07-01: inline `[AI]` auto-fill + chips (PR #132) is the consumer of AI-suggested aspects; a separate confirm panel would duplicate the UX. Plan-doc PR #126 closed unmerged. | n/a | — |
 | 2.2 | F — Unify publish panels + price/terms + 2-state result | ✅ | — | Done F0–F4 / PR #132 (UI). Transport now superseded by Epic 1 | shipped | done |
 | 2.3 | F6 — `updateListing` aspect-normalize parity | ✅ | 1.13 | updateListing set aspects raw — a scalar/null could reach eBay on edit | folded into 1.13: `buildTradingInput` (normalizeAspects + required-aspect gate) is the single shared path for create + content-revise; `6dc63fe` | done |
 | 2.4 | F2 / F9 — prepare-listing malformed-aspect guard / enum filter | ⬜ | — | Low: present-but-malformed aspect throws 502; AI value not checked vs enum | guard or comment fix; enum filter | low |
