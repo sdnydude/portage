@@ -24,7 +24,6 @@ Trading API (XML) with OAuth2 via X-EBAY-API-IAF-TOKEN, fast-xml-parser, sanitiz
 - `911eb3b feat: add eBay buyer messaging backend`
 - `5534173 feat: add buyer messaging frontend`
 - `3a60fdd fix: address 18 advisor review findings`
-- `fd8c825 fix: resolve 11 PR #84 findings + 5 wiring issues`
 
 ## Deferred Items
 
@@ -47,7 +46,7 @@ Trading API (XML) with OAuth2 via X-EBAY-API-IAF-TOKEN, fast-xml-parser, sanitiz
 ## Verification
 
 - **lint:** 0 errors
-- **tests:** 238/238 pass (31 new)
+- **tests:** 227/227 pass (20 new)
 - **typecheck:** pass
 
 **Tags:** `messaging`, `ebay`, `trading-api`, `xml`, `tdd`

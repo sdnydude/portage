@@ -2,10 +2,8 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
-import { useShippingLabel } from "@/hooks/use-shipping";
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -36,6 +34,7 @@ interface OrderDetail {
   soldAt: string;
   shippedAt: string | null;
   deliveredAt: string | null;
+  ebayItemId: string | null;
   item: {
     id: string;
     title: string;
@@ -96,7 +95,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const { id: orderId } = use(params);
   const router = useRouter();
   const { token } = useAuth();
-  const { markShipped } = useShippingLabel();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -123,12 +121,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }, [fetchOrder]);
 
   const handleMarkShipped = async () => {
+    if (!token) return;
     setIsMarkingShipped(true);
     try {
-      await markShipped(orderId);
+      // Shipping happens on eBay; this records it locally (stamps shippedAt server-side).
+      await api(`/orders/${orderId}`, { method: "PATCH", body: { status: "shipped" }, token });
       await fetchOrder();
-    } catch {
-      // Error handled by hook
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to mark order shipped");
     } finally {
       setIsMarkingShipped(false);
     }
@@ -161,7 +161,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   const badge = getMarketplaceBadge(order.marketplace);
-  const primaryPhoto = order.item.photos?.find((p) => p.isPrimary) ?? order.item.photos?.[0];
+  const primaryPhoto = order.item?.photos?.find((p) => p.isPrimary) ?? order.item?.photos?.[0];
   const currentStatusIndex = getStatusIndex(order.status);
   const profit = order.salePrice - order.shippingCost - order.marketplaceFees;
 
@@ -190,7 +190,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             <div className="flex gap-3">
               {primaryPhoto ? (
                 <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
-                  <img src={primaryPhoto.url} alt={order.item.title} className="w-full h-full object-cover" />
+                  <img src={primaryPhoto.url} alt={order.item?.title ?? "Item"} className="w-full h-full object-cover" />
                 </div>
               ) : (
                 <div className="w-20 h-20 rounded-xl bg-muted flex items-center justify-center flex-shrink-0">
@@ -203,7 +203,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-text-primary line-clamp-2">{order.item.title}</h3>
+                  <h3 className="text-sm font-semibold text-text-primary line-clamp-2">{order.item?.title ?? "Item"}</h3>
                   <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${badge.bg} ${badge.text}`}>
                     {badge.label}
                   </span>
@@ -229,16 +229,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <span className="text-sm text-text-secondary">Shipping Cost</span>
               <span className="text-sm text-text-primary">-{formatCurrency(order.shippingCost)}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-text-secondary">Marketplace Fees</span>
-              <span className="text-sm text-text-primary">-{formatCurrency(order.marketplaceFees)}</span>
-            </div>
-            <div className="border-t border-border pt-2 flex items-center justify-between">
-              <span className="text-sm font-semibold text-text-primary">Profit</span>
-              <span className={`text-sm font-bold ${profit >= 0 ? "text-forest-green" : "text-accent-error"}`}>
-                {formatCurrency(profit)}
-              </span>
-            </div>
+            {/* Fees (and therefore profit) are unknown until the eBay Finances
+                API is integrated — the Fulfillment API never returns the fee
+                amount. Hide both rather than show a made-up profit. */}
+            {order.marketplaceFees > 0 && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">Marketplace Fees</span>
+                  <span className="text-sm text-text-primary">-{formatCurrency(order.marketplaceFees)}</span>
+                </div>
+                <div className="border-t border-border pt-2 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-text-primary">Profit</span>
+                  <span className={`text-sm font-bold ${profit >= 0 ? "text-forest-green" : "text-accent-error"}`}>
+                    {formatCurrency(profit)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
@@ -330,9 +337,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
         {/* Action buttons */}
         <section className="py-4 space-y-3">
-          {order.status === "payment_received" && (
-            <Link
-              href={`/orders/${orderId}/ship`}
+          {order.status === "payment_received" && order.ebayItemId && (
+            <a
+              href={`https://www.ebay.com/itm/${order.ebayItemId}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl bg-forest-green text-white font-semibold text-sm"
               style={{ boxShadow: "var(--shadow-elevated)" }}
             >
@@ -343,7 +352,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <circle cx="18.5" cy="18.5" r="2.5" />
               </svg>
               Ship It
-            </Link>
+            </a>
+          )}
+
+          {order.status === "payment_received" && (
+            <button
+              onClick={handleMarkShipped}
+              disabled={isMarkingShipped}
+              className="w-full py-3.5 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-sm hover:bg-muted transition-colors disabled:opacity-60"
+            >
+              {isMarkingShipped ? "Marking..." : "Mark as Shipped"}
+            </button>
           )}
 
           {order.status === "label_purchased" && (

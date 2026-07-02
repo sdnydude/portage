@@ -14,9 +14,10 @@ const h = vi.hoisted(() => ({
   enhanceResult: null as null | { image: { key: string; url: string; width: number; height: number; size: number } },
 }));
 
+const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "i1" }),
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
 }));
 vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true, token: "t" }) }));
 vi.mock("@/hooks/use-item", () => ({
@@ -45,19 +46,28 @@ vi.mock("@/components/listing-flow/crop-tool", () => ({
   ),
 }));
 vi.mock("@/components/listing/create-listing-sheet", () => ({
-  CreateListingSheet: ({ suggestedPrice }: { suggestedPrice?: number }) => (
-    <div>sheet-open price:{suggestedPrice ?? "none"}</div>
+  CreateListingSheet: ({ suggestedPrice, onCreated }: { suggestedPrice?: number; onCreated: () => void }) => (
+    <div>
+      sheet-open price:{suggestedPrice ?? "none"}
+      <button onClick={onCreated}>finish-create</button>
+    </div>
   ),
+}));
+
+vi.mock("@/components/listing/listing-optimizer-panel", () => ({
+  ListingOptimizerPanel: ({ itemId }: { itemId: string }) => <div>optimizer:{itemId}</div>,
 }));
 
 import ItemDetailPage from "./page";
 
 describe("inventory detail — editable price", () => {
-  it("shows the editable Price field when editing the item", () => {
-    h.item.price = null;
+  it("routes Edit to the canonical /edit page (no inline static-category editor)", () => {
     render(<ItemDetailPage />);
     fireEvent.click(screen.getByLabelText("Edit item"));
-    expect(screen.getByLabelText("Price (USD)")).toBeInTheDocument();
+    // Editing now navigates to the eBay-taxonomy edit page; the deprecated inline
+    // editor (static category/condition lists, no persisted categoryId) is gone.
+    expect(pushMock).toHaveBeenCalledWith("/inventory/i1/edit");
+    expect(screen.queryByLabelText("Price (USD)")).not.toBeInTheDocument();
   });
 
   it("has no silent quick-list button and opens the publish sheet prefilled from the item price", () => {
@@ -68,6 +78,18 @@ describe("inventory detail — editable price", () => {
     expect(screen.queryByText("List for Sale")).toBeNull();
     fireEvent.click(screen.getByText("List on Marketplace"));
     expect(screen.getByText("sheet-open price:75")).toBeInTheDocument();
+  });
+
+  it("after creating a listing from the sheet, redirects to inventory (not listings)", () => {
+    render(<ItemDetailPage />);
+    fireEvent.click(screen.getByText("List on Marketplace"));
+    fireEvent.click(screen.getByText("finish-create"));
+    expect(pushMock).toHaveBeenCalledWith("/inventory");
+  });
+
+  it("renders the Listing Optimizer panel for the item", () => {
+    render(<ItemDetailPage />);
+    expect(screen.getByText("optimizer:i1")).toBeInTheDocument();
   });
 });
 

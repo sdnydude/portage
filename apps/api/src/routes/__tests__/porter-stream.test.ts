@@ -180,21 +180,17 @@ describe('POST /porter/stream', () => {
     });
   });
 
-  it('silently ignores TTS failures and still emits done', async () => {
+  it('streams text end-to-end without any TTS call or audio_url event (voice removed)', async () => {
     process.env.DHG_TTS_URL = 'http://dhg-tts:8000';
     mockUserSelect({ subscriptionTier: 'pro', trialEndsAt: null, porterMessagesToday: 0 });
     mockConversationCreate('conv-6');
 
     vi.mocked(chatStream).mockImplementationOnce(async (_msgs, _sys, _tools, _exec, onEvent) => {
-      onEvent({ type: 'text_delta', text: 'Spoken reply' });
+      onEvent({ type: 'text_delta', text: 'Text reply' });
       onEvent({ type: 'done', model: 'm', inputTokens: 1, outputTokens: 1 });
     });
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: async () => ({}),
-    });
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -204,15 +200,11 @@ describe('POST /porter/stream', () => {
         .send({ message: 'Hi' });
 
       expect(res.status).toBe(200);
+      expect(res.text).toContain('"type":"text_delta"');
       expect(res.text).toContain('"type":"done"');
       expect(res.text).not.toContain('"type":"audio_url"');
       expect(res.text).not.toContain('"type":"error"');
-      expect(fetchMock).toHaveBeenCalled();
-      const [, callOpts] = fetchMock.mock.calls[0];
-      const body = JSON.parse(callOpts.body as string);
-      expect(body.input).toBe('Spoken reply');
-      expect(body.model).toBe('turbo');
-      expect(body.voice).toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
       delete process.env.DHG_TTS_URL;

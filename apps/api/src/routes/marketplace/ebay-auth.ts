@@ -13,6 +13,7 @@ import { eq, and } from 'drizzle-orm';
 import { checkMarketplaceLimit } from '../../lib/billing-utils.js';
 import { getEbayUserFlowCredentials } from '../../marketplace/ebay-credentials.js';
 import { ebayTaxonomyCalls } from '../../lib/metrics.js';
+import { EBAY_USER_AGENT } from '../../marketplace/ebay-constants.js';
 
 const logger = createLogger('ebay-auth');
 
@@ -100,6 +101,10 @@ ebayAuthRouter.get('/connect', async (req, res, next) => {
     'https://api.ebay.com/oauth/api_scope/sell.marketing',
     'https://api.ebay.com/oauth/api_scope/sell.account',
     'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+    // Read-only Analytics for the listing-optimizer traffic report (impressions/CTR/
+    // conversion). Added 2026-06 — accounts connected before this must reconnect to
+    // re-consent; without it getTrafficReport 403s and research returns traffic:null.
+    'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly',
     'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly',
   ].join(' ');
 
@@ -151,6 +156,7 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${credentials}`,
+        'User-Agent': EBAY_USER_AGENT,
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',

@@ -5,6 +5,8 @@ import { eq, and } from 'drizzle-orm';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { env } from '../lib/env.js';
 import { getEbayUserFlowCredentials } from './ebay-credentials.js';
+import { EBAY_USER_AGENT } from './ebay-constants.js';
+import { AppError } from '../middleware/error.js';
 
 const logger = createLogger('token-manager');
 
@@ -20,7 +22,7 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
     .limit(1);
 
   if (!account) {
-    throw new Error('No eBay account connected');
+    throw new AppError(400, 'EBAY_SETUP_REQUIRED', 'eBay selling is not set up. Connect your eBay account in Settings first.');
   }
 
   const expiresAt = new Date(account.tokenExpiresAt).getTime();
@@ -50,6 +52,7 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Authorization': `Basic ${credentials}`,
+      'User-Agent': EBAY_USER_AGENT,
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
@@ -60,7 +63,15 @@ export async function getEbayAccessToken(userId: string): Promise<string> {
   if (!response.ok) {
     const errorBody = await response.text();
     logger.error({ status: response.status, body: errorBody }, 'eBay token refresh failed');
-    throw new Error('Failed to refresh eBay access token');
+    // invalid_grant means the stored refresh token is dead — revoked, expired, or
+    // (in an ATO lock) "issued to another client". The user must re-link eBay; a
+    // retry cannot fix it, so surface a typed 409 the UI can act on, not a 500.
+    if (response.status === 400 && errorBody.includes('invalid_grant')) {
+      throw new AppError(409, 'EBAY_RECONNECT_REQUIRED', 'Your eBay connection has expired or been revoked. Reconnect your eBay account in Settings.');
+    }
+    // Anything else (eBay 5xx, network) is transient — distinct typed error so the
+    // caller can tell "reconnect" apart from "try again shortly".
+    throw new AppError(502, 'EBAY_UNAVAILABLE', 'eBay could not refresh the connection right now. Please try again shortly.');
   }
 
   const data = await response.json() as {
@@ -162,6 +173,7 @@ async function fetchEbayAppToken(forceProd: boolean): Promise<string> {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Authorization': `Basic ${credentials}`,
+      'User-Agent': EBAY_USER_AGENT,
     },
     body: new URLSearchParams({
       grant_type: 'client_credentials',

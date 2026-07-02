@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useOnboarding } from "@/hooks/use-onboarding";
 import { usePorter } from "@/hooks/use-porter-context";
-import { useVoiceInput } from "@/hooks/use-voice-input";
 import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
 import { FullChat } from "@/components/porter/full-chat";
@@ -69,7 +68,7 @@ const STATUS_BADGE: Record<string, { bg: string; label: string }> = {
 };
 
 export default function HomePage() {
-  const { isAuthenticated, token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { data, isLoading, error } = useDashboard();
   const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -98,25 +97,6 @@ export default function HomePage() {
     setIsEngaged(true);
     porter.sendMessage(message);
   };
-
-  // Push-to-talk mic on the ask card — reuses the same voice flow as FloatingMic.
-  const voice = useVoiceInput();
-  const voiceSentRef = useRef(false);
-  useEffect(() => {
-    if (voice.state === "listening") voiceSentRef.current = false;
-    if (voice.state === "done" && voice.transcript && !voiceSentRef.current) {
-      voiceSentRef.current = true;
-      setIsEngaged(true);
-      porter.sendMessage(voice.transcript);
-      voice.reset();
-    }
-    // Depend on the voice state/transcript only — `voice` is a fresh object each
-    // render, so depending on it would re-run reset()/stop() on unrelated renders
-    // (e.g. typing) and could kill an in-progress recording.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voice.state, voice.transcript]);
-  const startVoice = () => { if (token) voice.start(token); };
-  const stopVoice = () => voice.stop();
 
   if (!isAuthenticated) {
     return (
@@ -217,7 +197,7 @@ export default function HomePage() {
           <ThemeToggle className="flex-shrink-0 w-11 h-11 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors" />
 
           <Link
-            href="/settings"
+            href="/more"
             className="flex-shrink-0 w-11 h-11 rounded-full bg-white/10 flex items-center justify-center text-[var(--on-forest-mute)] hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-bottom)]"
             aria-label="Settings"
           >
@@ -270,7 +250,6 @@ export default function HomePage() {
                 key={i}
                 message={msg}
                 pills={i === porter.messages.length - 1 ? porter.pills : []}
-                audioUrl={i === porter.messages.length - 1 ? porter.audioUrl : null}
                 onPillSelect={handlePillSelect}
               />
             ))}
@@ -303,7 +282,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Ask card — glass control; orange mic (push-to-talk) / send */}
+        {/* Ask card — glass control; orange send CTA */}
         <div
           className="glass-control relative flex items-center gap-2 rounded-2xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[var(--teal-bright)]"
           style={{ border: "1px solid rgba(255,255,255,0.16)" }}
@@ -316,41 +295,21 @@ export default function HomePage() {
             placeholder="Ask Porter…"
             className="flex-1 bg-transparent text-sm outline-none text-[var(--on-forest)] placeholder:text-[var(--on-forest-mute)] min-w-0"
           />
-          {chatInput.trim() ? (
-            <button
-              onClick={handleSend}
-              disabled={porter.isStreaming}
-              aria-label="Send message"
-              className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--orange)] text-white disabled:opacity-40 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-bottom)]"
-            >
-              <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              onPointerDown={startVoice}
-              onPointerUp={stopVoice}
-              onPointerLeave={stopVoice}
-              onKeyDown={(e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); startVoice(); } }}
-              onKeyUp={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); stopVoice(); } }}
-              aria-label="Hold to talk to Porter (or hold Space / Enter while focused)"
-              aria-pressed={voice.state === "listening"}
-              className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-bottom)]"
-              style={{ background: voice.state === "listening" ? "var(--accent-error)" : "var(--orange)" }}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="22" />
-              </svg>
-            </button>
-          )}
+          <button
+            onClick={handleSend}
+            disabled={!chatInput.trim() || porter.isStreaming}
+            aria-label="Send message"
+            className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--orange)] text-white disabled:opacity-40 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--teal-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-bottom)]"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+            </svg>
+          </button>
         </div>
 
-        {(voice.error || porter.error) && (
+        {porter.error && (
           <p className="relative mt-2 text-xs text-[var(--on-forest-error)]" role="alert">
-            {voice.error || porter.error}
+            {porter.error}
           </p>
         )}
       </div>
@@ -525,17 +484,11 @@ export default function HomePage() {
           streamingBlocks={porter.streamingBlocks}
           isStreaming={porter.isStreaming}
           pills={porter.pills}
-          audioUrl={porter.audioUrl}
           error={porter.error}
           chatInput={chatInput}
           onChatInputChange={setChatInput}
           onSend={handleSend}
           onPillSelect={handlePillSelect}
-          onVoiceTranscript={(text) => {
-            setChatInput(text);
-            setIsEngaged(true);
-            porter.sendMessage(text);
-          }}
           onNewChat={() => {
             porter.startNewChat();
             setIsEngaged(false);

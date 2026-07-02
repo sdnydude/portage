@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { parsePriceInput } from "@/lib/price";
 
 export interface PriceFieldProps {
@@ -18,9 +18,16 @@ export function PriceField({ value, onChange }: PriceFieldProps) {
   // a trailing ".") aren't clobbered by the normalized parsed number.
   const [text, setText] = useState(value != null ? String(value) : "");
 
+  // While the field is focused the user owns it. Re-setting a controlled input's
+  // value mid-edit bumps the caret to the end on iOS WebKit, which blocked
+  // single-digit deletes — so the sync effect must not touch text during editing.
+  const editing = useRef(false);
+
   // Sync from the prop on external change (AI prefill, reset) without clobbering an
-  // in-progress edit whose parsed value already equals the prop.
+  // in-progress edit whose parsed value already equals the prop — and never while
+  // the user is actively editing (see `editing` above).
   useEffect(() => {
+    if (editing.current) return;
     if (parsePriceInput(text) !== value) {
       setText(value != null ? String(value) : "");
     }
@@ -35,6 +42,8 @@ export function PriceField({ value, onChange }: PriceFieldProps) {
         inputMode="decimal"
         aria-label="Price (USD)"
         value={text}
+        onFocus={() => { editing.current = true; }}
+        onBlur={() => { editing.current = false; }}
         onChange={(e) => {
           setText(e.target.value);
           onChange(parsePriceInput(e.target.value));

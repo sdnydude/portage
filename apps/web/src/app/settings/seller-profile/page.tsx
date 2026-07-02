@@ -1,9 +1,28 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import type { SellerProfile, EbayPoliciesResponse } from "@portage/shared";
+
+// This page lives outside the (tabs) group, so it has no bottom nav. Without a
+// header the seller could get stuck here — give every state a back affordance.
+function BackHeader() {
+  const router = useRouter();
+  return (
+    <button
+      onClick={() => router.push("/inventory")}
+      aria-label="Back to inventory"
+      className="flex items-center gap-1.5 text-sm font-medium text-text-secondary hover:text-text-primary mb-4"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      Inventory
+    </button>
+  );
+}
 
 export default function SellerProfilePage() {
   const { token } = useAuth();
@@ -115,6 +134,7 @@ export default function SellerProfilePage() {
   if (loadError) {
     return (
       <div className="max-w-lg mx-auto px-4 py-8">
+        <BackHeader />
         <h1 className="text-2xl font-bold mb-4">Seller Profile</h1>
         <div className="text-sm py-2 px-3 rounded-lg" style={{ background: "rgba(204,51,51,0.1)", color: "#CC3333" }}>
           {loadError}
@@ -133,6 +153,7 @@ export default function SellerProfilePage() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
+      <BackHeader />
       <h1 className="text-2xl font-bold">Seller Profile</h1>
 
       {message && (() => {

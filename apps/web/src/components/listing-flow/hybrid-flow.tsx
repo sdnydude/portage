@@ -396,6 +396,15 @@ function ChatMode({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  // Once the review card is on screen, the editable Item Details card collapses
+  // to a one-line summary (the visible duplication confused sellers); this
+  // re-expands it on demand.
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  // ChatMode stays mounted across "List Another" (flow.reset) — re-collapse
+  // for the next item or the feature silently dies after one expansion.
+  useEffect(() => {
+    if (lastStep === "idle") setDetailsExpanded(false);
+  }, [lastStep]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -485,6 +494,7 @@ function ChatMode({
     return (
       <PublishSuccess
         listingId={state.listingId}
+        warning={state.publishWarning ?? undefined}
         marketplace={state.marketplace}
         title={state.title}
         price={state.price ?? 0}
@@ -615,8 +625,23 @@ function ChatMode({
         </div>
       )}
 
-      {/* ── Confirmed: editable details ── */}
-      {showConfirmed && state.recognition.status === "complete" && (
+      {/* ── Confirmed: editable details (collapses once the review card shows) ── */}
+      {showConfirmed && state.recognition.status === "complete" && showReview && !detailsExpanded ? (
+        <InlineCard title="Item Details">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <p style={{ fontSize: 13, color: TEXT, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {state.title} · {state.category || "—"} · <span style={{ textTransform: "capitalize" }}>{state.condition || "—"}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setDetailsExpanded(true)}
+              style={{ fontSize: 12, fontWeight: 600, color: ACCENT, background: "none", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              Edit details
+            </button>
+          </div>
+        </InlineCard>
+      ) : showConfirmed && state.recognition.status === "complete" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <PorterMessage>Great. Review and edit the details below.</PorterMessage>
           <InlineCard title="Item Details">
@@ -888,6 +913,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
     return (
       <PublishSuccess
         listingId={state.listingId}
+        warning={state.publishWarning ?? undefined}
         marketplace={state.marketplace}
         title={state.title}
         price={state.price ?? 0}

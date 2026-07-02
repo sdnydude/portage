@@ -10,7 +10,7 @@ src/app/
 │   ├── home/        # Dashboard
 │   ├── inventory/   # Item grid/list
 │   ├── listings/    # Active/sold
-│   ├── orders/      # Fulfillment
+│   ├── orders/      # Sold list (thumbnail/title/date/price; Ship-It → eBay)
 │   ├── porter/      # AI assistant
 │   └── more/        # Settings/profile
 ├── admin/           # Separate layout tree (sidebar nav)
@@ -21,9 +21,8 @@ src/app/
 ├── listings/[id]/   # Listing detail
 ├── list/            # Create listing entry
 ├── orders/[id]/     # Order detail
-├── orders/[id]/ship/# Ship order flow
 ├── messages/        # eBay buyer messaging (conversations list + thread view)
-├── settings/        # 8 settings pages (profile, marketplace, seller-profile, shipping, billing, notifications, help, admin)
+├── settings/        # 7 settings pages (profile, marketplace, seller-profile, billing, notifications, help, admin)
 ├── login/           # Auth
 └── register/        # Auth
 ```
@@ -80,8 +79,6 @@ All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. K
 | `useComps` | Comparable listings for pricing |
 | `usePrepareListing` | AI field generation |
 | `useDrafts` | Draft persistence |
-| `useShipping` | Presets, rates, label purchase |
-| `useShippingProvider` | Carrier config and connection test |
 | `useBgRemoval` | @imgly background removal (in-browser) |
 | `useEnhance` | AI photo enhancement (server-side Sharp) |
 | `useConversations` | eBay message conversation list |

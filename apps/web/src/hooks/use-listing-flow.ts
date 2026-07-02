@@ -69,6 +69,7 @@ const INITIAL_STATE: ListingFlowState = {
   publishStatus: 'idle',
   listingId: null,
   inventoryItemId: null,
+  publishWarning: null,
 };
 
 function revokeLocalUrls(photos: ListingFlowState['photos']) {
@@ -371,7 +372,7 @@ export function useListingFlow() {
 
   const publish = useCallback(async (
     options?: PublishOptions,
-  ): Promise<{ success: boolean; listingId?: string; error?: string; aspectsRequired?: AspectRequirement[]; weightRequired?: boolean }> => {
+  ): Promise<{ success: boolean; listingId?: string; error?: string; warning?: string; aspectsRequired?: AspectRequirement[]; weightRequired?: boolean }> => {
     if (!token) return { success: false, error: 'Not authenticated' };
 
     const s = stateRef.current;
@@ -426,19 +427,23 @@ export function useListingFlow() {
         });
         itemId = item.id;
         setState(prev => ({ ...prev, inventoryItemId: itemId }));
-      } else if (weightOz != null) {
-        // Existing item: persist weight/dims to the item columns so the
-        // publish-time merge (listings route) can emit packageWeightAndSize.
+      } else {
+        // Existing item: persist the flow's quantity (item.quantity is the single
+        // source of truth — publish reads it) and, when present, weight/dims so
+        // the publish-time merge (listings route) can emit packageWeightAndSize.
         await api(`/items/${itemId}`, {
           method: 'PATCH',
           body: {
-            weightOz,
-            // route schema is positive().optional() — send undefined, never null.
-            lengthIn: dimL ?? undefined,
-            widthIn: dimW ?? undefined,
-            heightIn: dimH ?? undefined,
-            ebayPackageType: pkgType ?? undefined,
-            weightEstimated: estimated,
+            quantity: s.quantity,
+            ...(weightOz != null && {
+              weightOz,
+              // route schema is positive().optional() — send undefined, never null.
+              lengthIn: dimL ?? undefined,
+              widthIn: dimW ?? undefined,
+              heightIn: dimH ?? undefined,
+              ebayPackageType: pkgType ?? undefined,
+              weightEstimated: estimated,
+            }),
           },
           token,
         });
@@ -459,18 +464,22 @@ export function useListingFlow() {
         }
       }
 
-      // Merge user-supplied item specifics (from the aspect sheet on a prior
-      // EBAY_ASPECTS_REQUIRED) into the prepared fields before publishing.
-      if (options?.aspects && ebayPreparedFields) {
-        ebayPreparedFields = {
-          ...ebayPreparedFields,
-          aspects: { ...(ebayPreparedFields.aspects ?? {}), ...options.aspects },
+      // Build the eBay specifics as a record (not strict EbayPreparedFields) so
+      // user-supplied aspects from the aspect sheet (a retry after
+      // EBAY_ASPECTS_REQUIRED) survive even when prepare-listing yielded nothing
+      // — otherwise they were silently dropped and the publish re-demanded them.
+      // categoryId is self-healed server-side from item.marketplaceData.
+      const ebaySpecific: Record<string, unknown> = ebayPreparedFields ? { ...ebayPreparedFields } : {};
+      if (options?.aspects) {
+        ebaySpecific.aspects = {
+          ...((ebaySpecific.aspects as Record<string, string[]> | undefined) ?? {}),
+          ...options.aspects,
         };
       }
 
       const marketplaceSpecificFields =
-        s.marketplace === 'ebay' && ebayPreparedFields
-          ? { ...ebayPreparedFields }
+        s.marketplace === 'ebay' && Object.keys(ebaySpecific).length > 0
+          ? ebaySpecific
           : s.marketplace === 'reverb'
             ? {
                 make: s.brand,
@@ -480,7 +489,7 @@ export function useListingFlow() {
               }
             : undefined;
 
-      const listing = await api<{ id: string; status: string }>('/listings', {
+      const listing = await api<{ id: string; status: string; warning?: string }>('/listings', {
         method: 'POST',
         body: {
           itemId,
@@ -502,10 +511,11 @@ export function useListingFlow() {
         publishStatus: 'published',
         listingId: listing.id,
         inventoryItemId: itemId,
+        publishWarning: listing.warning ?? null,
       }));
       setLastStep('published');
 
-      return { success: true, listingId: listing.id };
+      return { success: true, listingId: listing.id, warning: listing.warning };
     } catch (err) {
       // eBay needs category-required item specifics — surface them so the flow
       // can collect the values and retry. No listing row was created (the gate

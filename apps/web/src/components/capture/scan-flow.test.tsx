@@ -99,7 +99,7 @@ const CANDIDATE = {
   confidence: 0.9,
 };
 
-async function renderInReview() {
+async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: unknown }) {
   // Photo upload goes through raw fetch, not the api() wrapper.
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -113,10 +113,11 @@ async function renderInReview() {
     if (path.startsWith("/items/comps/search")) throw new Error("no comps");
     if (path === "/seller-profile") return { profile: { ebayPublishMode: "live" } };
     if (path === "/items") return { id: "item-1" };
+    if (path === "/listings" && opts?.listingsResponse) return opts.listingsResponse;
     return {};
   });
 
-  render(<ScanFlow onClose={vi.fn()} />);
+  render(<ScanFlow onClose={opts?.onClose ?? vi.fn()} />);
   fireEvent.click(screen.getByText("Choose from Gallery"));
   fireEvent.click(await screen.findByText(/Scan 1 Photo with Porter/));
   await screen.findByText("Review");
@@ -250,42 +251,178 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
-  it("Save & List posts the seller-profile-aware payload with aspects and categoryId", async () => {
-    scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
+  it("blocks Save (with a reason) until required fields are complete — here, category", async () => {
+    scanAspectsState.resolvedCategoryId = null; // category required + incomplete
+    scanAspectsState.resolvedCategoryName = null;
 
     await renderInReview();
-    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
 
-    // Profile says live → publishMode live with aspects + categoryId attached.
-    const listingsCall = await vi.waitFor(() => {
-      const call = apiMock.mock.calls.find(([path]) => path === "/listings");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("names the incomplete required field(s) blocking Save", async () => {
+    scanAspectsState.resolvedCategoryId = null;
+    scanAspectsState.resolvedCategoryName = null;
+
+    await renderInReview();
+
+    expect(screen.getByText(/Complete required field/)).toHaveTextContent(/Category/);
+  });
+
+  it("plain Save persists the entered price to the item (same as Save & List)", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Price (USD)"), { target: { value: "65" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
       expect(call).toBeDefined();
       return call;
     });
-    expect(listingsCall?.[1]).toMatchObject({
-      method: "POST",
-      body: {
-        itemId: "item-1",
-        marketplace: "ebay",
-        price: 500,
-        publishMode: "live",
-        marketplaceSpecificFields: {
-          aspects: { Brand: ["Fender"] },
-          categoryId: "33034",
-        },
-      },
-    });
-    // The legacy flag must be gone — publishMode drives behavior now.
-    expect(listingsCall?.[1].body).not.toHaveProperty("publishImmediately");
+    expect((itemsCall?.[1] as { body: { price?: number } }).body.price).toBe(65);
   });
 
-  it("falls back to draft publishMode when the seller-profile fetch rejects — never an accidental live publish", async () => {
-    scanAspectsState.buildAspects = vi.fn(() => ({ Brand: ["Fender"] }));
+  it("review captures quantity and Save persists it to the item (editable from default 1)", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect((itemsCall?.[1] as { body: { quantity?: number } }).body.quantity).toBe(3);
+  });
+
+  it("review captures lb+oz weight and Save persists seller-confirmed weightOz", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Pounds"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Ounces"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { weightOz?: number; weightEstimated?: boolean } }).body;
+    expect(body.weightOz).toBe(24);
+    expect(body.weightEstimated).toBe(false);
+  });
+
+  it("eBay taxonomy is THE category: free-text input gone, search re-resolves, Save persists the eBay name", async () => {
+    await renderInReview();
+
+    // the deprecated internal free-text category input is gone
+    // (it used to render with the candidate's category as its value)
+    expect(screen.queryByDisplayValue("Guitars")).not.toBeInTheDocument();
+
+    // searching re-resolves against eBay's full taxonomy
+    fireEvent.change(screen.getByLabelText("Search eBay category"), {
+      target: { value: "studio microphones" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Find category" }));
+    expect(scanAspectsState.resolveCategory).toHaveBeenCalledWith("studio microphones");
+
+    // Save persists the resolved eBay category name as the item's category
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { category?: string; marketplaceData?: { ebay?: { categoryId?: string } } } }).body;
+    expect(body.category).toBe("Electric Guitars");
+    // ...and the resolved LEAF id is cached on the item so publish can resolve
+    // the category instead of falling back to a title guess.
+    expect(body.marketplaceData?.ebay?.categoryId).toBe("33034");
+  });
+
+  it("seeds Brand/Model aspects from the item fields (deterministic copy, not AI)", async () => {
+    scanAspectsState.aspects = {
+      Brand: { required: true, values: null },
+      Model: { required: false, values: null },
+    };
+    scanAspectsState.aspectValues = {};
 
     await renderInReview();
 
-    // Profile endpoint starts failing AFTER review renders — Save & List must
-    // degrade to draft via the .catch(() => null) glue, not throw or go live.
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Brand", "Fender");
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Model", "Stratocaster");
+  });
+
+  it("never re-seeds an aspect the seller explicitly cleared or already set", async () => {
+    scanAspectsState.aspects = {
+      Brand: { required: true, values: null },
+      Model: { required: false, values: null },
+    };
+    // Brand cleared by the seller (empty string under the key); Model set by hand.
+    scanAspectsState.aspectValues = { Brand: "", Model: "Custom Shop" };
+
+    await renderInReview();
+
+    expect(scanAspectsState.setAspectValue).not.toHaveBeenCalledWith("Brand", expect.anything());
+    expect(scanAspectsState.setAspectValue).not.toHaveBeenCalledWith("Model", expect.anything());
+  });
+
+  it("Save & List persists the lb+oz weight to the item (duplicated payload path)", async () => {
+    await renderInReview();
+
+    fireEvent.change(screen.getByLabelText("Pounds"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Ounces"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { weightOz?: number; weightEstimated?: boolean } }).body;
+    expect(body.weightOz).toBe(24);
+    expect(body.weightEstimated).toBe(false);
+  });
+
+  it("Save & List with the eBay-draft toggle on opens the confirm sheet seeded as an eBay draft", async () => {
+    await renderInReview();
+    fireEvent.click(screen.getByLabelText("List as eBay draft"));
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    // F1: scan creates the item, then opens the unified confirm sheet (no direct
+    // /listings POST). The eBay-draft choice seeds the sheet's primary action.
+    await vi.waitFor(() => expect(apiMock.mock.calls.some(([p]) => p === "/items")).toBe(true));
+    expect(await screen.findByText("Create Listing")).toBeInTheDocument();
+    expect(screen.getByText("Save eBay Draft")).toBeInTheDocument();
+    expect(apiMock.mock.calls.some(([p]) => p === "/listings")).toBe(false);
+  });
+
+  it("Save & List creates the item then opens the confirm sheet seeded live from the seller profile", async () => {
+    await renderInReview();
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    await vi.waitFor(() => expect(apiMock.mock.calls.some(([p]) => p === "/items")).toBe(true));
+    // Profile = live → the sheet seeds publish-now on, so its primary action
+    // reviews terms before publishing (not a Portage-local draft).
+    expect(await screen.findByText("Create Listing")).toBeInTheDocument();
+    expect(screen.getByText("Review Terms")).toBeInTheDocument();
+    expect(apiMock.mock.calls.some(([p]) => p === "/listings")).toBe(false);
+  });
+
+  it("opens the confirm sheet with a price provenance hint (estimate fallback)", async () => {
+    await renderInReview();
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    expect(await screen.findByText("Create Listing")).toBeInTheDocument();
+    // No seller price + no comps in this fixture → the prefill falls back to the
+    // AI estimate, and the sheet labels its provenance.
+    expect(screen.getByText("Estimated")).toBeInTheDocument();
+  });
+
+  it("defaults the confirm sheet to draft (publish-now off) when the seller-profile fetch fails — no accidental live", async () => {
+    await renderInReview();
     apiMock.mockImplementation(async (path: string) => {
       if (path === "/seller-profile") throw new Error("profile service down");
       if (path === "/items") return { id: "item-1" };
@@ -293,25 +430,9 @@ describe("ScanFlow review wiring", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
 
-    const listingsCall = await vi.waitFor(() => {
-      const call = apiMock.mock.calls.find(([path]) => path === "/listings");
-      expect(call).toBeDefined();
-      return call;
-    });
-    expect(listingsCall?.[1]).toMatchObject({
-      method: "POST",
-      body: {
-        itemId: "item-1",
-        marketplace: "ebay",
-        publishMode: "draft",
-        // Confirmed specifics survive the draft fallback — the draft row
-        // persists them for the later publish step.
-        marketplaceSpecificFields: {
-          aspects: { Brand: ["Fender"] },
-          categoryId: "33034",
-        },
-      },
-    });
+    expect(await screen.findByText("Create Listing")).toBeInTheDocument();
+    // Conservative: profile unknown → publish-now stays OFF → primary action "Save Draft".
+    expect(screen.getByText("Save Draft")).toBeInTheDocument();
   });
 
   it("constrains condition pills to the category's conditionIds and snaps a disallowed selection", async () => {
@@ -323,16 +444,20 @@ describe("ScanFlow review wiring", () => {
 
     expect(screen.getByRole("button", { name: "New" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New" }).className).toContain("bg-[var(--teal)]");
+    // The snap happens in a useEffect after render — await the re-render
+    // instead of asserting synchronously (flaked twice on slow CI runners).
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "New" }).className).toContain("bg-[var(--teal)]"),
+    );
   });
 
-  it("shows the resolved eBay category under the Category field with a re-resolve action", async () => {
+  it("shows the resolved eBay category as THE category value", async () => {
     await renderInReview();
 
-    expect(screen.getByText(/eBay category: Electric Guitars/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "change" }));
-    // Re-resolve uses the seller's edited category text (candidate.category here).
-    expect(scanAspectsState.resolveCategory).toHaveBeenCalledWith("Guitars");
+    // The resolved eBay leaf name renders as the category itself (not a hint line)
+    expect(screen.getByText("Electric Guitars")).toBeInTheDocument();
+    // Find is disabled until the seller types a search
+    expect(screen.getByRole("button", { name: "Find category" })).toBeDisabled();
   });
 
   it("warns instead of rendering an empty pill row when no conditionIds are recognized", async () => {

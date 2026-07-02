@@ -4,14 +4,13 @@ import { useRef, useEffect } from "react";
 import { usePorter } from "@/hooks/use-porter-context";
 import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
-import { VoiceButton } from "@/components/porter/voice-button";
 
 /**
  * Porter tab — the AI assistant's expanded, full-page view. Unlike the inline
  * Porter card on /home (which expands to a fixed FullChat overlay), this is a
  * real tab destination: it lives inside the (tabs) layout so the bottom nav
  * stays visible. Reuses the same Porter primitives (usePorter context,
- * StreamingMessage, ActionPills, VoiceButton). DHG palette: Deep Teal = the AI
+ * StreamingMessage, ActionPills). DHG palette: Deep Teal = the AI
  * accent, Orange = the send CTA.
  */
 export default function PorterPage() {
@@ -84,7 +83,6 @@ export default function PorterPage() {
             key={i}
             message={msg}
             pills={i === porter.messages.length - 1 ? porter.pills : []}
-            audioUrl={i === porter.messages.length - 1 ? porter.audioUrl : null}
             onPillSelect={(message) => porter.sendMessage(message)}
           />
         ))}
@@ -112,7 +110,6 @@ export default function PorterPage() {
             placeholder="Ask Porter…"
             className="flex-1 bg-[var(--background)] border border-[var(--border)] rounded-2xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--teal)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)]"
           />
-          <VoiceButton onTranscript={(text) => porter.sendMessage(text)} />
           <button
             onClick={handleSend}
             disabled={!porter.chatInput.trim() || porter.isStreaming}

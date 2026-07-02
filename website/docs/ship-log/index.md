@@ -7,7 +7,7 @@ sidebar_position: 0
 # Ship Log
 
 Structured records of every `/ship` workflow run for **portage**.
-Total: **42** sessions.
+Total: **55** sessions.
 
 | # | Feature | Status | PR | Deferred |
 |---|---------|--------|----|----------|
@@ -49,7 +49,20 @@ Total: **42** sessions.
 | 36 | [eBay Seller Hub Reports CSV export with marketplace data cac](036-ebay-seller-hub-reports-csv-export-with-marketplace-data-cac) | complete | [#76](https://github.com/sdnydude/portage/pull/76) | 5 |
 | 37 | [scan comp cards + reverb UI + features doc + docs tunnel](037-scan-comp-cards-reverb-ui-features-doc-docs-tunnel) | complete | [#79](https://github.com/sdnydude/portage/pull/78, https://github.com/sdnydude/portage/pull/79) | 0 |
 | 38 | [eBay buyer messaging — read inbox + reply via Trading API](038-ebay-buyer-messaging-read-inbox-reply-via-trading-api) | complete | [#84](https://github.com/sdnydude/portage/pull/84) | 3 |
-| 39 | [Voice chat interface — Porter-powered home screen with streaming, voice input, and TTS](039-voice-chat-interface-porter-powered-home-screen) | complete | [#87](https://github.com/sdnydude/portage/pull/87) | 5 |
-| 40 | [Bulk photo export — ZIP download of all photos for selected items](040-bulk-photo-export-zip-download) | complete | [#88](https://github.com/sdnydude/portage/pull/88) | 3 |
-| 41 | [Stage 1: Scan-review redesign + inline eBay aspects + dynamic conditions](041-stage1-scan-review-redesign-inline-ebay-aspects) | complete | [#104](https://github.com/sdnydude/portage/pull/104) | 6 |
-| 42 | [Stage 2: Pricing engine, Best Offer auto-accept + listing footer](042-stage2-pricing-engine-best-offer-footer) | complete | [#106](https://github.com/sdnydude/portage/pull/106) | 6 |
+| 39 | [Voice chat interface — Porter-powered voice control with red](039-voice-chat-interface-porter-powered-voice-control-with-redes) | complete | [#87](https://github.com/sdnydude/portage/pull/87) | 5 |
+| 40 | [Voice chat interface — Porter-powered home screen with strea](040-voice-chat-interface-porter-powered-home-screen-with-streami) | complete | [#87](https://github.com/sdnydude/portage/pull/87) | 5 |
+| 41 | [bulk image export — zip download of all photos for selected ](041-bulk-image-export-zip-download-of-all-photos-for-selected-in) | complete | [#88](https://github.com/sdnydude/portage/pull/88) | 3 |
+| 42 | [eBay production OAuth — sandbox coercion fix + prod/sandbox ](042-ebay-production-oauth-sandbox-coercion-fix-prod-sandbox-cred) | complete | [#93](https://github.com/sdnydude/portage/pull/93) | 5 |
+| 43 | [eBay listing publish hardening (PLANNED — checkpointed at Ph](043-ebay-listing-publish-hardening-planned-checkpointed-at-phase) | in_progress | — | 0 |
+| 44 | [eBay listing publish hardening — Phase 3 Plan](044-ebay-listing-publish-hardening-phase-3-plan) | in_progress | — | 6 |
+| 45 | [eBay listing publish hardening + draft/live publish mode + a](045-ebay-listing-publish-hardening-draft-live-publish-mode-auto-) | complete | [#94](https://github.com/sdnydude/portage/pull/94) | 7 |
+| 46 | [eBay required item specifics — proactive in-flow collection ](046-ebay-required-item-specifics-proactive-in-flow-collection-pu) | in_progress | — | 1 |
+| 47 | [eBay return-policy diagnosis + 56-deferral audit + c3b3013c ](047-ebay-return-policy-diagnosis-56-deferral-audit-c3b3013c-publ) | complete | — | 3 |
+| 48 | [eBay package weight & dimension capture](048-ebay-package-weight-dimension-capture) | in_progress | — | 2 |
+| 49 | [eBay publish hardening — Calculated default + AI weight esti](049-ebay-publish-hardening-calculated-default-ai-weight-estimati) | complete | [#101](https://github.com/sdnydude/portage/pull/101) | 2 |
+| 50 | [Redesign Ship 1 — DHG design system + Porter home + tab bar ](050-redesign-ship-1-dhg-design-system-porter-home-tab-bar-porter) | in_progress | — | 3 |
+| 51 | [Redesign Ship 1 — DHG design system + Porter home + tab bar ](051-redesign-ship-1-dhg-design-system-porter-home-tab-bar-porter) | complete | [#102](https://github.com/sdnydude/portage/pull/102) | 2 |
+| 52 | [Stage 1: Scan-review redesign + inline eBay Item Specifics (](052-stage-1-scan-review-redesign-inline-ebay-item-specifics-aspe) | complete | [#104](https://github.com/sdnydude/portage/pull/104) | 3 |
+| 53 | [Claude tooling + batch-enhance backend + eBay updateListing ](053-claude-tooling-batch-enhance-backend-ebay-updatelisting-pack) | complete | [#101](https://github.com/sdnydude/portage/pull/101) | 1 |
+| 54 | [Stage 2: pricing engine — R-7 percentile bands + seller tuna](054-stage-2-pricing-engine-r-7-percentile-bands-seller-tunables-) | complete | [#106](https://github.com/sdnydude/portage/pull/106) | 7 |
+| 55 | [Stage 2.5: photo-gallery strip + full-screen editor overlay ](055-stage-2-5-photo-gallery-strip-full-screen-editor-overlay-acr) | complete | [#108](https://github.com/sdnydude/portage/pull/108) | 3 |

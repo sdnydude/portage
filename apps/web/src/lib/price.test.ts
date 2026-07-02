@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolvePublishPrice, parsePriceInput } from "./price";
+import { resolvePublishPrice, resolvePublishPriceWithSource, parsePriceInput } from "./price";
 
 describe("parsePriceInput — price text field → number | null", () => {
   it("parses a positive decimal", () => {
@@ -52,5 +52,18 @@ describe("resolvePublishPrice — prefill precedence for the publish price field
 
   it("treats a set price as authoritative even when comps are higher (no silent override)", () => {
     expect(resolvePublishPrice({ ...base, price: 50 }, { soldMedian: 200 })).toBe(50);
+  });
+});
+
+describe("resolvePublishPriceWithSource — prefill price + provenance", () => {
+  const base = { price: null, estimatedValueRecommended: null, estimatedValueMin: null };
+
+  it("reports which precedence step the prefill came from", () => {
+    expect(resolvePublishPriceWithSource({ ...base, price: 50 }, { soldMedian: 95 })).toEqual({ price: 50, source: "item" });
+    expect(resolvePublishPriceWithSource(base, { soldMedian: 95 })).toEqual({ price: 95, source: "comps" });
+    expect(resolvePublishPriceWithSource(base, { soldMedian: null, activeMedian: 110 })).toEqual({ price: 110, source: "comps" });
+    expect(resolvePublishPriceWithSource({ ...base, estimatedValueRecommended: 80 }, null)).toEqual({ price: 80, source: "estimate" });
+    expect(resolvePublishPriceWithSource({ ...base, estimatedValueMin: 40 }, null)).toEqual({ price: 40, source: "estimate" });
+    expect(resolvePublishPriceWithSource(base, null)).toEqual({ price: null, source: null });
   });
 });

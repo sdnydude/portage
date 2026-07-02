@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
+import { users, refreshTokens } from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
-import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken } from '../lib/jwt.js';
+import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken, REFRESH_TTL_MS, STAY_TTL_MS } from '../lib/jwt.js';
 import { AppError } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -34,10 +34,15 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email().transform(e => e.toLowerCase().trim()),
   password: z.string(),
+  stayLoggedIn: z.boolean().optional(),
 });
 
 const refreshSchema = z.object({
   refreshToken: z.string(),
+});
+
+const logoutSchema = z.object({
+  refreshToken: z.string().optional(),
 });
 
 export const authRouter = Router();
@@ -82,9 +87,11 @@ authRouter.post('/register', authLimiter, async (req, res, next) => {
     const accessToken = signAccessToken(jwtPayload);
     const refreshToken = signRefreshToken(jwtPayload);
 
-    await db.update(users)
-      .set({ refreshTokenHash: hashToken(refreshToken) })
-      .where(eq(users.id, user.id));
+    await db.insert(refreshTokens).values({
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
+    });
 
     logger.info({ userId: user.id, email: user.email }, 'User registered');
 
@@ -140,11 +147,18 @@ authRouter.post('/login', authLimiter, async (req, res, next) => {
       trialEndsAt: user.trialEndsAt?.toISOString(),
     };
     const accessToken = signAccessToken(jwtPayload);
-    const refreshToken = signRefreshToken(jwtPayload);
+    const sessionTtlMs = body.stayLoggedIn ? STAY_TTL_MS : REFRESH_TTL_MS;
+    const refreshToken = signRefreshToken(jwtPayload, sessionTtlMs);
 
     await db.update(users)
-      .set({ refreshTokenHash: hashToken(refreshToken), lastActiveAt: new Date() })
+      .set({ lastActiveAt: new Date() })
       .where(eq(users.id, user.id));
+
+    await db.insert(refreshTokens).values({
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + sessionTtlMs),
+    });
 
     logger.info({ userId: user.id }, 'User logged in');
 
@@ -175,26 +189,36 @@ authRouter.post('/refresh', authLimiter, async (req, res, next) => {
   try {
     const body = refreshSchema.parse(req.body);
 
-    let payload;
     try {
-      payload = verifyRefreshToken(body.refreshToken);
+      verifyRefreshToken(body.refreshToken);
     } catch {
       throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Invalid or expired refresh token');
     }
 
+    const tokenHash = hashToken(body.refreshToken);
+    const [session] = await db.select()
+      .from(refreshTokens)
+      .where(eq(refreshTokens.tokenHash, tokenHash))
+      .limit(1);
+
+    if (!session) {
+      logger.warn({}, 'Refresh token has no session row — revoked or possible token reuse');
+      throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token has been revoked');
+    }
+
+    if (session.expiresAt.getTime() <= Date.now()) {
+      await db.delete(refreshTokens).where(eq(refreshTokens.id, session.id));
+      logger.info({ userId: session.userId }, 'Expired session row removed during refresh');
+      throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token has expired');
+    }
+
     const [user] = await db.select()
       .from(users)
-      .where(eq(users.id, payload.sub))
+      .where(eq(users.id, session.userId))
       .limit(1);
 
     if (!user) {
       throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'User not found');
-    }
-
-    const tokenHash = hashToken(body.refreshToken);
-    if (user.refreshTokenHash !== tokenHash) {
-      logger.warn({ userId: user.id }, 'Refresh token hash mismatch — possible token reuse');
-      throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token has been revoked');
     }
 
     if (user.disabledAt) {
@@ -209,11 +233,31 @@ authRouter.post('/refresh', authLimiter, async (req, res, next) => {
       trialEndsAt: user.trialEndsAt?.toISOString(),
     };
     const accessToken = signAccessToken(jwtPayload);
-    const newRefreshToken = signRefreshToken(jwtPayload);
+    // Sliding window: the rotated session keeps its original duration (30d default, 365d stay-logged-in)
+    const sessionDurationMs = session.expiresAt.getTime() - session.createdAt.getTime();
+    const newRefreshToken = signRefreshToken(jwtPayload, sessionDurationMs);
 
-    await db.update(users)
-      .set({ refreshTokenHash: hashToken(newRefreshToken) })
-      .where(eq(users.id, user.id));
+    // Atomic rotation: claim (delete) and replace in one transaction. The
+    // .returning() claim check makes concurrent refreshes of the same token
+    // lose cleanly with a 401 instead of minting a duplicate session, and a
+    // failed insert rolls the delete back instead of destroying the session.
+    const rotated = await db.transaction(async (tx) => {
+      const claimed = await tx.delete(refreshTokens)
+        .where(eq(refreshTokens.id, session.id))
+        .returning({ id: refreshTokens.id });
+      if (claimed.length === 0) return false;
+      await tx.insert(refreshTokens).values({
+        userId: user.id,
+        tokenHash: hashToken(newRefreshToken),
+        expiresAt: new Date(Date.now() + sessionDurationMs),
+      });
+      return true;
+    });
+
+    if (!rotated) {
+      logger.warn({ userId: user.id }, 'Refresh race lost — session row already rotated by a concurrent request');
+      throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token has been revoked');
+    }
 
     logger.info({ userId: user.id }, 'Token refreshed');
 
@@ -243,12 +287,25 @@ authRouter.post('/refresh', authLimiter, async (req, res, next) => {
 authRouter.post('/logout', requireAuth, async (req, res, next) => {
   try {
     const userId = req.user!.sub;
+    const { refreshToken } = logoutSchema.parse(req.body ?? {});
 
-    await db.update(users)
-      .set({ refreshTokenHash: null })
-      .where(eq(users.id, userId));
+    if (refreshToken) {
+      // Revoke this device's session only
+      const deleted = await db.delete(refreshTokens)
+        .where(and(eq(refreshTokens.userId, userId), eq(refreshTokens.tokenHash, hashToken(refreshToken))))
+        .returning({ id: refreshTokens.id });
+      if (deleted.length === 0) {
+        // Token was already rotated (e.g. by another tab) — the user asked to
+        // log out, so fail safe and revoke everything rather than nothing.
+        logger.warn({ userId }, 'Scoped logout matched no session — revoking all sessions');
+        await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
+      }
+    } else {
+      // No token provided — revoke every session for the user
+      await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
+    }
 
-    logger.info({ userId }, 'User logged out — refresh token revoked');
+    logger.info({ userId, scoped: !!refreshToken }, 'User logged out — session revoked');
 
     res.json({ loggedOut: true });
   } catch (err) {
