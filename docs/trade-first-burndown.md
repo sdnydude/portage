@@ -1,8 +1,8 @@
 # Portage — eBay Trade-First Refactor: Burndown
 
-**Updated:** 2026-06-30 (end of session 3)
-**Branch:** `feat/phase-f-publish-unification`
-**Status:** Epic 1 (Trade-First) **COMPLETE + LIVE-PROVEN** (api 531 green, typecheck+lint clean; commit `6dc63fe`). Full lifecycle ran live on eBay `sdnydude@me.com`: publish→`AddFixedPriceItem` (ItemID 307034773471), price edit→`ReviseFixedPriceItem`, archive→`EndFixedPriceItem`. Remaining open items: 1.17, 1.19, 1.20 (housekeeping) + Epic 2 backlog.
+**Updated:** 2026-07-01 (Phase 4 housekeeping)
+**Branch:** merged to `main` (feat/phase-f-publish-unification landed via PR #133)
+**Status:** Epic 1 (Trade-First) **COMPLETE + LIVE-PROVEN** (commit `6dc63fe`, PR #133). Full lifecycle ran live on eBay `sdnydude@me.com`: publish→`AddFixedPriceItem` (ItemID 307034773471), price edit→`ReviseFixedPriceItem`, archive→`EndFixedPriceItem`. Epic 1 housekeeping (1.17/1.19/1.20) closed 2026-07-01 (Phase 4). Remaining open: 2.5 (Save & List live) — tracked as TODO Phase 5.
 
 This is the canonical execution queue. **The next session's FIRST action is an independent
 adversarial review** that must: (1) verify each task below is real and correctly stated,
@@ -34,10 +34,10 @@ not accepted.
 | 1.14 | `deleteListing()` → `EndFixedPriceItem` | ✅ | 1.5 | Archive/end a live listing (Inventory withdraw path is gone) | live: archive 307034773471 → `EndFixedPriceItem`, DB archived; `withdrawOffer` removed; `6dc63fe` | done |
 | 1.15 | Bulk publish/activate → Trading | ✅ | 1.13,1.14 | Bulk ops called Inventory `bulkPublishOffers` | dropped `bulkPublishOffers`; bulk-activate blocks eBay drafts w/ actionable "publish individually" warning (G6); `6dc63fe` | done |
 | 1.16 | Idempotency: insert-row-first (null ItemID) + unique key (R3/G5) | ✅ | 1.5 | AddFixedPriceItem is non-idempotent — a retry double-lists | insert-first + partial unique `(userId, idempotencyKey)`; col+index live in DB (Milestone A) | done |
-| 1.17 | GTC / no-auto-renewal reconciliation (G7) | ⬜ | 1.10 | Where eBay forces GTC, prevent silent fee-incurring renewals (detect + auto-end/notify) | per-category ListingDuration resolved; renewal job or documented N/A | med |
+| 1.17 | GTC / no-auto-renewal reconciliation (G7) | ✅ | 1.10 | eBay forces GTC on fixed-price + renews monthly w/ insertion fee | DONE PR #151 (2026-07-01): opt-in `seller_profiles.gtc_auto_end` → login-triggered `POST /listings/gtc-sweep` ends listings via `EndFixedPriceItem` 2 days before the calendar-month anniversary (short-month clamped), archives + notifies (`listing_expiry`). No auto-relist (relist = same insertion fee). Error path live-proven; api 557/web 230/e2e green | done |
 | 1.18 | `request()` error-sanitization coverage re-add | 🚫 obviated | 1.13 | Premise was "re-add against updateListing (still REST)" — but updateListing is now Trading (`callTradingApi`), not REST. `request()` only serves Browse/Taxonomy/Orders/getValidConditions now | n/a (revisit if a REST write path returns) | — |
-| 1.19 | Verify pre-flight wiring decision (per-publish vs proof-only) | ⬜ | 1.10 | Decide whether every publish dry-runs first (extra call) or Verify is proof-only | documented decision + (if wired) test | low |
-| 1.20 | Remove dead Inventory helpers once unreferenced | ⬜ | 1.11–1.15 | After Milestone B: `isOfferExistsError` + `bestOfferTerms` private statics now dead; `resolveEbayCondition`/`resolveEbayCategoryCondition` exported-but-unused in adapter; inert `listings.ebayOfferId` DB column | grep shows no references; deleted | low |
+| 1.19 | Verify pre-flight wiring decision (per-publish vs proof-only) | ✅ | 1.10 | Decide whether every publish dry-runs first (extra call) or Verify is proof-only | DECIDED proof-only (2026-07-01, registry decision log): failed Add returns the same errors, costs nothing, and is already surfaced (publish-result + AspectFillSheet); Verify-pass ≠ Add-success so Add handling stays regardless; wiring would add ~1-2s per publish. Revisit trigger: pre-publish fee-preview UX (Verify uniquely returns insertion fees) | done |
+| 1.20 | Remove dead Inventory helpers once unreferenced | ✅ | 1.11–1.15 | Original row overstated: only `isOfferExistsError` + `bestOfferTerms` were dead (Serena zero-reference proven, deleted 2026-07-01). NOT dead: `resolveEbayCategoryCondition` is live via prepare-listing.ts:333; `listings.ebayOfferId` is still written (null) on every insert (listings.ts) — dropping the column is a schema change, deliberately left alone | done (scoped) |
 
 ## Epic 2 — Publish/listing UX phases (broader backlog)
 
@@ -46,10 +46,10 @@ not accepted.
 | 2.1 | E — AiIdentificationPanel (`[AI]` aspect confirm) | 🚫 superseded | — | Decision 2026-07-01: inline `[AI]` auto-fill + chips (PR #132) is the consumer of AI-suggested aspects; a separate confirm panel would duplicate the UX. Plan-doc PR #126 closed unmerged. | n/a | — |
 | 2.2 | F — Unify publish panels + price/terms + 2-state result | ✅ | — | Done F0–F4 / PR #132 (UI). Transport now superseded by Epic 1 | shipped | done |
 | 2.3 | F6 — `updateListing` aspect-normalize parity | ✅ | 1.13 | updateListing set aspects raw — a scalar/null could reach eBay on edit | folded into 1.13: `buildTradingInput` (normalizeAspects + required-aspect gate) is the single shared path for create + content-revise; `6dc63fe` | done |
-| 2.4 | F2 / F9 — prepare-listing malformed-aspect guard / enum filter | ⬜ | — | Low: present-but-malformed aspect throws 502; AI value not checked vs enum | guard or comment fix; enum filter | low |
+| 2.4 | F2 / F9 — prepare-listing malformed-aspect guard / enum filter | ✅ | — | Shipped in PR #132 (malformed-aspect guard + enum validation); aspect-pick enum-cap fix followed in PR #147 | done |
 | 2.5 | G — "Save & List" lists LIVE (not silent draft) | ⬜ | 1.10 | Scan Save&List defaults to draft; defeats "List" expectation | Save&List w/ live → active eBay listing | med |
-| 2.6 | H — Orders sync (broken weeks) | ✅ | 1.10 | TWO layers: (1) no auto-trigger + swallowed errors; (2) REAL blocker — orders for listings not in local DB (wiped during live proof) were skipped at warn-level, never imported | DONE: errors[] surfacing + login-trigger + Sync button (layer 1); GetItem backfill creates item+listing per eBay ItemID for orphan orders, lineItem-title fallback, in-run dedup (layer 2). LIVE PROVEN: synced:11 (7 items/listings, no dupes); orders page shows NEEDS SHIPPING (11). api 538 green, typecheck/lint clean, 4 e2e green. Branch fix/orders-sync-diagnosis | done |
-| 2.7 | I — Remove in-app carriers → eBay shipping policy | ⬜ | — | Carrier integration deferred; rely on eBay policy. Remove stubbed rates/labels carefully | no in-app carrier rates/labels; weight/dims + policy intact | med (scope) |
+| 2.6 | H — Orders sync (broken weeks) | ✅ | 1.10 | TWO layers: (1) no auto-trigger + swallowed errors; (2) REAL blocker — orders for listings not in local DB (wiped during live proof) were skipped at warn-level, never imported | DONE: errors[] surfacing + login-trigger + Sync button (layer 1); GetItem backfill creates item+listing per eBay ItemID for orphan orders, lineItem-title fallback, in-run dedup (layer 2). LIVE PROVEN: synced:11 (7 items/listings, no dupes); orders page shows NEEDS SHIPPING (11). api 538 green, typecheck/lint clean, 4 e2e green. Merged as PR #139 | done |
+| 2.7 | I — Remove in-app carriers → eBay shipping policy | ✅ | — | Carrier subsystem deleted in PR #142 (−2,474 lines: shipping routes, tables, hooks, pages); Ship-It opens the eBay item page; weight/dims intact | done |
 | 2.8 | Stage 3 — eBay-setup nav-trap | 🚫 obviated | 1.1 | Removed by inline terms + opt-out (no EBAY_SETUP_REQUIRED) | n/a | — |
 
 ## Epic 3 — Deferred / smaller

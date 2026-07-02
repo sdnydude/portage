@@ -285,7 +285,7 @@ describe('EbayAdapter.createListing — required-aspect gate (Trading)', () => {
   });
 });
 
-describe('EbayAdapter.createListing — Best Offer auto-accept (bestOfferTerms)', () => {
+describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
   it('retries AddFixedPriceItem without Best Offer when eBay rejects it for that reason, and surfaces a downgrade warning', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
