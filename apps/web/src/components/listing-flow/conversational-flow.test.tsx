@@ -12,6 +12,10 @@ globalThis.ResizeObserver = class {
 
 const h = vi.hoisted(() => ({
   updatePhoto: vi.fn(),
+  ensureItemCreated: vi.fn(),
+  prepare: vi.fn(),
+  prepError: null as string | null,
+  prepDataNull: false,
   cardProps: {} as Record<string, unknown>,
   lastStep: "confirmed",
 }));
@@ -59,13 +63,14 @@ vi.mock("@/hooks/use-listing-flow", () => ({
     applyEstimatedWeightDims: vi.fn(),
     addPhotos: vi.fn(),
     updatePhoto: h.updatePhoto,
+    ensureItemCreated: h.ensureItemCreated,
     publish: vi.fn(),
     reset: vi.fn(),
   }),
 }));
 vi.mock("@/hooks/use-prepare-listing", () => ({
   usePrepareListing: () => ({
-    data: {
+    data: h.prepDataNull ? null : {
       title: "Canon AE-1",
       description: "d",
       condition: "good",
@@ -81,8 +86,8 @@ vi.mock("@/hooks/use-prepare-listing", () => ({
       warnings: [],
     },
     isLoading: false,
-    error: null,
-    prepare: vi.fn(),
+    error: h.prepError,
+    prepare: h.prepare,
     reset: vi.fn(),
   }),
 }));
@@ -147,6 +152,42 @@ describe("ConversationalFlow — photo editing wiring (S2.5-8)", () => {
       expect(screen.getByText("1:1")).toBeInTheDocument();
     } finally {
       h.lastStep = "confirmed";
+    }
+  });
+});
+
+describe("ConversationalFlow — fresh-scan prepare (item created at confirm)", () => {
+  it("Looks right creates the item via ensureItemCreated and runs prepare with its id", async () => {
+    h.lastStep = "recognition";
+    h.ensureItemCreated.mockResolvedValue("item-5");
+    h.prepare.mockClear();
+    try {
+      render(<ConversationalFlow />);
+      fireEvent.click(screen.getByRole("button", { name: /looks right/i }));
+      expect(h.ensureItemCreated).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(h.prepare).toHaveBeenCalledWith("item-5", ["ebay"]);
+      });
+    } finally {
+      h.lastStep = "confirmed";
+    }
+  });
+});
+
+describe("ConversationalFlow — prepare failure surface", () => {
+  it("renders the prepare error with a Retry pill that re-runs prepare", async () => {
+    h.prepError = "Preparing the listing failed";
+    h.prepDataNull = true;
+    h.ensureItemCreated.mockResolvedValue("item-5");
+    h.prepare.mockClear();
+    try {
+      render(<ConversationalFlow />);
+      expect(screen.getByText(/couldn.t prepare|preparing the listing failed/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+      await vi.waitFor(() => expect(h.prepare).toHaveBeenCalledTimes(1));
+    } finally {
+      h.prepError = null;
+      h.prepDataNull = false;
     }
   });
 });

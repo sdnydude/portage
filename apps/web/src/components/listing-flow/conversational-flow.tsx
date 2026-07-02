@@ -650,11 +650,15 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
     (i: number) => {
       flow.confirmRecognition(i);
       flow.fetchComps();
-      if (state.inventoryItemId) {
-        prepareListing.prepare(state.inventoryItemId, ['ebay']);
-      }
+      // Fresh scans have no inventoryItemId yet — create the item now so
+      // prepare() (AI fields + comps pricing + preview card) runs on every
+      // path, not just start-from-item. Creation failure degrades to the old
+      // manual flow; prepare failures surface via prepareListing.error.
+      void flow.ensureItemCreated()
+        .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+        .catch(() => {});
     },
-    [flow, state.inventoryItemId, prepareListing]
+    [flow, prepareListing]
   );
 
   const handleDenyRecognition = useCallback(() => {
@@ -878,6 +882,36 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
               }}
             >
               Preparing your optimized listing...
+            </div>
+          </div>
+        )}
+
+        {/* Prepare failed: the item is already saved (confirm-time creation),
+            so surface the failure and offer a retry instead of a silent stall. */}
+        {prepareListing.error && !prepareListing.data && !prepareListing.isLoading && (
+          <div className="flex items-end gap-2 mb-3">
+            <PorterAvatar />
+            <div
+              className="px-4 py-3 text-[13px]"
+              style={{
+                background: "#F0EDE6",
+                borderRadius: "18px 18px 18px 4px",
+                color: "#1A1A1A",
+              }}
+            >
+              <p className="mb-2">I couldn&apos;t prepare the listing automatically — your item is saved, and you can keep going manually.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  void flow.ensureItemCreated()
+                    .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+                    .catch(() => {});
+                }}
+                className="px-4 py-1.5 rounded-full text-[13px] font-semibold text-white"
+                style={{ background: "#2D5A27" }}
+              >
+                Retry
+              </button>
             </div>
           </div>
         )}

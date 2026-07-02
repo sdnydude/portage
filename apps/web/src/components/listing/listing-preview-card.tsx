@@ -110,15 +110,42 @@ export function ListingPreviewCard({
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
-      <div className="relative aspect-square bg-gray-100">
+      {/* paddingBottom square (not aspect-square): iOS WebKit collapses
+          aspect-ratio inside flex+overflow ancestors — see BeforeAfterSlider. */}
+      <div className="relative bg-gray-100" style={{ paddingBottom: "100%" }}>
         {photos.length > 0 && (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photos[photoIndex]?.url}
-              alt="Listing"
-              className="w-full h-full object-cover"
-            />
+            {onPhotoUpdated && !photos[photoIndex]?.url.startsWith("blob:") ? (
+              <button
+                type="button"
+                aria-label="Edit this photo"
+                className="absolute inset-0 block w-full h-full"
+                onClick={() => photoEdit.openEditor(photoIndex)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photos[photoIndex]?.url}
+                  alt="Listing"
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+                <span
+                  aria-hidden
+                  className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ background: "rgba(0,0,0,0.45)" }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                  </svg>
+                </span>
+              </button>
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={photos[photoIndex]?.url}
+                alt="Listing"
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            )}
             {photos.length > 1 && (
               <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
                 {photos.map((_, i) => (
@@ -153,7 +180,9 @@ export function ListingPreviewCard({
         </h3>
 
         <div className="flex items-center gap-2 text-sm">
-          <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: "rgba(45,90,39,0.1)", color: "#2D5A27" }}>
+          {/* Teal tokens per the redesign direction (comps widget bands set
+              the precedent) — this chip sat green next to teal on one card. */}
+          <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: "var(--teal-soft, rgba(26,122,109,0.1))", color: "var(--teal, #1A7A6D)" }}>
             {data.condition.replace("_", " ")}
           </span>
           <span style={{ color: "rgba(0,0,0,0.5)" }}>{data.brand} · {data.model}</span>

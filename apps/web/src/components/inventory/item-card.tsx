@@ -32,7 +32,12 @@ export function ItemCard({ item, view }: ItemCardProps) {
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-text-primary truncate">{item.title}</div>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="text-sm font-medium text-text-primary truncate">{item.title}</div>
+            {item.listed === false && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ color: "var(--teal, #1A7A6D)", background: "var(--teal-soft, rgba(26,122,109,0.1))" }}>Unlisted</span>
+            )}
+          </div>
           <div className="flex items-center gap-2 mt-0.5">
             {item.category && (
               <span className="text-xs text-text-secondary">{item.category}</span>
@@ -64,7 +69,12 @@ export function ItemCard({ item, view }: ItemCardProps) {
         )}
       </div>
       <div className="p-3">
-        <div className="text-sm font-medium text-text-primary truncate">{item.title}</div>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="text-sm font-medium text-text-primary truncate">{item.title}</div>
+          {item.listed === false && (
+            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ color: "var(--teal, #1A7A6D)", background: "var(--teal-soft, rgba(26,122,109,0.1))" }}>Unlisted</span>
+          )}
+        </div>
         <div className="flex items-center justify-between mt-1">
           <span className="text-xs text-text-secondary">{formatCondition(item.condition)}</span>
           {valueDisplay && (

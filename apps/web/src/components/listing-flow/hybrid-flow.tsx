@@ -612,9 +612,13 @@ function ChatMode({
             <Pill primary onClick={() => {
               confirmRecognition(state.recognition.selectedIndex);
               fetchComps();
-              if (state.inventoryItemId) {
-                prepareListing.prepare(state.inventoryItemId, ['ebay']);
-              }
+              // Fresh scans have no inventoryItemId yet — create the item now
+              // so prepare() (AI fields + comps + preview card) runs on every
+              // path. Creation failure degrades to the old manual flow;
+              // prepare failures surface via prepareListing.error.
+              void flow.ensureItemCreated()
+                .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+                .catch(() => {});
             }}>
               Looks right
             </Pill>
@@ -753,6 +757,25 @@ function ChatMode({
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 0", gap: 12 }}>
           <div style={{ width: 40, height: 40, border: "3px solid #E8E5DE", borderTopColor: ACCENT, borderRadius: "50%", animation: "shimmer 1s linear infinite" }} />
           <p style={{ fontSize: 13, color: SECONDARY }}>Preparing your listing...</p>
+        </div>
+      )}
+
+      {/* Prepare failed: the item is already saved (confirm-time creation), so
+          surface the failure and offer a retry instead of a silent stall. */}
+      {prepareListing.error && !prepareListing.data && !prepareListing.isLoading && showConfirmed && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <PorterMessage>
+            I couldn&apos;t prepare the listing automatically — your item is saved, and you can keep going manually.
+          </PorterMessage>
+          <div style={{ marginLeft: 34 }}>
+            <Pill primary onClick={() => {
+              void flow.ensureItemCreated()
+                .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+                .catch(() => {});
+            }}>
+              Retry
+            </Pill>
+          </div>
         </div>
       )}
 

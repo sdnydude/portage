@@ -61,13 +61,13 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 
 **Discovered + deferred (registry):** reconcile externally-ended eBay listings (Seller-Hub-ended rows stay `active` locally; only sold listings get healed).
 
-### Phase 5 — Deferred product gaps (registry backlog)
+### Phase 5 — Deferred product gaps (registry backlog) — audited 2026-07-02, 4/5 closed
 
-- [ ] Package weight + dims capture (items schema + listing flow) — required for eBay Calculated shipping, error 25020 *(open 06-06)*
-- [ ] Scan-flow Save & List honors `ebayPublishMode` seller setting (currently always drafts) *(open 06-09)*
-- [ ] ListingPreviewCard/CompsPricingWidget unreachable in hybrid+conversational flows — `prepare()` gated on `inventoryItemId` *(open 06-10)*
-- [ ] Photo-gallery redesign: remove inline editor from scan-review + item detail; gallery strip on capture/detail *(open 06-10)*
-- [ ] Re-validate locked batch-enhance FE design against Stage 1 scan-review redesign before building *(open 06-10)*
+- [x] Package weight + dims capture — AUDIT: already shipped (schema columns, scan + all 3 flows capture, `mergeItemShipping` on every eBay publish, `EBAY_WEIGHT_REQUIRED` gate)
+- [x] Scan-flow Save & List honors `ebayPublishMode` — AUDIT: already fixed (profile read seeds `initialPublishNow` → `resolvePublishMode`); note: seller still confirms in CreateListingSheet (not silent), `scan-listing-payload.ts` is dead code (test-only)
+- [x] ListingPreviewCard/CompsPricingWidget unreachable on fresh scans — FIXED (fresh-scan prepare PR): item created at recognition-confirm via `ensureItemCreated()`, prepare() runs on every path, error+Retry surface, Unlisted chip on inventory, hero-tap photo editor, iOS paddingBottom hero fix
+- [x] Photo-gallery redesign — AUDIT: already shipped (Stage 2.5: strip + full-screen editor overlay, e2e-proven)
+- [ ] Re-validate locked batch-enhance FE design against Stage 1 scan-review redesign before building *(design review task — parked)*
 
 *(Former Phase 5 — voice-audit sweep A1–A8 from 2026-05 — DELETED 2026-07-01: evaluator verified all eight findings are already fixed on main, e.g. `porter.ts:525` req.file 400, `porter.ts:545` speak Zod schema, `use-voice-input.ts:94` stoppedRef guard, `use-porter-stream.ts:145` unconditional setConversationId.)*
 

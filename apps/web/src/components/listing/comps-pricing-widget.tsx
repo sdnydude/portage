@@ -38,11 +38,13 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
     ? "similar condition"
     : "all conditions";
 
-  const confidenceColor = pricing.confidence === "high"
-    ? "#2D5A27"
+  // Explicit color/background pairs: the high branch uses teal CSS vars
+  // (redesign direction), which can't be alpha-suffixed like a hex literal.
+  const confidenceStyle = pricing.confidence === "high"
+    ? { color: "var(--teal, #1A7A6D)", background: "var(--teal-soft, rgba(26,122,109,0.1))" }
     : pricing.confidence === "medium"
-    ? "#B8860B"
-    : "#CC3333";
+    ? { color: "#B8860B", background: "#B8860B15" }
+    : { color: "#CC3333", background: "#CC333315" };
 
   // Market-shape sell-through from the raw comps stats — display-only context.
   const sellThroughLabel = demandLabel(comps.ebay?.stats.sellThrough);
@@ -78,7 +80,7 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
             <p className="text-sm" style={{ color: "rgba(0,0,0,0.6)" }}>
               Range: ${pricing.low.toFixed(0)} — ${pricing.high.toFixed(0)}
             </p>
-            <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: confidenceColor, background: `${confidenceColor}15` }}>
+            <span className="text-xs px-1.5 py-0.5 rounded" style={confidenceStyle}>
               {pricing.basedOn} sold comps ({confidenceLabel})
             </span>
             {sellThroughLabel && (

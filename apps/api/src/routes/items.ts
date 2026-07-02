@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
-import { eq, desc, ilike, and, sql, inArray } from 'drizzle-orm';
+import { eq, desc, ilike, and, sql, inArray, getTableColumns } from 'drizzle-orm';
 import { Zip, ZipDeflate } from 'fflate';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
@@ -166,7 +166,13 @@ itemsRouter.get('/', async (req, res, next) => {
     }
 
     const [results, countResult] = await Promise.all([
-      db.select().from(items)
+      db.select({
+        ...getTableColumns(items),
+        // Drives the inventory "Unlisted" chip: confirm-time item creation
+        // (fresh-scan prepare) means items can exist with no marketplace
+        // presence — drafts don't count as listed.
+        listed: sql<boolean>`exists (select 1 from ${listings} where ${listings.itemId} = ${items.id} and ${listings.status} in ('active', 'sold'))`,
+      }).from(items)
         .where(and(...conditions))
         .orderBy(desc(items.createdAt))
         .limit(query.limit)
