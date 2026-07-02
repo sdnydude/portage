@@ -298,6 +298,7 @@ export const sellerProfiles = pgTable('seller_profiles', {
   pricingSuggestPercentile: integer('pricing_suggest_percentile').notNull().default(50),
   pricingFloorPercentile: integer('pricing_floor_percentile').notNull().default(25),
   bestOfferAutoAcceptEnabled: boolean('best_offer_auto_accept_enabled').notNull().default(false),
+  gtcAutoEnd: boolean('gtc_auto_end').notNull().default(false),
   defaultListingFooter: text('default_listing_footer'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

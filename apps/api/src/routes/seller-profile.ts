@@ -70,6 +70,7 @@ const updateSchema = z.object({
   pricingSuggestPercentile: z.number().int().min(10).max(90).optional(),
   pricingFloorPercentile: z.number().int().min(5).max(75).optional(),
   bestOfferAutoAcceptEnabled: z.boolean().optional(),
+  gtcAutoEnd: z.boolean().optional(),
   defaultListingFooter: z.string().max(2000).nullable().optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field required' });
 

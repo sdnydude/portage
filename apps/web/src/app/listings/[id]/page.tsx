@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { api, ApiError } from "@/lib/api";
+import { nextGtcRenewal } from "@/lib/gtc";
 import type { Listing } from "@portage/shared";
 import { AspectFillSheet, type AspectRequirement } from "@/components/listing/aspect-fill-sheet";
 import { WeightFillSheet } from "@/components/listing/weight-fill-sheet";
@@ -617,6 +618,9 @@ export default function ListingDetailPage() {
                 value={new Date(listing.soldAt).toLocaleDateString()}
               />
             )}
+            {listing.status === "active" && listing.marketplace === "ebay" && listing.publishedAt && (
+              <GtcDateField publishedAt={listing.publishedAt} token={token} />
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -820,4 +824,29 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
       <p className="text-sm text-text-primary mt-0.5 capitalize">{value}</p>
     </div>
   );
+}
+
+// GTC listings renew monthly. Shows when this listing will auto-end (seller
+// opted in via settings) or when eBay will renew it (and charge an insertion).
+function GtcDateField({ publishedAt, token }: { publishedAt: string | Date; token: string | null }) {
+  const [autoEnd, setAutoEnd] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    api<{ profile: { gtcAutoEnd?: boolean } }>("/seller-profile", { token })
+      .then((data) => {
+        if (!cancelled) setAutoEnd(data.profile?.gtcAutoEnd ?? false);
+      })
+      .catch(() => {
+        if (!cancelled) setAutoEnd(false);
+      });
+    return () => { cancelled = true; };
+  }, [token]);
+
+  if (autoEnd === null) return null;
+
+  const renewal = nextGtcRenewal(new Date(publishedAt));
+  const shown = autoEnd ? new Date(renewal.getTime() - 2 * 24 * 60 * 60 * 1000) : renewal;
+  return <ReadOnlyField label={autoEnd ? "Auto-ends" : "GTC renews"} value={shown.toLocaleDateString()} />;
 }

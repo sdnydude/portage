@@ -113,6 +113,19 @@ describe('PATCH /seller-profile', () => {
     expect(res.status).toBe(200);
     expect(res.body.profile.bestOfferAutoAcceptEnabled).toBe(true);
   });
+
+  it('accepts gtcAutoEnd alone', async () => {
+    mockSelectOnce([{ id: 'sp-1' }]);
+    mockUpdateReturns([{ id: 'sp-1', gtcAutoEnd: true }]);
+
+    const res = await request(app)
+      .patch('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ gtcAutoEnd: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.profile.gtcAutoEnd).toBe(true);
+  });
 });
 
 describe('POST /seller-profile/ebay/auto-setup', () => {

@@ -416,6 +416,7 @@ export interface SellerProfile {
   pricingSuggestPercentile: number;
   pricingFloorPercentile: number;
   bestOfferAutoAcceptEnabled: boolean;
+  gtcAutoEnd: boolean;
   defaultListingFooter: string | null;
   createdAt: Date;
   updatedAt: Date;
