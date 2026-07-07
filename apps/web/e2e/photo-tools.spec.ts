@@ -54,6 +54,12 @@ async function restorePhotos(page: Page, itemId: string, authToken: string, phot
 }
 
 test.describe("photo tools", () => {
+  // Both tools write real R2 objects (and BG removal calls the rembg container),
+  // which the ephemeral CI stack does not have — gated behind E2E_IMAGES_LIVE=1
+  // (same pattern as E2E_PORTER_LIVE / E2E_EBAY_LIVE). Run locally against the
+  // live stack: E2E_IMAGES_LIVE=1 npm run test:e2e -w apps/web -- photo-tools.spec.ts
+  test.skip(!process.env.E2E_IMAGES_LIVE, "Requires R2 storage + the rembg container; set E2E_IMAGES_LIVE=1 to run");
+
   test("Exposure tool: +1 EV applies via /images/exposure and persists across reload", async ({ page }) => {
     test.setTimeout(120_000);
     const authToken = await token(page);
