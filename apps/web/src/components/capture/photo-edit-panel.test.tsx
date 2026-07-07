@@ -75,6 +75,13 @@ describe("PhotoEditPanel", () => {
     expect(screen.getByRole("button", { name: /bg remove/i })).toBeInTheDocument();
   });
 
+  it("renders an Exposure tool when the host wires onExposure, and taps call it", () => {
+    const onExposure = vi.fn();
+    render(<PhotoEditPanel {...BASE} onExposure={onExposure} />);
+    fireEvent.click(screen.getByRole("button", { name: /exposure/i }));
+    expect(onExposure).toHaveBeenCalled();
+  });
+
   it("each tool shows its own icon, not a shared placeholder", () => {
     render(<PhotoEditPanel {...BASE} />);
     expect(screen.getByTestId("tool-icon-rotate")).toBeInTheDocument();

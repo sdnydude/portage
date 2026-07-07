@@ -4,13 +4,14 @@ import { useState, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
 import { useAuth } from "@/hooks/use-auth";
-import { BgRemovalPanel } from "@/components/image/bg-removal-panel";
 import { useEnhance } from "@/hooks/use-enhance";
+import { useBgRemoval } from "@/hooks/use-bg-removal";
 import { PhotoGalleryStrip } from "@/components/capture/photo-gallery-strip";
 import { PhotoEditPanel } from "@/components/capture/photo-edit-panel";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { ListingOptimizerPanel } from "@/components/listing/listing-optimizer-panel";
 import { CropTool } from "@/components/listing-flow/crop-tool";
+import { ExposureTool } from "@/components/capture/exposure-tool";
 import { useComps } from "@/hooks/use-comps";
 import { api, API_BASE } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
@@ -31,19 +32,21 @@ export default function ItemDetailPage() {
   const { isAuthenticated, token } = useAuth();
   const { item, isLoading, error, deleteItem, updateItem, refetch: refetchItem } = useItem(params.id);
   const { isProcessing: isEnhancing, result: enhanceResult, error: enhanceError, enhance, reset: resetEnhance } = useEnhance();
+  const { isProcessing: isRemovingBg, resultUrl: bgResultUrl, resultKey: bgResultKey, error: bgError, removeBackground, reset: resetBgRemoval } = useBgRemoval();
   const [photoIndex, setPhotoIndex] = useState(0);
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showBgRemoval, setShowBgRemoval] = useState(false);
   const [showCrop, setShowCrop] = useState(false);
+  const [showExposure, setShowExposure] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const [showListingSheet, setShowListingSheet] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(params.id);
+  const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
 
   const handleAddPhotos = useCallback(
     async (files: File[]) => {
@@ -108,9 +111,9 @@ export default function ItemDetailPage() {
       );
       await updateItem({ photos: updatedPhotos });
       resetEnhance();
-      setShowBgRemoval(false);
+      resetBgRemoval();
     },
-    [item, photoIndex, updateItem, resetEnhance],
+    [item, photoIndex, updateItem, resetEnhance, resetBgRemoval],
   );
 
   // Rotate persists immediately (same UX as scan-flow): the server writes a
@@ -162,6 +165,33 @@ export default function ItemDetailPage() {
         setUploadError(err instanceof Error ? err.message : "Crop failed");
       } finally {
         setShowCrop(false);
+      }
+    },
+    [token, item, photoIndex, updateItem],
+  );
+
+  const handleExposureApply = useCallback(
+    async (ev: number) => {
+      const itemPhotos = item?.photos ?? [];
+      const photo = itemPhotos[photoIndex];
+      if (!token || !photo) return;
+      setUploadError(null);
+      try {
+        const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/exposure", {
+          method: "POST",
+          body: { imageUrl: photo.url, ev },
+          token,
+        });
+        const updatedPhotos = itemPhotos.map((p, i) =>
+          i === photoIndex
+            ? { ...p, url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height }
+            : p
+        );
+        await updateItem({ photos: updatedPhotos });
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Exposure adjustment failed");
+      } finally {
+        setShowExposure(false);
       }
     },
     [token, item, photoIndex, updateItem],
@@ -327,9 +357,10 @@ export default function ItemDetailPage() {
           )}
         </div>
 
-        {/* Photo editor overlay — all 4 tools wired (rotate/crop ported from
-            scan-flow in S2.5-6). CropTool and the BG-removal panel each mount
-            in their own layer above the editor (z-[80]). */}
+        {/* Photo editor overlay — all 5 tools wired (rotate/crop ported from
+            scan-flow in S2.5-6; BG removal runs inline like enhance, no
+            interstitial CTA). CropTool mounts in its own layer above the
+            editor (z-[80]). */}
         {editingPhotoIndex !== null && currentPhoto && (
           showCrop ? (
             <CropTool
@@ -339,20 +370,12 @@ export default function ItemDetailPage() {
               onApply={handleCropApply}
               onCancel={() => setShowCrop(false)}
             />
-          ) : showBgRemoval ? (
-            <div className="fixed inset-0 z-[80] bg-background overflow-y-auto">
-              <div className="max-w-lg mx-auto p-4">
-                <BgRemovalPanel
-                  imageUrl={currentPhoto.url}
-                  alt={item.title}
-                  onSave={(url) => {
-                    handleSaveEditedPhoto(url);
-                    setShowBgRemoval(false);
-                  }}
-                  onClose={() => setShowBgRemoval(false)}
-                />
-              </div>
-            </div>
+          ) : showExposure ? (
+            <ExposureTool
+              imageUrl={currentPhoto.url}
+              onApply={handleExposureApply}
+              onCancel={() => setShowExposure(false)}
+            />
           ) : (
             <PhotoEditPanel
               photo={{ url: currentPhoto.url }}
@@ -360,15 +383,19 @@ export default function ItemDetailPage() {
               photoCount={photos.length}
               onClose={() => {
                 if (enhanceResult) resetEnhance();
+                if (bgResultUrl) resetBgRemoval();
                 setEditingPhotoIndex(null);
               }}
               onRotate={handleRotate}
-              onCrop={() => !isRotating && !isEnhancing && setShowCrop(true)}
+              onCrop={() => !isToolProcessing && setShowCrop(true)}
               onEnhance={() => enhance(currentPhoto.url)}
-              onBgRemove={() => setShowBgRemoval(true)}
-              isProcessing={isEnhancing || isRotating}
-              processingLabel={isRotating ? "Rotating..." : isEnhancing ? "Enhancing..." : null}
-              error={uploadError ?? enhanceError}
+              onBgRemove={() => removeBackground(currentPhoto.url)}
+              onExposure={() => !isToolProcessing && setShowExposure(true)}
+              isProcessing={isToolProcessing}
+              processingLabel={
+                isRotating ? "Rotating..." : isEnhancing ? "Enhancing..." : isRemovingBg ? "Removing background..." : null
+              }
+              error={uploadError ?? enhanceError ?? bgError}
               pendingPreview={
                 enhanceResult
                   ? {
@@ -377,6 +404,14 @@ export default function ItemDetailPage() {
                       alt: item.title,
                       onAccept: () => handleSaveEditedPhoto(enhanceResult.image.url, enhanceResult.image.key),
                       onDiscard: resetEnhance,
+                    }
+                  : bgResultUrl
+                  ? {
+                      beforeUrl: currentPhoto.url,
+                      afterUrl: bgResultUrl,
+                      alt: item.title,
+                      onAccept: () => handleSaveEditedPhoto(bgResultUrl, bgResultKey ?? undefined),
+                      onDiscard: resetBgRemoval,
                     }
                   : null
               }

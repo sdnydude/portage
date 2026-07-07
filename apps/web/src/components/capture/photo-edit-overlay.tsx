@@ -2,6 +2,7 @@
 
 import { PhotoEditPanel } from "./photo-edit-panel";
 import { CropTool } from "../listing-flow/crop-tool";
+import { ExposureTool } from "./exposure-tool";
 import type { UsePhotoEditReturn } from "@/hooks/use-photo-edit";
 
 export function PhotoEditOverlay({
@@ -28,6 +29,15 @@ export function PhotoEditOverlay({
       />
     );
   }
+  if (photoEdit.showExposure) {
+    return (
+      <ExposureTool
+        imageUrl={photoEdit.editingPhoto.url}
+        onApply={photoEdit.applyExposure}
+        onCancel={photoEdit.cancelExposure}
+      />
+    );
+  }
   return (
     <PhotoEditPanel
       photo={{ url: photoEdit.editingPhoto.url }}
@@ -41,6 +51,7 @@ export function PhotoEditOverlay({
       onCrop={() => !photoEdit.isProcessing && photoEdit.openCrop()}
       onEnhance={photoEdit.enhanceCurrent}
       onBgRemove={photoEdit.bgRemoveCurrent}
+      onExposure={() => !photoEdit.isProcessing && photoEdit.openExposure()}
       isProcessing={photoEdit.isProcessing}
       processingLabel={photoEdit.processingLabel}
       error={photoEdit.error}

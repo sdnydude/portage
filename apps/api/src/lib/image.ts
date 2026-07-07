@@ -73,6 +73,49 @@ export async function enhanceImage(input: Buffer): Promise<ProcessedImage> {
   };
 }
 
+/** Converts an EV stop value to a linear brightness multiplier (2^ev), clamped to ±2 EV. */
+export function evToBrightnessMultiplier(ev: number): number {
+  const clamped = Math.max(-2, Math.min(2, ev));
+  return 2 ** clamped;
+}
+
+/** Flattens transparency (e.g. rembg cutouts) onto a white background as an opaque JPEG. */
+export async function flattenToWhite(input: Buffer): Promise<ProcessedImage> {
+  const image = sharp(input)
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 90 });
+
+  const buffer = await image.toBuffer();
+  const meta = await sharp(buffer).metadata();
+
+  return {
+    buffer,
+    width: meta.width!,
+    height: meta.height!,
+    format: 'jpeg',
+    size: buffer.length,
+  };
+}
+
+/** Applies exposure compensation (EV stops, clamped ±2) and returns an opaque JPEG. */
+export async function adjustExposure(input: Buffer, ev: number): Promise<ProcessedImage> {
+  const image = sharp(input)
+    .rotate()
+    .modulate({ brightness: evToBrightnessMultiplier(ev) })
+    .jpeg({ quality: 90 });
+
+  const buffer = await image.toBuffer();
+  const meta = await sharp(buffer).metadata();
+
+  return {
+    buffer,
+    width: meta.width!,
+    height: meta.height!,
+    format: 'jpeg',
+    size: buffer.length,
+  };
+}
+
 export async function generateThumbnail(input: Buffer, size: number = 400): Promise<Buffer> {
   return sharp(input)
     .rotate()

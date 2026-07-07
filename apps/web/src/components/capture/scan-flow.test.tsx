@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import { ScanFlow } from "./scan-flow";
 
 // ─── Heavy children / browser-API hooks mocked; wiring under test is real ───
@@ -215,6 +215,30 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByRole("button", { name: /crop/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /enhance/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /bg remove/i })).toBeInTheDocument();
+  });
+
+  it("Exposure tool opens from the editor and Apply posts /images/exposure with the chosen EV", async () => {
+    await renderInReview();
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/images/exposure") {
+        return { image: { key: "k1-ev", url: "http://img/1-ev.jpg", width: 100, height: 100 } };
+      }
+      return {};
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /exposure/i }));
+    const slider = screen.getByRole("slider");
+    fireEvent.change(slider, { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith("/images/exposure", expect.objectContaining({
+        method: "POST",
+        body: expect.objectContaining({ ev: 1 }),
+      })),
+    );
   });
 
   it("a failed rotate surfaces its error inside the editor overlay (page error UI is unmounted while editing)", async () => {

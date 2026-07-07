@@ -55,6 +55,31 @@ Read-only → edit mode → saved → persisted after reload:
 The post-reload screenshot shows `Brand: E2E-INLINE-EDIT` rendered from a fresh
 API fetch — durable proof the write reached the database.
 
+## Worked example — photo tools (exposure + inline BG removal)
+
+`e2e/photo-tools.spec.ts` covers the 2026-07-07 photo-tools changes:
+
+- **Exposure tool** — opens the item-detail photo editor, drags the EV slider to
+  +1, applies (server bakes `brightness(2^ev)` via Sharp), and re-asserts the
+  `*_exposure.jpg` URL after a reload.
+- **Inline BG removal** — taps *BG Remove* and asserts the removal starts
+  immediately (no interstitial CTA page), accepts the before/after preview, then
+  **samples a corner pixel of the saved file and asserts it is white** — the
+  regression this guards was rembg's transparent PNG rendering black. Reload
+  re-asserts the persisted `*_nobg.jpg`.
+
+Both restore the item's original photos array afterward (non-destructive).
+
+### Proof
+
+| EV slider (+1) | Applied | Persisted after reload |
+|----------------|---------|------------------------|
+| ![slider](/img/verification/photo-tools/exposure-1-slider.png) | ![applied](/img/verification/photo-tools/exposure-2-applied.png) | ![persisted](/img/verification/photo-tools/exposure-3-persisted-after-reload.png) |
+
+| Inline processing (no CTA page) | Before/after preview | White bg persisted after reload |
+|--------------------------------|----------------------|--------------------------------|
+| ![processing](/img/verification/photo-tools/bg-1-inline-processing.png) | ![preview](/img/verification/photo-tools/bg-2-before-after-preview.png) | ![white](/img/verification/photo-tools/bg-3-white-persisted-after-reload.png) |
+
 ## Adding a new flow
 
 1. Add a label/role-accessible handle to any control the test must target

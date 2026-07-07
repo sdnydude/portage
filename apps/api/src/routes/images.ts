@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { createLogger } from '../lib/logger.js';
 import { requireAuth } from '../middleware/auth.js';
-import { processImage, generateThumbnail, enhanceImage, rotateImage, cropImage } from '../lib/image.js';
+import { processImage, generateThumbnail, enhanceImage, rotateImage, cropImage, adjustExposure, flattenToWhite } from '../lib/image.js';
 import { uploadImage, deleteImage, getImage } from '../lib/storage.js';
 import { z } from 'zod';
 import { eq, and, sql } from 'drizzle-orm';
@@ -294,8 +294,12 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
       throw new AppError(502, 'BG_REMOVAL_FAILED', 'Background removal service error');
     }
 
-    const resultBuffer = Buffer.from(await rembgResponse.arrayBuffer());
-    const uploaded = await uploadImage(userId, resultBuffer, 'image/png', '_nobg.png');
+    // rembg returns a transparent PNG; transparency renders/exports as black in
+    // JPEG contexts, so flatten onto white (also eBay's preferred background).
+    const cutout = Buffer.from(await rembgResponse.arrayBuffer());
+    const flattened = await flattenToWhite(cutout);
+    const resultBuffer = flattened.buffer;
+    const uploaded = await uploadImage(userId, resultBuffer, 'image/jpeg', '_nobg.jpg');
 
     // --- Billing: deduct AFTER successful removal (no credit loss on service failure) ---
     if (limit !== null) {
@@ -322,6 +326,56 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
         key: uploaded.key,
         url: uploaded.url,
         size: resultBuffer.length,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const exposureSchema = z.object({
+  imageUrl: z.string().url(),
+  ev: z.number().min(-2).max(2),
+});
+
+imagesRouter.post('/exposure', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { imageUrl, ev } = exposureSchema.parse(req.body);
+
+    if (!isAllowedImageOrigin(imageUrl)) {
+      throw new AppError(400, 'INVALID_ORIGIN', 'Image URL must be from Portage storage');
+    }
+
+    logger.info({ userId, imageUrl, ev }, 'Exposure adjust started');
+
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new AppError(400, 'FETCH_FAILED', 'Could not fetch the image to adjust');
+    }
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+
+    const adjusted = await adjustExposure(Buffer.from(arrayBuffer), ev);
+    const uploaded = await uploadImage(userId, adjusted.buffer, 'image/jpeg', '_exposure.jpg');
+
+    logger.info({ userId, key: uploaded.key, ev }, 'Exposure adjust complete');
+
+    res.json({
+      image: {
+        key: uploaded.key,
+        url: uploaded.url,
+        width: adjusted.width,
+        height: adjusted.height,
+        size: adjusted.size,
       },
     });
   } catch (err) {

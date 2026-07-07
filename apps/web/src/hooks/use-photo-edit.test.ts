@@ -170,6 +170,34 @@ describe("usePhotoEdit", () => {
     expect(result.current.error).toBeNull();
   });
 
+  it("applyExposure posts /images/exposure with the EV, reports the update, and closes the exposure overlay", async () => {
+    const onPhotoUpdated = vi.fn();
+    h.apiMock.mockResolvedValueOnce({
+      image: { key: "k1-ev", url: "https://example.com/1-ev.jpg", width: 70, height: 80 },
+    });
+    const { result } = renderHook(() => usePhotoEdit(photos, onPhotoUpdated));
+
+    act(() => result.current.openEditor(0));
+    act(() => result.current.openExposure());
+    expect(result.current.showExposure).toBe(true);
+
+    await act(() => result.current.applyExposure(1.5));
+
+    expect(h.apiMock).toHaveBeenCalledWith("/images/exposure", expect.objectContaining({
+      method: "POST",
+      body: { imageUrl: "https://example.com/1.jpg", ev: 1.5 },
+      token: "t",
+    }));
+    expect(onPhotoUpdated).toHaveBeenCalledWith(0, {
+      url: "https://example.com/1-ev.jpg", key: "k1-ev", width: 70, height: 80,
+    });
+    expect(result.current.showExposure).toBe(false);
+
+    act(() => result.current.openExposure());
+    act(() => result.current.cancelExposure());
+    expect(result.current.showExposure).toBe(false);
+  });
+
   it("enhance failures propagate through the hook's error", async () => {
     const onPhotoUpdated = vi.fn();
     h.apiMock.mockRejectedValueOnce(new Error("enhance exploded"));

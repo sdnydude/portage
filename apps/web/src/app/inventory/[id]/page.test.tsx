@@ -37,7 +37,6 @@ vi.mock("@/hooks/use-comps", () => ({
   useComps: () => ({ comps: null, isLoading: false, error: null, fetchComps: vi.fn() }),
 }));
 vi.mock("@/hooks/use-listings", () => ({ useListings: () => ({ createListing: vi.fn() }) }));
-vi.mock("@/components/image/bg-removal-panel", () => ({ BgRemovalPanel: () => null }));
 vi.mock("@/components/image/before-after-slider", () => ({ BeforeAfterSlider: () => null }));
 vi.mock("@/components/capture/image-picker", () => ({ ImagePicker: () => null }));
 vi.mock("@/components/listing-flow/crop-tool", () => ({
@@ -174,6 +173,65 @@ describe("inventory detail — photo gallery strip + editor overlay", () => {
     const errorNodes = await screen.findAllByText("rotate exploded");
     expect(errorNodes.some((n) => n.closest('[class*="z-[70]"]'))).toBe(true);
     expect(screen.getByRole("button", { name: /close editor/i })).toBeInTheDocument();
+  });
+
+  it("BG Remove runs inline from the editor (no interstitial CTA page) and accepting persists", async () => {
+    h.item.photos = [{ url: "https://example.com/1.jpg", key: "k1" }] as never;
+    h.updateItem.mockClear();
+    h.apiMock.mockClear();
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/images/remove-bg") {
+        return { image: { key: "k1-bg", url: "https://example.com/1-bg.jpg", size: 9 } };
+      }
+      return {};
+    });
+    render(<ItemDetailPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /bg remove/i }));
+
+    // The tool starts immediately — no second "Remove Background" CTA screen.
+    expect(screen.queryByRole("button", { name: /remove background/i })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(h.apiMock).toHaveBeenCalledWith("/images/remove-bg", expect.objectContaining({
+        method: "POST",
+        body: { imageUrl: "https://example.com/1.jpg" },
+      }));
+    });
+
+    // Result surfaces as the editor's accept/discard preview; accepting persists.
+    fireEvent.click(await screen.findByRole("button", { name: /use this photo/i }));
+    await waitFor(() => {
+      expect(h.updateItem).toHaveBeenCalledWith({
+        photos: [{ url: "https://example.com/1-bg.jpg", key: "k1-bg" }],
+      });
+    });
+  });
+
+  it("Exposure opens the EV slider overlay; applying posts /images/exposure and persists", async () => {
+    h.item.photos = [{ url: "https://example.com/1.jpg", key: "k1" }] as never;
+    h.updateItem.mockClear();
+    h.apiMock.mockClear();
+    h.apiMock.mockResolvedValueOnce({
+      image: { key: "k1-ev", url: "https://example.com/1-ev.jpg", width: 50, height: 50 },
+    });
+    render(<ItemDetailPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /exposure/i }));
+
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => {
+      expect(h.apiMock).toHaveBeenCalledWith("/images/exposure", expect.objectContaining({
+        method: "POST",
+        body: { imageUrl: "https://example.com/1.jpg", ev: 1 },
+      }));
+      expect(h.updateItem).toHaveBeenCalledWith({
+        photos: [{ url: "https://example.com/1-ev.jpg", key: "k1-ev", width: 50, height: 50 }],
+      });
+    });
   });
 
   it("crop opens the crop overlay; applying posts /images/crop and persists", async () => {
