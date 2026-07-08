@@ -53,6 +53,10 @@ export const envSchema = z.object({
   VAPID_EMAIL: z.string().optional(),
   REMBG_URL: z.string().default('http://localhost:7000'),
   METRICS_SECRET: z.string().optional(),
+  // Beta invite emails (Resend). FROM must be on a verified Resend domain.
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM: z.string().default('Portage Beta <beta@beta.digitalharmonyai.com>'),
+  APP_URL: z.string().default('https://portage.digitalharmonyai.com'),
   // User identity for CF Access service-token requests (e2e) — service tokens
   // carry a common_name instead of an email. BOTH values must be set and the
   // token's common_name must match, or the service token is rejected.

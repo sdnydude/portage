@@ -31,16 +31,36 @@ export function AllowlistSection() {
     if (!token || !newEmail.trim() || busy) return;
     setBusy(true);
     try {
-      const data = await api<{ emails: string[] }>("/admin/allowlist", {
+      const data = await api<{ emails: string[]; invited: boolean }>("/admin/allowlist", {
         method: "POST",
         token,
         body: { email: newEmail.trim() },
       });
       setEmails(data.emails);
+      setError(data.invited ? null : `Added to the allowlist, but the invite email could not be sent — use Resend invite to retry.`);
       setNewEmail("");
-      setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not add the email");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResend = async (email: string) => {
+    if (!token || busy) return;
+    setBusy(true);
+    try {
+      // POST is idempotent on the allowlist (already present) and re-fires the
+      // invite email — the same path new adds take.
+      const data = await api<{ emails: string[]; invited: boolean }>("/admin/allowlist", {
+        method: "POST",
+        token,
+        body: { email },
+      });
+      setEmails(data.emails);
+      setError(data.invited ? null : `Added, but the invite email to ${email} could not be sent.`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not resend the invite");
     } finally {
       setBusy(false);
     }
@@ -68,7 +88,7 @@ export function AllowlistSection() {
     <div className="bg-surface rounded-xl border border-border p-4">
       <h2 className="text-sm font-semibold text-text-primary mb-1">Beta Access Allowlist</h2>
       <p className="text-xs text-text-placeholder mb-3">
-        Emails allowed through Cloudflare Access. Adding an email lets a tester sign in; removing it blocks them at the edge.
+        Emails allowed through Cloudflare Access. Adding an email lets a tester sign in and sends them an invite; removing it blocks them at the edge.
       </p>
 
       {error && (
@@ -85,13 +105,22 @@ export function AllowlistSection() {
               {email.toLowerCase() === user?.email.toLowerCase() ? (
                 <span className="text-xs text-text-placeholder">you</span>
               ) : (
-                <button
-                  onClick={() => handleRemove(email)}
-                  disabled={busy}
-                  className="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 dark:bg-red-900/20 dark:text-red-400"
-                >
-                  Remove
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleResend(email)}
+                    disabled={busy}
+                    className="text-xs px-2 py-1 rounded bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 disabled:opacity-50"
+                  >
+                    Resend invite
+                  </button>
+                  <button
+                    onClick={() => handleRemove(email)}
+                    disabled={busy}
+                    className="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 dark:bg-red-900/20 dark:text-red-400"
+                  >
+                    Remove
+                  </button>
+                </div>
               )}
             </li>
           ))}
