@@ -32,8 +32,22 @@ describe('verifyCfAccessJwt', () => {
 
     expect(jwtVerify).toHaveBeenCalledWith('the-token', 'jwks-sentinel', {
       issuer: 'https://digitalharmonygroup.cloudflareaccess.com',
-      audience: 'aud-123',
+      audience: ['aud-123'],
     });
     expect(identity).toEqual({ email: 'Tester@Example.com', commonName: 'svc-cn' });
+  });
+
+  it('accepts a comma-separated CF_ACCESS_AUD (web app + API app audiences)', async () => {
+    process.env.CF_ACCESS_AUD = 'aud-web, aud-api';
+    resetEnv();
+    loadEnv();
+    vi.mocked(jwtVerify).mockResolvedValue({ payload: { email: 'x@y.com' } } as any);
+
+    await verifyCfAccessJwt('tok');
+
+    expect(jwtVerify).toHaveBeenCalledWith('tok', 'jwks-sentinel', {
+      issuer: 'https://digitalharmonygroup.cloudflareaccess.com',
+      audience: ['aud-web', 'aud-api'],
+    });
   });
 });

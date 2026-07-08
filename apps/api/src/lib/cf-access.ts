@@ -26,10 +26,13 @@ function getJwks(): ReturnType<typeof createRemoteJWKSet> {
  * logins, `commonName` for service-token requests.
  */
 export async function verifyCfAccessJwt(token: string): Promise<CfIdentity> {
-  const audience = env().CF_ACCESS_AUD;
-  if (!audience) {
+  const audienceRaw = env().CF_ACCESS_AUD;
+  if (!audienceRaw) {
     throw new Error('CF_ACCESS_AUD is not configured');
   }
+  // Comma-separated: the web app and API Access applications carry different
+  // audience tags; a token matching any configured aud is accepted.
+  const audience = audienceRaw.split(',').map((a) => a.trim()).filter(Boolean);
 
   const { payload } = await jwtVerify(token, getJwks(), {
     issuer: teamDomainBase(),
