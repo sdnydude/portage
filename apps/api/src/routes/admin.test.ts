@@ -2,6 +2,7 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import { createTestToken } from '../test/helpers.js';
 import { db } from '../db/index.js';
+import { sendBetaInvite } from '../lib/email.js';
 
 vi.mock('../db/index.js', () => ({
   db: {
@@ -16,6 +17,10 @@ vi.mock('../lib/cf-allowlist.js', () => ({
   getAllowlist: vi.fn(),
   addEmail: vi.fn(),
   removeEmail: vi.fn(),
+}));
+
+vi.mock('../lib/email.js', () => ({
+  sendBetaInvite: vi.fn(),
 }));
 
 let app: ReturnType<typeof createApp>;
@@ -143,6 +148,24 @@ describe('admin functional guards', () => {
     expect(res.status).toBe(200);
     expect(res.body.emails).toEqual(['a@x.com', 'new@t.com']);
     expect(vi.mocked(addEmail)).toHaveBeenCalledWith('new@t.com');
+    expect(res.body.invited).toBe(true);
+    expect(vi.mocked(sendBetaInvite)).toHaveBeenCalledWith('new@t.com');
+  });
+
+  it('POST /admin/allowlist still succeeds with invited:false when the email send fails', async () => {
+    const { addEmail } = await import('../lib/cf-allowlist.js');
+    vi.mocked(addEmail).mockResolvedValue(['a@x.com', 'flaky@t.com']);
+    vi.mocked(sendBetaInvite).mockRejectedValue(new Error('Resend down'));
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+
+    const res = await request(app)
+      .post('/admin/allowlist')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'flaky@t.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.emails).toEqual(['a@x.com', 'flaky@t.com']);
+    expect(res.body.invited).toBe(false);
   });
 
   it('DELETE /admin/allowlist/:email removes an email but refuses to remove your own', async () => {

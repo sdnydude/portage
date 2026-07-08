@@ -7,6 +7,7 @@ import { eq, sql, desc, count, sum, and, isNull, isNotNull, ilike, or, inArray, 
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { getAllowlist, addEmail, removeEmail } from '../lib/cf-allowlist.js';
+import { sendBetaInvite } from '../lib/email.js';
 
 const logger = createLogger('admin');
 
@@ -587,7 +588,17 @@ adminRouter.post('/allowlist', async (req, res, next) => {
     const email = parsed.data.email;
     const emails = await addEmail(email);
     await logAuditAction(req.user!.sub, 'allowlist_add', 'access_policy', null, { email });
-    res.json({ emails });
+    // The invite email IS the notification that someone can now log in. Best
+    // effort — the allowlist add already succeeded, so a mail failure must not
+    // fail the request; surface it via `invited` so the admin can re-send.
+    let invited = false;
+    try {
+      await sendBetaInvite(email);
+      invited = true;
+    } catch (err) {
+      logger.warn({ email, error: (err as Error).message }, 'Beta invite email failed');
+    }
+    res.json({ emails, invited });
   } catch (err) {
     next(err);
   }

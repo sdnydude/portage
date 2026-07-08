@@ -62,4 +62,26 @@ describe("AllowlistSection", () => {
     expect(getByText("you")).toBeDefined();
     expect(queryByText("Remove")).not.toBeNull();
   });
+
+  it("re-sends an invite via POST when the Resend button is clicked", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return { ok: true, status: 200, json: async () => ({ emails: ["admin@x.com", "b@y.com"], invited: true }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ emails: ["admin@x.com", "b@y.com"] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { getByText, findAllByText } = renderSection();
+    await waitFor(() => expect(getByText("b@y.com")).toBeDefined());
+
+    const resendButtons = await findAllByText("Resend invite");
+    fireEvent.click(resendButtons[0]);
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST");
+      expect(post).toBeDefined();
+      expect(JSON.parse((post![1] as RequestInit).body as string)).toEqual({ email: "b@y.com" });
+    });
+  });
 });
