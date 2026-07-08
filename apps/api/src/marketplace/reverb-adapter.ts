@@ -73,6 +73,12 @@ export class ReverbAdapter implements MarketplaceAdapter {
         if (parsed.message) message = parsed.message;
         details = parsed.errors;
       } catch { /* non-JSON body — keep generic message */ }
+      // A Reverb 401/403 is a marketplace-token problem, not a Portage session
+      // problem — forwarding it verbatim would trip the web client's JWT-refresh
+      // interceptor (which retries any 401). 409 mirrors EBAY_RECONNECT_REQUIRED.
+      if (response.status === 401 || response.status === 403) {
+        throw new AppError(409, 'REVERB_RECONNECT_REQUIRED', 'Reverb token is invalid or was revoked. Reconnect your Reverb account in Settings.', details);
+      }
       throw new AppError(response.status, 'REVERB_API_ERROR', message, details);
     }
 
@@ -111,7 +117,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
       body.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
     }
 
-    const data = await this.request<{ listing: { id: number; state: string; _links: { web: { href: string } } } }>(
+    const data = await this.request<{ listing: { id: number; state: string; _links?: { web?: { href?: string } } } }>(
       '/listings',
       { method: 'POST', body: JSON.stringify(body) },
     );
@@ -120,7 +126,9 @@ export class ReverbAdapter implements MarketplaceAdapter {
 
     return {
       marketplaceListingId: String(data.listing.id),
-      marketplaceUrl: data.listing._links.web.href,
+      // _links can be absent on shape drift / review-pending responses — never
+      // crash a successful publish over the URL.
+      marketplaceUrl: data.listing._links?.web?.href ?? `https://reverb.com/item/${data.listing.id}`,
       status: data.listing.state === 'live' ? 'active' : 'draft',
     };
   }
@@ -177,7 +185,11 @@ export class ReverbAdapter implements MarketplaceAdapter {
         case 'ended': return 'ended';
         default: return 'unknown';
       }
-    } catch {
+    } catch (err) {
+      // Includes REVERB_SETUP_REQUIRED / decrypt failures from per-call token
+      // resolution — log before collapsing to the sentinel or a disconnected
+      // account is indistinguishable from a Reverb outage.
+      logger.warn({ marketplaceListingId, err }, 'Reverb getListingStatus failed — returning unknown');
       return 'unknown';
     }
   }

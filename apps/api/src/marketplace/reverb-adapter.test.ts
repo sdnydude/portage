@@ -114,6 +114,16 @@ describe('ReverbAdapter.createListing', () => {
     });
   });
 
+  it('maps a Reverb 401 to 409 REVERB_RECONNECT_REQUIRED so the web client never mistakes it for a Portage session expiry', async () => {
+    stubFetch(null, false, 401, JSON.stringify({ message: 'Invalid token' }));
+    const adapter = new ReverbAdapter('user-1');
+
+    await expect(adapter.createListing(BASE_INPUT)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'REVERB_RECONNECT_REQUIRED',
+    });
+  });
+
   it('maps a non-OK Reverb response to AppError(status, REVERB_API_ERROR) with the parsed message', async () => {
     stubFetch(null, false, 422, JSON.stringify({
       message: 'Category is required to publish',
@@ -126,6 +136,14 @@ describe('ReverbAdapter.createListing', () => {
       code: 'REVERB_API_ERROR',
       message: 'Category is required to publish',
     });
+  });
+
+  it('falls back to a constructed listing URL when the response has no _links.web', async () => {
+    stubFetch({ listing: { id: 555, state: 'live' } });
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.createListing(BASE_INPUT);
+    expect(result.marketplaceUrl).toBe('https://reverb.com/item/555');
   });
 
   it('maps a non-live response state to draft so the route never marks it active', async () => {
@@ -215,6 +233,16 @@ describe('ReverbAdapter.getListingStatus', () => {
     expect(await adapter.getListingStatus('1')).toBe('ended');
 
     stubFetch(null, false, 404, '{"message":"Not found"}');
+    expect(await adapter.getListingStatus('1')).toBe('unknown');
+  });
+
+  it('returns unknown (not a throw) when the user has no connected Reverb account', async () => {
+    stubFetch({ state: 'live' });
+    vi.mocked(getReverbAccessToken).mockRejectedValueOnce(
+      Object.assign(new Error('Reverb selling is not set up.'), { code: 'REVERB_SETUP_REQUIRED', statusCode: 400 }),
+    );
+    const adapter = new ReverbAdapter('user-1');
+
     expect(await adapter.getListingStatus('1')).toBe('unknown');
   });
 });

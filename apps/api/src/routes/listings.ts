@@ -148,13 +148,19 @@ async function applyReverbEnrichment(
       categoryUuid: null, categoryName: null, conditionUuid: null,
       conditionName: null, year: null, finish: null, cachedAt: '',
     };
-    await db.update(items)
-      .set({
-        marketplaceData: { ...md, reverb: { ...prev, categoryUuid: cats[0].id, categoryName: cats[0].name, cachedAt: new Date().toISOString() } },
-        updatedAt: new Date(),
-      })
-      .where(eq(items.id, item.id));
-    logger.info({ userId, itemId: item.id, categoryUuid: cats[0].id }, 'Reverb category auto-resolved at publish');
+    try {
+      await db.update(items)
+        .set({
+          marketplaceData: { ...md, reverb: { ...prev, categoryUuid: cats[0].id, categoryName: cats[0].name, cachedAt: new Date().toISOString() } },
+          updatedAt: new Date(),
+        })
+        .where(eq(items.id, item.id));
+      logger.info({ userId, itemId: item.id, categoryUuid: cats[0].id }, 'Reverb category auto-resolved at publish');
+    } catch (cacheErr) {
+      // Persist-back is a next-time optimization — the resolved category is
+      // already in memory, so a cache-write blip must not abort this publish.
+      logger.warn({ userId, itemId: item.id, error: (cacheErr as Error).message }, 'Reverb category persist-back failed — publishing with in-memory category');
+    }
   }
   return { specific: ms, warning };
 }

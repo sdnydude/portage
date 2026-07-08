@@ -3,14 +3,17 @@ import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
 
-const { mockReverbCreateListing, mockReverbSearchCategories, ReverbAdapterMock } = vi.hoisted(() => {
+const { mockReverbCreateListing, mockReverbUpdateListing, mockReverbSearchCategories, ReverbAdapterMock } = vi.hoisted(() => {
   const mockReverbCreateListing = vi.fn();
+  const mockReverbUpdateListing = vi.fn();
   const mockReverbSearchCategories = vi.fn();
   return {
     mockReverbCreateListing,
+    mockReverbUpdateListing,
     mockReverbSearchCategories,
     ReverbAdapterMock: vi.fn(() => ({
       createListing: mockReverbCreateListing,
+      updateListing: mockReverbUpdateListing,
       searchCategories: mockReverbSearchCategories,
     })),
   };
@@ -175,6 +178,46 @@ describe('POST /listings — reverb live publish', () => {
     expect(res.body.warning).toMatch(/category guessed/i);
   });
 
+  it('still publishes with the guessed category when the cache persist-back write fails', async () => {
+    const bareItem = { ...GEAR_ITEM, marketplaceData: null };
+    mockSelectOnce([bareItem]);
+    mockInsertReturning([{ id: 'listing-1', status: 'draft' }]);
+    mockSelectOnce([PROFILE]);
+    mockSelectOnce([{ footer: null }]);
+    mockReverbSearchCategories.mockResolvedValueOnce([
+      { id: 'rev-cat-guessed', name: 'Electric Guitars', path: ['Electric Guitars'], isLeaf: true },
+    ]);
+    // First db.update = the persist-back — blows up (transient DB failure).
+    const failingSet = vi.fn().mockReturnValue({ where: vi.fn().mockRejectedValue(new Error('deadlock')) });
+    const listingUpdateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+    });
+    vi.mocked(db.update)
+      .mockReturnValueOnce({ set: failingSet } as any)
+      .mockReturnValueOnce({ set: listingUpdateSet } as any);
+    mockReverbCreateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'reverb',
+        price: 2500,
+        publishMode: 'live',
+        disclaimerAccepted: true,
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockReverbCreateListing.mock.calls[0][0].marketplaceSpecific).toMatchObject({
+      categoryUuid: 'rev-cat-guessed',
+    });
+  });
+
   it('returns 422 REVERB_CATEGORY_REQUIRED when no category can be resolved and never calls createListing', async () => {
     const bareItem = { ...GEAR_ITEM, marketplaceData: null };
     mockSelectOnce([bareItem]);
@@ -274,6 +317,52 @@ describe('POST /listings/:id/publish — reverb', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.warning).toMatch(/category guessed/i);
+  });
+});
+
+describe('PATCH /listings/:id — reverb marketplace sync', () => {
+  it('syncs a price edit on an active reverb listing through updateListing', async () => {
+    const LISTING_ID = '00000000-0000-0000-0000-00000000000c';
+    mockSelectOnce([{
+      id: LISTING_ID,
+      userId: 'test-user-id',
+      itemId: ITEM_ID,
+      marketplace: 'reverb',
+      status: 'active',
+      marketplaceListingId: '87654321',
+      price: 2500,
+      currency: 'USD',
+      marketplaceSpecificFields: null,
+      ebaySku: null,
+    }]);                                               // listing lookup
+    const listingUpdateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{
+          id: LISTING_ID, userId: 'test-user-id', itemId: ITEM_ID, marketplace: 'reverb',
+          status: 'active', marketplaceListingId: '87654321', price: 2200, currency: 'USD',
+          marketplaceSpecificFields: null, ebaySku: null,
+        }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValueOnce({ set: listingUpdateSet } as any);
+    mockSelectOnce([GEAR_ITEM]);                       // item lookup for sync
+    mockSelectOnce([{ footer: null, shipFromAddress: null }]); // profile row
+    mockReverbUpdateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+
+    const res = await request(app)
+      .patch(`/listings/${LISTING_ID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 2200 });
+
+    expect(res.status).toBe(200);
+    expect(mockReverbUpdateListing).toHaveBeenCalledWith('87654321', expect.objectContaining({
+      price: 2200,
+      currency: 'USD',
+    }));
   });
 });
 
