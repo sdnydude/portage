@@ -1,8 +1,39 @@
 import {
+  buildMarketplaceCacheEntries,
   computePricing,
   conditionNeighbors,
   EBAY_CONDITION_ORDER,
 } from './prepare-listing.js';
+
+describe('buildMarketplaceCacheEntries', () => {
+  it('includes a reverb cache entry when the AI produced reverb fields', () => {
+    const entries = buildMarketplaceCacheEntries(
+      {
+        ebay: { categoryId: '33034', categoryName: 'Electric Guitars', title: 'Fender Strat' },
+        reverb: {
+          categoryUuid: 'rev-cat-1',
+          categoryName: 'Solid Body',
+          conditionUuid: 'rev-cond-1',
+          conditionName: 'Excellent',
+          year: '1979',
+          finish: 'Sunburst',
+        },
+      },
+      { categoryId: '33034', categoryName: 'Electric Guitars' },
+    );
+
+    expect(entries.ebay).toMatchObject({ categoryId: '33034', categoryName: 'Electric Guitars', title: 'Fender Strat' });
+    expect(entries.reverb).toMatchObject({
+      categoryUuid: 'rev-cat-1',
+      categoryName: 'Solid Body',
+      conditionUuid: 'rev-cond-1',
+      conditionName: 'Excellent',
+      year: '1979',
+      finish: 'Sunburst',
+    });
+    expect(typeof entries.reverb!.cachedAt).toBe('string');
+  });
+});
 
 describe('computePricing', () => {
   it('returns zeros with low confidence for empty comps', () => {

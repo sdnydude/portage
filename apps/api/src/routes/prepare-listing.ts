@@ -12,7 +12,7 @@ import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
 import { computeEffectiveTier } from '../lib/billing-utils.js';
 import { limitsForTier } from '@portage/shared';
-import type { PreparedListingData, PricingData, CompResult, ReverbCompResult, MarketplaceCacheEntry } from '@portage/shared';
+import type { PreparedListingData, PricingData, CompResult, ReverbCompResult, MarketplaceCacheEntry, ReverbCacheEntry } from '@portage/shared';
 
 const logger = createLogger('prepare-listing');
 
@@ -33,6 +33,45 @@ export const EBAY_CONDITION_MAP: Record<string, string> = {
 };
 
 export const EBAY_CONDITION_ORDER = ['NEW', 'LIKE_NEW', 'VERY_GOOD', 'GOOD', 'ACCEPTABLE'];
+
+/**
+ * Cache entries merged into items.marketplace_data after a prepare run. The
+ * ebay entry always writes (category self-heal depends on it); the reverb
+ * entry writes only when the AI produced reverb fields (music gear), so a
+ * non-gear prepare never clobbers an earlier gear scan's slot.
+ */
+export function buildMarketplaceCacheEntries(
+  aiFields: {
+    ebay?: { categoryId?: string | null; categoryName?: string | null; title?: string | null } | null;
+    reverb?: {
+      categoryUuid?: string | null; categoryName?: string | null;
+      conditionUuid?: string | null; conditionName?: string | null;
+      year?: string | null; finish?: string | null;
+    } | null;
+  },
+  categorySuggestion: { categoryId: string; categoryName: string } | null,
+): { ebay: MarketplaceCacheEntry; reverb?: ReverbCacheEntry } {
+  const entries: { ebay: MarketplaceCacheEntry; reverb?: ReverbCacheEntry } = {
+    ebay: {
+      categoryId: categorySuggestion?.categoryId ?? aiFields.ebay?.categoryId ?? null,
+      categoryName: categorySuggestion?.categoryName ?? aiFields.ebay?.categoryName ?? null,
+      title: aiFields.ebay?.title ?? null,
+      cachedAt: new Date().toISOString(),
+    },
+  };
+  if (aiFields.reverb) {
+    entries.reverb = {
+      categoryUuid: aiFields.reverb.categoryUuid ?? null,
+      categoryName: aiFields.reverb.categoryName ?? null,
+      conditionUuid: aiFields.reverb.conditionUuid ?? null,
+      conditionName: aiFields.reverb.conditionName ?? null,
+      year: aiFields.reverb.year ?? null,
+      finish: aiFields.reverb.finish ?? null,
+      cachedAt: new Date().toISOString(),
+    };
+  }
+  return entries;
+}
 
 export function conditionNeighbors(condition: string): string[] {
   const idx = EBAY_CONDITION_ORDER.indexOf(condition);
@@ -280,17 +319,12 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       throw aiError;
     }
 
-    const ebayEntry: MarketplaceCacheEntry = {
-      categoryId: categorySuggestion?.categoryId ?? aiFields.ebay?.categoryId ?? null,
-      categoryName: categorySuggestion?.categoryName ?? aiFields.ebay?.categoryName ?? null,
-      title: aiFields.ebay?.title ?? null,
-      cachedAt: new Date().toISOString(),
-    };
+    const cacheEntries = buildMarketplaceCacheEntries(aiFields, categorySuggestion);
 
     try {
       await db.update(items)
         .set({
-          marketplaceData: sql`COALESCE(marketplace_data, '{}'::jsonb) || ${JSON.stringify({ ebay: ebayEntry })}::jsonb`,
+          marketplaceData: sql`COALESCE(marketplace_data, '{}'::jsonb) || ${JSON.stringify(cacheEntries)}::jsonb`,
           updatedAt: new Date(),
         })
         .where(eq(items.id, itemId));

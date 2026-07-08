@@ -11,7 +11,7 @@ import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { mergeItemShipping, mergeItemAspects } from './listings.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
-import type { MarketplaceCacheEntry, MarketplaceData } from '@portage/shared';
+import type { MarketplaceData } from '@portage/shared';
 import { isAllowedImageOrigin } from './images.js';
 
 const logger = createLogger('items');
@@ -40,10 +40,21 @@ const marketplaceCacheEntrySchema = z.object({
   title: z.string().nullable().default(null),
   cachedAt: z.string().default(() => new Date().toISOString()),
 });
+// Reverb's slot carries UUIDs + gear attributes (ReverbCacheEntry), not eBay's
+// numeric category ids — written by prepare, read by the publish enrichment.
+const reverbCacheEntrySchema = z.object({
+  categoryUuid: z.string().nullable(),
+  categoryName: z.string().nullable(),
+  conditionUuid: z.string().nullable().default(null),
+  conditionName: z.string().nullable().default(null),
+  year: z.string().nullable().default(null),
+  finish: z.string().nullable().default(null),
+  cachedAt: z.string().default(() => new Date().toISOString()),
+});
 const marketplaceDataSchema = z.object({
   ebay: marketplaceCacheEntrySchema.optional(),
   etsy: marketplaceCacheEntrySchema.optional(),
-  reverb: marketplaceCacheEntrySchema.optional(),
+  reverb: reverbCacheEntrySchema.optional(),
 });
 
 const createItemSchema = z.object({
@@ -458,17 +469,17 @@ itemsRouter.patch('/:id', async (req, res, next) => {
     // title that csv-export reads. Mirror the publish-time read-merge in listings.ts.
     const updates: Record<string, unknown> = { ...body, updatedAt: new Date() };
     if (body.marketplaceData) {
-      const current = (existing.marketplaceData as Record<string, MarketplaceCacheEntry> | null) ?? {};
-      const merged: Record<string, MarketplaceCacheEntry> = { ...current };
+      const current = (existing.marketplaceData as Record<string, Record<string, unknown>> | null) ?? {};
+      const merged: Record<string, Record<string, unknown>> = { ...current };
       for (const [mk, entry] of Object.entries(body.marketplaceData)) {
         const prev = current[mk];
-        merged[mk] = {
-          ...prev,
-          ...entry,
-          // The edit flow never sends a title, so Zod's null default must not clobber
-          // a previously cached one.
-          title: entry.title ?? prev?.title ?? null,
-        };
+        merged[mk] = { ...prev, ...entry };
+        // The edit flow never sends a title, so Zod's null default must not clobber
+        // a previously cached one. Reverb's entry shape has no title.
+        if (mk !== 'reverb') {
+          const e = entry as { title?: string | null };
+          merged[mk].title = e.title ?? (prev as { title?: string | null } | undefined)?.title ?? null;
+        }
       }
       updates.marketplaceData = merged;
     }

@@ -50,10 +50,23 @@ export interface MarketplaceCacheEntry {
   cachedAt: string;
 }
 
+// Reverb's cache slot carries UUIDs and gear attributes rather than eBay's
+// numeric category ids — populated at prepare time, consumed by the publish
+// route's enrichment block.
+export interface ReverbCacheEntry {
+  categoryUuid: string | null;
+  categoryName: string | null;
+  conditionUuid: string | null;
+  conditionName: string | null;
+  year: string | null;
+  finish: string | null;
+  cachedAt: string;
+}
+
 export interface MarketplaceData {
   ebay?: MarketplaceCacheEntry;
   etsy?: MarketplaceCacheEntry;
-  reverb?: MarketplaceCacheEntry;
+  reverb?: ReverbCacheEntry;
 }
 
 export interface Item {
