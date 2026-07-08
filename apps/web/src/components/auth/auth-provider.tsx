@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AuthContext } from "@/hooks/use-auth";
-import { setOnTokenRefreshed, api, SESSION_LOST_EVENT } from "@/lib/api";
+import { setOnSessionExchanged, exchangeSession, api, SESSION_LOST_EVENT } from "@/lib/api";
 
 interface AuthUser {
   id: string;
@@ -13,8 +13,15 @@ interface AuthUser {
 }
 
 const TOKEN_KEY = "portage_token";
-const REFRESH_KEY = "portage_refresh";
 const USER_KEY = "portage_user";
+// Once per browser session: login-triggered background syncs (orders, GTC).
+const LOGIN_SYNC_KEY = "portage_login_sync_done";
+
+const CF_TEAM_DOMAIN = process.env.NEXT_PUBLIC_CF_TEAM_DOMAIN ?? "digitalharmonygroup";
+
+// The mount-time session exchange, so logout can wait for it to settle before
+// clearing storage — otherwise its late resolution re-stores the token.
+let pendingExchange: Promise<unknown> | null = null;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
@@ -22,22 +29,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    // Instant paint from cache while the exchange happens in the background.
     const savedToken = localStorage.getItem(TOKEN_KEY);
     const savedUser = localStorage.getItem(USER_KEY);
-
     if (savedToken && savedUser) {
       try {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
       } catch {
         localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(REFRESH_KEY);
         localStorage.removeItem(USER_KEY);
       }
     }
     setIsReady(true);
 
-    setOnTokenRefreshed((newToken, _refreshToken, newUser) => {
+    setOnSessionExchanged((newToken, newUser) => {
       if (!newToken) {
         setToken(null);
         setUser(null);
@@ -47,10 +53,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(newUser as AuthUser);
     });
 
+    // Cloudflare Access is the session layer: the edge already authenticated
+    // this request, so exchange the CF identity for an internal token on every
+    // mount. exchangeSession() syncs state via the callback above.
+    pendingExchange = exchangeSession()
+      .then((freshToken) => {
+        // First exchange this browser session = a login event. Fire-and-forget
+        // background syncs; keepalive survives an immediate navigation. Never
+        // block or break the session on a slow/down marketplace API.
+        if (!sessionStorage.getItem(LOGIN_SYNC_KEY)) {
+          sessionStorage.setItem(LOGIN_SYNC_KEY, "1");
+          void api("/orders/sync", { method: "POST", token: freshToken, keepalive: true }).catch(() => {});
+          void api("/listings/gtc-sweep", { method: "POST", token: freshToken, keepalive: true }).catch(() => {});
+        }
+      })
+      .catch(() => {
+        // Definitive rejections already cleared state + fired SESSION_LOST via
+        // exchangeSession; transient failures keep the cached session.
+      });
+
     // Central auth-loss handler: api.ts fires this only on definitive auth
-    // rejection (refresh 401/403, or no refresh token) — never on network
-    // errors or 5xx. Storage is already cleared before the dispatch — clear
-    // React state and land on home immediately.
+    // rejection — never on network errors or 5xx. Storage is already cleared
+    // before the dispatch — clear React state and land on home immediately.
     const onSessionLost = () => {
       setToken(null);
       setUser(null);
@@ -59,58 +83,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener(SESSION_LOST_EVENT, onSessionLost);
 
     return () => {
-      setOnTokenRefreshed(null);
+      setOnSessionExchanged(null);
       window.removeEventListener(SESSION_LOST_EVENT, onSessionLost);
     };
   }, []);
 
-  const login = useCallback((newToken: string, refreshToken: string, newUser: AuthUser | null) => {
-    setToken(newToken);
-    setUser(newUser);
-    localStorage.setItem(TOKEN_KEY, newToken);
-    localStorage.setItem(REFRESH_KEY, refreshToken);
-    if (newUser) localStorage.setItem(USER_KEY, JSON.stringify(newUser));
-
-    // Fire-and-forget: pull marketplace orders in the background so the Orders
-    // tab is fresh by the time the user navigates there. Never block or break
-    // login on a slow/down marketplace API — swallow all failures here (the
-    // manual Sync button surfaces errors on demand). keepalive is required: the
-    // caller redirects (router.replace) immediately after login(), and without
-    // it that navigation cancels this in-flight request before it's sent.
-    void api("/orders/sync", { method: "POST", token: newToken, keepalive: true }).catch(() => {});
-
-    // Same fire-and-forget contract: end GTC eBay listings nearing their
-    // monthly renewal (profile-gated server-side; no-op when the toggle is off).
-    void api("/listings/gtc-sweep", { method: "POST", token: newToken, keepalive: true }).catch(() => {});
-  }, []);
-
   const logout = useCallback(async () => {
-    // Revoke this device's session server-side before discarding it locally —
-    // otherwise the refresh token stays valid on the server until it expires.
-    // api() auto-refreshes an expired access token and retries, so revocation
-    // works even after >15min idle (a raw fetch would silently 401 there).
-    const accessToken = localStorage.getItem(TOKEN_KEY);
-    const refreshToken = localStorage.getItem(REFRESH_KEY);
-    if (accessToken && refreshToken) {
-      try {
-        await api("/auth/logout", {
-          method: "POST",
-          body: { refreshToken },
-          token: accessToken,
-          signal: AbortSignal.timeout(5000),
-        });
-      } catch (err) {
-        // Any failure (network, timeout, or HTTP error) must not block local
-        // logout — but it means the server-side session may still be alive.
-        console.warn("Server-side session revocation failed; token remains valid until expiry", err);
-      }
-    }
+    // CF Access owns the session — ending it means logging out at the edge.
+    // Wait for any in-flight exchange to settle so its resolution can't
+    // re-store the token after we clear it, then clear and hand off to CF.
+    await pendingExchange?.then(() => {}, () => {});
     setToken(null);
     setUser(null);
     localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(USER_KEY);
-    window.location.href = "/login";
+    sessionStorage.removeItem(LOGIN_SYNC_KEY);
+    window.location.href = `https://${CF_TEAM_DOMAIN}.cloudflareaccess.com/cdn-cgi/access/logout`;
   }, []);
 
   const setOnboardingCompleted = useCallback(() => {
@@ -135,7 +123,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       user,
       isAuthenticated: !!token,
-      login,
       logout,
       setOnboardingCompleted,
     }}>

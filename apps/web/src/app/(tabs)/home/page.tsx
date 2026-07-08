@@ -113,7 +113,7 @@ export default function HomePage() {
           <p className="text-text-secondary mb-6 max-w-xs text-sm">
             AI-powered inventory and marketplace selling. Scan, list, and sell your items in seconds.
           </p>
-          <Link href="/login" className="px-8 py-3 rounded-full bg-forest-green text-white font-semibold text-sm">
+          <Link href="/" className="px-8 py-3 rounded-full bg-forest-green text-white font-semibold text-sm">
             Get Started
           </Link>
         </div>
