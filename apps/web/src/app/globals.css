@@ -83,6 +83,10 @@
 }
 
 @theme inline {
+  /* Primary CTA color. Several pages (beta report, billing upsell) style
+     buttons with var(--color-primary); without this definition they render
+     text-white on a transparent background — invisible. */
+  --color-primary: var(--orange);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
