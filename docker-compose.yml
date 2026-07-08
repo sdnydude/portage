@@ -67,6 +67,13 @@ services:
     environment:
       NODE_ENV: production
       HOSTNAME: "0.0.0.0"
+      # Same-origin /backend/* rewrite target (see apps/web/next.config.ts).
+      # Goes via the host-published port so the API's self-signed cert
+      # (SAN 10.0.0.251) verifies against NODE_EXTRA_CA_CERTS below.
+      API_INTERNAL_URL: https://10.0.0.251:8016
+      NODE_EXTRA_CA_CERTS: /app/certs/cert.pem
+    volumes:
+      - ./certs:/app/certs:ro
     depends_on:
       portage-api:
         condition: service_healthy

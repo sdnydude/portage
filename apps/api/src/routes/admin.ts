@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { users, items, listings, orders, conversations, marketplaceAccounts, adminAuditLog, appSettings, refreshTokens } from '../db/schema.js';
+import { users, items, listings, orders, conversations, marketplaceAccounts, adminAuditLog, appSettings } from '../db/schema.js';
 import { eq, sql, desc, count, sum, and, isNull, isNotNull, ilike, or, inArray, gte } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
+import { getAllowlist, addEmail, removeEmail } from '../lib/cf-allowlist.js';
 
 const logger = createLogger('admin');
 
@@ -122,7 +123,7 @@ adminRouter.get('/users', async (req, res, next) => {
       conditions.push(or(ilike(users.email, `%${escaped}%`), ilike(users.displayName, `%${escaped}%`)));
     }
     if (role === 'admin' || role === 'user') conditions.push(eq(users.role, role));
-    if (tier === 'free' || tier === 'pro') conditions.push(eq(users.subscriptionTier, tier));
+    if (tier === 'free' || tier === 'pro' || tier === 'beta-tester') conditions.push(eq(users.subscriptionTier, tier));
     if (status === 'active') conditions.push(isNull(users.disabledAt));
     if (status === 'disabled') conditions.push(isNotNull(users.disabledAt));
 
@@ -241,7 +242,7 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
       await logAuditAction(adminUser.sub, 'change_role', 'user', targetId, { from: target.role, to: role });
     }
 
-    if (subscriptionTier === 'free' || subscriptionTier === 'pro') {
+    if (subscriptionTier === 'free' || subscriptionTier === 'pro' || subscriptionTier === 'beta-tester') {
       updates.subscriptionTier = subscriptionTier;
       await logAuditAction(adminUser.sub, 'change_tier', 'user', targetId, { from: target.subscriptionTier, to: subscriptionTier });
     }
@@ -249,9 +250,8 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
     if (disabled === true) {
       updates.disabledAt = new Date();
       updates.disabledReason = disabledReason || null;
-      // Defense-in-depth: refresh already 403s on disabledAt; deleting the rows
-      // also ensures old sessions stay dead if the account is later re-enabled.
-      await db.delete(refreshTokens).where(eq(refreshTokens.userId, targetId));
+      // Sessions die at the edge: disabling here plus removing the email from
+      // the CF Access allowlist; internal access tokens expire within 15 min.
       await logAuditAction(adminUser.sub, 'disable_user', 'user', targetId, { reason: disabledReason });
     } else if (disabled === false) {
       updates.disabledAt = null;
@@ -555,6 +555,48 @@ adminRouter.get('/marketplace/health', async (_req, res, next) => {
     }
 
     res.json({ accounts: enriched, summary });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── CF Access Allowlist ───
+// The beta gate lives at the Cloudflare edge: an allow policy of emails on
+// the Portage Access applications. These endpoints manage it via the CF API.
+
+adminRouter.get('/allowlist', async (_req, res, next) => {
+  try {
+    const emails = await getAllowlist();
+    res.json({ emails });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post('/allowlist', async (req, res, next) => {
+  try {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new AppError(400, 'INVALID_EMAIL', 'A valid email address is required');
+    }
+    const emails = await addEmail(email);
+    await logAuditAction(req.user!.sub, 'allowlist_add', 'access_policy', null, { email });
+    res.json({ emails });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.delete('/allowlist/:email', async (req, res, next) => {
+  try {
+    const email = decodeURIComponent(req.params.email).toLowerCase().trim();
+    if (email === req.user!.email.toLowerCase()) {
+      // Removing yourself from the edge allowlist is a lockout, not a logout.
+      throw new AppError(400, 'SELF_REMOVE', 'You cannot remove your own email from the allowlist');
+    }
+    const emails = await removeEmail(email);
+    await logAuditAction(req.user!.sub, 'allowlist_remove', 'access_policy', null, { email });
+    res.json({ emails });
   } catch (err) {
     next(err);
   }

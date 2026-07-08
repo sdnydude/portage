@@ -5,6 +5,18 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@portage/shared"],
   allowedDevOrigins: ["10.0.0.251"],
   turbopack: {},
+  async rewrites() {
+    // Same-origin API: the browser talks only to this app's origin, so the
+    // Cloudflare Access cookie + Cf-Access-Jwt-Assertion header ride along on
+    // every API call with no CORS. The API's self-signed LAN cert (SAN
+    // 10.0.0.251) verifies via NODE_EXTRA_CA_CERTS in the container env.
+    return [
+      {
+        source: "/backend/:path*",
+        destination: `${process.env.API_INTERNAL_URL ?? "https://10.0.0.251:8016"}/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {

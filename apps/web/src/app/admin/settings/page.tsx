@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAdminApi } from "@/hooks/use-admin";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { AllowlistSection } from "@/components/admin/allowlist-section";
 
 interface SettingsMap {
   [key: string]: unknown;
@@ -101,6 +102,8 @@ export default function AdminSettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <h1 className="text-xl font-bold text-text-primary font-[family-name:var(--font-instrument)]">App Settings</h1>
+
+      <AllowlistSection />
 
       <div className="bg-surface rounded-xl border border-border p-4">
         <h2 className="text-sm font-semibold text-text-primary mb-2">Tier Limits</h2>

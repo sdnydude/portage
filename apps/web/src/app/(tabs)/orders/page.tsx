@@ -83,7 +83,7 @@ export default function OrdersPage() {
         <div className="px-4 py-6 max-w-lg mx-auto">
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-text-secondary text-sm">Log in to view your orders</p>
-            <Link href="/login" className="mt-4 px-6 py-2.5 rounded-full bg-forest-green text-white text-sm font-medium">
+            <Link href="/" className="mt-4 px-6 py-2.5 rounded-full bg-forest-green text-white text-sm font-medium">
               Log In
             </Link>
           </div>

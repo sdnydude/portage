@@ -29,6 +29,9 @@ services:
       JWT_SECRET: e2e-jwt-secret-must-be-at-least-32-characters
       ENCRYPTION_KEY: test-encryption-key-must-be-at-least-sixty-four-characters-long-here
       EXTRA_CORS_ORIGINS: http://10.0.0.251:3998
+      # No CF edge in the ephemeral stack: GET /auth/session authenticates as
+      # this identity via the development-only bypass (auto-provisions the row).
+      CF_ACCESS_DEV_EMAIL: e2e@portage.app
     ports:
       - "8998:8998"
     depends_on:

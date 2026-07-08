@@ -12,6 +12,12 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
+vi.mock('../lib/cf-allowlist.js', () => ({
+  getAllowlist: vi.fn(),
+  addEmail: vi.fn(),
+  removeEmail: vi.fn(),
+}));
+
 let app: ReturnType<typeof createApp>;
 
 beforeAll(() => {
@@ -89,7 +95,8 @@ describe('admin functional guards', () => {
     expect(res.body.code).toBe('SELF_MODIFY');
   });
 
-  it('PATCH /admin/users/:id with disabled:true revokes all the user sessions', async () => {
+  it('PATCH /admin/users/:id accepts the beta-tester tier', async () => {
+    const { db } = await import('../db/index.js');
     const targetId = '00000000-0000-0000-0000-000000000002';
     vi.mocked(db.select).mockReturnValue({
       from: vi.fn().mockReturnValue({
@@ -99,20 +106,65 @@ describe('admin functional guards', () => {
       }),
     } as any);
     vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
-    vi.mocked(db.update).mockReturnValue({
-      set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-    } as any);
-    const deleteWhere = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(db.delete).mockReturnValue({ where: deleteWhere } as any);
+    const setFn = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setFn } as any);
 
     const res = await request(app)
       .patch(`/admin/users/${targetId}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ disabled: true, disabledReason: 'test' });
+      .send({ subscriptionTier: 'beta-tester' });
 
     expect(res.status).toBe(200);
-    expect(db.delete).toHaveBeenCalledTimes(1);
-    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(setFn).toHaveBeenCalledWith(expect.objectContaining({ subscriptionTier: 'beta-tester' }));
+  });
+
+  it('GET /admin/allowlist returns the CF Access allowlist emails', async () => {
+    const { getAllowlist } = await import('../lib/cf-allowlist.js');
+    vi.mocked(getAllowlist).mockResolvedValue(['a@x.com', 'b@y.com']);
+
+    const res = await request(app)
+      .get('/admin/allowlist')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.emails).toEqual(['a@x.com', 'b@y.com']);
+  });
+
+  it('POST /admin/allowlist adds an email and audit-logs it', async () => {
+    const { addEmail } = await import('../lib/cf-allowlist.js');
+    vi.mocked(addEmail).mockResolvedValue(['a@x.com', 'new@t.com']);
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+
+    const res = await request(app)
+      .post('/admin/allowlist')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'new@t.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.emails).toEqual(['a@x.com', 'new@t.com']);
+    expect(vi.mocked(addEmail)).toHaveBeenCalledWith('new@t.com');
+  });
+
+  it('DELETE /admin/allowlist/:email removes an email but refuses to remove your own', async () => {
+    const { removeEmail } = await import('../lib/cf-allowlist.js');
+    vi.mocked(removeEmail).mockResolvedValue(['a@x.com']);
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+
+    const res = await request(app)
+      .delete('/admin/allowlist/gone%40y.com')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.emails).toEqual(['a@x.com']);
+    expect(vi.mocked(removeEmail)).toHaveBeenCalledWith('gone@y.com');
+
+    // Self-lockout guard: the admin token's email is test@example.com
+    const self = await request(app)
+      .delete('/admin/allowlist/test%40example.com')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(self.status).toBe(400);
+    expect(self.body.code).toBe('SELF_REMOVE');
   });
 
   it('PATCH /admin/settings/:key rejects disallowed keys', async () => {

@@ -48,12 +48,9 @@ jobs:
           set -e
           for i in $(seq 1 40); do curl -fsS http://10.0.0.251:8998/health >/dev/null && break || sleep 3; done
           for i in $(seq 1 40); do curl -fsS -o /dev/null http://10.0.0.251:3998/ && break || sleep 3; done
-          curl -fsS -X POST http://10.0.0.251:8998/auth/register \
-            -H 'Content-Type: application/json' \
-            -d '{"email":"e2e@portage.app","password":"Demo1234demo1234"}' || true
-          TOKEN=$(curl -fsS -X POST http://10.0.0.251:8998/auth/login \
-            -H 'Content-Type: application/json' \
-            -d '{"email":"e2e@portage.app","password":"Demo1234demo1234"}' \
+          # Dev-bypass session exchange (CF_ACCESS_DEV_EMAIL in the ephemeral
+          # stack) — auto-provisions e2e@portage.app and returns the token.
+          TOKEN=$(curl -fsS http://10.0.0.251:8998/auth/session \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
           curl -fsS -X POST http://10.0.0.251:8998/items \
             -H "Authorization: Bearer $TOKEN" \
@@ -64,8 +61,6 @@ jobs:
         env:
           E2E_BASE_URL: http://10.0.0.251:3998
           E2E_API_URL: http://10.0.0.251:8998
-          E2E_EMAIL: e2e@portage.app
-          E2E_PASSWORD: Demo1234demo1234
         run: npm run test:e2e -w apps/web
 
       - name: Upload proof screenshots

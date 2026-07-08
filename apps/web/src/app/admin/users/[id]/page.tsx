@@ -11,7 +11,7 @@ interface UserDetail {
   email: string;
   displayName: string | null;
   role: "user" | "admin";
-  subscriptionTier: "free" | "pro";
+  subscriptionTier: "free" | "pro" | "beta-tester";
   aiScansThisMonth: number;
   bgRemovalsThisMonth: number;
   onboardingCompleted: boolean;
@@ -132,7 +132,10 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       <div className="bg-surface rounded-xl border border-border p-4">
         <h2 className="text-sm font-semibold text-text-primary mb-3">Actions</h2>
         <div className="flex flex-wrap gap-2">
-          {user.subscriptionTier === "free" ? (
+          {user.subscriptionTier !== "beta-tester" && (
+            <button disabled={actionLoading} onClick={() => handleAction({ subscriptionTier: "beta-tester" }, "Move to the private Beta Tester tier (unlimited usage)?")} className="px-3 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:bg-blue-900/20 dark:text-blue-400">Make Beta Tester</button>
+          )}
+          {user.subscriptionTier === "free" || user.subscriptionTier === "beta-tester" ? (
             <button disabled={actionLoading} onClick={() => handleAction({ subscriptionTier: "pro" }, "Upgrade to Pro plan?")} className="px-3 py-1.5 text-sm rounded-lg bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 dark:bg-green-900/20 dark:text-green-400">Upgrade to Pro</button>
           ) : (
             <button disabled={actionLoading} onClick={() => handleAction({ subscriptionTier: "free" }, "Downgrade to Free plan?")} className="px-3 py-1.5 text-sm rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-400">Downgrade to Free</button>

@@ -60,7 +60,7 @@ test.describe("login triggers orders sync", () => {
   // Start logged OUT so the real login() callback runs (storageState bypasses it).
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("a fresh UI login fires a fire-and-forget POST /orders/sync", async ({ page }) => {
+  test("a fresh session exchange fires a fire-and-forget POST /orders/sync", async ({ page }) => {
     let syncCalled = false;
     await page.route("**/orders/sync", async (route) => {
       syncCalled = true;
@@ -71,17 +71,11 @@ test.describe("login triggers orders sync", () => {
       });
     });
 
-    // Use the same seeded creds as auth.setup — the CI ephemeral DB seeds
-    // E2E_EMAIL (e2e@portage.app), NOT demo@portage.app, so hardcoding demo
-    // makes the UI login fail on CI and login() never fires the sync.
-    const email = process.env.E2E_EMAIL ?? "demo@portage.app";
-    const password = process.env.E2E_PASSWORD ?? "demo1234demo1234";
-    await page.goto("/login");
-    await page.locator('input[type=email]').fill(email);
-    await page.locator('input[type=password]').fill(password);
-    await page.getByRole("button", { name: "Sign In" }).click();
+    // Fresh browser context = no sessionStorage sync flag, so the mount-time
+    // CF session exchange (dev bypass on the ephemeral API) counts as a login
+    // event and fires the background sync.
+    await page.goto("/home");
 
-    // login() fires the sync synchronously; poll briefly for the route to hit.
     await expect.poll(() => syncCalled, { timeout: 10_000 }).toBe(true);
   });
 });

@@ -96,7 +96,7 @@ function CallbackContent() {
           </button>
           {status === "expired" && (
             <button
-              onClick={() => router.replace("/login")}
+              onClick={() => router.replace("/")}
               className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-text-primary transition-colors hover:bg-background"
             >
               Log in

@@ -1,11 +1,13 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://portage-api.digitalharmonyai.com";
+// Same-origin by default: /backend/* is rewritten by Next to the API container
+// (see next.config.ts), so the Cloudflare Access cookie + assertion headers
+// ride along on every request without CORS.
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/backend";
 
 const TOKEN_KEY = "portage_token";
-const REFRESH_KEY = "portage_refresh";
 const USER_KEY = "portage_user";
 
-// Dispatched on window when the session is definitively lost (refresh rejected
-// with 401/403, or no refresh token exists). AuthProvider listens for this.
+// Dispatched on window when the session is definitively lost (the CF session
+// exchange itself was rejected). AuthProvider listens for this.
 export const SESSION_LOST_EVENT = "auth:session-lost";
 
 export class ApiError extends Error {
@@ -25,31 +27,19 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   token?: string;
 }
 
-let _onTokenRefreshed: ((token: string, refreshToken: string, user: unknown) => void) | null = null;
+let _onSessionExchanged: ((token: string | null, user: unknown) => void) | null = null;
 
-export function setOnTokenRefreshed(cb: typeof _onTokenRefreshed) {
-  _onTokenRefreshed = cb;
+export function setOnSessionExchanged(cb: typeof _onSessionExchanged) {
+  _onSessionExchanged = cb;
 }
 
-let _refreshPromise: Promise<string> | null = null;
+let _exchangePromise: Promise<string> | null = null;
 
-async function refreshAccessToken(): Promise<string> {
-  const refreshToken = localStorage.getItem(REFRESH_KEY);
-  if (!refreshToken) {
-    // No way to recover this session — treat as definitive loss, otherwise the
-    // app sits in an authenticated-looking UI where every request 401s forever.
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    _onTokenRefreshed?.(null as unknown as string, "", null);
-    window.dispatchEvent(new CustomEvent(SESSION_LOST_EVENT));
-    throw new Error("No refresh token");
-  }
-
-  const response = await fetch(`${API_BASE}/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
-  });
+// Exchange the Cloudflare Access identity (cookie/assertion forwarded by the
+// edge) for a fresh internal access token. CF is the session layer — there is
+// no refresh token; when the internal token expires we just exchange again.
+export async function exchangeSession(): Promise<string> {
+  const response = await fetch(`${API_BASE}/auth/session`, { cache: "no-store" });
 
   if (!response.ok) {
     // Only a definitive auth rejection means the session is gone. A 429/5xx is
@@ -57,19 +47,17 @@ async function refreshAccessToken(): Promise<string> {
     // over a transient error.
     if (response.status === 401 || response.status === 403) {
       localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(REFRESH_KEY);
       localStorage.removeItem(USER_KEY);
-      _onTokenRefreshed?.(null as unknown as string, "", null);
+      _onSessionExchanged?.(null, null);
       window.dispatchEvent(new CustomEvent(SESSION_LOST_EVENT));
     }
-    throw new Error(`Refresh failed (${response.status})`);
+    throw new Error(`Session exchange failed (${response.status})`);
   }
 
-  const data = await response.json() as { token: string; refreshToken: string; user: unknown };
+  const data = await response.json() as { token: string; user: unknown };
   localStorage.setItem(TOKEN_KEY, data.token);
-  localStorage.setItem(REFRESH_KEY, data.refreshToken);
   if (data.user) localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-  _onTokenRefreshed?.(data.token, data.refreshToken, data.user);
+  _onSessionExchanged?.(data.token, data.user);
 
   return data.token;
 }
@@ -92,13 +80,13 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  if (response.status === 401 && token && path !== "/auth/refresh") {
+  if (response.status === 401 && token && path !== "/auth/session") {
     let newToken: string;
     try {
-      if (!_refreshPromise) {
-        _refreshPromise = refreshAccessToken().finally(() => { _refreshPromise = null; });
+      if (!_exchangePromise) {
+        _exchangePromise = exchangeSession().finally(() => { _exchangePromise = null; });
       }
-      newToken = await _refreshPromise;
+      newToken = await _exchangePromise;
     } catch {
       const data = await response.json().catch(() => ({ error: "Session expired", code: "UNAUTHORIZED" }));
       throw new ApiError(401, data.code, data.error, data.details);

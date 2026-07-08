@@ -2,7 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act } from "@testing-library/react";
 import { AuthProvider } from "./auth-provider";
 
-describe("AuthProvider session loss", () => {
+function sessionResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      token: "exchanged-token",
+      user: { id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user", onboardingCompleted: true },
+      ...overrides,
+    }),
+  };
+}
+
+describe("AuthProvider (Cloudflare Access)", () => {
   const originalLocation = window.location;
 
   beforeEach(() => {
@@ -20,20 +32,59 @@ describe("AuthProvider session loss", () => {
       configurable: true,
     });
     localStorage.clear();
+    sessionStorage.clear();
     vi.restoreAllMocks();
   });
 
-  it("logout calls POST /auth/logout with the refresh token before clearing the session", async () => {
-    localStorage.setItem("portage_token", "access-t");
-    localStorage.setItem("portage_refresh", "refresh-t");
-    localStorage.setItem("portage_user", JSON.stringify({ id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" }));
-
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ loggedOut: true }),
-    });
+  it("exchanges the CF session on mount and exposes the user", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sessionResponse());
     vi.stubGlobal("fetch", fetchMock);
+
+    const { useAuth } = await import("@/hooks/use-auth");
+    function WhoAmI() {
+      const { user, isAuthenticated } = useAuth();
+      return <div>{isAuthenticated ? `hi ${user?.email}` : "anon"}</div>;
+    }
+
+    const { findByText } = render(
+      <AuthProvider>
+        <WhoAmI />
+      </AuthProvider>,
+    );
+
+    expect(await findByText("hi e@x.com")).toBeDefined();
+    const exchangeCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/auth/session"));
+    expect(exchangeCall).toBeDefined();
+    expect(localStorage.getItem("portage_token")).toBe("exchanged-token");
+  });
+
+  it("fires orders sync + GTC sweep once per browser session after the first exchange", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sessionResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = render(<AuthProvider><div>a</div></AuthProvider>);
+    await act(async () => {});
+    first.unmount();
+
+    const syncCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/orders/sync"));
+    const sweepCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/listings/gtc-sweep"));
+    expect(syncCalls().length).toBe(1);
+    expect(sweepCalls().length).toBe(1);
+    expect(syncCalls()[0][1].headers.Authorization).toBe("Bearer exchanged-token");
+    // keepalive lets the request survive an immediate navigation
+    expect(syncCalls()[0][1].keepalive).toBe(true);
+
+    // Second mount in the same browser session (e.g. reload) must not re-fire
+    render(<AuthProvider><div>b</div></AuthProvider>);
+    await act(async () => {});
+    expect(syncCalls().length).toBe(1);
+    expect(sweepCalls().length).toBe(1);
+  });
+
+  it("logout clears local state and redirects to the Cloudflare Access logout URL", async () => {
+    localStorage.setItem("portage_token", "t");
+    localStorage.setItem("portage_user", JSON.stringify({ id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sessionResponse()));
 
     const { useAuth } = await import("@/hooks/use-auth");
     function LogoutButton() {
@@ -51,125 +102,15 @@ describe("AuthProvider session loss", () => {
       getByText("out").click();
     });
 
-    const logoutCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/auth/logout"));
-    expect(logoutCall).toBeDefined();
-    expect(JSON.parse(logoutCall![1].body).refreshToken).toBe("refresh-t");
-    expect(logoutCall![1].headers.Authorization).toBe("Bearer access-t");
-    expect(localStorage.getItem("portage_refresh")).toBeNull();
-  });
-
-  it("logout with an expired access token refreshes and retries the revocation (not a silent no-op)", async () => {
-    localStorage.setItem("portage_token", "expired-access");
-    localStorage.setItem("portage_refresh", "refresh-t");
-    localStorage.setItem("portage_user", JSON.stringify({ id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" }));
-
-    const fetchMock = vi.fn()
-      // 1st logout attempt: expired Bearer -> 401
-      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ error: "expired", code: "UNAUTHORIZED" }) })
-      // auto-refresh: succeeds
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ token: "new-at", refreshToken: "new-rt", user: { id: "u1" } }) })
-      // retried logout with fresh token: succeeds
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ loggedOut: true }) });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { useAuth } = await import("@/hooks/use-auth");
-    function LogoutButton() {
-      const { logout } = useAuth();
-      return <button onClick={() => logout()}>out</button>;
-    }
-
-    const { getByText } = render(
-      <AuthProvider>
-        <LogoutButton />
-      </AuthProvider>,
-    );
-
-    await act(async () => {
-      getByText("out").click();
-    });
-
-    const logoutCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/auth/logout"));
-    const refreshCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/auth/refresh"));
-    expect(refreshCalls.length).toBe(1);
-    expect(logoutCalls.length).toBe(2);
-    expect(logoutCalls[1][1].headers.Authorization).toBe("Bearer new-at");
-  });
-
-  it("login fires a fire-and-forget orders sync with the new access token", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ synced: 0, newOrders: [], errors: [] }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { useAuth } = await import("@/hooks/use-auth");
-    function LoginButton() {
-      const { login } = useAuth();
-      return (
-        <button onClick={() => login("new-at", "new-rt", { id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" })}>
-          in
-        </button>
-      );
-    }
-
-    const { getByText } = render(
-      <AuthProvider>
-        <LoginButton />
-      </AuthProvider>,
-    );
-
-    await act(async () => {
-      getByText("in").click();
-    });
-
-    const syncCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/orders/sync"));
-    expect(syncCall).toBeDefined();
-    expect(syncCall![1].method).toBe("POST");
-    expect(syncCall![1].headers.Authorization).toBe("Bearer new-at");
-    // keepalive lets the request survive the immediate post-login redirect
-    // (router.replace) — without it the navigation cancels the in-flight fetch.
-    expect(syncCall![1].keepalive).toBe(true);
-  });
-
-  it("login fires a fire-and-forget GTC sweep with the new access token", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ enabled: false, checked: 0, ended: 0, errors: [] }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { useAuth } = await import("@/hooks/use-auth");
-    function LoginButton() {
-      const { login } = useAuth();
-      return (
-        <button onClick={() => login("new-at", "new-rt", { id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" })}>
-          in
-        </button>
-      );
-    }
-
-    const { getByText } = render(
-      <AuthProvider>
-        <LoginButton />
-      </AuthProvider>,
-    );
-
-    await act(async () => {
-      getByText("in").click();
-    });
-
-    const sweepCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/listings/gtc-sweep"));
-    expect(sweepCall).toBeDefined();
-    expect(sweepCall![1].method).toBe("POST");
-    expect(sweepCall![1].headers.Authorization).toBe("Bearer new-at");
-    expect(sweepCall![1].keepalive).toBe(true);
+    expect(localStorage.getItem("portage_token")).toBeNull();
+    expect(localStorage.getItem("portage_user")).toBeNull();
+    expect(window.location.href).toContain(".cloudflareaccess.com/cdn-cgi/access/logout");
   });
 
   it("redirects to /home the moment auth:session-lost fires", async () => {
     localStorage.setItem("portage_token", "t");
     localStorage.setItem("portage_user", JSON.stringify({ id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sessionResponse()));
 
     render(
       <AuthProvider>

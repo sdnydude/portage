@@ -4,7 +4,6 @@ import { api } from "./api";
 describe("api session loss", () => {
   beforeEach(() => {
     localStorage.setItem("portage_token", "stale-token");
-    localStorage.setItem("portage_refresh", "stale-refresh");
     localStorage.setItem("portage_user", JSON.stringify({ id: "u1" }));
   });
 
@@ -13,40 +12,23 @@ describe("api session loss", () => {
     vi.restoreAllMocks();
   });
 
-  it("dispatches auth:session-lost when the refresh attempt fails", async () => {
+  it("dispatches auth:session-lost when the CF session exchange is rejected", async () => {
     const handler = vi.fn();
     window.addEventListener("auth:session-lost", handler);
 
     vi.stubGlobal("fetch", vi.fn()
-      // original request: 401
+      // original request: 401 (internal token expired)
       .mockResolvedValueOnce({
         ok: false,
         status: 401,
         json: async () => ({ error: "Unauthorized", code: "UNAUTHORIZED" }),
       })
-      // refresh attempt: 401 — session revoked
+      // session exchange: 401 — CF session gone or user not allowed
       .mockResolvedValueOnce({
         ok: false,
         status: 401,
-        json: async () => ({ error: "Refresh token has been revoked", code: "INVALID_REFRESH_TOKEN" }),
+        json: async () => ({ error: "Cloudflare Access authentication required", code: "CF_REQUIRED" }),
       }));
-
-    await expect(api("/items", { token: "stale-token" })).rejects.toThrow();
-
-    expect(handler).toHaveBeenCalledTimes(1);
-    window.removeEventListener("auth:session-lost", handler);
-  });
-
-  it("dispatches auth:session-lost when no refresh token exists at all (no zombie state)", async () => {
-    localStorage.removeItem("portage_refresh");
-    const handler = vi.fn();
-    window.addEventListener("auth:session-lost", handler);
-
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      json: async () => ({ error: "Unauthorized", code: "UNAUTHORIZED" }),
-    }));
 
     await expect(api("/items", { token: "stale-token" })).rejects.toThrow();
 
@@ -55,7 +37,7 @@ describe("api session loss", () => {
     window.removeEventListener("auth:session-lost", handler);
   });
 
-  it("does NOT wipe the session or dispatch when the refresh endpoint 500s (server hiccup, not auth loss)", async () => {
+  it("does NOT wipe the session or dispatch when the exchange endpoint 500s (server hiccup, not auth loss)", async () => {
     const handler = vi.fn();
     window.addEventListener("auth:session-lost", handler);
 
@@ -74,7 +56,7 @@ describe("api session loss", () => {
     await expect(api("/items", { token: "stale-token" })).rejects.toThrow();
 
     expect(handler).not.toHaveBeenCalled();
-    expect(localStorage.getItem("portage_refresh")).toBe("stale-refresh");
+    expect(localStorage.getItem("portage_token")).toBe("stale-token");
     window.removeEventListener("auth:session-lost", handler);
   });
 });

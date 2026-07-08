@@ -1,0 +1,22 @@
+{
+  "testModules": [
+    {
+      "moduleId": "/home/swebber64/DHG/portage/.claude/worktrees/loving-shaw-8279fa/apps/api/src/lib/image.test.ts",
+      "tests": [
+        {
+          "name": "produces an opaque JPEG (no alpha channel)",
+          "fullName": "flattenToWhite > produces an opaque JPEG (no alpha channel)",
+          "state": "failed",
+          "errors": [
+            {
+              "message": "(0 , flattenToWhite) is not a function",
+              "stack": "TypeError: (0 , flattenToWhite) is not a function\n    at /home/swebber64/DHG/portage/.claude/worktrees/loving-shaw-8279fa/apps/api/src/lib/image.test.ts:16:23\n    at file:///home/swebber64/DHG/portage/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "unhandledErrors": [],
+  "reason": "failed"
+}

@@ -11,6 +11,8 @@ import { AppError } from '../middleware/error.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq, sql } from 'drizzle-orm';
+import { computeEffectiveTier } from '../lib/billing-utils.js';
+import { limitsForTier } from '@portage/shared';
 
 const logger = createLogger('scan');
 
@@ -36,6 +38,7 @@ scanRouter.use(requireAuth);
 async function checkScanLimit(userId: string): Promise<void> {
   const [user] = await db.select({
     subscriptionTier: users.subscriptionTier,
+    trialEndsAt: users.trialEndsAt,
     aiScansThisMonth: users.aiScansThisMonth,
     scanCountResetAt: users.scanCountResetAt,
   })
@@ -56,6 +59,14 @@ async function checkScanLimit(userId: string): Promise<void> {
     user.aiScansThisMonth = 0;
   }
 
+  // Server-side enforcement: every scan/refine is a paid vision call. Pro and
+  // beta-tester are unlimited (null); free is capped per month.
+  const tier = computeEffectiveTier(user.subscriptionTier, user.trialEndsAt);
+  const limit = limitsForTier(tier).aiScansPerMonth;
+  if (limit !== null && user.aiScansThisMonth >= limit) {
+    throw new AppError(429, 'LIMIT_REACHED',
+      `Monthly AI scan limit reached (${limit}). Upgrade to Pro for unlimited scans.`);
+  }
 }
 
 

@@ -11,7 +11,7 @@ import { env } from '../lib/env.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { computeEffectiveTier } from '../lib/billing-utils.js';
-import { FREE_TIER_LIMITS } from '@portage/shared';
+import { limitsForTier } from '@portage/shared';
 
 const logger = createLogger('images');
 
@@ -234,7 +234,7 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
     if (!billingUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
 
     const tier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
-    const limit = tier === 'pro' ? null : FREE_TIER_LIMITS.bgRemovalsPerMonth;
+    const limit = limitsForTier(tier).bgRemovalsPerMonth;
 
     let resetFired = false;
     if (limit !== null) {
