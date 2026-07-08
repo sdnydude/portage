@@ -138,6 +138,17 @@ describe('ReverbAdapter.createListing', () => {
     });
   });
 
+  it('folds a warning into the result when an unrecognized condition falls back to good', async () => {
+    const fetchMock = stubFetch();
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.createListing({ ...BASE_INPUT, condition: 'mint' });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.condition).toEqual({ uuid: 'f7a3f48c-972a-44c6-b01a-0cd27488d3ab' }); // good
+    expect(result.warning).toMatch(/condition/i);
+  });
+
   it('falls back to a constructed listing URL when the response has no _links.web', async () => {
     stubFetch({ listing: { id: 555, state: 'live' } });
     const adapter = new ReverbAdapter('user-1');
@@ -202,6 +213,16 @@ describe('ReverbAdapter.updateListing', () => {
       offers_enabled: true,
       shipping: { rates: [{ region_code: 'US_CON', rate: { amount: '30.00', currency: 'USD' } }], local: false },
     });
+  });
+});
+
+describe('ReverbAdapter.updateListing — status mapping', () => {
+  it('reflects the PUT response state instead of assuming active', async () => {
+    stubFetch({ listing: { id: 12345678, state: 'draft' } });
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.updateListing('12345678', { price: 999, currency: 'USD' });
+    expect(result.status).toBe('draft');
   });
 });
 
@@ -311,6 +332,29 @@ describe('ReverbAdapter.getConditions', () => {
     clearReverbConditionsCache();
     await ReverbAdapter.getConditions();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws a typed REVERB_API_ERROR when the conditions fetch fails', async () => {
+    clearReverbConditionsCache();
+    stubFetch(null, false, 503, 'Service Unavailable');
+
+    await expect(ReverbAdapter.getConditions()).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'REVERB_API_ERROR',
+    });
+  });
+});
+
+describe('ReverbAdapter.searchComps — degraded signal', () => {
+  it('flags the result as degraded on an API failure so pricing can warn, distinct from genuinely-no-comps', async () => {
+    process.env.REVERB_API_TOKEN = 'global-service-token';
+    resetEnv();
+    loadEnv();
+    stubFetch(null, false, 429, 'rate limited');
+
+    const result = await ReverbAdapter.searchComps('stratocaster');
+    expect(result.stats.sampleSize).toBe(0);
+    expect(result.degraded).toBe(true);
   });
 });
 

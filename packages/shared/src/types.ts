@@ -470,6 +470,9 @@ export interface ReverbCompResult {
     avg: number | null;
     sampleSize: number;
   };
+  // True when the comps API call itself failed (outage/rate-limit) — the empty
+  // result then means "couldn't ask", not "no comparable listings exist".
+  degraded?: boolean;
 }
 
 export interface EbayPreparedFields {

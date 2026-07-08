@@ -90,6 +90,11 @@ export class ReverbAdapter implements MarketplaceAdapter {
     const specific = input.marketplaceSpecific ?? {};
     const conditionUuid = specific.conditionUuid as string
       ?? CONDITION_MAP[input.condition] ?? CONDITION_MAP.good;
+    // A stray condition string silently mapping to "good" would misgrade the
+    // listing on a live storefront — surface the fallback to the seller.
+    const conditionWarning = !specific.conditionUuid && !CONDITION_MAP[input.condition]
+      ? `Unrecognized condition "${input.condition}" — listed as Good on Reverb`
+      : undefined;
 
     const body: Record<string, unknown> = {
       make: input.brand ?? '',
@@ -130,6 +135,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
       // crash a successful publish over the URL.
       marketplaceUrl: data.listing._links?.web?.href ?? `https://reverb.com/item/${data.listing.id}`,
       status: data.listing.state === 'live' ? 'active' : 'draft',
+      warning: conditionWarning,
     };
   }
 
@@ -160,7 +166,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
       updates.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
     }
 
-    await this.request(`/listings/${marketplaceListingId}`, {
+    const data = await this.request<{ listing?: { state?: string } }>(`/listings/${marketplaceListingId}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     });
@@ -168,7 +174,9 @@ export class ReverbAdapter implements MarketplaceAdapter {
     return {
       marketplaceListingId,
       marketplaceUrl: `https://reverb.com/item/${marketplaceListingId}`,
-      status: 'active',
+      // Trust the PUT response when it reports a state; a 204/empty body means
+      // the update took and the listing state is unchanged (treat as active).
+      status: data.listing?.state && data.listing.state !== 'live' ? 'draft' : 'active',
     };
   }
 
@@ -261,7 +269,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch Reverb conditions: ${response.status}`);
+      throw new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb conditions: ${response.status}`);
     }
 
     const data = await response.json() as {
@@ -296,7 +304,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
 
     if (!response.ok) {
       logger.error({ status: response.status, query }, 'Reverb comps search failed');
-      return { listings: [], stats: { median: null, avg: null, sampleSize: 0 } };
+      return { listings: [], stats: { median: null, avg: null, sampleSize: 0 }, degraded: true };
     }
 
     const data = await response.json() as {

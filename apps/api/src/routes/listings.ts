@@ -588,6 +588,12 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             const zip = shipFrom?.zip ?? shipFrom?.postalCode;
             if (zip) syncSpecific = { ...syncSpecific, originPostalCode: zip };
           }
+          // Re-enrich on every reverb sync: the LIVE profile owns offersEnabled,
+          // so a Settings change after publish propagates on the next edit
+          // instead of being pinned to the publish-time stored value.
+          if (updated.marketplace === 'reverb') {
+            syncSpecific = (await applyReverbEnrichment(userId, item, adapter, syncSpecific)).specific;
+          }
           const syncResult = await adapter.updateListing(ebaySyncId!, {
             title: item.title,
             description: applyFooter(item.description, profileRow?.footer, descriptionLimitFor(updated.marketplace)),

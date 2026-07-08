@@ -73,6 +73,21 @@ export function buildMarketplaceCacheEntries(
   return entries;
 }
 
+/**
+ * A degraded comps result means the Reverb API call itself failed — the empty
+ * list is "couldn't ask", not "no comparable listings", and pricing built on
+ * it deserves a seller-visible caveat.
+ */
+export function reverbCompsWarning(comps: ReverbCompResult): string | undefined {
+  return comps.degraded ? 'Reverb comps search failed — pricing may be less accurate' : undefined;
+}
+
+/** Cache-write-failure warning that names every marketplace whose data was lost. */
+export function cacheFailWarning(entries: { ebay: MarketplaceCacheEntry; reverb?: ReverbCacheEntry }): string {
+  const names = [entries.ebay && 'eBay', entries.reverb && 'Reverb'].filter(Boolean).join(' + ');
+  return `${names} category data could not be saved — re-run prepare before publishing`;
+}
+
 export function conditionNeighbors(condition: string): string[] {
   const idx = EBAY_CONDITION_ORDER.indexOf(condition);
   if (idx === -1) return EBAY_CONDITION_ORDER;
@@ -260,7 +275,9 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       : { sold: [], active: [], stats: { soldMedian: null, soldAvg: null, activeMedian: null, activeAvg: null, sampleSize: 0 } };
     const reverbComps: ReverbCompResult = reverbCompsResult.status === 'fulfilled'
       ? reverbCompsResult.value
-      : { listings: [], stats: { median: null, avg: null, sampleSize: 0 } };
+      : { listings: [], stats: { median: null, avg: null, sampleSize: 0 }, degraded: true };
+    const compsWarning = reverbCompsWarning(reverbComps);
+    if (compsWarning) warnings.push(compsWarning);
     const requiredAspects = aspectsResult.status === 'fulfilled'
       ? aspectsResult.value as Record<string, { required: boolean; values: string[] | null }>
       : {};
@@ -330,7 +347,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
         .where(eq(items.id, itemId));
     } catch (cacheErr) {
       logger.warn({ itemId, error: (cacheErr as Error).message }, 'Failed to cache marketplace data');
-      warnings.push('eBay category data could not be saved — re-run prepare before exporting CSV');
+      warnings.push(cacheFailWarning(cacheEntries));
     }
 
     const soldWithCondition = ebayComps.sold.map(s => ({
