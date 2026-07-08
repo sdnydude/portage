@@ -21,6 +21,7 @@ export function usePhotoEdit(
   const { token } = useAuth();
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [showCrop, setShowCrop] = useState(false);
+  const [showExposure, setShowExposure] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const [toolError, setToolError] = useState<string | null>(null);
   const { result: enhanceResult, isProcessing: isEnhancing, error: enhanceError, enhance, reset: resetEnhance } = useEnhance();
@@ -80,6 +81,7 @@ export function usePhotoEdit(
     editingIndex,
     editingPhoto,
     showCrop,
+    showExposure,
     pendingPreview,
     isProcessing,
     processingLabel,
@@ -100,6 +102,12 @@ export function usePhotoEdit(
     cancelCrop() {
       setShowCrop(false);
     },
+    openExposure() {
+      setShowExposure(true);
+    },
+    cancelExposure() {
+      setShowExposure(false);
+    },
     async enhanceCurrent() {
       if (editingIndex === null || !photos[editingIndex]) return;
       await enhance(photos[editingIndex].url);
@@ -107,6 +115,27 @@ export function usePhotoEdit(
     async bgRemoveCurrent() {
       if (editingIndex === null || !photos[editingIndex]) return;
       await removeBackground(photos[editingIndex].url);
+    },
+    async applyExposure(ev: number) {
+      if (!token || editingIndex === null || !photos[editingIndex]) return;
+      setToolError(null);
+      try {
+        const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/exposure", {
+          method: "POST",
+          body: { imageUrl: photos[editingIndex].url, ev },
+          token,
+        });
+        await onPhotoUpdated(editingIndex, {
+          url: data.image.url,
+          key: data.image.key,
+          width: data.image.width,
+          height: data.image.height,
+        });
+      } catch (err) {
+        setToolError(err instanceof Error ? err.message : "Exposure adjustment failed");
+      } finally {
+        setShowExposure(false);
+      }
     },
     async applyCrop(crop: { x: number; y: number; width: number; height: number }) {
       if (!token || editingIndex === null || !photos[editingIndex]) return;

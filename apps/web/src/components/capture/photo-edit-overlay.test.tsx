@@ -5,10 +5,14 @@ import type { UsePhotoEditReturn } from "@/hooks/use-photo-edit";
 vi.mock("../listing-flow/crop-tool", () => ({
   CropTool: () => <div data-testid="crop-tool" />,
 }));
+vi.mock("./exposure-tool", () => ({
+  ExposureTool: () => <div data-testid="exposure-tool" />,
+}));
 vi.mock("./photo-edit-panel", () => ({
-  PhotoEditPanel: (props: { error?: string | null; onClose: () => void }) => (
+  PhotoEditPanel: (props: { error?: string | null; onClose: () => void; onExposure?: () => void }) => (
     <div data-testid="edit-panel" data-error={props.error ?? ""}>
       <button onClick={props.onClose}>mock-close</button>
+      {props.onExposure && <button onClick={props.onExposure}>mock-exposure</button>}
     </div>
   ),
 }));
@@ -50,6 +54,27 @@ describe("PhotoEditOverlay", () => {
     rerender(<PhotoEditOverlay photoEdit={fakePhotoEdit({ showCrop: true })} photoCount={2} alt="Item" />);
     expect(screen.getByTestId("crop-tool")).toBeInTheDocument();
     expect(screen.queryByTestId("edit-panel")).not.toBeInTheDocument();
+  });
+
+  it("renders ExposureTool while showExposure is set, instead of the panel", () => {
+    render(<PhotoEditOverlay photoEdit={fakePhotoEdit({ showExposure: true })} photoCount={2} alt="Item" />);
+    expect(screen.getByTestId("exposure-tool")).toBeInTheDocument();
+    expect(screen.queryByTestId("edit-panel")).not.toBeInTheDocument();
+  });
+
+  it("wires the panel's Exposure tool to openExposure (blocked while processing)", () => {
+    const openExposure = vi.fn();
+    const { rerender } = render(
+      <PhotoEditOverlay photoEdit={fakePhotoEdit({ openExposure })} photoCount={2} alt="Item" />,
+    );
+    fireEvent.click(screen.getByText("mock-exposure"));
+    expect(openExposure).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <PhotoEditOverlay photoEdit={fakePhotoEdit({ openExposure, isProcessing: true })} photoCount={2} alt="Item" />,
+    );
+    fireEvent.click(screen.getByText("mock-exposure"));
+    expect(openExposure).toHaveBeenCalledTimes(1);
   });
 
   it("close runs the hook teardown then the host's onClosed extra", () => {

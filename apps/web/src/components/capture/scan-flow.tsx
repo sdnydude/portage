@@ -8,6 +8,7 @@ import { ImagePicker } from "./image-picker";
 import { useEnhance } from "@/hooks/use-enhance";
 import { useBgRemoval } from "@/hooks/use-bg-removal";
 import { CropTool } from "@/components/listing-flow/crop-tool";
+import { ExposureTool } from "./exposure-tool";
 import { ScanReviewActions } from "./scan-review-actions";
 import { ScanAspectsSection } from "./scan-aspects-section";
 import { useScanAspects } from "@/hooks/use-scan-aspects";
@@ -136,7 +137,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [weightEstimated, setWeightEstimated] = useState(false);
   // Override search text for the eBay category control.
   const [categorySearch, setCategorySearch] = useState("");
-  const [activeTool, setActiveTool] = useState<"none" | "crop">("none");
+  const [activeTool, setActiveTool] = useState<"none" | "crop" | "exposure">("none");
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
@@ -448,6 +449,33 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     removeBackground(selectedPhoto.url);
   }, [isToolProcessing, removeBackground, selectedPhoto]);
 
+  const handleExposureApply = useCallback(
+    async (ev: number) => {
+      if (!token || !selectedPhoto) return;
+      setError(null);
+
+      try {
+        const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/exposure", {
+          method: "POST",
+          body: { imageUrl: selectedPhoto.url, ev },
+          token,
+        });
+        setPhotos((prev) =>
+          prev.map((p, i) =>
+            i === selectedPhotoIndex
+              ? { ...p, url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height }
+              : p,
+          ),
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Exposure adjustment failed");
+      } finally {
+        setActiveTool("none");
+      }
+    },
+    [token, selectedPhoto, selectedPhotoIndex],
+  );
+
   const handleCropApply = useCallback(
     async (crop: { x: number; y: number; width: number; height: number }) => {
       if (!token || !selectedPhoto) return;
@@ -663,7 +691,19 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     );
   }
 
-  // ─── Photo editor overlay (all 4 tools; crop early-return above wins) ────
+  // ─── Exposure tool overlay ────────────────────────────────────────────────
+
+  if (activeTool === "exposure" && selectedPhoto) {
+    return (
+      <ExposureTool
+        imageUrl={selectedPhoto.url}
+        onApply={handleExposureApply}
+        onCancel={() => setActiveTool("none")}
+      />
+    );
+  }
+
+  // ─── Photo editor overlay (all 5 tools; crop/exposure early-returns win) ──
 
   if (editingPhotoIndex !== null && photos[editingPhotoIndex]) {
     // The before-image is the photo being edited — never the strip selection,
@@ -708,6 +748,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         onCrop={() => !isToolProcessing && setActiveTool("crop")}
         onEnhance={handleEnhance}
         onBgRemove={handleBgRemove}
+        onExposure={() => !isToolProcessing && setActiveTool("exposure")}
         isProcessing={isToolProcessing}
         processingLabel={
           isRotating ? "Rotating..." : isEnhancing ? "Enhancing..." : isRemovingBg ? "Removing background..." : null
