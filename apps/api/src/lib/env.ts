@@ -2,7 +2,7 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 import { resolve } from 'node:path';
 
-const envSchema = z.object({
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.coerce.number().default(8016),
   DATABASE_URL: z.string().url(),
@@ -54,8 +54,10 @@ const envSchema = z.object({
   REMBG_URL: z.string().default('http://localhost:7000'),
   METRICS_SECRET: z.string().optional(),
   // User identity for CF Access service-token requests (e2e) — service tokens
-  // carry a common_name instead of an email.
+  // carry a common_name instead of an email. BOTH values must be set and the
+  // token's common_name must match, or the service token is rejected.
   CF_ACCESS_SERVICE_EMAIL: z.string().optional(),
+  CF_ACCESS_SERVICE_COMMON_NAME: z.string().optional(),
   // Audience tag of the Cloudflare Access application protecting Portage.
   CF_ACCESS_AUD: z.string().optional(),
   CF_ACCESS_TEAM_DOMAIN: z.string().default('digitalharmonygroup'),
@@ -68,6 +70,16 @@ const envSchema = z.object({
   // Dev-only identity when no Cloudflare edge is in front (LAN dev). Read
   // only when NODE_ENV=development, so it can never bypass auth elsewhere.
   CF_ACCESS_DEV_EMAIL: z.string().optional(),
+}).superRefine((value, ctx) => {
+  // /auth/session is dead without an audience — surface the misconfiguration
+  // at startup instead of 401-ing every login in production.
+  if (value.NODE_ENV === 'production' && !value.CF_ACCESS_AUD) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['CF_ACCESS_AUD'],
+      message: 'CF_ACCESS_AUD is required in production',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

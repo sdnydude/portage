@@ -82,7 +82,9 @@ describe('GET /auth/session', () => {
     vi.mocked(verifyCfAccessJwt).mockResolvedValue({ email: 'fresh@example.com', commonName: null });
     mockSelectReturns([]);
     const values = vi.fn().mockReturnValue({
-      returning: vi.fn().mockResolvedValue([{ ...existingUser, id: 'user-2', email: 'fresh@example.com' }]),
+      onConflictDoNothing: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...existingUser, id: 'user-2', email: 'fresh@example.com' }]),
+      }),
     });
     vi.mocked(db.insert).mockReturnValue({ values } as any);
     mockUpdateReturns();
@@ -98,6 +100,35 @@ describe('GET /auth/session', () => {
       email: 'fresh@example.com',
       trialEndsAt: expect.any(Date),
     }));
+  });
+
+  it('survives a provisioning race — concurrent first logins reselect instead of erroring', async () => {
+    vi.mocked(verifyCfAccessJwt).mockResolvedValue({ email: 'fresh@example.com', commonName: null });
+    const raceUser = { ...existingUser, id: 'user-race', email: 'fresh@example.com' };
+    // First select: no row yet. Second select (after conflicted insert): the
+    // row the concurrent request created.
+    const limit = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([raceUser]);
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit }) }),
+    } as any);
+    // Insert lost the race: onConflictDoNothing returns no rows
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    } as any);
+    mockUpdateReturns();
+
+    const res = await request(app)
+      .get('/auth/session')
+      .set('cf-access-jwt-assertion', 'cf-jwt');
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.id).toBe('user-race');
   });
 
   it('returns 403 ACCOUNT_DISABLED for a disabled account', async () => {
@@ -195,5 +226,36 @@ describe('GET /auth/session identity edge cases', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('CF_REQUIRED');
+  });
+
+  it('maps only the configured common_name to the service email — other service tokens are rejected', async () => {
+    process.env.CF_ACCESS_SERVICE_EMAIL = 'e2e@portage.app';
+    process.env.CF_ACCESS_SERVICE_COMMON_NAME = 'portage-e2e';
+    resetEnv();
+    loadEnv();
+    try {
+      // Wrong common_name: no identity, even though a service email is configured
+      vi.mocked(verifyCfAccessJwt).mockResolvedValue({ email: null, commonName: 'some-other-token' });
+      const rejected = await request(app)
+        .get('/auth/session')
+        .set('cf-access-jwt-assertion', 'cf-jwt');
+      expect(rejected.status).toBe(401);
+      expect(rejected.body.code).toBe('CF_REQUIRED');
+
+      // Matching common_name maps to the service user
+      vi.mocked(verifyCfAccessJwt).mockResolvedValue({ email: null, commonName: 'portage-e2e' });
+      mockSelectReturns([{ ...existingUser, email: 'e2e@portage.app' }]);
+      mockUpdateReturns();
+      const accepted = await request(app)
+        .get('/auth/session')
+        .set('cf-access-jwt-assertion', 'cf-jwt');
+      expect(accepted.status).toBe(200);
+      expect(accepted.body.user.email).toBe('e2e@portage.app');
+    } finally {
+      delete process.env.CF_ACCESS_SERVICE_EMAIL;
+      delete process.env.CF_ACCESS_SERVICE_COMMON_NAME;
+      resetEnv();
+      loadEnv();
+    }
   });
 });

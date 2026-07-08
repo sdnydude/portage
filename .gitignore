@@ -38,3 +38,4 @@ apps/web/e2e/.auth/
 # Generated outputs
 exports/
 graphify-out/
+.claude/.claude/
