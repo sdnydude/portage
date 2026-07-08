@@ -60,7 +60,7 @@ export const envSchema = z.object({
   CF_ACCESS_SERVICE_COMMON_NAME: z.string().optional(),
   // Audience tag of the Cloudflare Access application protecting Portage.
   CF_ACCESS_AUD: z.string().optional(),
-  CF_ACCESS_TEAM_DOMAIN: z.string().default('digitalharmonygroup'),
+  CF_ACCESS_TEAM_DOMAIN: z.string().default('digitalharmonyai'),
   // Cloudflare API access for the admin allowlist manager (Access:Edit scope).
   CF_API_TOKEN: z.string().optional(),
   CF_ACCOUNT_ID: z.string().optional(),

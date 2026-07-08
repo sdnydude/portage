@@ -34,7 +34,7 @@ describe('verifyCfAccessJwt', () => {
     const identity = await verifyCfAccessJwt('the-token');
 
     expect(jwtVerify).toHaveBeenCalledWith('the-token', 'jwks-sentinel', {
-      issuer: 'https://digitalharmonygroup.cloudflareaccess.com',
+      issuer: 'https://digitalharmonyai.cloudflareaccess.com',
       audience: ['aud-123'],
     });
     expect(identity).toEqual({ email: 'Tester@Example.com', commonName: 'svc-cn' });
@@ -49,7 +49,7 @@ describe('verifyCfAccessJwt', () => {
     await verifyCfAccessJwt('tok');
 
     expect(jwtVerify).toHaveBeenCalledWith('tok', 'jwks-sentinel', {
-      issuer: 'https://digitalharmonygroup.cloudflareaccess.com',
+      issuer: 'https://digitalharmonyai.cloudflareaccess.com',
       audience: ['aud-web', 'aud-api'],
     });
   });
