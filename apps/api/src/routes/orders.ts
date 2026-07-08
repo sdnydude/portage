@@ -9,7 +9,6 @@ import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
-import { decrypt } from '../lib/crypto.js';
 import { marketplaceAccounts } from '../db/schema.js';
 
 const logger = createLogger('orders');
@@ -173,7 +172,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
           adapter = new EtsyAdapter(userId);
           break;
         case 'reverb':
-          adapter = new ReverbAdapter(decrypt(account.accessTokenEncrypted));
+          adapter = new ReverbAdapter(userId);
           break;
         default:
           logger.warn({ userId, marketplace: account.marketplace }, 'Unsupported marketplace — skipping order sync');
