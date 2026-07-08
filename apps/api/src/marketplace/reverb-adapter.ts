@@ -16,6 +16,18 @@ const logger = createLogger('reverb-adapter');
 
 const REVERB_BASE = 'https://api.reverb.com/api';
 
+/**
+ * Seller-profile shipping defaults store camelCase regionCode; the Reverb API
+ * wants region_code. Accept both so client-supplied API-shaped rates pass
+ * through untouched.
+ */
+function toReverbShippingRates(rates: unknown[]): unknown[] {
+  return rates.map((r) => {
+    const rate = r as { regionCode?: string; region_code?: string; rate: unknown };
+    return { region_code: rate.region_code ?? rate.regionCode, rate: rate.rate };
+  });
+}
+
 const CONDITION_MAP: Record<string, string> = {
   new: 'fbf35668-96a0-4baa-bcde-ab18d6b1b329',
   like_new: 'ac5b9c1e-dc78-466d-b0b3-a19b46876097',
@@ -96,7 +108,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
     if (specific.finish) body.finish = specific.finish;
     if (specific.offersEnabled !== undefined) body.offers_enabled = specific.offersEnabled;
     if (specific.shippingRates) {
-      body.shipping = { rates: specific.shippingRates, local: specific.localPickup ?? false };
+      body.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
     }
 
     const data = await this.request<{ listing: { id: number; state: string; _links: { web: { href: string } } } }>(
@@ -137,7 +149,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
     if (specific.finish) updates.finish = specific.finish;
     if (specific.offersEnabled !== undefined) updates.offers_enabled = specific.offersEnabled;
     if (specific.shippingRates) {
-      updates.shipping = { rates: specific.shippingRates, local: specific.localPickup ?? false };
+      updates.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
     }
 
     await this.request(`/listings/${marketplaceListingId}`, {

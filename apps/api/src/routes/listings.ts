@@ -15,8 +15,7 @@ import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
 import { applyFooter, descriptionLimitFor } from '../lib/footer.js';
 import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
-import { env } from '../lib/env.js';
-import type { MarketplaceAdapter } from '@portage/shared';
+import type { MarketplaceAdapter, ReverbCacheEntry } from '@portage/shared';
 
 const logger = createLogger('listings');
 
@@ -97,12 +96,67 @@ function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): Ma
   switch (marketplace) {
     case 'ebay': return new EbayAdapter(userId);
     case 'etsy': return new EtsyAdapter(userId);
-    case 'reverb': {
-      const reverbToken = env().REVERB_API_TOKEN;
-      if (!reverbToken) throw new AppError(400, 'NOT_CONFIGURED', 'Reverb API token not configured');
-      return new ReverbAdapter(reverbToken);
-    }
+    // Per-user PAT resolved lazily inside the adapter (REVERB_SETUP_REQUIRED when
+    // not connected). The global REVERB_API_TOKEN env var remains in use only for
+    // seller-agnostic comps reads (ReverbAdapter.searchComps).
+    case 'reverb': return new ReverbAdapter(userId);
   }
+}
+
+/**
+ * Reverb sibling of the eBay self-heal block: fill publish specifics from the
+ * item's prepare-time cache (client-supplied keys win) and the seller profile.
+ * The profile OWNS offersEnabled — the web sends a hardcoded default, never a
+ * user choice, so a client value must not override profile intent.
+ */
+async function applyReverbEnrichment(
+  userId: string,
+  item: { id: string; title: string; category: string | null; marketplaceData: unknown },
+  adapter: MarketplaceAdapter,
+  specific: Record<string, unknown> | undefined,
+): Promise<{ specific: Record<string, unknown>; warning?: string }> {
+  const ms = { ...(specific ?? {}) };
+  const cache = (item.marketplaceData as { reverb?: ReverbCacheEntry } | null)?.reverb;
+  if (!ms.categoryUuid && cache?.categoryUuid) ms.categoryUuid = cache.categoryUuid;
+  if (!ms.conditionUuid && cache?.conditionUuid) ms.conditionUuid = cache.conditionUuid;
+  if (!ms.year && cache?.year) ms.year = cache.year;
+  if (!ms.finish && cache?.finish) ms.finish = cache.finish;
+
+  const [profile] = await db.select()
+    .from(sellerProfiles)
+    .where(eq(sellerProfiles.userId, userId))
+    .limit(1);
+  const rates = (profile?.reverbDefaultShipping as { rates?: unknown[] } | null)?.rates;
+  if (!ms.shippingRates && rates && rates.length > 0) ms.shippingRates = rates;
+  if (profile) ms.offersEnabled = profile.reverbOffersEnabled ?? true;
+
+  // Never-prepared items carry no cached category. A Reverb publish without one
+  // silently lands wrong (or fails at publish) — guess via category search and
+  // persist the guess so the next publish is instant, mirroring the eBay
+  // resolveEbayCategoryId self-heal. Surface the guess as a warning.
+  let warning: string | undefined;
+  if (!ms.categoryUuid) {
+    const cats = await adapter.searchCategories(item.category || item.title);
+    if (cats.length === 0) {
+      throw new AppError(422, 'REVERB_CATEGORY_REQUIRED',
+        'No Reverb category could be resolved for this item. Run Prepare Listing or set a category, then publish again.');
+    }
+    ms.categoryUuid = cats[0].id;
+    warning = `Reverb category guessed from search: ${cats[0].name}`;
+    const md = (item.marketplaceData as Record<string, unknown> | null) ?? {};
+    const prev = (md.reverb as ReverbCacheEntry | undefined) ?? {
+      categoryUuid: null, categoryName: null, conditionUuid: null,
+      conditionName: null, year: null, finish: null, cachedAt: '',
+    };
+    await db.update(items)
+      .set({
+        marketplaceData: { ...md, reverb: { ...prev, categoryUuid: cats[0].id, categoryName: cats[0].name, cachedAt: new Date().toISOString() } },
+        updatedAt: new Date(),
+      })
+      .where(eq(items.id, item.id));
+    logger.info({ userId, itemId: item.id, categoryUuid: cats[0].id }, 'Reverb category auto-resolved at publish');
+  }
+  return { specific: ms, warning };
 }
 
 const createListingSchema = z.object({
@@ -365,6 +419,10 @@ listingsRouter.post('/', async (req, res, next) => {
         marketplaceSpecific = mergeItemShipping(item, marketplaceSpecific);
         marketplaceSpecific = mergeItemAspects(item, marketplaceSpecific);
         stableSku = await ensureItemEbaySku(item);
+      } else if (body.marketplace === 'reverb') {
+        const enriched = await applyReverbEnrichment(userId, item, adapter, marketplaceSpecific);
+        marketplaceSpecific = enriched.specific;
+        adapterWarning = enriched.warning;
       }
 
       const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
@@ -403,7 +461,9 @@ listingsRouter.post('/', async (req, res, next) => {
         .where(eq(listings.id, listing.id))
         .returning();
       status = listing.status as 'draft' | 'active';
-      adapterWarning = result.warning;
+      // Keep an enrichment warning (guessed category) even when the adapter
+      // itself returned none — both matter to the seller.
+      adapterWarning = [adapterWarning, result.warning].filter(Boolean).join('; ') || undefined;
     }
 
     logger.info({ userId, listingId: listing.id, marketplace: body.marketplace, status }, 'Listing created');
@@ -639,6 +699,15 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       marketplaceSpecific = mergeItemAspects(item, marketplaceSpecific);
     }
 
+    // Reverb sibling of the eBay self-heal above — cache + profile enrichment,
+    // category-guess fallback with persist-back (same helper as POST /).
+    let enrichWarning: string | undefined;
+    if (listing.marketplace === 'reverb') {
+      const enriched = await applyReverbEnrichment(userId, item, adapter, marketplaceSpecific);
+      marketplaceSpecific = enriched.specific;
+      enrichWarning = enriched.warning;
+    }
+
     const [footerRow] = await db.select({ footer: sellerProfiles.defaultListingFooter })
       .from(sellerProfiles)
       .where(eq(sellerProfiles.userId, userId))
@@ -687,9 +756,10 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       logger.warn({ userId, listingId: updated.id, warning: result.warning }, 'Listing publish did not go live — saved as draft');
     }
 
-    // Carry the adapter's warning (publish fell back to draft) through to the
-    // client so a non-active result is never presented as a successful publish.
-    res.json({ ...updated, warning: result.warning });
+    // Carry the adapter's warning (publish fell back to draft) and any
+    // enrichment warning (guessed category) through to the client so a
+    // non-active result is never presented as a successful publish.
+    res.json({ ...updated, warning: [enrichWarning, result.warning].filter(Boolean).join('; ') || undefined });
   } catch (err) {
     next(err);
   }
@@ -836,17 +906,19 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
       throw new AppError(403, 'FORBIDDEN', 'One or more listings do not belong to you');
     }
 
-    // Non-marketplace, non-eBay drafts/archived can be activated locally. eBay is excluded:
-    // an eBay draft is DB-only under the Trading API and must be PUBLISHED (AddFixedPriceItem),
-    // not flipped to "active" with no marketplace call (G6).
+    // Only drafts/archived that were never published can be activated locally.
+    // eBay AND Reverb are excluded: their drafts are DB-only (publish is a real
+    // marketplace call — AddFixedPriceItem / POST /listings with publish:true),
+    // so flipping them to "active" with no marketplace call would lie (G6).
+    const PUBLISH_REQUIRED = ['ebay', 'reverb'];
     const activatable = owned.filter((l) =>
-      (l.status === 'draft' || l.status === 'archived') && !l.marketplaceListingId && l.marketplace !== 'ebay'
+      (l.status === 'draft' || l.status === 'archived') && !l.marketplaceListingId && !PUBLISH_REQUIRED.includes(l.marketplace)
     );
-    // eBay DB-only drafts must be published individually via the listing's Publish
-    // action (Trading AddFixedPriceItem needs the full item payload — there is no
-    // bulk publish for not-yet-created listings). Never silent-activate (G6).
+    // DB-only drafts on publish-required marketplaces must be published
+    // individually via the listing's Publish action (the publish call needs the
+    // full item payload — there is no bulk publish). Never silent-activate (G6).
     const ebayNeedsPublish = owned.filter((l) =>
-      l.marketplace === 'ebay' && !l.marketplaceListingId && (l.status === 'draft' || l.status === 'archived')
+      PUBLISH_REQUIRED.includes(l.marketplace) && !l.marketplaceListingId && (l.status === 'draft' || l.status === 'archived')
     );
     // Archived marketplace listings need individual re-listing
     const skippedMarketplace = owned.filter((l) =>
@@ -868,7 +940,7 @@ listingsRouter.post('/bulk/activate', async (req, res, next) => {
       warnings.push(`${skippedMarketplace.length} archived listing(s) were previously published to a marketplace and must be re-listed individually`);
     }
     if (ebayNeedsPublish.length > 0) {
-      warnings.push(`${ebayNeedsPublish.length} eBay draft(s) must be published individually — bulk activate cannot publish to eBay`);
+      warnings.push(`${ebayNeedsPublish.length} draft(s) must be published individually — bulk activate cannot publish to eBay or Reverb`);
     }
     res.json({
       activated: true,

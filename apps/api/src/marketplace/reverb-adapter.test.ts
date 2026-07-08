@@ -95,6 +95,25 @@ describe('ReverbAdapter.createListing', () => {
     });
   });
 
+  it('normalizes profile-shaped shippingRates (camelCase regionCode) to the API region_code shape', async () => {
+    const fetchMock = stubFetch();
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing({
+      ...BASE_INPUT,
+      marketplaceSpecific: {
+        categoryUuid: 'cat-uuid-1',
+        shippingRates: [{ regionCode: 'US_CON', rate: { amount: '45.00', currency: 'USD' } }],
+      },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.shipping).toEqual({
+      rates: [{ region_code: 'US_CON', rate: { amount: '45.00', currency: 'USD' } }],
+      local: false,
+    });
+  });
+
   it('maps a non-OK Reverb response to AppError(status, REVERB_API_ERROR) with the parsed message', async () => {
     stubFetch(null, false, 422, JSON.stringify({
       message: 'Category is required to publish',
