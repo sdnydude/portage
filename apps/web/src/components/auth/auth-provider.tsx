@@ -17,7 +17,7 @@ const USER_KEY = "portage_user";
 // Once per browser session: login-triggered background syncs (orders, GTC).
 const LOGIN_SYNC_KEY = "portage_login_sync_done";
 
-const CF_TEAM_DOMAIN = process.env.NEXT_PUBLIC_CF_TEAM_DOMAIN ?? "digitalharmonygroup";
+const CF_TEAM_DOMAIN = process.env.NEXT_PUBLIC_CF_TEAM_DOMAIN ?? "digitalharmonyai";
 
 // The mount-time session exchange, so logout can wait for it to settle before
 // clearing storage — otherwise its late resolution re-stores the token.
