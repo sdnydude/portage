@@ -11,12 +11,16 @@ import { verifyCfAccessJwt } from '../lib/cf-access.js';
 
 const logger = createLogger('auth');
 
-const authLimiter = rateLimit({
+// The exchange runs on every page load (mount-time bootstrap), and Cloudflare
+// Access has already authenticated the caller — there is no credential to
+// brute-force. Generous ceiling to absorb reloads and multi-tab sessions;
+// several testers can share one NAT IP.
+const sessionLimiter = rateLimit({
   windowMs: 15 * 60_000,
-  limit: process.env.NODE_ENV === 'test' ? 100 : 10,
+  limit: process.env.NODE_ENV === 'test' ? 1000 : 120,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  message: { error: 'Too many authentication attempts, please try again later', code: 'RATE_LIMITED' },
+  message: { error: 'Too many session requests, please try again later', code: 'RATE_LIMITED' },
 });
 
 export const authRouter = Router();
@@ -25,7 +29,7 @@ export const authRouter = Router();
 // IdP + Access policy and forwards Cf-Access-Jwt-Assertion; we verify it against
 // the team JWKS, map the user row by email, and mint the same internal access
 // token the rest of the API already consumes.
-authRouter.get('/session', authLimiter, async (req, res, next) => {
+authRouter.get('/session', sessionLimiter, async (req, res, next) => {
   try {
     const assertion = req.headers['cf-access-jwt-assertion'];
     let rawEmail: string | null = null;
