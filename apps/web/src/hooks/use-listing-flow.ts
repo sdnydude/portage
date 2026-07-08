@@ -51,8 +51,6 @@ const INITIAL_STATE: ListingFlowState = {
   quantity: 1,
   price: null,
   pricingStrategy: 'market',
-  acceptOffers: true,
-  minimumOfferPrice: null,
   comps: null,
   compsStatus: 'idle',
   marketplace: 'ebay',
@@ -513,10 +511,12 @@ export function useListingFlow() {
           ? ebaySpecific
           : s.marketplace === 'reverb'
             ? {
+                // Offers/shipping/category are enriched server-side (seller
+                // profile + prepare cache own them). acceptOffers here was a
+                // hardcoded default, never user intent — sending it would
+                // permanently override the profile's reverbOffersEnabled.
                 make: s.brand,
                 model: s.model,
-                acceptOffers: s.acceptOffers,
-                ...(s.minimumOfferPrice && { minimumOfferPrice: s.minimumOfferPrice }),
               }
             : undefined;
 

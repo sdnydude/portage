@@ -351,8 +351,6 @@ export interface ListingFlowState {
 
   price: number | null;
   pricingStrategy: PricingStrategy;
-  acceptOffers: boolean;
-  minimumOfferPrice: number | null;
   comps: CompResult | null;
   compsStatus: 'idle' | 'loading' | 'loaded' | 'failed';
 
