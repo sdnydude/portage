@@ -107,7 +107,7 @@ function ReportForm() {
             Report another
           </button>
           <button
-            onClick={() => router.back()}
+            onClick={() => (window.history.length > 1 ? router.back() : router.push("/home"))}
             className="px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium"
           >
             Back to the app
@@ -119,6 +119,19 @@ function ReportForm() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-8 pb-24">
+      {/* This page renders outside the tab layout (no TabBar) and PWAs have
+          no browser chrome — without this header it is a navigation trap. */}
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={() => (window.history.length > 1 ? router.back() : router.push("/home"))}
+          className="flex items-center gap-1 text-sm font-medium text-[var(--color-primary)]"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Cancel
+        </button>
+      </div>
       <h1 className="text-2xl font-bold font-[family-name:var(--font-instrument)] mb-1">
         Beta Tester Report
       </h1>

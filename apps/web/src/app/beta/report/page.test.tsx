@@ -32,4 +32,23 @@ describe("BetaReportPage", () => {
     expect(getByLabelText("What happened?")).toBeDefined();
     expect(getByLabelText("Severity")).toBeDefined();
   });
+
+  it("always shows Cancel navigation and a Send button", () => {
+    const { getByText } = render(
+      <AuthContext
+        value={{
+          token: "t",
+          user: { id: "u1", email: "e@x.com", subscriptionTier: "beta-tester", role: "user" },
+          isAuthenticated: true,
+          logout: async () => {},
+          setOnboardingCompleted: () => {},
+        }}
+      >
+        <BetaReportPage />
+      </AuthContext>,
+    );
+
+    expect(getByText("Cancel")).toBeDefined();
+    expect(getByText("Send report")).toBeDefined();
+  });
 });
