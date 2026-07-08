@@ -43,9 +43,15 @@ authRouter.get('/session', sessionLimiter, async (req, res, next) => {
         throw new AppError(401, 'CF_INVALID', 'Cloudflare Access token is invalid');
       }
       // Interactive IdP logins carry an email; service tokens (e2e) carry a
-      // common_name and map to the configured service identity, if any.
+      // common_name. Only the EXPECTED common_name maps to the service
+      // identity — any other service token on this Access app is rejected,
+      // otherwise it could impersonate the configured service user.
+      const serviceEmail = env().CF_ACCESS_SERVICE_EMAIL;
+      const serviceCn = env().CF_ACCESS_SERVICE_COMMON_NAME;
       rawEmail = identity.email
-        ?? (identity.commonName ? env().CF_ACCESS_SERVICE_EMAIL ?? null : null);
+        ?? (identity.commonName && serviceEmail && serviceCn && identity.commonName === serviceCn
+          ? serviceEmail
+          : null);
     } else if (env().NODE_ENV === 'development' && env().CF_ACCESS_DEV_EMAIL) {
       // LAN dev runs without a Cloudflare edge in front. NODE_ENV gating means
       // this identity can never authenticate in prod or test.
@@ -66,11 +72,23 @@ authRouter.get('/session', sessionLimiter, async (req, res, next) => {
       // First login through Cloudflare Access — provision the account. The
       // Access policy allowlist is the signup gate; anyone who passes it gets
       // a row plus the standard 7-day Pro trial. No password: CF is the IdP.
+      // Concurrent first logins (multi-tab mounts) race on unique(email):
+      // the loser's insert is a no-op and reselects the winner's row.
       [user] = await db.insert(users).values({
         email,
         trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      }).returning();
-      logger.info({ userId: user.id, email }, 'User auto-provisioned from Cloudflare Access');
+      }).onConflictDoNothing().returning();
+      if (user) {
+        logger.info({ userId: user.id, email }, 'User auto-provisioned from Cloudflare Access');
+      } else {
+        [user] = await db.select()
+          .from(users)
+          .where(sql`lower(email) = ${email}`)
+          .limit(1);
+        if (!user) {
+          throw new AppError(500, 'PROVISION_FAILED', 'Could not establish the account');
+        }
+      }
     }
 
     if (user.disabledAt) {

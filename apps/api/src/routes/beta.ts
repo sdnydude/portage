@@ -24,6 +24,11 @@ betaRouter.use(requireAuth);
 
 betaRouter.post('/report', async (req, res, next) => {
   try {
+    // Server-side gate — the UI hides the form, but the tier check must hold
+    // here: only beta testers and admins may write into the DHG Registry.
+    if (req.user!.tier !== 'beta-tester' && req.user!.role !== 'admin') {
+      throw new AppError(403, 'FORBIDDEN', 'Beta reporting is only available to beta testers');
+    }
     const body = reportSchema.parse(req.body);
 
     const response = await fetch(`${REGISTRY_URL}/api/beta-reports`, {

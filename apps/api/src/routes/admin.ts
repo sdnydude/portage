@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { users, items, listings, orders, conversations, marketplaceAccounts, adminAuditLog, appSettings } from '../db/schema.js';
@@ -8,6 +9,10 @@ import { AppError } from '../middleware/error.js';
 import { getAllowlist, addEmail, removeEmail } from '../lib/cf-allowlist.js';
 
 const logger = createLogger('admin');
+
+const allowlistEmailSchema = z.object({
+  email: z.string().email().transform((e) => e.toLowerCase().trim()),
+});
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -575,10 +580,11 @@ adminRouter.get('/allowlist', async (_req, res, next) => {
 
 adminRouter.post('/allowlist', async (req, res, next) => {
   try {
-    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const parsed = allowlistEmailSchema.safeParse(req.body);
+    if (!parsed.success) {
       throw new AppError(400, 'INVALID_EMAIL', 'A valid email address is required');
     }
+    const email = parsed.data.email;
     const emails = await addEmail(email);
     await logAuditAction(req.user!.sub, 'allowlist_add', 'access_policy', null, { email });
     res.json({ emails });

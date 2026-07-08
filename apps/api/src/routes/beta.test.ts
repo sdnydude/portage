@@ -7,7 +7,7 @@ let token: string;
 
 beforeAll(() => {
   app = createApp();
-  token = createTestToken();
+  token = createTestToken({ tier: 'beta-tester' });
 });
 
 beforeEach(() => {
@@ -15,6 +15,21 @@ beforeEach(() => {
 });
 
 describe('POST /beta/report', () => {
+  it('returns 403 for users who are not beta testers or admins', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const freeToken = createTestToken({ tier: 'free', role: 'user' });
+
+    const res = await request(app)
+      .post('/beta/report')
+      .set('Authorization', `Bearer ${freeToken}`)
+      .send({ page: '/home', severity: 'low', description: 'x' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('forwards the report to the registry with server-side reporter identity', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

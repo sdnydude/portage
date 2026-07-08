@@ -15,8 +15,11 @@ afterEach(() => {
 
 describe('verifyCfAccessJwt', () => {
   it('throws a config error when CF_ACCESS_AUD is not set', async () => {
-    // Test env has no CF_ACCESS_AUD — verification must refuse to run rather
-    // than validate against an empty audience.
+    // Pin an empty value: the developer .env may carry a real CF_ACCESS_AUD
+    // (Doppler-synced), and dotenv never overrides existing process.env.
+    process.env.CF_ACCESS_AUD = '';
+    resetEnv();
+    loadEnv();
     await expect(verifyCfAccessJwt('any-token')).rejects.toThrow('CF_ACCESS_AUD is not configured');
   });
 
