@@ -230,9 +230,27 @@ describe('POST /scan/refine', () => {
     expect(res.status).toBe(400);
   });
 
-  it('allows scan regardless of count (billing gate moved to prepare-listing)', async () => {
+  it('returns 429 LIMIT_REACHED when a free-tier user is at the monthly scan limit', async () => {
     mockUserSelect({
       subscriptionTier: 'free',
+      trialEndsAt: null,
+      aiScansThisMonth: 25,
+    });
+    mockUpdateReturns();
+
+    const res = await request(app)
+      .post('/scan/refine')
+      .set('Authorization', `Bearer ${token}`)
+      .send(validBody);
+
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe('LIMIT_REACHED');
+  });
+
+  // Pro and beta-tester scan limits are null (unlimited) — only free is capped.
+  it('allows scan regardless of count for unlimited tiers', async () => {
+    mockUserSelect({
+      subscriptionTier: 'pro',
       aiScansThisMonth: 999,
     });
     mockUpdateReturns();
