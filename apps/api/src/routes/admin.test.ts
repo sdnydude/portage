@@ -88,6 +88,29 @@ describe('admin functional guards', () => {
     expect(res.body.code).toBe('SELF_MODIFY');
   });
 
+  it('PATCH /admin/users/:id accepts the beta-tester tier', async () => {
+    const { db } = await import('../db/index.js');
+    const targetId = '00000000-0000-0000-0000-000000000002';
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: targetId, email: 't@example.com', role: 'user', subscriptionTier: 'free' }]),
+        }),
+      }),
+    } as any);
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+    const setFn = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setFn } as any);
+
+    const res = await request(app)
+      .patch(`/admin/users/${targetId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ subscriptionTier: 'beta-tester' });
+
+    expect(res.status).toBe(200);
+    expect(setFn).toHaveBeenCalledWith(expect.objectContaining({ subscriptionTier: 'beta-tester' }));
+  });
+
   it('PATCH /admin/settings/:key rejects disallowed keys', async () => {
     const res = await request(app)
       .patch('/admin/settings/dangerous_key')

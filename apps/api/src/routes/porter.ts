@@ -7,7 +7,7 @@ import { conversations, items, listings, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { chat, chatStream, type ToolDef, type StreamToolResult } from '../lib/ai-client.js';
-import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
+import { limitsForTier } from '@portage/shared';
 import { computeEffectiveTier } from '../lib/billing-utils.js';
 
 const logger = createLogger('porter');
@@ -304,12 +304,11 @@ porterRouter.post('/stream', async (req, res, next) => {
     }
 
     const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
-    const exchangeLimit = tier === 'pro'
-      ? PRO_TIER_LIMITS.porterExchangesPerDay
-      : FREE_TIER_LIMITS.porterExchangesPerDay;
-    const messageThreshold = exchangeLimit * 2;
+    const exchangeLimit = limitsForTier(tier).porterExchangesPerDay;
+    // null = unlimited (beta testers)
+    const messageThreshold = exchangeLimit === null ? null : exchangeLimit * 2;
 
-    if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
+    if (messageThreshold !== null && Number(porterUser.porterMessagesToday) >= messageThreshold) {
       res.status(429).json({
         error: `Daily limit: ${exchangeLimit} Porter exchanges per day.${tier === 'free' ? ' Upgrade to Pro for more.' : ''}`,
         code: 'PORTER_LIMIT_REACHED',
@@ -430,12 +429,11 @@ porterRouter.post('/message', async (req, res, next) => {
     if (!porterUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
 
     const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
-    const exchangeLimit = tier === 'pro'
-      ? PRO_TIER_LIMITS.porterExchangesPerDay
-      : FREE_TIER_LIMITS.porterExchangesPerDay;
-    const messageThreshold = exchangeLimit * 2;
+    const exchangeLimit = limitsForTier(tier).porterExchangesPerDay;
+    // null = unlimited (beta testers)
+    const messageThreshold = exchangeLimit === null ? null : exchangeLimit * 2;
 
-    if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
+    if (messageThreshold !== null && Number(porterUser.porterMessagesToday) >= messageThreshold) {
       throw new AppError(429, 'PORTER_LIMIT_REACHED', `Daily limit: ${exchangeLimit} Porter exchanges per day. ${tier === 'free' ? 'Upgrade to Pro for more.' : ''}`);
     }
 

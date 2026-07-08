@@ -9,7 +9,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { createLogger } from '../lib/logger.js';
 import { computeEffectiveTier } from '../lib/billing-utils.js';
-import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
+import { limitsForTier } from '@portage/shared';
 
 const logger = createLogger('billing');
 
@@ -254,7 +254,7 @@ billingRouter.get('/status', requireAuth, async (req: Request, res: Response, ne
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
 
     const effectiveTier = computeEffectiveTier(user.subscriptionTier, user.trialEndsAt);
-    const isPro = effectiveTier === 'pro';
+    const limits = limitsForTier(effectiveTier);
 
     const priceMonthly = process.env.STRIPE_PRICE_MONTHLY;
     const priceAnnual = process.env.STRIPE_PRICE_ANNUAL;
@@ -280,18 +280,18 @@ billingRouter.get('/status', requireAuth, async (req: Request, res: Response, ne
       usage: {
         aiListings: {
           used: user.aiListingsThisMonth,
-          limit: isPro ? PRO_TIER_LIMITS.aiListingsPerMonth : FREE_TIER_LIMITS.aiListingsPerMonth,
+          limit: limits.aiListingsPerMonth,
           credits: user.aiListingCredits,
         },
         bgRemovals: {
           used: user.bgRemovalsThisMonth,
-          limit: isPro ? PRO_TIER_LIMITS.bgRemovalsPerMonth : FREE_TIER_LIMITS.bgRemovalsPerMonth,
+          limit: limits.bgRemovalsPerMonth,
         },
         porterExchanges: {
-          limit: isPro ? PRO_TIER_LIMITS.porterExchangesPerDay : FREE_TIER_LIMITS.porterExchangesPerDay,
+          limit: limits.porterExchangesPerDay,
         },
         marketplaces: {
-          limit: isPro ? PRO_TIER_LIMITS.marketplaces : FREE_TIER_LIMITS.marketplaces,
+          limit: limits.marketplaces,
         },
       },
     });

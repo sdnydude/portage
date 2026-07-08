@@ -7,7 +7,7 @@ import { setOnSessionExchanged, exchangeSession, api, SESSION_LOST_EVENT } from 
 interface AuthUser {
   id: string;
   email: string;
-  subscriptionTier: "free" | "pro";
+  subscriptionTier: "free" | "pro" | "beta-tester";
   role: "user" | "admin";
   onboardingCompleted?: boolean;
 }

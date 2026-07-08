@@ -1,15 +1,18 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users, marketplaceAccounts } from '../db/schema.js';
-import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
+import { limitsForTier } from '@portage/shared';
 import { AppError } from '../middleware/error.js';
 
-export type EffectiveTier = 'free' | 'pro';
+export type EffectiveTier = 'free' | 'pro' | 'beta-tester';
 
 export function computeEffectiveTier(
   subscriptionTier: string,
   trialEndsAt: Date | string | null | undefined,
 ): EffectiveTier {
+  // Private tier for invited beta testers — assigned by admins only, never
+  // shown on the billing page, no Stripe involvement.
+  if (subscriptionTier === 'beta-tester') return 'beta-tester';
   if (subscriptionTier === 'pro') return 'pro';
   if (trialEndsAt) {
     const expiresAt = typeof trialEndsAt === 'string' ? new Date(trialEndsAt) : trialEndsAt;
@@ -27,7 +30,7 @@ export async function checkMarketplaceLimit(userId: string): Promise<void> {
   if (!user) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
 
   const tier = computeEffectiveTier(user.subscriptionTier, user.trialEndsAt);
-  const limit = tier === 'pro' ? PRO_TIER_LIMITS.marketplaces : FREE_TIER_LIMITS.marketplaces;
+  const limit = limitsForTier(tier).marketplaces;
 
   if (limit === null) return;
 

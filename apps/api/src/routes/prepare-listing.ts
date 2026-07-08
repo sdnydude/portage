@@ -11,7 +11,7 @@ import { EbayAdapter, resolveEbayCategoryCondition } from '../marketplace/ebay-a
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
 import { computeEffectiveTier } from '../lib/billing-utils.js';
-import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
+import { limitsForTier } from '@portage/shared';
 import type { PreparedListingData, PricingData, CompResult, ReverbCompResult, MarketplaceCacheEntry } from '@portage/shared';
 
 const logger = createLogger('prepare-listing');
@@ -148,9 +148,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     }
 
     const effectiveTier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
-    const limit = effectiveTier === 'pro'
-      ? PRO_TIER_LIMITS.aiListingsPerMonth
-      : FREE_TIER_LIMITS.aiListingsPerMonth;
+    const limit = limitsForTier(effectiveTier).aiListingsPerMonth;
 
     // C2: Atomic reserve — try monthly allocation first
     const reserved = await db.update(users)

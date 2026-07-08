@@ -122,7 +122,7 @@ adminRouter.get('/users', async (req, res, next) => {
       conditions.push(or(ilike(users.email, `%${escaped}%`), ilike(users.displayName, `%${escaped}%`)));
     }
     if (role === 'admin' || role === 'user') conditions.push(eq(users.role, role));
-    if (tier === 'free' || tier === 'pro') conditions.push(eq(users.subscriptionTier, tier));
+    if (tier === 'free' || tier === 'pro' || tier === 'beta-tester') conditions.push(eq(users.subscriptionTier, tier));
     if (status === 'active') conditions.push(isNull(users.disabledAt));
     if (status === 'disabled') conditions.push(isNotNull(users.disabledAt));
 
@@ -241,7 +241,7 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
       await logAuditAction(adminUser.sub, 'change_role', 'user', targetId, { from: target.role, to: role });
     }
 
-    if (subscriptionTier === 'free' || subscriptionTier === 'pro') {
+    if (subscriptionTier === 'free' || subscriptionTier === 'pro' || subscriptionTier === 'beta-tester') {
       updates.subscriptionTier = subscriptionTier;
       await logAuditAction(adminUser.sub, 'change_tier', 'user', targetId, { from: target.subscriptionTier, to: subscriptionTier });
     }

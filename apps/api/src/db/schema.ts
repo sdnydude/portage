@@ -7,7 +7,7 @@ import { sql } from 'drizzle-orm';
 export const ebaySkuSeq = pgSequence('portage_ebay_sku_seq', { startWith: 1 });
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
-export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro']);
+export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro', 'beta-tester']);
 export const conditionEnum = pgEnum('item_condition', ['new', 'like_new', 'good', 'fair', 'poor']);
 export const marketplaceEnum = pgEnum('marketplace_type', ['ebay', 'etsy', 'reverb']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'active', 'sold', 'archived']);

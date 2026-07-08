@@ -4,7 +4,7 @@ import { env } from './env.js';
 export interface JwtPayload {
   sub: string;
   email: string;
-  tier: 'free' | 'pro';
+  tier: 'free' | 'pro' | 'beta-tester';
   role: 'user' | 'admin';
   trialEndsAt?: string;
 }

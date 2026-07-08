@@ -7,7 +7,7 @@ interface AuthState {
   user: {
     id: string;
     email: string;
-    subscriptionTier: "free" | "pro";
+    subscriptionTier: "free" | "pro" | "beta-tester";
     role: "user" | "admin";
     onboardingCompleted?: boolean;
   } | null;

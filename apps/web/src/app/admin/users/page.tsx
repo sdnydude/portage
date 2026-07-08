@@ -11,7 +11,7 @@ interface AdminUser {
   email: string;
   displayName: string | null;
   role: "user" | "admin";
-  subscriptionTier: "free" | "pro";
+  subscriptionTier: "free" | "pro" | "beta-tester";
   aiScansThisMonth: number;
   bgRemovalsThisMonth: number;
   disabledAt: string | null;
@@ -102,6 +102,7 @@ export default function AdminUsersPage() {
           <option value="">All Plans</option>
           <option value="free">Free</option>
           <option value="pro">Pro</option>
+          <option value="beta-tester">Beta Tester</option>
         </select>
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} className="px-3 py-1.5 bg-muted rounded-lg text-sm text-text-primary border border-transparent">
           <option value="">All Status</option>
@@ -139,7 +140,7 @@ export default function AdminUsersPage() {
                   {user.displayName && <div className="text-xs text-text-placeholder">{user.displayName}</div>}
                 </td>
                 <td className="px-4 py-2.5"><Badge color={user.role === "admin" ? "blue" : "gray"}>{user.role}</Badge></td>
-                <td className="px-4 py-2.5"><Badge color={user.subscriptionTier === "pro" ? "green" : "gray"}>{user.subscriptionTier}</Badge></td>
+                <td className="px-4 py-2.5"><Badge color={user.subscriptionTier === "pro" ? "green" : user.subscriptionTier === "beta-tester" ? "blue" : "gray"}>{user.subscriptionTier}</Badge></td>
                 <td className="px-4 py-2.5 text-right text-text-primary">{user.itemCount}</td>
                 <td className="px-4 py-2.5 text-right text-text-primary">{user.activeListingCount}</td>
                 <td className="px-4 py-2.5 text-right text-text-primary">${user.totalRevenue.toLocaleString()}</td>

@@ -4,7 +4,7 @@ export interface User {
   id: string;
   email: string;
   displayName?: string;
-  subscriptionTier: 'free' | 'pro';
+  subscriptionTier: 'free' | 'pro' | 'beta-tester';
   stripeCustomerId?: string;
   aiScansThisMonth: number;
   bgRemovalsThisMonth: number;
