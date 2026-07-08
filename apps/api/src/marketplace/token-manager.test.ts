@@ -24,6 +24,7 @@ import {
   getEbayAccessToken,
   getEbayAppToken,
   getEbayProdAppToken,
+  getReverbAccessToken,
   invalidateEbayAppToken,
   invalidateEbayProdAppToken,
 } from './token-manager.js';
@@ -151,6 +152,29 @@ describe('getEbayAccessToken', () => {
 
     await expect(getEbayAccessToken('user-1'))
       .rejects.toMatchObject({ code: 'EBAY_UNAVAILABLE', statusCode: 502 });
+  });
+});
+
+describe('getReverbAccessToken', () => {
+  it('returns decrypted PAT for a connected account', async () => {
+    mockSelectReturnsAccount({
+      id: 'account-1',
+      userId: 'user-1',
+      marketplace: 'reverb',
+      accessTokenEncrypted: 'encrypted-reverb-pat',
+      tokenExpiresAt: new Date('2099-12-31T23:59:59Z').toISOString(),
+    });
+
+    const token = await getReverbAccessToken('user-1');
+    expect(token).toBe(MOCK_TOKEN);
+    expect(vi.mocked(decrypt)).toHaveBeenCalledWith('encrypted-reverb-pat');
+  });
+
+  it('throws typed REVERB_SETUP_REQUIRED (400) when no Reverb account is connected', async () => {
+    mockSelectReturnsAccount(null);
+
+    await expect(getReverbAccessToken('user-with-no-account'))
+      .rejects.toMatchObject({ code: 'REVERB_SETUP_REQUIRED', statusCode: 400 });
   });
 });
 

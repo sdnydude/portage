@@ -104,7 +104,7 @@ export async function getReverbAccessToken(userId: string): Promise<string> {
     .limit(1);
 
   if (!account) {
-    throw new Error('No Reverb account connected');
+    throw new AppError(400, 'REVERB_SETUP_REQUIRED', 'Reverb selling is not set up. Connect your Reverb account in Settings first.');
   }
 
   return decrypt(account.accessTokenEncrypted);
