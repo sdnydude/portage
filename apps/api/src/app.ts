@@ -29,6 +29,7 @@ import { prepareListingRouter } from './routes/prepare-listing.js';
 import { usersRouter } from './routes/users.js';
 import { billingRouter, billingWebhookRouter } from './routes/billing.js';
 import { messagesRouter } from './routes/messages.js';
+import { betaRouter } from './routes/beta.js';
 
 export function createApp() {
   const config = env();
@@ -111,6 +112,7 @@ export function createApp() {
   app.use('/items', prepareListingRouter);
   app.use('/billing', billingRouter);
   app.use('/messages', messagesRouter);
+  app.use('/beta', betaRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

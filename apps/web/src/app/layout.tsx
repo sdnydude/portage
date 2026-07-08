@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Instrument_Sans, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { BetaCta } from "@/components/beta/beta-cta";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 
 const instrumentSans = Instrument_Sans({
@@ -63,7 +64,10 @@ export default function RootLayout({
               "(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();",
           }}
         />
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          <BetaCta />
+        </AuthProvider>
         <ServiceWorkerRegistration />
       </body>
     </html>
