@@ -1,8 +1,61 @@
 import {
+  buildMarketplaceCacheEntries,
+  cacheFailWarning,
   computePricing,
   conditionNeighbors,
+  reverbCompsWarning,
   EBAY_CONDITION_ORDER,
 } from './prepare-listing.js';
+
+describe('buildMarketplaceCacheEntries', () => {
+  it('includes a reverb cache entry when the AI produced reverb fields', () => {
+    const entries = buildMarketplaceCacheEntries(
+      {
+        ebay: { categoryId: '33034', categoryName: 'Electric Guitars', title: 'Fender Strat' },
+        reverb: {
+          categoryUuid: 'rev-cat-1',
+          categoryName: 'Solid Body',
+          conditionUuid: 'rev-cond-1',
+          conditionName: 'Excellent',
+          year: '1979',
+          finish: 'Sunburst',
+        },
+      },
+      { categoryId: '33034', categoryName: 'Electric Guitars' },
+    );
+
+    expect(entries.ebay).toMatchObject({ categoryId: '33034', categoryName: 'Electric Guitars', title: 'Fender Strat' });
+    expect(entries.reverb).toMatchObject({
+      categoryUuid: 'rev-cat-1',
+      categoryName: 'Solid Body',
+      conditionUuid: 'rev-cond-1',
+      conditionName: 'Excellent',
+      year: '1979',
+      finish: 'Sunburst',
+    });
+    expect(typeof entries.reverb!.cachedAt).toBe('string');
+  });
+});
+
+describe('cacheFailWarning', () => {
+  it('names every marketplace whose cache data failed to persist, not just eBay', () => {
+    expect(cacheFailWarning({ ebay: {} as never })).toBe(
+      'eBay category data could not be saved — re-run prepare before publishing',
+    );
+    expect(cacheFailWarning({ ebay: {} as never, reverb: {} as never })).toBe(
+      'eBay + Reverb category data could not be saved — re-run prepare before publishing',
+    );
+  });
+});
+
+describe('reverbCompsWarning', () => {
+  it('warns when the comps result is degraded (API failure) but not when comps are genuinely empty', () => {
+    expect(reverbCompsWarning({ listings: [], stats: { median: null, avg: null, sampleSize: 0 }, degraded: true }))
+      .toMatch(/comps search failed/i);
+    expect(reverbCompsWarning({ listings: [], stats: { median: null, avg: null, sampleSize: 0 } }))
+      .toBeUndefined();
+  });
+});
 
 describe('computePricing', () => {
   it('returns zeros with low confidence for empty comps', () => {

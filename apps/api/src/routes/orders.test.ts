@@ -18,6 +18,12 @@ vi.mock('../marketplace/ebay-adapter.js', () => ({
   EbayAdapter: vi.fn(() => ({ getOrders: mockGetOrders, getItemDetail: mockGetItemDetail })),
 }));
 
+const mockReverbGetOrders = vi.fn();
+vi.mock('../marketplace/reverb-adapter.js', () => ({
+  ReverbAdapter: vi.fn(() => ({ getOrders: mockReverbGetOrders })),
+}));
+import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
+
 // A db.select() that resolves at .where() (no .limit()) — matches the
 // marketplaceAccounts lookup at the top of POST /orders/sync.
 function queueAccountsSelect(accounts: unknown[]) {
@@ -140,6 +146,20 @@ describe('GET /orders (list)', () => {
 });
 
 describe('POST /orders/sync', () => {
+  it('constructs ReverbAdapter with the userId, not a decrypted token', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'reverb', accessTokenEncrypted: 'enc-reverb' }]);
+    mockReverbGetOrders.mockResolvedValueOnce([]);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.errors ?? []).toEqual([]);
+    expect(vi.mocked(ReverbAdapter)).toHaveBeenCalledWith('user-1');
+  });
+
   it('surfaces a failing marketplace in errors[] instead of swallowing it', async () => {
     const token = createTestToken({ sub: 'user-1' });
     queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);

@@ -50,10 +50,23 @@ export interface MarketplaceCacheEntry {
   cachedAt: string;
 }
 
+// Reverb's cache slot carries UUIDs and gear attributes rather than eBay's
+// numeric category ids — populated at prepare time, consumed by the publish
+// route's enrichment block.
+export interface ReverbCacheEntry {
+  categoryUuid: string | null;
+  categoryName: string | null;
+  conditionUuid: string | null;
+  conditionName: string | null;
+  year: string | null;
+  finish: string | null;
+  cachedAt: string;
+}
+
 export interface MarketplaceData {
   ebay?: MarketplaceCacheEntry;
   etsy?: MarketplaceCacheEntry;
-  reverb?: MarketplaceCacheEntry;
+  reverb?: ReverbCacheEntry;
 }
 
 export interface Item {
@@ -338,8 +351,6 @@ export interface ListingFlowState {
 
   price: number | null;
   pricingStrategy: PricingStrategy;
-  acceptOffers: boolean;
-  minimumOfferPrice: number | null;
   comps: CompResult | null;
   compsStatus: 'idle' | 'loading' | 'loaded' | 'failed';
 
@@ -459,6 +470,9 @@ export interface ReverbCompResult {
     avg: number | null;
     sampleSize: number;
   };
+  // True when the comps API call itself failed (outage/rate-limit) — the empty
+  // result then means "couldn't ask", not "no comparable listings exist".
+  degraded?: boolean;
 }
 
 export interface EbayPreparedFields {
