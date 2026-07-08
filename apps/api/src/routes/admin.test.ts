@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { createApp } from '../app.js';
 import { createTestToken } from '../test/helpers.js';
+import { db } from '../db/index.js';
 
 vi.mock('../db/index.js', () => ({
   db: {
@@ -9,6 +10,12 @@ vi.mock('../db/index.js', () => ({
     update: vi.fn(),
     delete: vi.fn(),
   },
+}));
+
+vi.mock('../lib/cf-allowlist.js', () => ({
+  getAllowlist: vi.fn(),
+  addEmail: vi.fn(),
+  removeEmail: vi.fn(),
 }));
 
 let app: ReturnType<typeof createApp>;
@@ -109,6 +116,55 @@ describe('admin functional guards', () => {
 
     expect(res.status).toBe(200);
     expect(setFn).toHaveBeenCalledWith(expect.objectContaining({ subscriptionTier: 'beta-tester' }));
+  });
+
+  it('GET /admin/allowlist returns the CF Access allowlist emails', async () => {
+    const { getAllowlist } = await import('../lib/cf-allowlist.js');
+    vi.mocked(getAllowlist).mockResolvedValue(['a@x.com', 'b@y.com']);
+
+    const res = await request(app)
+      .get('/admin/allowlist')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.emails).toEqual(['a@x.com', 'b@y.com']);
+  });
+
+  it('POST /admin/allowlist adds an email and audit-logs it', async () => {
+    const { addEmail } = await import('../lib/cf-allowlist.js');
+    vi.mocked(addEmail).mockResolvedValue(['a@x.com', 'new@t.com']);
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+
+    const res = await request(app)
+      .post('/admin/allowlist')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'new@t.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.emails).toEqual(['a@x.com', 'new@t.com']);
+    expect(vi.mocked(addEmail)).toHaveBeenCalledWith('new@t.com');
+  });
+
+  it('DELETE /admin/allowlist/:email removes an email but refuses to remove your own', async () => {
+    const { removeEmail } = await import('../lib/cf-allowlist.js');
+    vi.mocked(removeEmail).mockResolvedValue(['a@x.com']);
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+
+    const res = await request(app)
+      .delete('/admin/allowlist/gone%40y.com')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.emails).toEqual(['a@x.com']);
+    expect(vi.mocked(removeEmail)).toHaveBeenCalledWith('gone@y.com');
+
+    // Self-lockout guard: the admin token's email is test@example.com
+    const self = await request(app)
+      .delete('/admin/allowlist/test%40example.com')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(self.status).toBe(400);
+    expect(self.body.code).toBe('SELF_REMOVE');
   });
 
   it('PATCH /admin/settings/:key rejects disallowed keys', async () => {

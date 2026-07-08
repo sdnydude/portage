@@ -5,6 +5,7 @@ import { users, items, listings, orders, conversations, marketplaceAccounts, adm
 import { eq, sql, desc, count, sum, and, isNull, isNotNull, ilike, or, inArray, gte } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
+import { getAllowlist, addEmail, removeEmail } from '../lib/cf-allowlist.js';
 
 const logger = createLogger('admin');
 
@@ -554,6 +555,48 @@ adminRouter.get('/marketplace/health', async (_req, res, next) => {
     }
 
     res.json({ accounts: enriched, summary });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── CF Access Allowlist ───
+// The beta gate lives at the Cloudflare edge: an allow policy of emails on
+// the Portage Access applications. These endpoints manage it via the CF API.
+
+adminRouter.get('/allowlist', async (_req, res, next) => {
+  try {
+    const emails = await getAllowlist();
+    res.json({ emails });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post('/allowlist', async (req, res, next) => {
+  try {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new AppError(400, 'INVALID_EMAIL', 'A valid email address is required');
+    }
+    const emails = await addEmail(email);
+    await logAuditAction(req.user!.sub, 'allowlist_add', 'access_policy', null, { email });
+    res.json({ emails });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.delete('/allowlist/:email', async (req, res, next) => {
+  try {
+    const email = decodeURIComponent(req.params.email).toLowerCase().trim();
+    if (email === req.user!.email.toLowerCase()) {
+      // Removing yourself from the edge allowlist is a lockout, not a logout.
+      throw new AppError(400, 'SELF_REMOVE', 'You cannot remove your own email from the allowlist');
+    }
+    const emails = await removeEmail(email);
+    await logAuditAction(req.user!.sub, 'allowlist_remove', 'access_policy', null, { email });
+    res.json({ emails });
   } catch (err) {
     next(err);
   }

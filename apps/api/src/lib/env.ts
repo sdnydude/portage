@@ -59,6 +59,12 @@ const envSchema = z.object({
   // Audience tag of the Cloudflare Access application protecting Portage.
   CF_ACCESS_AUD: z.string().optional(),
   CF_ACCESS_TEAM_DOMAIN: z.string().default('digitalharmonygroup'),
+  // Cloudflare API access for the admin allowlist manager (Access:Edit scope).
+  CF_API_TOKEN: z.string().optional(),
+  CF_ACCOUNT_ID: z.string().optional(),
+  // Access application IDs whose allow policy carries the email allowlist
+  // (comma-separated: web app + API hostname app).
+  CF_ACCESS_APP_IDS: z.string().optional(),
   // Dev-only identity when no Cloudflare edge is in front (LAN dev). Read
   // only when NODE_ENV=development, so it can never bypass auth elsewhere.
   CF_ACCESS_DEV_EMAIL: z.string().optional(),
