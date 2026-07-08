@@ -1,12 +1,7 @@
 import jwt from 'jsonwebtoken';
 import {
   signAccessToken,
-  signRefreshToken,
   verifyAccessToken,
-  verifyRefreshToken,
-  hashToken,
-  REFRESH_TTL_MS,
-  STAY_TTL_MS,
   type JwtPayload,
 } from './jwt.js';
 import { env } from './env.js';
@@ -29,8 +24,12 @@ describe('jwt', () => {
       expect(decoded.role).toBe(testPayload.role);
     });
 
-    it('rejects a refresh token used as access token', () => {
-      const refreshToken = signRefreshToken(testPayload);
+    it('rejects a legacy refresh token used as access token', () => {
+      const refreshToken = jwt.sign(
+        { ...testPayload, type: 'refresh' },
+        env().JWT_SECRET,
+        { expiresIn: '1h' },
+      );
       expect(() => verifyAccessToken(refreshToken)).toThrow('Cannot use refresh token as access token');
     });
 
@@ -46,55 +45,6 @@ describe('jwt', () => {
       );
       const decoded = verifyAccessToken(token);
       expect(decoded.role).toBe('user');
-    });
-  });
-
-  describe('refresh tokens', () => {
-    it('sign and verify roundtrip preserves payload fields', () => {
-      const token = signRefreshToken(testPayload);
-      const decoded = verifyRefreshToken(token);
-      expect(decoded.sub).toBe(testPayload.sub);
-      expect(decoded.email).toBe(testPayload.email);
-    });
-
-    it('rejects an access token used as refresh token', () => {
-      const accessToken = signAccessToken(testPayload);
-      expect(() => verifyRefreshToken(accessToken)).toThrow('Invalid refresh token');
-    });
-
-    it('default refresh token expires in 30 days', () => {
-      const token = signRefreshToken(testPayload);
-      const decoded = jwt.decode(token) as { iat: number; exp: number };
-      expect(decoded.exp - decoded.iat).toBe(REFRESH_TTL_MS / 1000);
-    });
-
-    it('stay-logged-in refresh token expires in 365 days', () => {
-      const token = signRefreshToken(testPayload, STAY_TTL_MS);
-      const decoded = jwt.decode(token) as { iat: number; exp: number };
-      expect(decoded.exp - decoded.iat).toBe(STAY_TTL_MS / 1000);
-    });
-
-    it('two refresh tokens for the same payload are never identical', () => {
-      const a = signRefreshToken(testPayload);
-      const b = signRefreshToken(testPayload);
-      expect(a).not.toBe(b);
-    });
-
-    it('TTL constants match their durations', () => {
-      expect(REFRESH_TTL_MS).toBe(30 * 24 * 60 * 60 * 1000);
-      expect(STAY_TTL_MS).toBe(365 * 24 * 60 * 60 * 1000);
-    });
-  });
-
-  describe('hashToken', () => {
-    it('is deterministic', () => {
-      const hash1 = hashToken('my-token');
-      const hash2 = hashToken('my-token');
-      expect(hash1).toBe(hash2);
-    });
-
-    it('produces different hashes for different inputs', () => {
-      expect(hashToken('token-a')).not.toBe(hashToken('token-b'));
     });
   });
 });

@@ -21,7 +21,9 @@ export const messageTypeEnum = pgEnum('message_type', ['asq', 'rtq', 'aaq']);
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: varchar('email', { length: 255 }).notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  // Nullable since the Cloudflare Access migration: CF is the IdP, accounts
+  // auto-provisioned at /auth/session have no local password.
+  passwordHash: text('password_hash'),
   displayName: varchar('display_name', { length: 255 }),
   subscriptionTier: subscriptionTierEnum('subscription_tier').notNull().default('free'),
   stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
@@ -324,17 +326,6 @@ export const ebayMessages = pgTable('ebay_messages', {
   index('idx_ebay_messages_user_id').on(t.userId),
   index('idx_ebay_messages_conversation_key').on(t.conversationKey),
   index('idx_ebay_messages_user_unread').on(t.userId, t.direction, t.readAt),
-]);
-
-export const refreshTokens = pgTable('refresh_tokens', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  tokenHash: text('token_hash').notNull().unique(),
-  expiresAt: timestamp('expires_at').notNull(),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  lastUsedAt: timestamp('last_used_at'),
-}, (t) => [
-  index('idx_refresh_tokens_user_id').on(t.userId),
 ]);
 
 export const exportTokens = pgTable('export_tokens', {

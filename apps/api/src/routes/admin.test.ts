@@ -1,7 +1,6 @@
 import request from 'supertest';
 import { createApp } from '../app.js';
 import { createTestToken } from '../test/helpers.js';
-import { db } from '../db/index.js';
 
 vi.mock('../db/index.js', () => ({
   db: {
@@ -87,32 +86,6 @@ describe('admin functional guards', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('SELF_MODIFY');
-  });
-
-  it('PATCH /admin/users/:id with disabled:true revokes all the user sessions', async () => {
-    const targetId = '00000000-0000-0000-0000-000000000002';
-    vi.mocked(db.select).mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([{ id: targetId, email: 't@example.com', role: 'user', subscriptionTier: 'free' }]),
-        }),
-      }),
-    } as any);
-    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
-    vi.mocked(db.update).mockReturnValue({
-      set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-    } as any);
-    const deleteWhere = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(db.delete).mockReturnValue({ where: deleteWhere } as any);
-
-    const res = await request(app)
-      .patch(`/admin/users/${targetId}`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ disabled: true, disabledReason: 'test' });
-
-    expect(res.status).toBe(200);
-    expect(db.delete).toHaveBeenCalledTimes(1);
-    expect(deleteWhere).toHaveBeenCalledTimes(1);
   });
 
   it('PATCH /admin/settings/:key rejects disallowed keys', async () => {

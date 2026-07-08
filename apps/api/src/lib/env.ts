@@ -53,6 +53,15 @@ const envSchema = z.object({
   VAPID_EMAIL: z.string().optional(),
   REMBG_URL: z.string().default('http://localhost:7000'),
   METRICS_SECRET: z.string().optional(),
+  // User identity for CF Access service-token requests (e2e) — service tokens
+  // carry a common_name instead of an email.
+  CF_ACCESS_SERVICE_EMAIL: z.string().optional(),
+  // Audience tag of the Cloudflare Access application protecting Portage.
+  CF_ACCESS_AUD: z.string().optional(),
+  CF_ACCESS_TEAM_DOMAIN: z.string().default('digitalharmonygroup'),
+  // Dev-only identity when no Cloudflare edge is in front (LAN dev). Read
+  // only when NODE_ENV=development, so it can never bypass auth elsewhere.
+  CF_ACCESS_DEV_EMAIL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
