@@ -64,7 +64,10 @@ function ListingCard({ listing, isSelecting, isSelected, onToggle }: ListingCard
             {marketplaceIcons[listing.marketplace]}
           </span>
         </div>
-        <div className="text-sm font-medium text-text-primary">
+        <div className="text-sm font-medium text-text-primary truncate">
+          {listing.itemTitle ?? "Untitled item"}
+        </div>
+        <div className="text-sm text-text-secondary">
           ${listing.price.toFixed(2)} {listing.currency}
         </div>
         <div className="text-xs text-text-secondary mt-0.5">

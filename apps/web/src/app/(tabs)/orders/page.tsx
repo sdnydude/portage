@@ -58,6 +58,9 @@ function getStatusConfig(status: string) {
       return { label: "Shipped", bg: "bg-forest-green-50", text: "text-forest-green" };
     case "delivered":
       return { label: "Delivered", bg: "bg-green-50 dark:bg-green-950/30", text: "text-green-700 dark:text-green-300" };
+    case "canceled":
+      // Canceled+refunded on the marketplace — never in the ship queue.
+      return { label: "Canceled", bg: "bg-muted", text: "text-text-secondary" };
     default:
       return { label: status, bg: "bg-muted", text: "text-text-secondary" };
   }

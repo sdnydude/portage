@@ -13,7 +13,7 @@ export const conditionEnum = pgEnum('item_condition', ['new', 'like_new', 'good'
 // value, so it stays here inert — no adapter, no routes, no UI offer it.
 export const marketplaceEnum = pgEnum('marketplace_type', ['ebay', 'etsy', 'reverb']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'active', 'sold', 'archived']);
-export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered']);
+export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered', 'canceled']);
 export const notificationTypeEnum = pgEnum('notification_type', ['sale', 'buyer_message', 'listing_expiry', 'price_alert', 'shipping_reminder']);
 export const referenceTypeEnum = pgEnum('reference_type', ['order', 'listing', 'item']);
 export const packageTypeEnum = pgEnum('package_type', ['box', 'envelope', 'poly_mailer']);

@@ -74,3 +74,15 @@ describe("OrderDetailPage — Financials", () => {
     expect(screen.queryByText("Profit")).not.toBeInTheDocument();
   });
 });
+
+describe("OrderDetailPage — canceled order", () => {
+  it("shows a Canceled notice instead of an ambiguous all-incomplete shipping timeline", async () => {
+    apiMock.mockResolvedValue({ ...baseOrder, status: "canceled" });
+    await renderPage();
+
+    // A canceled+refunded order must say so — not render four unchecked
+    // shipping steps as if it's simply waiting to ship.
+    expect(screen.getByText("Order canceled.")).toBeInTheDocument();
+    expect(screen.queryByText("Shipping Status")).toBeNull();
+  });
+});

@@ -501,6 +501,77 @@ describe('EbayAdapter.getOrders — creationdate range filter', () => {
     expect(url).toContain('creationdate:[2026-05-06T13:43:26.945Z..]');
     expect(url).not.toContain('..}');
   });
+
+  it('maps orderFulfillmentStatus FULFILLED to fulfillmentStatus "shipped" (others "unshipped")', async () => {
+    const order = (orderId: string, orderFulfillmentStatus: string) => ({
+      orderId,
+      orderFulfillmentStatus,
+      creationDate: '2026-06-10T00:00:00.000Z',
+      buyer: { username: 'buyer1' },
+      pricingSummary: { total: { value: '100.00', currency: 'USD' }, deliveryCost: { value: '5.00' } },
+      lineItems: [{ legacyItemId: '3001', title: 'Pedal' }],
+    });
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      orders: [order('o-1', 'FULFILLED'), order('o-2', 'NOT_STARTED'), order('o-3', 'IN_PROGRESS')],
+    }), { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+
+    const results = await adapter.getOrders();
+
+    // Without this signal every synced order lands as "needs shipping" even
+    // when the seller shipped it on eBay long ago.
+    expect(results.map(r => r.fulfillmentStatus)).toEqual(['shipped', 'unshipped', 'unshipped']);
+  });
+
+  it('maps cancelStatus CANCELED to fulfillmentStatus "canceled" — even over FULFILLED', async () => {
+    // Live case 26-14725-05164: NOT_STARTED + FULLY_REFUNDED + CANCELED sat in
+    // the ship queue forever because no canceled state existed.
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      orders: [{
+        orderId: 'o-c',
+        orderFulfillmentStatus: 'FULFILLED',
+        cancelStatus: { cancelState: 'CANCELED' },
+        creationDate: '2026-06-10T00:00:00.000Z',
+        buyer: { username: 'buyer1' },
+        pricingSummary: { total: { value: '306.23', currency: 'USD' }, deliveryCost: { value: '0' } },
+        lineItems: [{ legacyItemId: '3001', title: 'SSD' }],
+      }],
+    }), { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+
+    const results = await adapter.getOrders();
+
+    expect(results[0].fulfillmentStatus).toBe('canceled');
+  });
+
+  it('pages through results — a seller with >50 orders is not silently truncated', async () => {
+    const order = (orderId: string) => ({
+      orderId,
+      orderFulfillmentStatus: 'FULFILLED',
+      creationDate: '2026-06-10T00:00:00.000Z',
+      buyer: { username: 'buyer1' },
+      pricingSummary: { total: { value: '10.00', currency: 'USD' }, deliveryCost: { value: '0' } },
+      lineItems: [{ legacyItemId: '3001', title: 'X' }],
+    });
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes('offset=50')) {
+        return new Response(JSON.stringify({ orders: [order('o-51')] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        orders: Array.from({ length: 50 }, (_, i) => order(`o-${i + 1}`)),
+        next: 'https://api.ebay.com/sell/fulfillment/v1/order?limit=50&offset=50',
+      }), { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+
+    const results = await adapter.getOrders();
+
+    // The heals can only repair what the fetch returns — a hard 50 cap
+    // silently strands every order past the first page.
+    expect(results).toHaveLength(51);
+    expect(results[50].marketplaceOrderId).toBe('o-51');
+  });
 });
 
 describe('resolveEbayCategoryCondition — auto-correct decision + warning policy', () => {
