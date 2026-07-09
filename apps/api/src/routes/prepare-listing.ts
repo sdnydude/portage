@@ -392,10 +392,6 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     const ebayFields = aiFields.ebay ? {
       ...aiFields.ebay,
       ...(conditionFix.condition ? { condition: conditionFix.condition } : {}),
-      fulfillmentPolicyId: profile?.ebayFulfillmentPolicyId ?? '',
-      paymentPolicyId: profile?.ebayPaymentPolicyId ?? '',
-      returnPolicyId: profile?.ebayReturnPolicyId ?? '',
-      merchantLocationKey: profile?.ebayMerchantLocationKey ?? 'default',
       ...(profile?.bestOfferAutoAcceptEnabled && pricing.bestOfferFloor
         ? { bestOfferAutoAcceptPrice: pricing.bestOfferFloor }
         : {}),

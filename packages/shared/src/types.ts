@@ -492,10 +492,6 @@ export interface EbayPreparedFields {
   weight: { value: number; unit: string };
   dimensions: { length: number; width: number; height: number; unit: string };
   packageType: string;
-  fulfillmentPolicyId: string;
-  paymentPolicyId: string;
-  returnPolicyId: string;
-  merchantLocationKey: string;
   /** Best-Offer auto-accept floor (seller opted in); flows to the adapter via marketplaceSpecific. */
   bestOfferAutoAcceptPrice?: number;
 }
