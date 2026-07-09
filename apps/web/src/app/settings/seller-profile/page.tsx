@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
-import type { SellerProfile, EbayPoliciesResponse } from "@portage/shared";
+import type { SellerProfile } from "@portage/shared";
 
 // This page lives outside the (tabs) group, so it has no bottom nav. Without a
 // header the seller could get stuck here — give every state a back affordance.
@@ -27,9 +27,8 @@ function BackHeader() {
 export default function SellerProfilePage() {
   const { token } = useAuth();
   const [profile, setProfile] = useState<SellerProfile | null>(null);
-  const [policies, setPolicies] = useState<EbayPoliciesResponse | null>(null);
   const [saving, setSaving] = useState(false);
-  const [settingUp, setSettingUp] = useState(false);
+  const [savingAddress, setSavingAddress] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [ebayConnected, setEbayConnected] = useState(false);
@@ -44,10 +43,6 @@ export default function SellerProfilePage() {
         if (sf) setAddr({ name: sf.name ?? "", street1: sf.street1 ?? "", street2: sf.street2 ?? "", city: sf.city ?? "", state: sf.state ?? "", zip: sf.zip ?? "" });
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load profile"));
-
-    api<EbayPoliciesResponse>("/seller-profile/ebay-policies", { token })
-      .then(data => setPolicies(data))
-      .catch(() => {});
 
     api<{ accounts: Array<{ marketplace: string }> }>("/users/me/marketplace-accounts", { token })
       .then(data => setEbayConnected(data.accounts.some(a => a.marketplace === "ebay")))
@@ -86,48 +81,30 @@ export default function SellerProfilePage() {
     }
   }, [token]);
 
-  const handleAutoSetup = useCallback(async () => {
+  // Inline terms (Trade-First) killed the Business Policies setup — the only
+  // eBay prerequisite left is the ship-from address (calculated shipping needs
+  // the origin ZIP), so it gets its own explicit save.
+  const handleSaveAddress = useCallback(async () => {
     if (!token) return;
-    setSettingUp(true);
+    if (!addr.zip.trim()) {
+      setMessage("ZIP is required — eBay computes buyer shipping from it");
+      return;
+    }
+    setSavingAddress(true);
     setMessage(null);
     try {
-      // Save the ship-from address first so setup can build the eBay location.
-      // eBay WAREHOUSE locations need only postalCode + country — so ZIP alone is
-      // enough; the street/city fields are optional.
-      if (addr.zip) {
-        await api("/seller-profile", { method: "PATCH", body: { shipFromAddress: { ...addr, country: "US" } }, token });
-      }
-      const result = await api<{
-        setup: {
-          fulfillmentPolicyId: string;
-          paymentPolicyId: string;
-          returnPolicyId: string;
-          merchantLocationKey: string | null;
-          locationConfigured: boolean;
-        };
-      }>("/seller-profile/ebay/auto-setup", { method: "POST", token });
-
-      // Reflect the created/reused IDs immediately, then refresh the policy
-      // lists so the dropdowns gain the new "Portage Standard" options.
-      setProfile(prev => prev ? {
-        ...prev,
-        ebayFulfillmentPolicyId: result.setup.fulfillmentPolicyId,
-        ebayPaymentPolicyId: result.setup.paymentPolicyId,
-        ebayReturnPolicyId: result.setup.returnPolicyId,
-        ebayMerchantLocationKey: result.setup.merchantLocationKey,
-      } : prev);
-
-      const refreshed = await api<EbayPoliciesResponse>("/seller-profile/ebay-policies", { token });
-      setPolicies(refreshed);
-
-      setMessage(result.setup.locationConfigured
-        ? "eBay selling is set up — you're ready to list."
-        : "Policies set up. Fill in your ship-from address above, then run setup again to finish.");
-      setTimeout(() => setMessage(null), 5000);
+      const result = await api<{ profile: SellerProfile }>("/seller-profile", {
+        method: "PATCH",
+        body: { shipFromAddress: { ...addr, country: "US" } },
+        token,
+      });
+      setProfile(result.profile);
+      setMessage("Saved");
+      setTimeout(() => setMessage(null), 2000);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "eBay setup failed");
+      setMessage(err instanceof Error && err.message ? err.message : "Failed to save address");
     } finally {
-      setSettingUp(false);
+      setSavingAddress(false);
     }
   }, [token, addr]);
 
@@ -159,9 +136,7 @@ export default function SellerProfilePage() {
       {message && (() => {
         const tone = message === "Saved"
           ? { background: "rgba(45,90,39,0.1)", color: "#2D5A27" }
-          : message.startsWith("Policies set up")
-            ? { background: "rgba(204,153,0,0.12)", color: "#B8860B" }
-            : { background: "rgba(204,51,51,0.1)", color: "#CC3333" };
+          : { background: "rgba(204,51,51,0.1)", color: "#CC3333" };
         return (
           <div className="text-sm py-2 px-3 rounded-lg" style={tone}>
             {message}
@@ -189,7 +164,8 @@ export default function SellerProfilePage() {
           </button>
         </div>
 
-        {/* Step 2 — Ship-from address (eBay uses it to create your inventory location) */}
+        {/* Ship-from address — the one eBay prerequisite left under inline terms:
+            calculated shipping is computed from this origin ZIP. */}
         <div className="space-y-2 pt-1">
           <span className="text-sm font-medium block">Ship-from location</span>
           <span className="text-xs block" style={{ color: "rgba(0,0,0,0.45)" }}>
@@ -203,87 +179,21 @@ export default function SellerProfilePage() {
             <input placeholder="State" value={addr.state} onChange={e => setAddr({ ...addr, state: e.target.value })} className="rounded-lg border px-3 py-2 text-sm" />
             <input placeholder="ZIP" value={addr.zip} onChange={e => setAddr({ ...addr, zip: e.target.value })} className="rounded-lg border px-3 py-2 text-sm" />
           </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2 text-sm" style={{ color: "rgba(0,0,0,0.7)" }}>
+              <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: (profile.shipFromAddress as { zip?: string } | null)?.zip ? "#2D5A27" : "rgba(0,0,0,0.3)" }} />
+              {(profile.shipFromAddress as { zip?: string } | null)?.zip ? "Ship-from set — ready to list" : "Add your ship-from ZIP to list on eBay"}
+            </span>
+            <button
+              onClick={handleSaveAddress}
+              disabled={savingAddress}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              style={{ background: "#2D5A27" }}
+            >
+              {savingAddress ? "Saving..." : "Save address"}
+            </button>
+          </div>
         </div>
-
-        {/* Step 3 — One-click setup (pulls policies + creates location from the address above) */}
-        {(() => {
-          const hasPolicies = Boolean(
-            profile.ebayFulfillmentPolicyId && profile.ebayPaymentPolicyId && profile.ebayReturnPolicyId,
-          );
-          const fullyConfigured = hasPolicies && Boolean(profile.ebayMerchantLocationKey);
-          const status = fullyConfigured
-            ? { dot: "#2D5A27", label: "eBay selling configured" }
-            : hasPolicies
-              ? { dot: "#B8860B", label: "Policies set · ship-from address needed" }
-              : { dot: "rgba(0,0,0,0.3)", label: "Not set up yet" };
-          return (
-            <div className="flex items-center justify-between gap-3 pb-1">
-              <span className="flex items-center gap-2 text-sm" style={{ color: "rgba(0,0,0,0.7)" }}>
-                <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: status.dot }} />
-                {status.label}
-              </span>
-              <button
-                onClick={handleAutoSetup}
-                disabled={settingUp}
-                className="rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-                style={{ background: "#2D5A27" }}
-              >
-                {settingUp ? "Setting up..." : fullyConfigured ? "Re-run setup" : "Set up eBay Selling"}
-              </button>
-            </div>
-          );
-        })()}
-
-        <p className="text-xs" style={{ color: "rgba(0,0,0,0.45)" }}>
-          One-click setup creates standard fulfillment, payment, and return policies plus your inventory location. Safe to re-run.
-        </p>
-
-        <label className="block text-sm">
-          <span className="text-sm font-medium mb-1 block">Fulfillment Policy</span>
-          <select
-            value={profile.ebayFulfillmentPolicyId ?? ""}
-            onChange={e => updateField("ebayFulfillmentPolicyId", e.target.value || null)}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-          >
-            <option value="">Select...</option>
-            {policies?.fulfillment.map(p => <option key={p.policyId} value={p.policyId}>{p.name}</option>)}
-          </select>
-        </label>
-
-        <label className="block text-sm">
-          <span className="text-sm font-medium mb-1 block">Payment Policy</span>
-          <select
-            value={profile.ebayPaymentPolicyId ?? ""}
-            onChange={e => updateField("ebayPaymentPolicyId", e.target.value || null)}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-          >
-            <option value="">Select...</option>
-            {policies?.payment.map(p => <option key={p.policyId} value={p.policyId}>{p.name}</option>)}
-          </select>
-        </label>
-
-        <label className="block text-sm">
-          <span className="text-sm font-medium mb-1 block">Return Policy</span>
-          <select
-            value={profile.ebayReturnPolicyId ?? ""}
-            onChange={e => updateField("ebayReturnPolicyId", e.target.value || null)}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-          >
-            <option value="">Select...</option>
-            {policies?.returnPolicy.map(p => <option key={p.policyId} value={p.policyId}>{p.name}</option>)}
-          </select>
-        </label>
-
-        <label className="block text-sm">
-          <span className="text-sm font-medium mb-1 block">Merchant Location Key</span>
-          <input
-            type="text"
-            value={profile.ebayMerchantLocationKey ?? ""}
-            onChange={e => updateField("ebayMerchantLocationKey", e.target.value || null)}
-            placeholder="default"
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-          />
-        </label>
 
         <label className="block text-sm">
           <span className="text-sm font-medium mb-1 block">Default Publish Mode</span>

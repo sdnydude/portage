@@ -536,18 +536,6 @@ export interface PreparedListingData {
   listingFooter?: string | null;
 }
 
-export interface EbayPolicy {
-  policyId: string;
-  name: string;
-  description?: string;
-}
-
-export interface EbayPoliciesResponse {
-  fulfillment: EbayPolicy[];
-  payment: EbayPolicy[];
-  returnPolicy: EbayPolicy[];
-}
-
 // ─── Porter rich content blocks (SSE streaming protocol) ──
 
 export interface TextBlock {
