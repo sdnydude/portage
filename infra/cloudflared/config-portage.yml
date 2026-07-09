@@ -1,0 +1,17 @@
+tunnel: 011e7e87-e141-4f72-8456-1267334b32ec
+credentials-file: /home/swebber64/.cloudflared/011e7e87-e141-4f72-8456-1267334b32ec.json
+
+ingress:
+  - hostname: portage.digitalharmonyai.com
+    service: http://localhost:3002
+  - hostname: portage-api.digitalharmonyai.com
+    service: https://localhost:8016
+    originRequest:
+      noTLSVerify: true
+  - hostname: dhgdocs.digitalharmonyai.com
+    service: http://localhost:8017
+  - hostname: docs.digitalharmonyai.com
+    service: http://localhost:8017
+  - hostname: rehearsal.digitalharmonyai.com
+    service: http://localhost:3004
+  - service: http_status:404
