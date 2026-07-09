@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { eq, desc, and, sql, inArray, isNull } from 'drizzle-orm';
+import { eq, desc, and, sql, inArray, isNull, getTableColumns } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { listings, items, sellerProfiles, disclaimerAcceptances, users, notifications } from '../db/schema.js';
@@ -284,8 +284,14 @@ listingsRouter.get('/', async (req, res, next) => {
     if (query.marketplace) conditions.push(eq(listings.marketplace, query.marketplace));
 
     const [results, countResult] = await Promise.all([
-      db.select()
+      // Full listing row + the item's title so the listings page can show WHAT
+      // each listing is (mirrors the GET /orders items join).
+      db.select({
+        ...getTableColumns(listings),
+        itemTitle: items.title,
+      })
         .from(listings)
+        .leftJoin(items, eq(listings.itemId, items.id))
         .where(and(...conditions))
         .orderBy(desc(listings.createdAt))
         .limit(query.limit)

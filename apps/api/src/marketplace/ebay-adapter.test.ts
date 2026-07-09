@@ -501,6 +501,27 @@ describe('EbayAdapter.getOrders — creationdate range filter', () => {
     expect(url).toContain('creationdate:[2026-05-06T13:43:26.945Z..]');
     expect(url).not.toContain('..}');
   });
+
+  it('maps orderFulfillmentStatus FULFILLED to fulfillmentStatus "shipped" (others "unshipped")', async () => {
+    const order = (orderId: string, orderFulfillmentStatus: string) => ({
+      orderId,
+      orderFulfillmentStatus,
+      creationDate: '2026-06-10T00:00:00.000Z',
+      buyer: { username: 'buyer1' },
+      pricingSummary: { total: { value: '100.00', currency: 'USD' }, deliveryCost: { value: '5.00' } },
+      lineItems: [{ legacyItemId: '3001', title: 'Pedal' }],
+    });
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      orders: [order('o-1', 'FULFILLED'), order('o-2', 'NOT_STARTED'), order('o-3', 'IN_PROGRESS')],
+    }), { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+
+    const results = await adapter.getOrders();
+
+    // Without this signal every synced order lands as "needs shipping" even
+    // when the seller shipped it on eBay long ago.
+    expect(results.map(r => r.fulfillmentStatus)).toEqual(['shipped', 'unshipped', 'unshipped']);
+  });
 });
 
 describe('resolveEbayCategoryCondition — auto-correct decision + warning policy', () => {

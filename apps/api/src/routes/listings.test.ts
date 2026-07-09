@@ -1368,6 +1368,38 @@ describe('DELETE /listings/:id — Trade-First end-or-local-delete', () => {
   });
 });
 
+describe('GET /listings — list includes the item title', () => {
+  it('projects itemTitle via an items join so the listings page can show what each listing IS', async () => {
+    // Results chain: select(projection).from().leftJoin().where().orderBy().limit().offset()
+    const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+    for (const m of ['from', 'leftJoin', 'where', 'orderBy', 'limit']) {
+      chain[m] = vi.fn().mockReturnValue(chain);
+    }
+    chain.offset = vi.fn().mockResolvedValue([
+      { id: 'listing-1', status: 'active', marketplace: 'ebay', price: 199, itemTitle: 'Sony WH-1000XM4' },
+    ]);
+    vi.mocked(db.select).mockReturnValueOnce(chain as never);
+    // Count chain: select({count}).from().where()
+    const countChain: Record<string, ReturnType<typeof vi.fn>> = {};
+    countChain.from = vi.fn().mockReturnValue(countChain);
+    countChain.where = vi.fn().mockResolvedValue([{ count: 1 }]);
+    vi.mocked(db.select).mockReturnValueOnce(countChain as never);
+
+    const res = await request(app)
+      .get('/listings')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.listings[0].itemTitle).toBe('Sony WH-1000XM4');
+    // The projection itself must carry itemTitle (a bare select() would just
+    // pass the mock rows through and prove nothing).
+    const projection = vi.mocked(db.select).mock.calls[0][0] as Record<string, unknown> | undefined;
+    expect(projection).toBeDefined();
+    expect(projection).toHaveProperty('itemTitle');
+    expect(chain.leftJoin).toHaveBeenCalled();
+  });
+});
+
 describe('GET /listings/:id/ebay-offer — F-GATE verification read', () => {
   const LISTING_ID = '00000000-0000-0000-0000-0000000000ef';
 

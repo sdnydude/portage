@@ -728,6 +728,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     const data = await this.request<{
       orders?: Array<{
         orderId: string;
+        orderFulfillmentStatus?: string;
         creationDate?: string;
         buyer: { username: string };
         pricingSummary: {
@@ -773,6 +774,9 @@ export class EbayAdapter implements MarketplaceAdapter {
         // eBay's actual sale date. Without this, orders.ts falls back to
         // `new Date()` and every synced order shows today's date.
         soldAt: order.creationDate ? new Date(order.creationDate) : undefined,
+        // FULFILLED means the seller shipped it (on eBay or elsewhere) — without
+        // this, every synced order shows "needs shipping" forever.
+        fulfillmentStatus: order.orderFulfillmentStatus === 'FULFILLED' ? 'shipped' as const : 'unshipped' as const,
         shippingAddress: {
           name: shipTo?.fullName ?? '',
           street1: address?.addressLine1 ?? '',

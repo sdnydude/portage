@@ -17,6 +17,8 @@ export interface Listing {
   createdAt: string;
   publishedAt: string | null;
   soldAt: string | null;
+  /** Joined from items server-side (GET /listings) — what the listing IS. */
+  itemTitle: string | null;
 }
 
 interface ListingsResponse {

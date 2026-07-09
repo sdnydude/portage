@@ -38,4 +38,14 @@ describe("BetaCta", () => {
     const { container } = renderWithTier("pro");
     expect(container.innerHTML).toBe("");
   });
+
+  it("floats above the tab bar, NOT over the page-header action slot", () => {
+    // Top-right placement sat exactly on PageHeader's action button (e.g. the
+    // orders Sync button) on every page — the pill must anchor bottom-right,
+    // clear of the 64px tab bar.
+    const { getByRole } = renderWithTier("beta-tester");
+    const cls = getByRole("link").className;
+    expect(cls).toMatch(/bottom-\[/);
+    expect(cls).not.toMatch(/top-\[/);
+  });
 });

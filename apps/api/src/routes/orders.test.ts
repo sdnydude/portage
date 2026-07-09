@@ -209,6 +209,67 @@ describe('POST /orders/sync', () => {
     expect(mockGetItemDetail).toHaveBeenCalledWith('306972688941');
   });
 
+  it('imports an already-FULFILLED order as status shipped, not needs-shipping', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    mockGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: '05-14858-60325',
+      marketplaceListingId: '306972688941',
+      buyerUsername: 'buyer1',
+      salePrice: 399,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt: new Date('2026-07-03T00:00:00Z'),
+      fulfillmentStatus: 'shipped', // eBay says FULFILLED — the seller shipped it long ago
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    queueSelects([], [{ id: 'listing-1', itemId: 'item-1' }]); // no existing order; matched local listing
+    const [orderValues] = queueInserts([{ id: 'order-new' }]);
+    // matched-listing path marks the listing sold after the order insert
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+    } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.synced).toBe(1);
+    expect(orderValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'shipped' }));
+  });
+
+  it('heals an existing needs-shipping row to shipped when eBay reports it FULFILLED', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    const soldAt = new Date('2026-06-10T00:00:00Z');
+    mockGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: '23-14730-30879',
+      marketplaceListingId: '306972688941',
+      buyerUsername: 'buyer1',
+      salePrice: 399,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt,
+      fulfillmentStatus: 'shipped',
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    // Existing row imported by the old sync: stuck at payment_received forever.
+    queueSelects([{ id: 'order-1', soldAt, marketplaceFees: 0, status: 'payment_received' }]);
+    const setSpy = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValueOnce({ set: setSpy } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // Mirrors the soldAt heal: re-sync repairs rows the old code imported wrong.
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'shipped' }));
+  });
+
   it('falls back to the order line-item title (not a placeholder) when GetItem fails', async () => {
     const token = createTestToken({ sub: 'user-1' });
     queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);

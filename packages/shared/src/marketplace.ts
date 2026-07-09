@@ -42,6 +42,9 @@ export interface MarketplaceOrderResult {
   marketplaceFees: number;
   currency: string;
   soldAt?: Date;
+  /** Normalized marketplace fulfillment state: 'shipped' when the marketplace
+   *  reports the order fulfilled; undefined when the marketplace gives no signal. */
+  fulfillmentStatus?: 'shipped' | 'unshipped';
   shippingAddress: {
     name: string;
     street1: string;

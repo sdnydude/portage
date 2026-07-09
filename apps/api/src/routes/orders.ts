@@ -179,7 +179,7 @@ ordersRouter.post('/sync', async (req, res, next) => {
         const marketplaceOrders = await adapter.getOrders(since);
 
         for (const mOrder of marketplaceOrders) {
-          const [existing] = await db.select({ id: orders.id, soldAt: orders.soldAt, marketplaceFees: orders.marketplaceFees })
+          const [existing] = await db.select({ id: orders.id, soldAt: orders.soldAt, marketplaceFees: orders.marketplaceFees, status: orders.status })
             .from(orders)
             .where(and(
               eq(orders.userId, userId),
@@ -193,12 +193,19 @@ ordersRouter.post('/sync', async (req, res, next) => {
             //   creationDate→soldAt mapping existed
             // - marketplaceFees held eBay's fee BASIS (item+shipping) before
             //   the adapter stopped mis-mapping totalFeeBasisAmount
+            // - status stayed payment_received forever before the
+            //   orderFulfillmentStatus mapping existed — the marketplace knows
+            //   the seller shipped; never the other direction (a local
+            //   shipped/delivered state is not downgraded).
             const heal: Record<string, unknown> = {};
             if (mOrder.soldAt && Math.abs(new Date(existing.soldAt).getTime() - mOrder.soldAt.getTime()) > 1000) {
               heal.soldAt = mOrder.soldAt;
             }
             if (existing.marketplaceFees !== mOrder.marketplaceFees) {
               heal.marketplaceFees = mOrder.marketplaceFees;
+            }
+            if (mOrder.fulfillmentStatus === 'shipped' && existing.status === 'payment_received') {
+              heal.status = 'shipped';
             }
             if (Object.keys(heal).length > 0) {
               await db.update(orders)
@@ -284,7 +291,10 @@ ordersRouter.post('/sync', async (req, res, next) => {
             currency: mOrder.currency,
             shippingAddress: mOrder.shippingAddress,
             soldAt: mOrder.soldAt ?? new Date(),
-            status: 'payment_received',
+            // The marketplace knows whether the seller already shipped —
+            // importing a FULFILLED order as "needs shipping" tells the seller
+            // to ship something that's already in the mail.
+            status: mOrder.fulfillmentStatus === 'shipped' ? 'shipped' : 'payment_received',
           }).returning();
 
           if (matchedListing) {
