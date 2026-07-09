@@ -204,15 +204,32 @@ adminRouter.post('/users', async (req, res, next) => {
       .from(users).where(eq(users.email, email)).limit(1);
     if (existing) throw new AppError(409, 'EMAIL_EXISTS', 'A user with this email already exists');
 
-    const [user] = await db.insert(users).values({
-      email,
-      displayName: body.displayName ?? null,
-      role: body.role ?? 'user',
-      subscriptionTier: body.subscriptionTier ?? 'free',
-    }).returning();
+    let user;
+    try {
+      [user] = await db.insert(users).values({
+        email,
+        displayName: body.displayName ?? null,
+        role: body.role ?? 'user',
+        subscriptionTier: body.subscriptionTier ?? 'free',
+      }).returning();
+    } catch (e) {
+      // TOCTOU: two concurrent creates can both pass the existence check; the
+      // unique index catches the loser (23505 rides on e.cause under drizzle).
+      const pgCode = (e as { code?: string }).code ?? ((e as { cause?: { code?: string } }).cause?.code);
+      if (pgCode === '23505') throw new AppError(409, 'EMAIL_EXISTS', 'A user with this email already exists');
+      throw e;
+    }
 
     // Allowlist BEFORE responding: a row without edge access is a support trap.
-    await addEmail(email);
+    // If CF fails, roll the fresh row back — otherwise every retry would hit
+    // EMAIL_EXISTS while the user still can't log in (permanently stuck).
+    try {
+      await addEmail(email);
+    } catch (cfErr) {
+      await db.delete(users).where(eq(users.id, user.id));
+      logger.error({ email, err: cfErr instanceof Error ? cfErr.message : String(cfErr) }, 'CF allowlist add failed — user create rolled back');
+      throw new AppError(502, 'CF_ALLOWLIST_FAILED', 'Cloudflare allowlist update failed — the user was not created. Try again.');
+    }
     await logAuditAction(adminUser.sub, 'create_user', 'user', user.id, { email, role: user.role, tier: user.subscriptionTier });
 
     let invited = false;

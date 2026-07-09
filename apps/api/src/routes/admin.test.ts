@@ -288,6 +288,61 @@ describe('admin functional guards', () => {
     expect(res.body.code).toBe('HAS_AUDIT_HISTORY');
   });
 
+  it('POST /admin/users maps a concurrent duplicate insert (23505) to 409, not 500', async () => {
+    const { db } = await import('../db/index.js');
+    // Existence check passes (both racers saw no row)…
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
+      }),
+    } as any);
+    // …but the unique index catches the loser. drizzle wraps: code on .cause.
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key'), {
+          cause: Object.assign(new Error('unique'), { code: '23505' }),
+        })),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .post('/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'race@x.com' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('EMAIL_EXISTS');
+  });
+
+  it('POST /admin/users rolls the row back when the CF allowlist call fails (no stuck account)', async () => {
+    const { db } = await import('../db/index.js');
+    const { addEmail } = await import('../lib/cf-allowlist.js');
+    vi.mocked(addEmail).mockRejectedValue(new Error('CF API 530'));
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
+      }),
+    } as any);
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: 'user-stuck', email: 'stuck@x.com' }]),
+      }),
+    } as any);
+    const whereDelete = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: whereDelete } as any);
+
+    const res = await request(app)
+      .post('/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'stuck@x.com' });
+
+    // Leaving the row would make every retry 409 EMAIL_EXISTS while the user
+    // still can't log in (no allowlist entry) — a permanently stuck account.
+    expect(res.status).toBe(502);
+    expect(res.body.code).toBe('CF_ALLOWLIST_FAILED');
+    expect(whereDelete).toHaveBeenCalled();
+  });
+
   it('GET /admin/allowlist returns the CF Access allowlist emails', async () => {
     const { getAllowlist } = await import('../lib/cf-allowlist.js');
     vi.mocked(getAllowlist).mockResolvedValue(['a@x.com', 'b@y.com']);

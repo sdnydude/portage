@@ -84,10 +84,13 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
     setActionLoading(true);
     try {
       const overrideOf = (v: string) => (v.trim() === "" ? undefined : Math.max(0, Math.round(Number(v))));
-      const overrides: Record<string, number> = {};
+      // The backend replaces limitOverrides whole — start from the stored
+      // object so keys this form doesn't show (porter, marketplaces) survive.
+      const overrides: Record<string, number | null> = { ...(user.limitOverrides ?? {}) };
       for (const [key, v] of [["aiScansPerMonth", form.scans], ["aiListingsPerMonth", form.listings], ["bgRemovalsPerMonth", form.bgRemovals]] as const) {
         const n = overrideOf(v);
         if (n !== undefined && Number.isFinite(n)) overrides[key] = n;
+        else delete overrides[key]; // blank = back to plan default
       }
       const body: Record<string, unknown> = {
         displayName: form.displayName.trim() === "" ? null : form.displayName.trim(),
