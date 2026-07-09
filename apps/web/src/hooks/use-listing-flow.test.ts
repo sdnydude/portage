@@ -208,6 +208,95 @@ describe("useListingFlow.publish — draft-fallback warning", () => {
   });
 });
 
+describe("useListingFlow.publish — idempotencyKey", () => {
+  const ITEM = {
+    id: "i1", title: "Mic Kit", description: "d", category: "electronics", condition: "new",
+    brand: "", model: "", features: [], quantity: 1,
+    photos: [{ url: "https://example.com/p.jpg", key: "k1" }],
+    estimatedValueRecommended: 50, price: 65,
+    weightOz: 24, lengthIn: null, widthIn: null, heightIn: null,
+    ebayPackageType: null, weightEstimated: false,
+  };
+
+  it("sends an idempotencyKey and reuses the SAME key on retry after a failed publish", async () => {
+    const publishBodies: Array<{ idempotencyKey?: string }> = [];
+    let failFirst = true;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {
+      if (path === "/items/i1" && opts?.method === "PATCH") return {};
+      if (path === "/items/i1") return ITEM;
+      if (path === "/listings") {
+        publishBodies.push(opts?.body as { idempotencyKey?: string });
+        if (failFirst) { failFirst = false; throw new Error("network down"); }
+        return { id: "L1", status: "active" };
+      }
+      throw new Error("unavailable: " + path);
+    });
+
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => { await result.current.startFromItem("i1"); });
+    await act(async () => { await result.current.publish(); }); // fails
+    await act(async () => { await result.current.publish(); }); // retry
+
+    // Same key on retry lets the server dedup on (userId, idempotencyKey) and
+    // resume the stuck draft row instead of inserting an orphan per attempt.
+    expect(publishBodies).toHaveLength(2);
+    expect(publishBodies[0].idempotencyKey).toEqual(expect.any(String));
+    expect(publishBodies[0].idempotencyKey!.length).toBeGreaterThan(0);
+    expect(publishBodies[1].idempotencyKey).toBe(publishBodies[0].idempotencyKey);
+  });
+
+  it("mints a FRESH key for the next publish after a success — no replay of the finished listing", async () => {
+    const publishBodies: Array<{ idempotencyKey?: string }> = [];
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {
+      if (path === "/items/i1" && opts?.method === "PATCH") return {};
+      if (path === "/items/i1") return ITEM;
+      if (path === "/listings") {
+        publishBodies.push(opts?.body as { idempotencyKey?: string });
+        return { id: "L1", status: "active" };
+      }
+      throw new Error("unavailable: " + path);
+    });
+
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => { await result.current.startFromItem("i1"); });
+    await act(async () => { await result.current.publish(); }); // succeeds
+    await act(async () => { await result.current.publish(); }); // list again
+
+    // Reusing the finished key would make the server replay listing L1 instead
+    // of creating the new listing the user asked for.
+    expect(publishBodies).toHaveLength(2);
+    expect(publishBodies[1].idempotencyKey).toEqual(expect.any(String));
+    expect(publishBodies[1].idempotencyKey).not.toBe(publishBodies[0].idempotencyKey);
+  });
+
+  it("mints a FRESH key when the marketplace changes between a failure and the retry", async () => {
+    const publishBodies: Array<{ idempotencyKey?: string }> = [];
+    let failFirst = true;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {
+      if (path === "/items/i1" && opts?.method === "PATCH") return {};
+      if (path === "/items/i1") return ITEM;
+      if (path === "/listings") {
+        publishBodies.push(opts?.body as { idempotencyKey?: string });
+        if (failFirst) { failFirst = false; throw new Error("network down"); }
+        return { id: "L1", status: "active" };
+      }
+      throw new Error("unavailable: " + path);
+    });
+
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => { await result.current.startFromItem("i1"); });
+    await act(async () => { await result.current.publish(); }); // fails on ebay
+    act(() => { result.current.setField("marketplace", "reverb"); });
+    await act(async () => { await result.current.publish(); }); // retry on reverb
+
+    // Reusing the eBay-scoped key here would collide with (and replay) the stuck
+    // eBay draft row — a different target must be a different key.
+    expect(publishBodies).toHaveLength(2);
+    expect(publishBodies[1].idempotencyKey).toEqual(expect.any(String));
+    expect(publishBodies[1].idempotencyKey).not.toBe(publishBodies[0].idempotencyKey);
+  });
+});
+
 describe("useListingFlow.ensureItemCreated — confirm-time item creation", () => {
   it("POSTs /items once from flow state, stores inventoryItemId, and is idempotent", async () => {
     apiMock.mockResolvedValue({ id: "item-9" });
