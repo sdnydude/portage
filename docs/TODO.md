@@ -81,7 +81,7 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 ### Phase 7 — Quality & hardening
 
 - [ ] Integration testing — uncovered routes (Task 35, 12h)
-- [ ] Version Cloudflare tunnel config into repo (Task 34 gap, 2h)
+- [x] Version Cloudflare tunnel config into repo (Task 34 gap) — `infra/cloudflared/config-portage.yml` + deploy README (2026-07-09)
 - [ ] Prod CORS single-origin restriction (1h)
 - [ ] Pagination on listing/item hooks (4h)
 
