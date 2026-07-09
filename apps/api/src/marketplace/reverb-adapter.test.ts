@@ -255,6 +255,105 @@ describe('ReverbAdapter.updateListing', () => {
   });
 });
 
+describe('ReverbAdapter.updateListing — stale photo cleanup', () => {
+  /** Routes fetch by URL+method so the PUT → GET images → DELETE flow can be scripted. */
+  function stubFetchRouted(routes: Array<{ match: (url: string, method: string) => boolean; status?: number; body?: unknown }>) {
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      const route = routes.find(r => r.match(url, method));
+      if (!route) throw new Error(`unrouted fetch: ${method} ${url}`);
+      const status = route.status ?? 200;
+      // Response() rejects a body on 204 — send null like the real API does.
+      return new Response(status === 204 ? null : JSON.stringify(route.body ?? {}), {
+        status,
+        headers: { 'Content-Type': 'application/hal+json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('DELETEs remote images whose original_url is no longer in the photo set (live-pinned shape: {images:[{id, original_url}]})', async () => {
+    const fetchMock = stubFetchRouted([
+      { match: (u, m) => m === 'PUT' && u.endsWith('/listings/12345678'), body: { listing: { state: 'live' } } },
+      { match: (u, m) => m === 'GET' && u.endsWith('/listings/12345678/images'), body: { images: [
+        { id: 111, original_url: 'https://img.example/keep.jpg', position: 0 },
+        { id: 222, original_url: 'https://img.example/removed.jpg', position: 1 },
+      ] } },
+      { match: (u, m) => m === 'DELETE' && u.endsWith('/listings/12345678/images/222'), status: 204 },
+    ]);
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.updateListing('12345678', {
+      photos: [{ url: 'https://img.example/keep.jpg' }],
+    });
+
+    // override_position only replaces positions — a dropped photo lingers on
+    // Reverb until its per-image DELETE is called.
+    const deletes = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === 'DELETE');
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0][0]).toBe('https://api.reverb.com/api/listings/12345678/images/222');
+    expect(result.warning).toBeUndefined();
+  });
+
+  it('leaves kept images and images without an original_url (dashboard uploads) alone', async () => {
+    const fetchMock = stubFetchRouted([
+      { match: (u, m) => m === 'PUT' && u.endsWith('/listings/12345678'), body: { listing: { state: 'live' } } },
+      { match: (u, m) => m === 'GET' && u.endsWith('/listings/12345678/images'), body: { images: [
+        { id: 111, original_url: 'https://img.example/keep.jpg', position: 0 },
+        { id: 333, position: 1 }, // uploaded via the Reverb dashboard — unknown origin, never ours to delete
+      ] } },
+    ]);
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.updateListing('12345678', {
+      photos: [{ url: 'https://img.example/keep.jpg' }],
+    });
+
+    const deletes = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === 'DELETE');
+    expect(deletes).toHaveLength(0);
+  });
+
+  it('degrades a failed cleanup to a warning — the update itself already took', async () => {
+    stubFetchRouted([
+      { match: (u, m) => m === 'PUT' && u.endsWith('/listings/12345678'), body: { listing: { state: 'live' } } },
+      { match: (u, m) => m === 'GET' && u.endsWith('/listings/12345678/images'), status: 500, body: { message: 'boom' } },
+    ]);
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.updateListing('12345678', {
+      photos: [{ url: 'https://img.example/keep.jpg' }],
+    });
+
+    // Throwing here would make the route report "failed to sync" for an update
+    // that Reverb already accepted — degrade to a photo-specific warning instead.
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/photo/i);
+  });
+
+  it('keeps deleting the remaining stale images when one DELETE fails, and says how many were left behind', async () => {
+    const fetchMock = stubFetchRouted([
+      { match: (u, m) => m === 'PUT' && u.endsWith('/listings/12345678'), body: { listing: { state: 'live' } } },
+      { match: (u, m) => m === 'GET' && u.endsWith('/listings/12345678/images'), body: { images: [
+        { id: 111, original_url: 'https://img.example/keep.jpg', position: 0 },
+        { id: 222, original_url: 'https://img.example/gone-a.jpg', position: 1 },
+        { id: 333, original_url: 'https://img.example/gone-b.jpg', position: 2 },
+      ] } },
+      { match: (u, m) => m === 'DELETE' && u.endsWith('/images/222'), status: 500, body: { message: 'boom' } },
+      { match: (u, m) => m === 'DELETE' && u.endsWith('/images/333'), status: 204 },
+    ]);
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.updateListing('12345678', {
+      photos: [{ url: 'https://img.example/keep.jpg' }],
+    });
+
+    const deletes = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === 'DELETE');
+    expect(deletes).toHaveLength(2); // the 500 on 222 must not abort 333's delete
+    expect(result.warning).toBe('1 removed photo(s) could not be deleted on Reverb');
+  });
+});
+
 describe('ReverbAdapter.updateListing — status mapping', () => {
   it('reflects the PUT response state instead of assuming active', async () => {
     stubFetch({ listing: { id: 12345678, state: 'draft' } });

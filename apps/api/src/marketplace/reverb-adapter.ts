@@ -163,8 +163,8 @@ export class ReverbAdapter implements MarketplaceAdapter {
     }
     if (input.photos) {
       updates.photos = input.photos.map(p => p.url);
-      // Reverb requires this flag to replace/reorder photos on update; deleting
-      // an individual photo needs the separate images DELETE endpoint (deferred).
+      // Reverb requires this flag to replace/reorder photos on update; a photo
+      // DROPPED from the set lingers until its per-image DELETE (below).
       updates.photo_upload_method = 'override_position';
     }
     if (specific.categoryUuid) updates.categories = [{ uuid: specific.categoryUuid }];
@@ -186,12 +186,53 @@ export class ReverbAdapter implements MarketplaceAdapter {
     // Terminal states (sold/ended) must NOT read as draft — downstream would
     // think the listing needs re-publishing. Keep active + tell the seller.
     const terminal = slug === 'sold' || slug === 'ended';
+    const terminalWarning = terminal ? `Listing is ${slug} on Reverb — the update was accepted but the listing is no longer for sale` : undefined;
+
+    let photoWarning: string | undefined;
+    if (input.photos) {
+      try {
+        photoWarning = await this.deleteStaleImages(marketplaceListingId, input.photos.map(p => p.url));
+      } catch (err) {
+        // The PUT already succeeded — throwing here would make the route report
+        // "failed to sync" for an update Reverb accepted. Degrade to a warning.
+        logger.warn({ marketplaceListingId, err }, 'Reverb stale-photo cleanup failed');
+        photoWarning = 'Removed photos may still appear on Reverb — the photo cleanup call failed';
+      }
+    }
+
     return {
       marketplaceListingId,
       marketplaceUrl: `https://reverb.com/item/${marketplaceListingId}`,
       status: slug && slug !== 'live' && !terminal ? 'draft' : 'active',
-      warning: terminal ? `Listing is ${slug} on Reverb — the update was accepted but the listing is no longer for sale` : undefined,
+      warning: [terminalWarning, photoWarning].filter(Boolean).join('; ') || undefined,
     };
+  }
+
+  /**
+   * override_position only replaces/reorders positions — a photo dropped from
+   * the set lingers on the live listing until its per-image DELETE. Diff by
+   * original_url: Reverb echoes the source URL each image was uploaded from
+   * (live-pinned shape: GET /listings/:id/images → {images:[{id, original_url}]}).
+   * Images with no original_url (e.g. uploaded via the Reverb dashboard) are
+   * left alone. A single failed DELETE doesn't abort the rest — returns a
+   * warning counting what was left behind, undefined when everything cleaned.
+   */
+  private async deleteStaleImages(listingId: string, keepUrls: string[]): Promise<string | undefined> {
+    const keep = new Set(keepUrls);
+    const data = await this.request<{ images?: Array<{ id: number; original_url?: string }> }>(
+      `/listings/${listingId}/images`,
+    );
+    const stale = (data.images ?? []).filter(img => img.original_url && !keep.has(img.original_url));
+    let failed = 0;
+    for (const img of stale) {
+      try {
+        await this.request(`/listings/${listingId}/images/${img.id}`, { method: 'DELETE' });
+      } catch (err) {
+        failed++;
+        logger.warn({ listingId, imageId: img.id, err }, 'Reverb stale-image delete failed');
+      }
+    }
+    return failed ? `${failed} removed photo(s) could not be deleted on Reverb` : undefined;
   }
 
   async deleteListing(marketplaceListingId: string): Promise<void> {
