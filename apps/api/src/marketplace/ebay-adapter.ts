@@ -729,6 +729,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       orders?: Array<{
         orderId: string;
         orderFulfillmentStatus?: string;
+        cancelStatus?: { cancelState?: string };
         creationDate?: string;
         buyer: { username: string };
         pricingSummary: {
@@ -775,8 +776,10 @@ export class EbayAdapter implements MarketplaceAdapter {
         // `new Date()` and every synced order shows today's date.
         soldAt: order.creationDate ? new Date(order.creationDate) : undefined,
         // FULFILLED means the seller shipped it (on eBay or elsewhere) — without
-        // this, every synced order shows "needs shipping" forever.
-        fulfillmentStatus: order.orderFulfillmentStatus === 'FULFILLED' ? 'shipped' as const : 'unshipped' as const,
+        // this, every synced order shows "needs shipping" forever. A canceled
+        // order wins over everything: it must leave the ship queue.
+        fulfillmentStatus: order.cancelStatus?.cancelState === 'CANCELED' ? 'canceled' as const
+          : order.orderFulfillmentStatus === 'FULFILLED' ? 'shipped' as const : 'unshipped' as const,
         shippingAddress: {
           name: shipTo?.fullName ?? '',
           street1: address?.addressLine1 ?? '',

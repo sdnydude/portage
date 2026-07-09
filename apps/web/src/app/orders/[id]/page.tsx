@@ -27,7 +27,7 @@ interface OrderDetail {
   shippingCost: number;
   marketplaceFees: number;
   currency: string;
-  status: "payment_received" | "label_purchased" | "shipped" | "delivered";
+  status: "payment_received" | "label_purchased" | "shipped" | "delivered" | "canceled";
   trackingNumber: string | null;
   carrier: string | null;
   shippingLabelUrl: string | null;
@@ -43,7 +43,7 @@ interface OrderDetail {
   };
 }
 
-type OrderStatus = "payment_received" | "label_purchased" | "shipped" | "delivered";
+type OrderStatus = "payment_received" | "label_purchased" | "shipped" | "delivered" | "canceled";
 
 // ─── Helpers ───────────────────────────────────────────────
 

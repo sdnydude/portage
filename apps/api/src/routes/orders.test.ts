@@ -287,6 +287,35 @@ describe('POST /orders/sync', () => {
     expect(ageDays).toBeLessThan(91);
   });
 
+  it('heals an existing row to canceled when eBay reports the order CANCELED', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    const soldAt = new Date('2026-06-10T00:00:00Z');
+    mockGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: '26-14725-05164',
+      marketplaceListingId: '306972688941',
+      buyerUsername: 'buyer1',
+      salePrice: 306.23,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt,
+      fulfillmentStatus: 'canceled',
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    // Stuck in the ship queue since import — eBay canceled + refunded it.
+    queueSelects([{ id: 'order-1', soldAt, marketplaceFees: 0, status: 'payment_received' }]);
+    const setSpy = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValueOnce({ set: setSpy } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'canceled' }));
+  });
+
   it('falls back to the order line-item title (not a placeholder) when GetItem fails', async () => {
     const token = createTestToken({ sub: 'user-1' });
     queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);

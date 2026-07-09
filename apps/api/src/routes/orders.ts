@@ -16,7 +16,7 @@ export const ordersRouter = Router();
 
 ordersRouter.use(requireAuth);
 
-const validStatuses = ['payment_received', 'label_purchased', 'shipped', 'delivered'] as const;
+const validStatuses = ['payment_received', 'label_purchased', 'shipped', 'delivered', 'canceled'] as const;
 type OrderStatus = typeof validStatuses[number];
 
 ordersRouter.get('/', async (req, res, next) => {
@@ -97,7 +97,7 @@ ordersRouter.get('/:id', async (req, res, next) => {
 });
 
 const updateOrderSchema = z.object({
-  status: z.enum(['payment_received', 'label_purchased', 'shipped', 'delivered']).optional(),
+  status: z.enum(['payment_received', 'label_purchased', 'shipped', 'delivered', 'canceled']).optional(),
   trackingNumber: z.string().optional(),
   carrier: z.string().optional(),
   shippingLabelUrl: z.string().url().optional(),
@@ -211,6 +211,11 @@ ordersRouter.post('/sync', async (req, res, next) => {
             if (mOrder.fulfillmentStatus === 'shipped' && existing.status === 'payment_received') {
               heal.status = 'shipped';
             }
+            // Canceled wins over everything — a canceled+refunded order must
+            // leave the ship queue no matter what the local state says.
+            if (mOrder.fulfillmentStatus === 'canceled' && existing.status !== 'canceled') {
+              heal.status = 'canceled';
+            }
             if (Object.keys(heal).length > 0) {
               await db.update(orders)
                 .set(heal)
@@ -298,7 +303,8 @@ ordersRouter.post('/sync', async (req, res, next) => {
             // The marketplace knows whether the seller already shipped —
             // importing a FULFILLED order as "needs shipping" tells the seller
             // to ship something that's already in the mail.
-            status: mOrder.fulfillmentStatus === 'shipped' ? 'shipped' : 'payment_received',
+            status: mOrder.fulfillmentStatus === 'canceled' ? 'canceled'
+              : mOrder.fulfillmentStatus === 'shipped' ? 'shipped' : 'payment_received',
           }).returning();
 
           if (matchedListing) {

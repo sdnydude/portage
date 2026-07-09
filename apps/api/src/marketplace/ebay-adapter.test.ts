@@ -522,6 +522,27 @@ describe('EbayAdapter.getOrders — creationdate range filter', () => {
     // when the seller shipped it on eBay long ago.
     expect(results.map(r => r.fulfillmentStatus)).toEqual(['shipped', 'unshipped', 'unshipped']);
   });
+
+  it('maps cancelStatus CANCELED to fulfillmentStatus "canceled" — even over FULFILLED', async () => {
+    // Live case 26-14725-05164: NOT_STARTED + FULLY_REFUNDED + CANCELED sat in
+    // the ship queue forever because no canceled state existed.
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      orders: [{
+        orderId: 'o-c',
+        orderFulfillmentStatus: 'FULFILLED',
+        cancelStatus: { cancelState: 'CANCELED' },
+        creationDate: '2026-06-10T00:00:00.000Z',
+        buyer: { username: 'buyer1' },
+        pricingSummary: { total: { value: '306.23', currency: 'USD' }, deliveryCost: { value: '0' } },
+        lineItems: [{ legacyItemId: '3001', title: 'SSD' }],
+      }],
+    }), { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+
+    const results = await adapter.getOrders();
+
+    expect(results[0].fulfillmentStatus).toBe('canceled');
+  });
 });
 
 describe('resolveEbayCategoryCondition — auto-correct decision + warning policy', () => {
