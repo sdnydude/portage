@@ -106,7 +106,7 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Conversations list | apps/web/src/app/messages/page.tsx |
 | Conversation thread | apps/web/src/app/messages/[conversationKey]/page.tsx |
 | Shared types | packages/shared/src/types.ts |
-| Docker config | docker-compose.yml + docker-compose.override.yml |
+| Docker config | docker-compose.yml (+ opt-in docker-compose.dev.yml) |
 | Environment template | .env.example |
 | Docs CI/CD workflow | .github/workflows/deploy-docs.yml |
 | Docs source | website/docs/ |
@@ -160,6 +160,7 @@ npx tsx apps/api/src/scripts/promote-admin.ts <email>
 - HTTPS dev mode requires certs at `certs/key.pem` + `certs/cert.pem` (Next.js uses `--experimental-https`)
 - Secrets managed via Doppler — `.env` auto-synced by SessionStart hook
 - Shared package must be rebuilt after changes: `npm run build -w packages/shared`
+- Both containers are image-baked (no bind-mounts): deploy = `docker compose up -d --build <service>`. Hot-reload dev is explicit opt-in only: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build portage-api`
 
 ---
 

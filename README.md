@@ -101,7 +101,7 @@ portage/
 ├── website/          # Docusaurus docs site (deployed via CI)
 ├── docs/             # TODO roadmap, admin plan
 ├── docker-compose.yml
-└── docker-compose.override.yml  # Dev volume mounts
+└── docker-compose.dev.yml  # Opt-in hot-reload dev overlay (never auto-loaded)
 ```
 
 ## Scripts
