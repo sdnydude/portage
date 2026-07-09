@@ -5,6 +5,7 @@ import { useAdminApi } from "@/hooks/use-admin";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { AllowlistSection } from "@/components/admin/allowlist-section";
+import { FaqSection } from "@/components/admin/faq-section";
 
 interface SettingsMap {
   [key: string]: unknown;
@@ -104,6 +105,8 @@ export default function AdminSettingsPage() {
       <h1 className="text-xl font-bold text-text-primary font-[family-name:var(--font-instrument)]">App Settings</h1>
 
       <AllowlistSection />
+
+      <FaqSection />
 
       <div className="bg-surface rounded-xl border border-border p-4">
         <h2 className="text-sm font-semibold text-text-primary mb-2">Tier Limits</h2>
