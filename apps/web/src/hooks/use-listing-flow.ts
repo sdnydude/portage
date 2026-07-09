@@ -14,6 +14,7 @@ import type {
 } from "@portage/shared";
 import type { AspectRequirement } from "@/components/listing/aspect-fill-sheet";
 import { resolvePublishPrice } from "@/lib/price";
+import { scopedPublishIdempotencyKey } from "@/lib/publish-idempotency";
 
 export interface PublishOptions {
   ebayPreparedFields?: EbayPreparedFields | null;
@@ -70,14 +71,6 @@ const INITIAL_STATE: ListingFlowState = {
   publishWarning: null,
   publishIdempotencyKey: null,
 };
-
-// crypto.randomUUID requires a secure context (HTTPS/localhost); plain-HTTP LAN
-// dev must fall back rather than crash the publish.
-function newPublishAttemptId(): string {
-  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 function revokeLocalUrls(photos: ListingFlowState['photos']) {
   for (const p of photos) {
@@ -531,13 +524,9 @@ export function useListingFlow() {
 
       // Dedup key scoped to this item+marketplace: reused verbatim on retry so the
       // server collides on (userId, idempotencyKey) and resumes the stuck draft row
-      // instead of inserting an orphan per attempt. A different target (item or
-      // marketplace changed) mints a fresh key. Written to stateRef immediately so
-      // the failure-path saveDraft below persists it for cross-session retries.
-      const keyScope = `${itemId}:${s.marketplace}:`;
-      const idempotencyKey = s.publishIdempotencyKey?.startsWith(keyScope)
-        ? s.publishIdempotencyKey
-        : `${keyScope}${newPublishAttemptId()}`;
+      // instead of inserting an orphan per attempt. Written to stateRef immediately
+      // so the failure-path saveDraft below persists it for cross-session retries.
+      const idempotencyKey = scopedPublishIdempotencyKey(itemId, s.marketplace, s.publishIdempotencyKey);
       if (idempotencyKey !== s.publishIdempotencyKey) {
         stateRef.current = { ...stateRef.current, publishIdempotencyKey: idempotencyKey };
         setState(prev => ({ ...prev, publishIdempotencyKey: idempotencyKey }));
