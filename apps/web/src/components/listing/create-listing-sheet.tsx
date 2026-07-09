@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { resolvePublishMode } from "@/lib/publish-mode";
 import type { PublishPriceSource } from "@/lib/price";
 import { api, ApiError } from "@/lib/api";
+import { scopedPublishIdempotencyKey } from "@/lib/publish-idempotency";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { DisclaimerSheet } from "./disclaimer-sheet";
@@ -68,6 +69,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // saved-as-draft-with-eBay's-reason) instead of silently navigating away.
   const [result, setResult] = useState<PublishResult | null>(null);
 
+  // Dedup key reused across retries of the same item+marketplace (aspects fill,
+  // network error) so the server resumes the insert-first row instead of
+  // inserting an orphan draft per attempt; cleared on success below.
+  const idempotencyKeyRef = useRef<string | null>(null);
+
   // Single create-and-publish call; `aspects` carries seller-filled item
   // specifics on a retry after EBAY_ASPECTS_REQUIRED.
   const submitListing = async (priceNum: number, aspects?: Record<string, string[]>, suppress7d = false) => {
@@ -76,7 +82,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
     const effectiveAspects = aspects ?? initialAspects;
     if (effectiveAspects && Object.keys(effectiveAspects).length > 0) fields.aspects = effectiveAspects;
-    return api<PublishResult>("/listings", {
+    idempotencyKeyRef.current = scopedPublishIdempotencyKey(itemId, marketplace, idempotencyKeyRef.current);
+    const res = await api<PublishResult>("/listings", {
       method: "POST",
       body: {
         itemId,
@@ -89,9 +96,13 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         // F3b: opt-in "don't show the terms sheet for 7 days" (display only).
         ...(publishNow && suppress7d ? { suppress7d: true } : {}),
         ...(Object.keys(fields).length > 0 ? { marketplaceSpecificFields: fields } : {}),
+        idempotencyKey: idempotencyKeyRef.current,
       },
       token: token!,
     });
+    // Attempt complete — a later publish from this sheet is a new intent.
+    idempotencyKeyRef.current = null;
+    return res;
   };
 
   const handleCreate = async (suppress7d = false) => {
@@ -109,8 +120,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       setResult(res); // show the result; onCreated() fires when the seller dismisses it
     } catch (err) {
       // Required item specifics: open the fill sheet instead of dead-ending.
-      // The gate throws before any listing row is created, so the retry won't
-      // duplicate.
+      // The gate throws from the adapter AFTER the insert-first row exists; the
+      // retry reuses idempotencyKeyRef so the server resumes that row.
       if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
         setShowDisclaimer(false); // hand off from the terms sheet to the aspect sheet
         setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);

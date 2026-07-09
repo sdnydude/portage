@@ -391,15 +391,41 @@ listingsRouter.post('/', async (req, res, next) => {
       }).returning();
     } catch (e) {
       // A duplicate (userId, idempotencyKey) means a concurrent or retried submit already
-      // created this listing — replay it instead of double-listing on eBay (R3). The
-      // partial unique index is what raises 23505 before any AddFixedPriceItem call.
-      if ((e as { code?: string }).code === '23505') {
+      // created this listing (R3). The partial unique index is what raises 23505 before
+      // any AddFixedPriceItem call. A row that already reached the marketplace (or a
+      // draft-mode submit) replays as-is — never double-list. But a live-publish retry
+      // against a row stuck as an unpublished draft (insert succeeded, adapter call
+      // failed) must RESUME the publish: returning the stale draft would report a
+      // silent no-op "success" to the client.
+      // drizzle wraps driver errors in DrizzleQueryError — the Postgres code rides
+      // on .cause, not the top level (live-proven 2026-07-09; the top-level-only
+      // check 500'd every same-key replay in production).
+      const pgCode = (e as { code?: string }).code
+        ?? ((e as { cause?: { code?: string } }).cause?.code);
+      if (pgCode === '23505') {
         const [existing] = await db.select().from(listings)
           .where(and(eq(listings.userId, userId), eq(listings.idempotencyKey, idempotencyKey)))
           .limit(1);
-        if (existing) return res.status(201).json(existing);
+        if (existing) {
+          const resumable = shouldPublish && existing.status === 'draft' && !existing.marketplaceListingId;
+          if (!resumable) return res.status(201).json(existing);
+          // Refresh the stuck row from the retry body — the user may have edited
+          // price/fields between attempts, and the publish below reads body.*.
+          [listing] = await db.update(listings)
+            .set({
+              price: body.price,
+              currency: body.currency,
+              marketplaceSpecificFields: body.marketplaceSpecificFields ?? null,
+              updatedAt: new Date(),
+            })
+            .where(eq(listings.id, existing.id))
+            .returning();
+        } else {
+          throw e;
+        }
+      } else {
+        throw e;
       }
-      throw e;
     }
 
     let status: 'draft' | 'active' = 'draft';

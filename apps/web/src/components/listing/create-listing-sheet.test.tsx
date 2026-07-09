@@ -392,3 +392,42 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     expect(listingsCalls).toBe(2);
   });
 });
+
+describe("CreateListingSheet — publish idempotencyKey", () => {
+  it("sends the SAME idempotencyKey on the aspects-retry as on the failed first publish", async () => {
+    let listingsCalls = 0;
+    const bodies: Array<{ idempotencyKey?: string }> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") {
+        listingsCalls += 1;
+        bodies.push((opts?.body ?? {}) as { idempotencyKey?: string });
+        if (listingsCalls === 1) {
+          throw new h.ApiError(400, "EBAY_ASPECTS_REQUIRED", "eBay needs these item specifics filled in: Type", [
+            { name: "Type", values: ["Dynamic", "Condenser"] },
+          ]);
+        }
+        return { id: "L1", status: "active" };
+      }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Publish immediately").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms"));
+
+    await screen.findByText("Complete eBay details");
+    fireEvent.click(screen.getByRole("button", { name: "Dynamic" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save & publish" }));
+    await screen.findByText("Published");
+
+    // The first attempt's insert-first row is keyed server-side; the retry must
+    // collide on it (resume) instead of inserting an orphan draft per attempt.
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0].idempotencyKey).toEqual(expect.any(String));
+    expect(bodies[0].idempotencyKey!.length).toBeGreaterThan(0);
+    expect(bodies[1].idempotencyKey).toBe(bodies[0].idempotencyKey);
+  });
+});

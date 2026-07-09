@@ -377,6 +377,12 @@ export interface ListingFlowState {
   // Set when the listing row was created but the marketplace publish fell back
   // to draft (e.g. eBay rejected it) — carries the marketplace's actual reason.
   publishWarning: string | null;
+  // Dedup key for POST /listings, scoped as `${itemId}:${marketplace}:${random}`.
+  // Reused verbatim on retry so the server collides on (userId, idempotencyKey)
+  // and resumes the stuck row instead of inserting an orphan draft per attempt;
+  // cleared on success. Optional: drafts persisted before this field existed
+  // resume with it undefined.
+  publishIdempotencyKey?: string | null;
 }
 
 export interface ListingDraft {

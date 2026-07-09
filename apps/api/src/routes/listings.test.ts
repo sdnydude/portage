@@ -147,6 +147,117 @@ describe('POST /listings', () => {
     expect(mockCreateListing).not.toHaveBeenCalled(); // must NOT publish a second time
   });
 
+  it('resumes the publish when the colliding row is an unpublished draft (retry after failed publish)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    // insert-first collides: a prior live-publish attempt inserted the row, then
+    // the adapter call failed — the row is still a draft with no marketplace id.
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value'), { code: '23505' })),
+      }),
+    } as any);
+    mockSelectOnce([{ id: 'listing-existing', status: 'draft', marketplaceListingId: null }]); // prior row for this key
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
+    mockSelectOnce([]); // footer lookup
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: 'listing-existing', status: 'active', marketplaceListingId: '3001' }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    // Returning the stale draft here would report a silent no-op "success" to the
+    // client — the retry must actually publish and return the live row.
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe('listing-existing');
+    expect(res.body.status).toBe('active');
+    expect(mockCreateListing).toHaveBeenCalledTimes(1);
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ marketplaceListingId: '3001' }));
+  });
+
+  it('refreshes the resumed row from the retry body so an edited price is what gets published', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value'), { code: '23505' })),
+      }),
+    } as any);
+    // Prior attempt inserted the row at 199; the user fixed the price to 250 and retried.
+    mockSelectOnce([{ id: 'listing-existing', status: 'draft', marketplaceListingId: null, price: 199 }]);
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
+    mockSelectOnce([]); // footer lookup
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: 'listing-existing', status: 'active', marketplaceListingId: '3001' }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+
+    await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 250, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    // The stale draft row must be refreshed before publish — otherwise the row keeps
+    // the old price while eBay lists the new one (or vice versa).
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ price: 250 }));
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({ price: 250 }));
+  });
+
+  it('returns the existing row untouched on a draft-mode collision (pure dedup, no resume)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value'), { code: '23505' })),
+      }),
+    } as any);
+    mockSelectOnce([{ id: 'listing-existing', status: 'draft', marketplaceListingId: null }]);
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'draft', idempotencyKey: 'dup-key' });
+
+    // Draft-mode never publishes, so a collision is a double-submit — replay as-is.
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe('listing-existing');
+    expect(mockCreateListing).not.toHaveBeenCalled();
+    expect(vi.mocked(db.update)).not.toHaveBeenCalled();
+  });
+
+  it('detects the 23505 when drizzle wraps it in DrizzleQueryError (code on e.cause)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    // What postgres-js + drizzle actually throw live: a DrizzleQueryError whose
+    // .cause carries the PostgresError with code 23505 — NOT a bare error with a
+    // top-level code. Live-proven 2026-07-09: the top-level-only check 500'd every
+    // same-key replay in production.
+    const wrapped = Object.assign(new Error('Failed query: insert into "listings" ...'), {
+      cause: Object.assign(new Error('duplicate key value violates unique constraint "uq_listings_idempotency_key"'), { code: '23505' }),
+    });
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(wrapped),
+      }),
+    } as any);
+    mockSelectOnce([{ id: 'listing-existing', status: 'active', marketplaceListingId: '3001' }]);
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe('listing-existing');
+    expect(mockCreateListing).not.toHaveBeenCalled();
+  });
+
   it('merges item weight/dimensions into marketplaceSpecific on eBay publish', async () => {
     mockSelectOnce([
       { ...MOCK_ITEM, weightOz: 56, lengthIn: 10, widthIn: 8, heightIn: 4, ebayPackageType: 'MAILING_BOX' },
