@@ -211,6 +211,36 @@ describe('POST /listings', () => {
     expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({ price: 250 }));
   });
 
+  it('replays without publishing when a concurrent retry already claimed the stuck draft', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value'), { code: '23505' })),
+      }),
+    } as any);
+    // Both retries read the same resumable draft…
+    mockSelectOnce([{ id: 'listing-existing', status: 'draft', marketplaceListingId: null }]);
+    // …but the conditional claim UPDATE (status='draft' AND marketplace_listing_id
+    // IS NULL) returns no row for the loser — the winner already claimed it.
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    // The loser re-reads and replays whatever state the winner produced.
+    mockSelectOnce([{ id: 'listing-existing', status: 'active', marketplaceListingId: '3001' }]);
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    // Publishing here would double-list on eBay — the unique index only
+    // serializes the INSERT; the claim UPDATE must serialize the resume.
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe('listing-existing');
+    expect(mockCreateListing).not.toHaveBeenCalled();
+  });
+
   it('returns the existing row untouched on a draft-mode collision (pure dedup, no resume)', async () => {
     mockSelectOnce([MOCK_ITEM]);
     vi.mocked(db.insert).mockReturnValue({
@@ -882,9 +912,11 @@ describe('POST /listings/:id/publish', () => {
 });
 
 describe('PATCH /listings/:id', () => {
-  it('fails typed (400 MARKETPLACE_UNSUPPORTED) when a stray parked-etsy row hits the sync path', async () => {
+  it('saves locally with a warning when a stray parked-etsy row hits the sync path', async () => {
     // Etsy is parked (tag etsy-parked-2026-07): the DB enum value remains, so a
-    // row CAN carry marketplace='etsy' — the sync must dead-end typed, not crash.
+    // row CAN carry marketplace='etsy'. The local write lands BEFORE the sync,
+    // so throwing 400 here would tell the client nothing saved when the new
+    // price is already persisted — report the truth: saved + not synced.
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'etsy',
       itemId: ITEM_ID, price: 199, currency: 'USD',
@@ -905,8 +937,9 @@ describe('PATCH /listings/:id', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .send({ price: 179 });
 
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('MARKETPLACE_UNSUPPORTED');
+    expect(res.status).toBe(200);
+    expect(res.body.price).toBe(179); // the local save is real — report it
+    expect(res.body.warning).toMatch(/not supported|unavailable/i);
   });
 
   it('appends the seller default footer when syncing an update to the marketplace', async () => {
