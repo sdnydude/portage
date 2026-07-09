@@ -123,6 +123,171 @@ describe('admin functional guards', () => {
     expect(setFn).toHaveBeenCalledWith(expect.objectContaining({ subscriptionTier: 'beta-tester' }));
   });
 
+  it('PATCH /admin/users/:id sets and clears limit overrides, trial, credits, and name', async () => {
+    const { db } = await import('../db/index.js');
+    const targetId = '00000000-0000-0000-0000-000000000003';
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: targetId, email: 't@example.com', role: 'user', subscriptionTier: 'free' }]),
+        }),
+      }),
+    } as any);
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+    const setFn = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setFn } as any);
+
+    const res = await request(app)
+      .patch(`/admin/users/${targetId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        limitOverrides: { aiScansPerMonth: 100, bgRemovalsPerMonth: null },
+        trialEndsAt: '2026-08-01T00:00:00.000Z',
+        aiListingCredits: 5,
+        displayName: 'Tess Ter',
+      });
+
+    expect(res.status).toBe(200);
+    expect(setFn).toHaveBeenCalledWith(expect.objectContaining({
+      limitOverrides: { aiScansPerMonth: 100, bgRemovalsPerMonth: null },
+      aiListingCredits: 5,
+      displayName: 'Tess Ter',
+    }));
+    const setArg = setFn.mock.calls[0][0] as Record<string, unknown>;
+    expect(new Date(setArg.trialEndsAt as string).toISOString()).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('POST /admin/users creates the row, adds the CF allowlist entry, and invites', async () => {
+    const { db } = await import('../db/index.js');
+    const { addEmail } = await import('../lib/cf-allowlist.js');
+    const { sendBetaInvite } = await import('../lib/email.js');
+    vi.mocked(addEmail).mockResolvedValue(['new@x.com']);
+    vi.mocked(sendBetaInvite).mockResolvedValue(undefined);
+    // No existing user with that email.
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    } as any);
+    const insertValues = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ id: 'user-new', email: 'new@x.com', role: 'user', subscriptionTier: 'beta-tester' }]),
+    });
+    vi.mocked(db.insert).mockReturnValue({ values: insertValues } as any);
+
+    const res = await request(app)
+      .post('/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'New@X.com ', displayName: 'New Tester', subscriptionTier: 'beta-tester', invite: true });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.id).toBe('user-new');
+    expect(res.body.invited).toBe(true);
+    // Without the allowlist entry the account cannot log in (CF is the IdP).
+    expect(vi.mocked(addEmail)).toHaveBeenCalledWith('new@x.com');
+    expect(vi.mocked(sendBetaInvite)).toHaveBeenCalledWith('new@x.com');
+    // Email normalized on the row itself.
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ email: 'new@x.com' }));
+  });
+
+  it('archiving (disabled=true) also removes the email from the CF allowlist; enable re-adds it', async () => {
+    const { db } = await import('../db/index.js');
+    const { addEmail, removeEmail } = await import('../lib/cf-allowlist.js');
+    vi.mocked(removeEmail).mockResolvedValue([]);
+    vi.mocked(addEmail).mockResolvedValue(['t@example.com']);
+    const targetId = '00000000-0000-0000-0000-000000000004';
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: targetId, email: 't@example.com', role: 'user', subscriptionTier: 'free' }]),
+        }),
+      }),
+    } as any);
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+    const setFn = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setFn } as any);
+
+    // Archive: the DB flag alone leaves the edge door open — CF is the IdP.
+    const archive = await request(app)
+      .patch(`/admin/users/${targetId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ disabled: true, disabledReason: 'beta wrap-up' });
+    expect(archive.status).toBe(200);
+    expect(vi.mocked(removeEmail)).toHaveBeenCalledWith('t@example.com');
+
+    const enable = await request(app)
+      .patch(`/admin/users/${targetId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ disabled: false });
+    expect(enable.status).toBe(200);
+    expect(vi.mocked(addEmail)).toHaveBeenCalledWith('t@example.com');
+  });
+
+  it('DELETE blocks a user with a live Stripe subscription (409) and cleans the allowlist on success', async () => {
+    const { db } = await import('../db/index.js');
+    const { removeEmail } = await import('../lib/cf-allowlist.js');
+    vi.mocked(removeEmail).mockResolvedValue([]);
+    const targetId = '00000000-0000-0000-0000-000000000005';
+
+    // Case 1: live Stripe subscription → block; billing truth lives in Stripe.
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: targetId, email: 't@example.com', stripeSubscriptionId: 'sub_123' }]),
+        }),
+      }),
+    } as any);
+    const blocked = await request(app)
+      .delete(`/admin/users/${targetId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.code).toBe('STRIPE_SUBSCRIPTION_ACTIVE');
+    expect(vi.mocked(db.delete)).not.toHaveBeenCalled();
+
+    // Case 2: clean account → delete + allowlist removal (otherwise the email
+    // can re-provision a fresh row on next CF login).
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: targetId, email: 't@example.com', stripeSubscriptionId: null }]),
+        }),
+      }),
+    } as any);
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) } as any);
+    const ok = await request(app)
+      .delete(`/admin/users/${targetId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(ok.status).toBe(200);
+    expect(vi.mocked(removeEmail)).toHaveBeenCalledWith('t@example.com');
+  });
+
+  it('DELETE maps the audit-history FK (23503, ex-admin) to a typed 409 instead of a 500', async () => {
+    const { db } = await import('../db/index.js');
+    const targetId = '00000000-0000-0000-0000-000000000006';
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: targetId, email: 'exadmin@x.com', stripeSubscriptionId: null }]),
+        }),
+      }),
+    } as any);
+    // adminAuditLog.adminUserId is RESTRICT — drizzle wraps the PG error, code on .cause.
+    vi.mocked(db.delete).mockReturnValue({
+      where: vi.fn().mockRejectedValue(Object.assign(new Error('update or delete violates foreign key'), {
+        cause: Object.assign(new Error('fk'), { code: '23503' }),
+      })),
+    } as any);
+
+    const res = await request(app)
+      .delete(`/admin/users/${targetId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('HAS_AUDIT_HISTORY');
+  });
+
   it('GET /admin/allowlist returns the CF Access allowlist emails', async () => {
     const { getAllowlist } = await import('../lib/cf-allowlist.js');
     vi.mocked(getAllowlist).mockResolvedValue(['a@x.com', 'b@y.com']);

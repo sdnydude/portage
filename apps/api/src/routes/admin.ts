@@ -181,6 +181,57 @@ adminRouter.get('/users', async (req, res, next) => {
   }
 });
 
+
+const adminUserCreateSchema = z.object({
+  email: z.string().trim().email().max(255),
+  displayName: z.string().max(255).optional(),
+  role: z.enum(['user', 'admin']).optional(),
+  subscriptionTier: z.enum(['free', 'pro', 'beta-tester']).optional(),
+  invite: z.boolean().optional(),
+});
+
+// Create a user ahead of their first login. CF Access is the IdP (no local
+// password): the allowlist entry is what actually grants access, the row just
+// pre-sets role/tier/name so first login doesn't land on defaults. The invite
+// email is best-effort — mail failure never fails the create.
+adminRouter.post('/users', async (req, res, next) => {
+  try {
+    const adminUser = req.user!;
+    const body = adminUserCreateSchema.parse(req.body);
+    const email = body.email.trim().toLowerCase();
+
+    const [existing] = await db.select({ id: users.id })
+      .from(users).where(eq(users.email, email)).limit(1);
+    if (existing) throw new AppError(409, 'EMAIL_EXISTS', 'A user with this email already exists');
+
+    const [user] = await db.insert(users).values({
+      email,
+      displayName: body.displayName ?? null,
+      role: body.role ?? 'user',
+      subscriptionTier: body.subscriptionTier ?? 'free',
+    }).returning();
+
+    // Allowlist BEFORE responding: a row without edge access is a support trap.
+    await addEmail(email);
+    await logAuditAction(adminUser.sub, 'create_user', 'user', user.id, { email, role: user.role, tier: user.subscriptionTier });
+
+    let invited = false;
+    if (body.invite) {
+      try {
+        await sendBetaInvite(email);
+        invited = true;
+      } catch (mailErr) {
+        logger.warn({ email, err: mailErr instanceof Error ? mailErr.message : String(mailErr) }, 'Invite email failed — user still created + allowlisted');
+      }
+    }
+
+    logger.info({ adminId: adminUser.sub, userId: user.id, email, invited }, 'Admin created user');
+    res.status(201).json({ user, invited });
+  } catch (err) {
+    next(err);
+  }
+});
+
 adminRouter.get('/users/:id', async (req, res, next) => {
   try {
     const [user] = await db.select({
@@ -226,11 +277,24 @@ adminRouter.get('/users/:id', async (req, res, next) => {
   }
 });
 
+
+const TIER_LIMIT_KEYS = ['aiScansPerMonth', 'aiListingsPerMonth', 'bgRemovalsPerMonth', 'porterExchangesPerDay', 'marketplaces'] as const;
+const adminUserUpdateSchema = z.object({
+  displayName: z.string().max(255).nullable().optional(),
+  // Grant/extend/clear a trial; ISO string or null.
+  trialEndsAt: z.string().datetime().nullable().optional(),
+  aiListingCredits: z.number().int().min(0).max(100000).optional(),
+  // Partial per-meter overrides: number wins over tier, null = unlimited,
+  // absent = tier default. Whole-object null clears every override.
+  limitOverrides: z.record(z.enum(TIER_LIMIT_KEYS), z.number().int().min(0).max(1000000).nullable()).nullable().optional(),
+}).passthrough();
+
 adminRouter.patch('/users/:id', async (req, res, next) => {
   try {
     const adminUser = req.user!;
     const targetId = req.params.id;
     const { role, subscriptionTier, disabled, disabledReason } = req.body;
+    const parsed = adminUserUpdateSchema.parse(req.body);
 
     if (targetId === adminUser.sub) {
       throw new AppError(400, 'SELF_MODIFY', 'Cannot modify your own admin account');
@@ -256,13 +320,30 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
     if (disabled === true) {
       updates.disabledAt = new Date();
       updates.disabledReason = disabledReason || null;
-      // Sessions die at the edge: disabling here plus removing the email from
-      // the CF Access allowlist; internal access tokens expire within 15 min.
+      // Sessions die at the edge: the DB flag alone leaves the door open — CF
+      // Access is the IdP, so archiving must also pull the allowlist entry.
+      // Internal access tokens expire within 15 min.
+      await removeEmail(target.email);
       await logAuditAction(adminUser.sub, 'disable_user', 'user', targetId, { reason: disabledReason });
     } else if (disabled === false) {
       updates.disabledAt = null;
       updates.disabledReason = null;
+      await addEmail(target.email);
       await logAuditAction(adminUser.sub, 'enable_user', 'user', targetId, {});
+    }
+
+    if (parsed.displayName !== undefined) updates.displayName = parsed.displayName;
+    if (parsed.trialEndsAt !== undefined) {
+      updates.trialEndsAt = parsed.trialEndsAt === null ? null : new Date(parsed.trialEndsAt);
+      await logAuditAction(adminUser.sub, 'change_trial', 'user', targetId, { to: parsed.trialEndsAt });
+    }
+    if (parsed.aiListingCredits !== undefined) {
+      updates.aiListingCredits = parsed.aiListingCredits;
+      await logAuditAction(adminUser.sub, 'set_credits', 'user', targetId, { to: parsed.aiListingCredits });
+    }
+    if (parsed.limitOverrides !== undefined) {
+      updates.limitOverrides = parsed.limitOverrides;
+      await logAuditAction(adminUser.sub, 'set_limit_overrides', 'user', targetId, { to: parsed.limitOverrides });
     }
 
     if (Object.keys(updates).length === 0) {
@@ -287,12 +368,38 @@ adminRouter.delete('/users/:id', async (req, res, next) => {
       throw new AppError(400, 'SELF_DELETE', 'Cannot delete your own account');
     }
 
-    const [target] = await db.select({ id: users.id, email: users.email })
+    const [target] = await db.select({ id: users.id, email: users.email, stripeSubscriptionId: users.stripeSubscriptionId })
       .from(users).where(eq(users.id, targetId)).limit(1);
 
     if (!target) throw new AppError(404, 'NOT_FOUND', 'User not found');
 
-    await db.delete(users).where(eq(users.id, targetId));
+    // Billing truth lives in Stripe: deleting the row would orphan a live
+    // subscription that keeps charging. Cancel it in Stripe first (or archive).
+    if (target.stripeSubscriptionId) {
+      throw new AppError(409, 'STRIPE_SUBSCRIPTION_ACTIVE',
+        'This user has a Stripe subscription. Cancel it in Stripe first, or archive the user instead.');
+    }
+
+    try {
+      await db.delete(users).where(eq(users.id, targetId));
+    } catch (e) {
+      // adminAuditLog.adminUserId is RESTRICT: an ex-admin's audit rows block
+      // hard-delete by design (the trail must survive). drizzle wraps the PG
+      // error — the 23503 code rides on .cause.
+      const pgCode = (e as { code?: string }).code ?? ((e as { cause?: { code?: string } }).cause?.code);
+      if (pgCode === '23503') {
+        throw new AppError(409, 'HAS_AUDIT_HISTORY',
+          'This user has admin audit history that must be preserved. Archive them instead.');
+      }
+      throw e;
+    }
+    // Pull the edge access too — a lingering allowlist entry would just
+    // re-provision a fresh row on the next CF login.
+    try {
+      await removeEmail(target.email);
+    } catch (cfErr) {
+      logger.warn({ email: target.email, err: cfErr instanceof Error ? cfErr.message : String(cfErr) }, 'User deleted but allowlist removal failed — remove manually');
+    }
     await logAuditAction(adminUser.sub, 'delete_user', 'user', targetId, { email: target.email });
 
     logger.info({ adminId: adminUser.sub, targetId, email: target.email }, 'Admin deleted user');

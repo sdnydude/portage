@@ -10,7 +10,7 @@ import { AppError } from '../middleware/error.js';
 import { env } from '../lib/env.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
-import { computeEffectiveTier } from '../lib/billing-utils.js';
+import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
 import { limitsForTier } from '@portage/shared';
 
 const logger = createLogger('images');
@@ -229,12 +229,13 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
       trialEndsAt: users.trialEndsAt,
       bgRemovalsThisMonth: users.bgRemovalsThisMonth,
       scanCountResetAt: users.scanCountResetAt,
+      limitOverrides: users.limitOverrides,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (!billingUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
 
     const tier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
-    const limit = limitsForTier(tier).bgRemovalsPerMonth;
+    const limit = effectiveLimits(tier, billingUser.limitOverrides).bgRemovalsPerMonth;
 
     let resetFired = false;
     if (limit !== null) {

@@ -87,6 +87,25 @@ describe('GET /usage', () => {
   });
 });
 
+describe('GET /usage — per-user limit overrides', () => {
+  it('an admin-set override beats the tier limit (free user granted 100 scans)', async () => {
+    mockSelectOnce([{
+      aiScansThisMonth: 30, aiListingsThisMonth: 0, aiListingCredits: 0,
+      bgRemovalsThisMonth: 0, subscriptionTier: 'free', trialEndsAt: null,
+      limitOverrides: { aiScansPerMonth: 100 },
+    }]);
+
+    const res = await request(app)
+      .get('/usage')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.aiScans.limit).toBe(100);
+    // Meters without an override keep the tier limit.
+    expect(res.body.bgRemovals.limit).not.toBe(100);
+  });
+});
+
 describe('POST /usage/bg-removal', () => {
   it('allows while under the tier limit, with the remaining count', async () => {
     mockSelectOnce([{

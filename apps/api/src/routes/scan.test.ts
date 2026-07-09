@@ -230,6 +230,24 @@ describe('POST /scan/refine', () => {
     expect(res.status).toBe(400);
   });
 
+  it('honors an admin-set scan-limit override — 30 scans pass when the override is 100', async () => {
+    mockUserSelect({
+      subscriptionTier: 'free',
+      trialEndsAt: null,
+      aiScansThisMonth: 30, // over the free-tier 25, under the override
+      limitOverrides: { aiScansPerMonth: 100 },
+    });
+    mockUpdateReturns();
+
+    const res = await request(app)
+      .post('/scan/refine')
+      .set('Authorization', `Bearer ${token}`)
+      .send(validBody);
+
+    // The gate must read the override, not the raw tier limit.
+    expect(res.status).not.toBe(429);
+  });
+
   it('returns 429 LIMIT_REACHED when a free-tier user is at the monthly scan limit', async () => {
     mockUserSelect({
       subscriptionTier: 'free',

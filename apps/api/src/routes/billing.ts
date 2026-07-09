@@ -8,7 +8,7 @@ import { users, stripeEvents } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { createLogger } from '../lib/logger.js';
-import { computeEffectiveTier } from '../lib/billing-utils.js';
+import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
 import { limitsForTier } from '@portage/shared';
 
 const logger = createLogger('billing');
@@ -249,12 +249,13 @@ billingRouter.get('/status', requireAuth, async (req: Request, res: Response, ne
       aiListingsThisMonth: users.aiListingsThisMonth,
       aiListingCredits: users.aiListingCredits,
       bgRemovalsThisMonth: users.bgRemovalsThisMonth,
+      limitOverrides: users.limitOverrides,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
 
     const effectiveTier = computeEffectiveTier(user.subscriptionTier, user.trialEndsAt);
-    const limits = limitsForTier(effectiveTier);
+    const limits = effectiveLimits(effectiveTier, user.limitOverrides);
 
     const priceMonthly = process.env.STRIPE_PRICE_MONTHLY;
     const priceAnnual = process.env.STRIPE_PRICE_ANNUAL;

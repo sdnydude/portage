@@ -35,6 +35,10 @@ export const users = pgTable('users', {
   aiScansThisMonth: integer('ai_scans_this_month').notNull().default(0),
   aiListingsThisMonth: integer('ai_listings_this_month').notNull().default(0),
   aiListingCredits: integer('ai_listing_credits').notNull().default(0),
+  // Admin-set per-user meter overrides: partial {aiScansPerMonth, aiListingsPerMonth,
+  // bgRemovalsPerMonth, porterExchangesPerDay, marketplaces} — number wins over the
+  // tier limit, null key = unlimited, absent key = tier default.
+  limitOverrides: jsonb('limit_overrides'),
   bgRemovalsThisMonth: integer('bg_removals_this_month').notNull().default(0),
   scanCountResetAt: timestamp('scan_count_reset_at').notNull().defaultNow(),
   onboardingCompleted: boolean('onboarding_completed').notNull().default(false),

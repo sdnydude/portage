@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { chat, chatStream, type ToolDef, type StreamToolResult } from '../lib/ai-client.js';
 import { limitsForTier } from '@portage/shared';
-import { computeEffectiveTier } from '../lib/billing-utils.js';
+import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
 
 const logger = createLogger('porter');
 
@@ -290,6 +290,7 @@ porterRouter.post('/stream', async (req, res, next) => {
     const [porterUser] = await db.select({
       subscriptionTier: users.subscriptionTier,
       trialEndsAt: users.trialEndsAt,
+      limitOverrides: users.limitOverrides,
       porterMessagesToday: sql<number>`
         (select coalesce(sum(jsonb_array_length(messages)), 0) from ${conversations}
          where user_id = ${userId}
@@ -304,7 +305,7 @@ porterRouter.post('/stream', async (req, res, next) => {
     }
 
     const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
-    const exchangeLimit = limitsForTier(tier).porterExchangesPerDay;
+    const exchangeLimit = effectiveLimits(tier, porterUser.limitOverrides).porterExchangesPerDay;
     // null = unlimited (beta testers)
     const messageThreshold = exchangeLimit === null ? null : exchangeLimit * 2;
 
@@ -418,6 +419,7 @@ porterRouter.post('/message', async (req, res, next) => {
     const [porterUser] = await db.select({
       subscriptionTier: users.subscriptionTier,
       trialEndsAt: users.trialEndsAt,
+      limitOverrides: users.limitOverrides,
       porterMessagesToday: sql<number>`
         (select coalesce(sum(jsonb_array_length(messages)), 0) from ${conversations}
          where user_id = ${userId}
@@ -429,7 +431,7 @@ porterRouter.post('/message', async (req, res, next) => {
     if (!porterUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
 
     const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
-    const exchangeLimit = limitsForTier(tier).porterExchangesPerDay;
+    const exchangeLimit = effectiveLimits(tier, porterUser.limitOverrides).porterExchangesPerDay;
     // null = unlimited (beta testers)
     const messageThreshold = exchangeLimit === null ? null : exchangeLimit * 2;
 
