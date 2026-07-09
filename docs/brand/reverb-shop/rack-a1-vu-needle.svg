@@ -1,0 +1,70 @@
+<svg width="960" height="160" viewBox="0 0 960 160" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  
+  <radialGradient id="screwG" cx="0.38" cy="0.32" r="1">
+    <stop offset="0" stop-color="#9a958c"/><stop offset="0.55" stop-color="#5b574f"/><stop offset="1" stop-color="#2c2a26"/>
+  </radialGradient>
+  <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.4"/></filter>
+  <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#33333a"/><stop offset="0.06" stop-color="#2b2b31"/><stop offset="0.5" stop-color="#232327"/><stop offset="0.94" stop-color="#1b1b1f"/><stop offset="1" stop-color="#141416"/>
+  </linearGradient>
+  <linearGradient id="ear" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26262b"/><stop offset="1" stop-color="#101013"/></linearGradient>
+  <radialGradient id="knobDark" cx="0.42" cy="0.36" r="1"><stop offset="0" stop-color="#3c3c42"/><stop offset="0.7" stop-color="#242428"/><stop offset="1" stop-color="#121214"/></radialGradient>
+  <linearGradient id="vuFace" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0e7cf"/><stop offset="1" stop-color="#ddd0ae"/></linearGradient>
+  <radialGradient id="pwr" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#ffb37a"/><stop offset="0.5" stop-color="#e0722e"/><stop offset="1" stop-color="#7a3812"/></radialGradient>
+</defs>
+<rect width="960" height="160" fill="#0a0a0c"/>
+<rect x="0" y="0" width="34" height="160" fill="url(#ear)"/><rect x="926" y="0" width="34" height="160" fill="url(#ear)"/>
+<line x1="34.5" y1="0" x2="34.5" y2="160" stroke="#000" stroke-width="1.4"/><line x1="925.5" y1="0" x2="925.5" y2="160" stroke="#000" stroke-width="1.4"/>
+<rect x="36" y="3" width="888" height="154" rx="3.5" fill="url(#face)"/>
+<rect x="36.6" y="3.6" width="886.8" height="1.4" rx="0.7" fill="#ffffff" opacity="0.10"/>
+<rect x="36" y="3" width="888" height="154" rx="3.5" fill="none" stroke="#000" stroke-width="1" opacity="0.7"/>
+
+  <circle cx="17" cy="22" r="7.5" fill="url(#screwG)" stroke="#0c0c0e" stroke-width="0.8"/>
+  <line x1="12.963120215304286" y1="19.794642522420666" x2="21.036879784695714" y2="24.205357477579334" stroke="#0e0e10" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="17" cy="138" r="7.5" fill="url(#screwG)" stroke="#0c0c0e" stroke-width="0.8"/>
+  <line x1="19.70710513937459" y1="134.28091654242988" x2="14.29289486062541" y2="141.71908345757012" stroke="#0e0e10" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="943" cy="22" r="7.5" fill="url(#screwG)" stroke="#0c0c0e" stroke-width="0.8"/>
+  <line x1="941.7695053883269" y1="17.567632347080913" x2="944.2304946116731" y2="26.432367652919087" stroke="#0e0e10" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="943" cy="138" r="7.5" fill="url(#screwG)" stroke="#0c0c0e" stroke-width="0.8"/>
+  <line x1="947.4664075596882" y1="136.89945308561568" x2="938.5335924403118" y2="139.10054691438432" stroke="#0e0e10" stroke-width="1.6" stroke-linecap="round"/>
+<text x="70" y="30" font-family="DM Mono" font-size="7.5" fill="#66615a" letter-spacing="1.8">MODEL DHG-1U · SER. No 000014</text>
+<text x="70" y="64" font-family="Outfit" font-weight="400" font-size="12.5" fill="#8d867c" letter-spacing="4.6">DIGITAL HARMONY GROUP</text>
+<text x="69" y="99" font-family="Outfit" font-weight="700" font-size="30" fill="#efe9df" letter-spacing="7.5">CLOSET</text>
+<text x="70" y="124" font-family="DM Mono" font-size="9.5" fill="#c98a52" letter-spacing="2.6">USED &amp; LOVED MUSIC GEAR</text>
+<line x1="392" y1="18" x2="392" y2="142" stroke="#0d0d0f" stroke-width="1.6"/><line x1="393.4" y1="18" x2="393.4" y2="142" stroke="#4a4a50" stroke-width="0.6" opacity="0.5"/>
+<line x1="432.2" y1="93.8" x2="429.7" y2="96.3" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="425.4" y1="82.7" x2="422.0" y2="83.7" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="424.3" y1="69.6" x2="420.9" y2="69.1" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="429.3" y1="57.5" x2="426.5" y2="55.5" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="439.3" y1="49.1" x2="437.7" y2="45.9" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="452.0" y1="46.0" x2="452.0" y2="42.5" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="464.7" y1="49.1" x2="466.3" y2="45.9" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="474.7" y1="57.5" x2="477.5" y2="55.5" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="479.7" y1="69.6" x2="483.1" y2="69.1" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="478.6" y1="82.7" x2="482.0" y2="83.7" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="471.8" y1="93.8" x2="474.3" y2="96.3" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/>
+  <circle cx="452" cy="74" r="25.5" fill="rgba(0,0,0,0.55)"/>
+  <circle cx="452" cy="74" r="24" fill="url(#knobDark)" stroke="#050506" stroke-width="0.8"/>
+  <circle cx="445.28" cy="65.84" r="14.879999999999999" fill="#ffffff" opacity="0.08"/>
+  <line x1="452" y1="74" x2="468.2" y2="62.2" stroke="#e8e2d6" stroke-width="2.2" stroke-linecap="round"/>
+  <text x="452" y="118" font-family="DM Mono" font-size="8" fill="#8d867c" text-anchor="middle" letter-spacing="1.6">GAIN</text>
+<line x1="528.2" y1="93.8" x2="525.7" y2="96.3" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="521.4" y1="82.7" x2="518.0" y2="83.7" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="520.3" y1="69.6" x2="516.9" y2="69.1" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="525.3" y1="57.5" x2="522.5" y2="55.5" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="535.3" y1="49.1" x2="533.7" y2="45.9" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="548.0" y1="46.0" x2="548.0" y2="42.5" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="560.7" y1="49.1" x2="562.3" y2="45.9" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="570.7" y1="57.5" x2="573.5" y2="55.5" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="575.7" y1="69.6" x2="579.1" y2="69.1" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="574.6" y1="82.7" x2="578.0" y2="83.7" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/><line x1="567.8" y1="93.8" x2="570.3" y2="96.3" stroke="#8d867c" stroke-width="0.9" opacity="0.7"/>
+  <circle cx="548" cy="74" r="25.5" fill="rgba(0,0,0,0.55)"/>
+  <circle cx="548" cy="74" r="24" fill="url(#knobDark)" stroke="#050506" stroke-width="0.8"/>
+  <circle cx="541.28" cy="65.84" r="14.879999999999999" fill="#ffffff" opacity="0.08"/>
+  <line x1="548" y1="74" x2="538.9" y2="56.2" stroke="#e8e2d6" stroke-width="2.2" stroke-linecap="round"/>
+  <text x="548" y="118" font-family="DM Mono" font-size="8" fill="#8d867c" text-anchor="middle" letter-spacing="1.6">TONE</text>
+
+  <circle cx="628" cy="70" r="10.5" fill="#0d0d0f" stroke="#000" stroke-width="0.8"/>
+  <circle cx="628" cy="70" r="8" fill="#1d1d21"/>
+  <line x1="628" y1="75" x2="628" y2="61" stroke="#c9c2b4" stroke-width="4.4" stroke-linecap="round"/>
+  <circle cx="628" cy="61" r="3.1" fill="#ded7c8"/>
+  <text x="628" y="104" font-family="DM Mono" font-size="8" fill="#8d867c" text-anchor="middle" letter-spacing="1.6">BYPASS</text>
+
+  <rect x="682" y="28" width="162" height="86" rx="4" fill="#0d0d0f"/>
+  <clipPath id="vuClip"><rect x="688" y="34" width="150" height="74" rx="2.5"/></clipPath>
+  <rect x="688" y="34" width="150" height="74" rx="2.5" fill="url(#vuFace)"/>
+  <g clip-path="url(#vuClip)">
+    <line x1="722.9" y1="84.5" x2="716.0" y2="77.3" stroke="#3a3226" stroke-width="1.6"/><line x1="729.7" y1="78.8" x2="726.3" y2="73.9" stroke="#3a3226" stroke-width="0.9"/><line x1="737.3" y1="74.3" x2="734.7" y2="68.9" stroke="#3a3226" stroke-width="0.9"/><line x1="745.5" y1="71.0" x2="743.7" y2="65.3" stroke="#3a3226" stroke-width="0.9"/><line x1="754.2" y1="69.0" x2="753.3" y2="63.0" stroke="#3a3226" stroke-width="0.9"/><line x1="763.0" y1="68.3" x2="763.0" y2="58.3" stroke="#3a3226" stroke-width="1.6"/><line x1="771.8" y1="69.0" x2="772.7" y2="63.0" stroke="#3a3226" stroke-width="0.9"/><line x1="780.5" y1="71.0" x2="782.3" y2="65.3" stroke="#3a3226" stroke-width="0.9"/><line x1="788.7" y1="74.3" x2="791.3" y2="68.9" stroke="#c23b1e" stroke-width="0.9"/><line x1="796.3" y1="78.8" x2="799.7" y2="73.9" stroke="#c23b1e" stroke-width="0.9"/><line x1="803.1" y1="84.5" x2="810.0" y2="77.3" stroke="#c23b1e" stroke-width="1.6"/><path d="M794.2,63.1 L795.2,63.6 L796.1,64.1 L797.1,64.6 L798.0,65.1 L799.0,65.7 L799.9,66.2 L800.8,66.8 L801.7,67.4 L802.6,68.0 L803.5,68.6 L804.4,69.2 L805.2,69.9 L806.1,70.5 L806.9,71.2 L807.8,71.9 L808.6,72.6 L809.4,73.3 L810.2,74.0 L811.0,74.7 L811.8,75.5" fill="none" stroke="#c23b1e" stroke-width="2"/>
+    <text x="763" y="99" font-family="DM Mono" font-size="9" fill="#3a3226" text-anchor="middle" letter-spacing="1">VU</text>
+    <text x="826" y="54" font-family="DM Mono" font-size="7" fill="#c23b1e" text-anchor="end">+3</text>
+    <text x="700" y="54" font-family="DM Mono" font-size="7" fill="#3a3226">-20</text>
+    <line x1="763" y1="126" x2="787.4" y2="62.8" stroke="#1c1a17" stroke-width="1.8" stroke-linecap="round"/>
+  </g>
+  <rect x="688" y="34" width="150" height="74" rx="2.5" fill="none" stroke="#000" stroke-width="1"/>
+  <rect x="688" y="34" width="150" height="33.300000000000004" rx="2.5" fill="#ffffff" opacity="0.05"/>
+  <text x="763" y="130" font-family="DM Mono" font-size="8" fill="#8d867c" text-anchor="middle" letter-spacing="1.6">OUTPUT</text>
+<circle cx="886" cy="60" r="4.5" fill="url(#pwr)"/><circle cx="886" cy="60" r="8" fill="#e0722e" opacity="0.25" filter="url(#glow)"/>
+<text x="886" y="104" font-family="DM Mono" font-size="8" fill="#8d867c" text-anchor="middle" letter-spacing="1.4">ON</text>
+</svg>
