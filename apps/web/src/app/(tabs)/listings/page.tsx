@@ -26,7 +26,6 @@ const statusColors: Record<string, string> = {
 
 const marketplaceIcons: Record<string, string> = {
   ebay: "eBay",
-  etsy: "Etsy",
   reverb: "Reverb",
 };
 
@@ -265,7 +264,7 @@ export default function ListingsPage() {
             <p className="text-sm text-text-secondary max-w-xs">
               {statusFilter
                 ? "Try a different filter."
-                : "List items from your inventory on eBay, Etsy, or Reverb."}
+                : "List items from your inventory on eBay or Reverb."}
             </p>
           </div>
         )}

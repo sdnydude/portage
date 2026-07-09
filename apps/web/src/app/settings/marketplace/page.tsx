@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 
 interface MarketplaceAccount {
   id: string;
-  marketplace: "ebay" | "etsy" | "reverb";
+  marketplace: "ebay" | "reverb";
   marketplaceUserId: string | null;
   tokenExpiresAt: string;
   createdAt: string;
@@ -15,7 +15,6 @@ interface MarketplaceAccount {
 
 const MARKETPLACE_INFO: Record<string, { name: string; color: string; connectPath: string | null }> = {
   ebay: { name: "eBay", color: "#e53238", connectPath: "/marketplace/ebay/connect" },
-  etsy: { name: "Etsy", color: "#f1641e", connectPath: "/marketplace/etsy/connect" },
   reverb: { name: "Reverb", color: "#4a90d9", connectPath: null },
 };
 
@@ -101,7 +100,7 @@ export default function MarketplacePage() {
             {error}
           </div>
         ) : (
-          (["ebay", "etsy", "reverb"] as const).map((marketplace) => {
+          (["ebay", "reverb"] as const).map((marketplace) => {
             const info = MARKETPLACE_INFO[marketplace];
             const account = getAccount(marketplace);
             const expired = account ? isExpired(account) : false;

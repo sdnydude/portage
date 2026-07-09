@@ -17,7 +17,6 @@ export function formatPrice(n: number | null | undefined, decimals = 0): string 
 
 const marketplaceLabels: Record<string, string> = {
   ebay: "eBay",
-  etsy: "Etsy",
   reverb: "Reverb",
 };
 

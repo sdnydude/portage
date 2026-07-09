@@ -53,7 +53,6 @@ const reverbCacheEntrySchema = z.object({
 });
 const marketplaceDataSchema = z.object({
   ebay: marketplaceCacheEntrySchema.optional(),
-  etsy: marketplaceCacheEntrySchema.optional(),
   reverb: reverbCacheEntrySchema.optional(),
 });
 

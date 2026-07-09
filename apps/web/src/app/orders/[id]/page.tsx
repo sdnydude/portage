@@ -11,7 +11,7 @@ interface OrderDetail {
   id: string;
   listingId: string;
   itemId: string;
-  marketplace: "ebay" | "etsy";
+  marketplace: "ebay" | "reverb";
   marketplaceOrderId: string;
   buyerUsername: string;
   buyerAddress?: {
@@ -83,10 +83,10 @@ function getStatusIndex(status: OrderStatus): number {
   return STATUS_STEPS.findIndex((s) => s.key === status);
 }
 
-function getMarketplaceBadge(marketplace: "ebay" | "etsy") {
+function getMarketplaceBadge(marketplace: "ebay" | "reverb") {
   return marketplace === "ebay"
     ? { label: "eBay", bg: "bg-blue-50 dark:bg-blue-950/30", text: "text-blue-700 dark:text-blue-300" }
-    : { label: "Etsy", bg: "bg-orange-50 dark:bg-orange-950/30", text: "text-orange-700 dark:text-orange-300" };
+    : { label: "Reverb", bg: "bg-orange-50 dark:bg-orange-950/30", text: "text-orange-700 dark:text-orange-300" };
 }
 
 // ─── Page Component ────────────────────────────────────────

@@ -7,7 +7,7 @@ interface AdminListing {
   id: string;
   itemId: string;
   userId: string;
-  marketplace: "ebay" | "etsy";
+  marketplace: "ebay" | "reverb";
   status: "draft" | "active" | "sold" | "archived";
   price: number;
   currency: string;
@@ -53,7 +53,7 @@ export default function AdminListingsPage() {
         <select value={marketplace} onChange={e => { setMarketplace(e.target.value); setPage(1); }} className="px-3 py-1.5 bg-muted rounded-lg text-sm text-text-primary border border-transparent">
           <option value="">All Marketplaces</option>
           <option value="ebay">eBay</option>
-          <option value="etsy">Etsy</option>
+          <option value="reverb">Reverb</option>
         </select>
       </div>
 

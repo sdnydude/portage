@@ -882,6 +882,33 @@ describe('POST /listings/:id/publish', () => {
 });
 
 describe('PATCH /listings/:id', () => {
+  it('fails typed (400 MARKETPLACE_UNSUPPORTED) when a stray parked-etsy row hits the sync path', async () => {
+    // Etsy is parked (tag etsy-parked-2026-07): the DB enum value remains, so a
+    // row CAN carry marketplace='etsy' — the sync must dead-end typed, not crash.
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'etsy',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: 'etsy-123', marketplaceSpecificFields: null,
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'etsy',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: 'etsy-123', marketplaceSpecificFields: null,
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MARKETPLACE_UNSUPPORTED');
+  });
+
   it('appends the seller default footer when syncing an update to the marketplace', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',

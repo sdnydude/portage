@@ -53,7 +53,7 @@ export default function TermsOfServicePage() {
           and synchronize marketplace listings, process orders, and utilize
           AI-assisted features for item scanning, listing optimization, and
           photo enhancement. The Service integrates with third-party
-          marketplaces including eBay, Etsy, and Reverb.
+          marketplaces including eBay and Reverb.
         </p>
       </Section>
 

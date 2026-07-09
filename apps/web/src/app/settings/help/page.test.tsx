@@ -15,7 +15,7 @@ describe("HelpPage — FAQs from the API", () => {
   it("renders FAQs fetched from GET /faqs instead of a hardcoded list", async () => {
     apiMock.mockResolvedValue({
       faqs: [
-        { id: "f1", question: "Which marketplaces does Portage support?", answer: "eBay, Etsy, and Reverb.", sortOrder: 0, published: true },
+        { id: "f1", question: "Which marketplaces does Portage support?", answer: "eBay and Reverb.", sortOrder: 0, published: true },
       ],
     });
 

@@ -39,7 +39,7 @@ export function useDrafts() {
     meta: {
       draftId?: string;
       itemId?: string | null;
-      marketplace: 'ebay' | 'etsy' | 'reverb';
+      marketplace: 'ebay' | 'reverb';
       lastStepCompleted?: string;
     }
   ): Promise<ListingDraft | null> => {

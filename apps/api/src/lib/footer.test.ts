@@ -4,7 +4,6 @@ import { applyFooter, descriptionLimitFor } from './footer.js';
 describe('descriptionLimitFor', () => {
   it('returns the documented eBay HTML limit and a conservative default elsewhere', () => {
     expect(descriptionLimitFor('ebay')).toBe(500000);
-    expect(descriptionLimitFor('etsy')).toBe(50000);
     expect(descriptionLimitFor('reverb')).toBe(50000);
   });
 });

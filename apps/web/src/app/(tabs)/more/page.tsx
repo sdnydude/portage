@@ -104,7 +104,7 @@ export default function MorePage() {
               </svg>
             }
             title="Marketplace Accounts"
-            description="eBay, Etsy, and Reverb connections"
+            description="eBay and Reverb connections"
           />
 
           <SettingsLink

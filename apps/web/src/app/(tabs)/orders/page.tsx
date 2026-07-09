@@ -63,10 +63,10 @@ function getStatusConfig(status: string) {
   }
 }
 
-function getMarketplaceBadge(marketplace: "ebay" | "etsy") {
+function getMarketplaceBadge(marketplace: "ebay" | "reverb") {
   return marketplace === "ebay"
     ? { label: "eBay", bg: "bg-blue-50 dark:bg-blue-950/30", text: "text-blue-700 dark:text-blue-300" }
-    : { label: "Etsy", bg: "bg-orange-50 dark:bg-orange-950/30", text: "text-orange-700 dark:text-orange-300" };
+    : { label: "Reverb", bg: "bg-orange-50 dark:bg-orange-950/30", text: "text-orange-700 dark:text-orange-300" };
 }
 
 export default function OrdersPage() {

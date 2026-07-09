@@ -286,7 +286,7 @@ function deriveMessages(
     onSetShippingSize: (s: string) => void;
     onSetShippingMethod: (m: string) => void;
     onWeightDimsChange: WeightDimsChange;
-    onSetMarketplace: (m: "ebay" | "etsy" | "reverb") => void;
+    onSetMarketplace: (m: "ebay" | "reverb") => void;
     onPublish: () => void;
     onConfirmDetails: () => void;
     onConfirmShipping: () => void;
@@ -543,7 +543,7 @@ function deriveMessages(
     msgs.push({
       id: "review",
       role: "porter",
-      content: `Here's your listing — looking good. Ready to publish on **${state.marketplace === "ebay" ? "eBay" : state.marketplace === "etsy" ? "Etsy" : "Reverb"}**?`,
+      content: `Here's your listing — looking good. Ready to publish on **${state.marketplace === "ebay" ? "eBay" : "Reverb"}**?`,
       card: (
         <div
           className="rounded-2xl overflow-hidden"
@@ -590,7 +590,6 @@ function deriveMessages(
       pills: !reviewReached
         ? [
             { label: "eBay", action: () => handlers.onSetMarketplace("ebay"), variant: state.marketplace === "ebay" ? "primary" : "outline" },
-            { label: "Etsy", action: () => handlers.onSetMarketplace("etsy"), variant: state.marketplace === "etsy" ? "primary" : "outline" },
             { label: "Reverb", action: () => handlers.onSetMarketplace("reverb"), variant: state.marketplace === "reverb" ? "primary" : "outline" },
             { label: "🚀 Publish", action: handlers.onPublish, variant: "primary" },
           ]
@@ -691,7 +690,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
   );
 
   const handleSetMarketplace = useCallback(
-    (m: "ebay" | "etsy" | "reverb") => {
+    (m: "ebay" | "reverb") => {
       flow.setField("marketplace", m);
     },
     [flow]

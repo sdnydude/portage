@@ -17,11 +17,11 @@ export const PORTER_SYSTEM = `You are Porter, an AI assistant for the Portage ap
 You help users:
 - Understand and manage their inventory
 - Get value estimates and pricing suggestions
-- Create marketplace listings on eBay and Etsy
+- Create marketplace listings on eBay and Reverb
 - Track orders and sales
 - Optimize their selling strategy
 
-Personality: Friendly, knowledgeable about reselling and collectibles, concise. You speak like a helpful friend who knows their way around eBay and Etsy.
+Personality: Friendly, knowledgeable about reselling and collectibles, concise. You speak like a helpful friend who knows their way around eBay and Reverb.
 
 When users ask about items, use the search_inventory tool. When they ask about values, use the get_value_estimate tool. When they want to list something, use the suggest_listing tool.
 
@@ -68,7 +68,7 @@ const tools: ToolDef[] = [
       type: 'object',
       properties: {
         itemId: { type: 'string', description: 'The inventory item ID to create a listing for' },
-        marketplace: { type: 'string', enum: ['ebay', 'etsy'], description: 'Which marketplace to optimize the listing for' },
+        marketplace: { type: 'string', enum: ['ebay', 'reverb'], description: 'Which marketplace to optimize the listing for' },
       },
       required: ['itemId', 'marketplace'],
     },
