@@ -1,38 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { useAuth } from "@/hooks/use-auth";
 
-const FAQ = [
-  {
-    q: "How do I scan an item?",
-    a: "Tap the Scan button in the center of the bottom navigation bar. Point your camera at the item and take a photo. Our AI will identify it and estimate its value.",
-  },
-  {
-    q: "How do I list an item for sale?",
-    a: "From your inventory, tap an item, then tap \"List This Item.\" Choose your preferred listing mode (Conversational, Swipe, or Hybrid) and follow the steps to publish to eBay, Etsy, or Reverb.",
-  },
-  {
-    q: "How do I connect a marketplace account?",
-    a: "Go to More > Marketplace Accounts and tap \"Connect\" next to eBay or Etsy. You'll be redirected to authorize Portage to manage listings on your behalf.",
-  },
-  {
-    q: "What's included in the free tier?",
-    a: "Free accounts get 25 AI scans per month, 5 background removals, 20 Porter messages per day, and 1 marketplace connection. Upgrade to Pro for unlimited access.",
-  },
-  {
-    q: "Who is Porter?",
-    a: "Porter is your AI selling assistant. Ask Porter about inventory values, listing strategies, or get help writing descriptions. Access Porter from the home page or by navigating to the Porter chat.",
-  },
-  {
-    q: "How do I ship a sold item?",
-    a: "When an item sells, it appears in your Orders tab. Tap the order, then tap \"Ship\" to purchase a shipping label and mark it as shipped.",
-  },
-];
+interface Faq {
+  id: string;
+  question: string;
+  answer: string;
+}
 
 export default function HelpPage() {
   const router = useRouter();
+  const { token } = useAuth();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [faqList, setFaqList] = useState<Faq[]>([]);
+  const [faqError, setFaqError] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    api<{ faqs: Faq[] }>("/faqs", { token })
+      .then((data) => { if (!cancelled) setFaqList(data.faqs); })
+      .catch(() => { if (!cancelled) setFaqError(true); });
+    return () => { cancelled = true; };
+  }, [token]);
 
   return (
     <div className="min-h-dvh bg-background">
@@ -63,9 +56,14 @@ export default function HelpPage() {
         {/* FAQ */}
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-text-primary px-1">Frequently Asked Questions</h2>
-          {FAQ.map((item, i) => (
+          {faqError && (
+            <p className="text-sm text-text-secondary px-1">
+              FAQs couldn&apos;t be loaded right now — email support and we&apos;ll help directly.
+            </p>
+          )}
+          {faqList.map((item, i) => (
             <div
-              key={i}
+              key={item.id}
               className="rounded-2xl border border-border bg-surface overflow-hidden"
               style={{ boxShadow: "var(--shadow-subtle)" }}
             >
@@ -74,7 +72,7 @@ export default function HelpPage() {
                 className="w-full flex items-center justify-between p-4 text-left"
                 aria-expanded={openIndex === i}
               >
-                <span className="text-sm font-medium text-text-primary pr-4">{item.q}</span>
+                <span className="text-sm font-medium text-text-primary pr-4">{item.question}</span>
                 <svg
                   width="16"
                   height="16"
@@ -91,7 +89,7 @@ export default function HelpPage() {
               </button>
               {openIndex === i && (
                 <div className="px-4 pb-4 -mt-1">
-                  <p className="text-sm text-text-secondary leading-relaxed">{item.a}</p>
+                  <p className="text-sm text-text-secondary leading-relaxed">{item.answer}</p>
                 </div>
               )}
             </div>
