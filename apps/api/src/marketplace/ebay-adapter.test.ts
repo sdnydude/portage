@@ -1,19 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
-import { resolveEbayCondition, resolveEbayConditionId, validateEbayListingFields, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError, clearEbayTaxonomyCaches } from './ebay-adapter.js';
+import { resolveEbayCondition, resolveEbayConditionId, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError, clearEbayTaxonomyCaches } from './ebay-adapter.js';
 
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
   getEbayProdAppToken: vi.fn().mockResolvedValue('test-app-token'),
   invalidateEbayProdAppToken: vi.fn(),
 }));
-
-const validSetup = {
-  fulfillmentPolicyId: 'fp-1',
-  paymentPolicyId: 'pp-1',
-  returnPolicyId: 'rp-1',
-  merchantLocationKey: 'loc-1',
-};
 
 const baseInput = {
   title: 'Test Item',
@@ -120,25 +113,6 @@ describe('resolveEbayCondition — Portage condition → eBay Inventory API enum
     expect(resolveEbayCondition('mystery')).toBe('USED_GOOD');
     // an explicit marketplaceSpecific.condition (already a valid eBay enum) wins
     expect(resolveEbayCondition('good', { condition: 'USED_VERY_GOOD' })).toBe('USED_VERY_GOOD');
-  });
-});
-
-describe('validateEbayListingFields — pre-flight publish guards', () => {
-  it('requires a valid leaf categoryId and full eBay selling setup', () => {
-    // missing categoryId
-    expect(() => validateEbayListingFields({ ...validSetup })).toThrow(/category/i);
-    // the broken "99" default must be rejected
-    expect(() => validateEbayListingFields({ ...validSetup, categoryId: '99' })).toThrow(/category/i);
-    // valid category but policies/location not set up
-    expect(() => validateEbayListingFields({ categoryId: '15032' })).toThrow(/set up/i);
-    // all present → returns the validated fields
-    expect(validateEbayListingFields({ categoryId: '15032', ...validSetup })).toMatchObject({
-      categoryId: '15032',
-      merchantLocationKey: 'loc-1',
-      fulfillmentPolicyId: 'fp-1',
-      paymentPolicyId: 'pp-1',
-      returnPolicyId: 'rp-1',
-    });
   });
 });
 
@@ -556,107 +530,6 @@ describe('resolveEbayCategoryCondition — auto-correct decision + warning polic
   });
 });
 
-describe('EbayAdapter — Account API business-policy creation (auto-setup)', () => {
-  // These are per-seller writes, so they go through this.request() (the seller's
-  // OAuth user token, which carries the sell.account scope) — NOT the static
-  // app-token methods used for public catalog reads. Each returns the new policy id.
-
-  it('createFulfillmentPolicy POSTs a 1-day-handling CALCULATED USPSParcel buyer-paid policy and returns its id', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-new' }), { status: 201 }));
-
-    const adapter = new EbayAdapter('user-1');
-    const id = await adapter.createFulfillmentPolicy('Portage Standard Fulfillment');
-
-    const [url, opts] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/sell/account/v1/fulfillment_policy');
-    expect((opts as RequestInit).method).toBe('POST');
-
-    const body = JSON.parse((opts as RequestInit).body as string);
-    expect(body.name).toBe('Portage Standard Fulfillment');
-    expect(body.marketplaceId).toBe('EBAY_US');
-    expect(body.categoryTypes).toEqual([{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }]);
-    expect(body.handlingTime).toEqual({ value: 1, unit: 'DAY' });
-    expect(body.shippingOptions[0].optionType).toBe('DOMESTIC');
-    // CALCULATED + USPSParcel: buyer pays the exact computed rate (needs item
-    // packageWeightAndSize, now captured). A live probe proved the earlier
-    // LOGISTICS_INFO_IS_MISSING was a bad service code (USPSGround →
-    // NOT_VALID_FOR_SELLING, USPSGroundAdvantage → UNKNOWN), not a rate-table gap.
-    expect(body.shippingOptions[0].costType).toBe('CALCULATED');
-    const svc = body.shippingOptions[0].shippingServices[0];
-    expect(svc.shippingCarrierCode).toBe('USPS');
-    expect(svc.shippingServiceCode).toBe('USPSParcel');
-    // No freeShipping/shippingCost — calculated computes the buyer-paid rate.
-    expect(svc.freeShipping).toBeUndefined();
-    expect(svc.shippingCost).toBeUndefined();
-
-    expect(id).toBe('fp-new');
-  });
-
-  it('updateFulfillmentPolicy PUTs the same CALCULATED USPSParcel body to the policy-id path (migrate a stale FLAT_RATE policy in place)', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ fulfillmentPolicyId: 'fp-existing' }), { status: 200 }));
-
-    const adapter = new EbayAdapter('user-1');
-    const id = await adapter.updateFulfillmentPolicy('fp-existing', 'Portage Standard Fulfillment');
-
-    const [url, opts] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/sell/account/v1/fulfillment_policy/fp-existing');
-    expect((opts as RequestInit).method).toBe('PUT');
-
-    const body = JSON.parse((opts as RequestInit).body as string);
-    expect(body.name).toBe('Portage Standard Fulfillment');
-    expect(body.shippingOptions[0].costType).toBe('CALCULATED');
-    expect(body.shippingOptions[0].shippingServices[0].shippingServiceCode).toBe('USPSParcel');
-    // eBay's PUT (full replace) requires globalShipping explicitly — POST defaults
-    // it, but a PUT without it fails with 20403 "Global shipping field is null".
-    expect(body.globalShipping).toBe(false);
-
-    expect(id).toBe('fp-existing');
-  });
-
-  it('createPaymentPolicy POSTs a managed-payments immediate-pay policy (no offline methods) and returns its id', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ paymentPolicyId: 'pp-new' }), { status: 201 }));
-
-    const adapter = new EbayAdapter('user-1');
-    const id = await adapter.createPaymentPolicy('Portage Standard Payment');
-
-    const [url, opts] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/sell/account/v1/payment_policy');
-    expect((opts as RequestInit).method).toBe('POST');
-
-    const body = JSON.parse((opts as RequestInit).body as string);
-    expect(body.name).toBe('Portage Standard Payment');
-    expect(body.marketplaceId).toBe('EBAY_US');
-    expect(body.categoryTypes).toEqual([{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }]);
-    expect(body.immediatePay).toBe(true);
-    // eBay Managed Payments controls electronic methods — no offline paymentMethods needed.
-    expect(body.paymentMethods).toBeUndefined();
-
-    expect(id).toBe('pp-new');
-  });
-
-  it('createReturnPolicy POSTs a 30-day, buyer-paid, money-back policy and returns its id', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ returnPolicyId: 'rp-new' }), { status: 201 }));
-
-    const adapter = new EbayAdapter('user-1');
-    const id = await adapter.createReturnPolicy('Portage Standard Return');
-
-    const [url, opts] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/sell/account/v1/return_policy');
-    expect((opts as RequestInit).method).toBe('POST');
-
-    const body = JSON.parse((opts as RequestInit).body as string);
-    expect(body.name).toBe('Portage Standard Return');
-    expect(body.marketplaceId).toBe('EBAY_US');
-    expect(body.categoryTypes).toEqual([{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }]);
-    expect(body.returnsAccepted).toBe(true);
-    expect(body.returnPeriod).toEqual({ value: 30, unit: 'DAY' });
-    expect(body.returnShippingCostPayer).toBe('BUYER');
-    expect(body.refundMethod).toBe('MONEY_BACK');
-
-    expect(id).toBe('rp-new');
-  });
-});
-
 describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
   const reviseOk = (call: string) =>
     `<?xml version="1.0"?><${call}Response xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></${call}Response>`;
@@ -734,68 +607,6 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
     expect(calls).toBe(2);
     expect(result.status).toBe('active');
     expect(result.warning).toMatch(/best offer/i);
-  });
-});
-
-describe('EbayAdapter.createInventoryLocation — Inventory API location (auto-setup)', () => {
-  it('POSTs an enabled WAREHOUSE location with the seller address to the merchant-location-key path', async () => {
-    // createInventoryLocation returns 204 No Content — the merchantLocationKey
-    // in the path is the id, so there is no response body to parse.
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
-
-    const adapter = new EbayAdapter('user-1');
-    await adapter.createInventoryLocation(
-      'portage-primary',
-      { addressLine1: '123 Main St', city: 'Austin', stateOrProvince: 'TX', postalCode: '78701', country: 'US' },
-      'Portage Primary Warehouse',
-    );
-
-    const [url, opts] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/sell/inventory/v1/location/portage-primary');
-    expect((opts as RequestInit).method).toBe('POST');
-
-    const body = JSON.parse((opts as RequestInit).body as string);
-    expect(body.location.address).toEqual({
-      addressLine1: '123 Main St',
-      city: 'Austin',
-      stateOrProvince: 'TX',
-      postalCode: '78701',
-      country: 'US',
-    });
-    expect(body.name).toBe('Portage Primary Warehouse');
-    expect(body.merchantLocationStatus).toBe('ENABLED');
-    expect(body.locationTypes).toEqual(['WAREHOUSE']);
-  });
-
-  it('rejects a merchantLocationKey containing characters invalid for a URL path segment', async () => {
-    const adapter = new EbayAdapter('user-1');
-    await expect(
-      adapter.createInventoryLocation('invalid key!@#', { country: 'US' }),
-    ).rejects.toThrow(/merchantLocationKey/i);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-});
-
-describe('EbayAdapter.getFulfillmentPolicy — CALCULATED shipping detection', () => {
-  it('returns true for CALCULATED, false for FLAT_RATE, and caches per instance', async () => {
-    let calcCalls = 0;
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes('/sell/account/v1/fulfillment_policy/calc')) {
-        calcCalls++;
-        return new Response(JSON.stringify({ shippingOptions: [{ optionType: 'DOMESTIC', costType: 'CALCULATED' }] }), { status: 200 });
-      }
-      if (url.includes('/sell/account/v1/fulfillment_policy/flat')) {
-        return new Response(JSON.stringify({ shippingOptions: [{ optionType: 'DOMESTIC', costType: 'FLAT_RATE' }] }), { status: 200 });
-      }
-      return new Response('{}', { status: 200 });
-    });
-
-    const adapter = new EbayAdapter('user-1');
-    expect(await adapter.getFulfillmentPolicy('calc')).toBe(true);
-    expect(await adapter.getFulfillmentPolicy('flat')).toBe(false);
-    // cached — a repeat lookup issues no new request
-    expect(await adapter.getFulfillmentPolicy('calc')).toBe(true);
-    expect(calcCalls).toBe(1);
   });
 });
 

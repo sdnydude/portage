@@ -204,14 +204,6 @@ export function resolveEbayCategoryCondition(
   return { condition: selected.condition };
 }
 
-export interface EbayListingFields {
-  categoryId: string;
-  merchantLocationKey: string;
-  fulfillmentPolicyId: string;
-  paymentPolicyId: string;
-  returnPolicyId: string;
-}
-
 /**
  * Shape returned by the F-GATE verification read — the live eBay state for one SKU:
  * the inventory_item's item specifics (aspects, incl. MPN) plus the offer's identity
@@ -258,21 +250,6 @@ export interface EbayTrafficReport {
   transactions: number | null;
   salesConversionRate: number | null;
   range: { from: string; to: string };
-}
-
-export function validateEbayListingFields(specific: Record<string, unknown>): EbayListingFields {
-  const categoryId = specific.categoryId as string | undefined;
-  if (!categoryId || categoryId === '99') {
-    throw new AppError(400, 'EBAY_CATEGORY_REQUIRED', 'A valid eBay leaf category is required to list this item.');
-  }
-  const merchantLocationKey = specific.merchantLocationKey as string | undefined;
-  const fulfillmentPolicyId = specific.fulfillmentPolicyId as string | undefined;
-  const paymentPolicyId = specific.paymentPolicyId as string | undefined;
-  const returnPolicyId = specific.returnPolicyId as string | undefined;
-  if (!merchantLocationKey || !fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
-    throw new AppError(400, 'EBAY_SETUP_REQUIRED', 'eBay selling is not set up. Run "Set up eBay Selling" in Settings first.');
-  }
-  return { categoryId, merchantLocationKey, fulfillmentPolicyId, paymentPolicyId, returnPolicyId };
 }
 
 /**
@@ -834,154 +811,6 @@ export class EbayAdapter implements MarketplaceAdapter {
     });
   }
 
-  // Account API business-policy creation for one-click eBay seller setup.
-  // Cache of policyId → isCalculated for this adapter instance. Adapters are
-  // created per request, so this dedupes repeat lookups within a single
-  // createListing/publish call, not across requests.
-  private readonly calculatedPolicyCache = new Map<string, boolean>();
-
-  /**
-   * Return true when the fulfillment policy uses CALCULATED shipping (which
-   * hard-requires a package weight + dimensions). Cached per adapter instance.
-   * Fail-open: a lookup error returns false so a transient hiccup never blocks
-   * a publish.
-   */
-  async getFulfillmentPolicy(policyId: string): Promise<boolean> {
-    const cached = this.calculatedPolicyCache.get(policyId);
-    if (cached !== undefined) return cached;
-    try {
-      const policy = await this.request<{ shippingOptions?: Array<{ costType?: string }> }>(
-        `/sell/account/v1/fulfillment_policy/${policyId}`,
-      );
-      const isCalculated = (policy.shippingOptions ?? []).some((o) => o.costType === 'CALCULATED');
-      this.calculatedPolicyCache.set(policyId, isCalculated);
-      return isCalculated;
-    } catch (err) {
-      // Fail-open: a transient lookup failure shouldn't block a publish (a
-      // fail-closed default would wrongly block valid flat-rate publishes too).
-      // Log the HTTP status so a recurring 403 (missing sell.account scope) or
-      // 404 (bad policyId) — which silently skip the gate — is diagnosable.
-      const status = err instanceof AppError ? err.statusCode : undefined;
-      logger.warn({ userId: this.userId, policyId, status, err: (err as Error).message }, 'fulfillment policy lookup failed — weight gate skipped this publish');
-      return false;
-    }
-  }
-
-  // CALCULATED + USPSParcel: buyer pays the exact computed shipping cost, which
-  // needs the item's packageWeightAndSize (captured end-to-end now). The earlier
-  // LOGISTICS_INFO_IS_MISSING rejection was NOT a missing rate table — it was a
-  // downstream symptom of an invalid service code. A live probe confirmed:
-  // USPSGround → NOT_VALID_FOR_SELLING, USPSGroundAdvantage → UNKNOWN_SHIPPING_
-  // SERVICE_CODE, but USPSParcel/USPSPriority are accepted for CALCULATED. No
-  // freeShipping/shippingCost — calculated computes the rate.
-  private fulfillmentPolicyBody(name: string) {
-    return {
-      name,
-      marketplaceId: 'EBAY_US',
-      categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
-      handlingTime: { value: 1, unit: 'DAY' },
-      // eBay's PUT (full replace, used by updateFulfillmentPolicy) requires
-      // globalShipping explicitly — without it the migrate PUT fails with 20403
-      // "Global shipping field is null". POST defaults it, so including it is safe
-      // for both. We don't offer eBay International Shipping by default.
-      globalShipping: false,
-      shippingOptions: [{
-        optionType: 'DOMESTIC',
-        costType: 'CALCULATED',
-        shippingServices: [{
-          sortOrder: 1,
-          shippingCarrierCode: 'USPS',
-          shippingServiceCode: 'USPSParcel',
-        }],
-      }],
-    };
-  }
-
-  // Per-seller writes, so they use this.request() (the seller's OAuth token,
-  // which carries the sell.account scope) — not the static app-token reads.
-  async createFulfillmentPolicy(name: string): Promise<string> {
-    const result = await this.request<{ fulfillmentPolicyId: string }>('/sell/account/v1/fulfillment_policy', {
-      method: 'POST',
-      body: JSON.stringify(this.fulfillmentPolicyBody(name)),
-    });
-    logger.info({ userId: this.userId, fulfillmentPolicyId: result.fulfillmentPolicyId }, 'eBay fulfillment policy created');
-    return result.fulfillmentPolicyId;
-  }
-
-  // Migrate an existing policy (e.g. a legacy FLAT_RATE "Portage Standard
-  // Fulfillment") to the canonical CALCULATED shape in place. PUT is a full
-  // replace and keeps the same policyId, so live offers referencing it stay valid.
-  async updateFulfillmentPolicy(policyId: string, name: string): Promise<string> {
-    const result = await this.request<{ fulfillmentPolicyId: string }>(`/sell/account/v1/fulfillment_policy/${policyId}`, {
-      method: 'PUT',
-      body: JSON.stringify(this.fulfillmentPolicyBody(name)),
-    });
-    logger.info({ userId: this.userId, fulfillmentPolicyId: policyId }, 'eBay fulfillment policy migrated to calculated');
-    return result.fulfillmentPolicyId ?? policyId;
-  }
-
-  async createPaymentPolicy(name: string): Promise<string> {
-    const result = await this.request<{ paymentPolicyId: string }>('/sell/account/v1/payment_policy', {
-      method: 'POST',
-      body: JSON.stringify({
-        name,
-        marketplaceId: 'EBAY_US',
-        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
-        immediatePay: true,
-      }),
-    });
-    logger.info({ userId: this.userId, paymentPolicyId: result.paymentPolicyId }, 'eBay payment policy created');
-    return result.paymentPolicyId;
-  }
-
-  async createReturnPolicy(name: string): Promise<string> {
-    const result = await this.request<{ returnPolicyId: string }>('/sell/account/v1/return_policy', {
-      method: 'POST',
-      body: JSON.stringify({
-        name,
-        marketplaceId: 'EBAY_US',
-        categoryTypes: [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }],
-        returnsAccepted: true,
-        returnPeriod: { value: 30, unit: 'DAY' },
-        returnShippingCostPayer: 'BUYER',
-        refundMethod: 'MONEY_BACK',
-      }),
-    });
-    logger.info({ userId: this.userId, returnPolicyId: result.returnPolicyId }, 'eBay return policy created');
-    return result.returnPolicyId;
-  }
-
-  // Inventory API location create (POST, returns 204). The merchantLocationKey
-  // in the path is the id — POST is NOT idempotent (it 400s if the key already
-  // exists), so the caller (auto-setup, T12) guards with a GET-first check.
-  // A warehouse location with a postalCode is what eBay uses as the ship-from
-  // for the calculated-shipping fulfillment policy.
-  async createInventoryLocation(
-    merchantLocationKey: string,
-    address: {
-      addressLine1?: string;
-      addressLine2?: string;
-      city?: string;
-      stateOrProvince?: string;
-      postalCode?: string;
-      country: string;
-    },
-    name?: string,
-  ): Promise<void> {
-    if (!/^[a-zA-Z0-9_-]+$/.test(merchantLocationKey)) {
-      throw new AppError(400, 'INVALID_LOCATION_KEY', `merchantLocationKey "${merchantLocationKey}" contains invalid characters — only letters, digits, hyphens and underscores are allowed.`);
-    }
-    await this.request(`/sell/inventory/v1/location/${merchantLocationKey}`, {
-      method: 'POST',
-      body: JSON.stringify({
-        location: { address },
-        name,
-        merchantLocationStatus: 'ENABLED',
-        locationTypes: ['WAREHOUSE'],
-      }),
-    });
-    logger.info({ userId: this.userId, merchantLocationKey }, 'eBay inventory location created');
-  }
 
   static async searchComps(query: string, category?: string): Promise<CompResult> {
     const fetchListings = async (filters: string[], retry = true): Promise<CompListing[]> => {
