@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { eq, desc, and, sql, inArray } from 'drizzle-orm';
+import { eq, desc, and, sql, inArray, isNull } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { listings, items, sellerProfiles, disclaimerAcceptances, users, notifications } from '../db/schema.js';
@@ -414,6 +414,10 @@ listingsRouter.post('/', async (req, res, next) => {
           if (!resumable) return res.status(201).json(existing);
           // Refresh the stuck row from the retry body — the user may have edited
           // price/fields between attempts, and the publish below reads body.*.
+          // The WHERE doubles as an atomic CLAIM: the unique index only
+          // serializes the INSERT, so two concurrent retries can both reach
+          // this branch — only the one whose conditional UPDATE returns the row
+          // may publish, or both would call the non-idempotent eBay create.
           [listing] = await db.update(listings)
             .set({
               price: body.price,
@@ -421,8 +425,19 @@ listingsRouter.post('/', async (req, res, next) => {
               marketplaceSpecificFields: body.marketplaceSpecificFields ?? null,
               updatedAt: new Date(),
             })
-            .where(eq(listings.id, existing.id))
+            .where(and(
+              eq(listings.id, existing.id),
+              eq(listings.status, 'draft'),
+              isNull(listings.marketplaceListingId),
+            ))
             .returning();
+          if (!listing) {
+            // Lost the claim — replay whatever state the winner produced.
+            const [claimed] = await db.select().from(listings)
+              .where(eq(listings.id, existing.id))
+              .limit(1);
+            return res.status(201).json(claimed ?? existing);
+          }
         } else {
           throw e;
         }
@@ -640,9 +655,18 @@ listingsRouter.patch('/:id', async (req, res, next) => {
           // Degraded-sync warnings (e.g. Best Offer downgrade) belong to the user.
           if (syncResult?.warning) warning = syncResult.warning;
         } catch (err) {
-          if (err instanceof AppError) throw err;
-          logger.warn({ listingId: updated.id, error: (err as Error).message }, 'Failed to sync update to marketplace');
-          warning = 'Saved locally but failed to sync to marketplace';
+          // The local write already landed above — a parked marketplace (stray
+          // etsy row) can never sync, so throwing 400 would tell the client
+          // nothing saved when the change is persisted. Report the truth.
+          if (err instanceof AppError && err.code === 'MARKETPLACE_UNSUPPORTED') {
+            logger.warn({ listingId: updated.id, marketplace: updated.marketplace }, 'Update saved locally — marketplace is parked, no sync');
+            warning = `Saved locally — ${updated.marketplace} sync is not supported in this release`;
+          } else if (err instanceof AppError) {
+            throw err;
+          } else {
+            logger.warn({ listingId: updated.id, error: (err as Error).message }, 'Failed to sync update to marketplace');
+            warning = 'Saved locally but failed to sync to marketplace';
+          }
         }
       }
     }

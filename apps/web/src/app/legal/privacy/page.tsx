@@ -23,7 +23,7 @@ export default function PrivacyPolicyPage() {
         application (the &ldquo;Service&rdquo;). This Privacy Policy explains
         how we collect, use, disclose, and safeguard your information when you
         use our Service, including when you connect third-party marketplace
-        accounts such as eBay or Reverb.
+        accounts — eBay and Reverb.
       </p>
 
       <p className="mb-6">
@@ -58,7 +58,7 @@ export default function PrivacyPolicyPage() {
 
         <SubSection title="1.2 Information from Third-Party Marketplaces">
           <p className="mb-4">
-            When you connect a marketplace account (e.g., eBay, Reverb),
+            When you connect a marketplace account (eBay or Reverb),
             we receive data through their APIs under their respective developer
             programs. This may include:
           </p>
@@ -158,8 +158,8 @@ export default function PrivacyPolicyPage() {
         <ul className="mb-4 list-disc space-y-2 pl-6">
           <li>
             <strong>Connected marketplaces:</strong> To create listings, process
-            orders, and send messages on your behalf through eBay, Reverb,
-            or other marketplaces you connect.
+            orders, and send messages on your behalf through the marketplaces
+            you connect: eBay and Reverb.
           </li>
           <li>
             <strong>Service providers:</strong> With third-party providers who
