@@ -138,6 +138,25 @@ describe('ReverbAdapter.createListing', () => {
     });
   });
 
+  it('maps every Portage condition to the live-verified Reverb condition UUID', async () => {
+    // Pinned against GET /api/listing_conditions (live, 2026-07-08).
+    const expected: Record<string, string> = {
+      new: '7c3f45de-2ae0-4c81-8400-fdb6b1d74890',       // Brand New
+      like_new: 'ac5b9c1e-dc78-466d-b0b3-7cf712967a48',  // Mint
+      good: 'f7a3f48c-972a-44c6-b01a-0cd27488d3f6',      // Good
+      fair: '98777886-76d0-44c8-865e-bb40e669e934',      // Fair
+      poor: '6a9dfcad-600b-46c8-9e08-ce6e5057921e',      // Poor
+    };
+    const adapter = new ReverbAdapter('user-1');
+
+    for (const [condition, uuid] of Object.entries(expected)) {
+      const fetchMock = stubFetch();
+      await adapter.createListing({ ...BASE_INPUT, condition });
+      const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+      expect({ condition, sent: body.condition }).toEqual({ condition, sent: { uuid } });
+    }
+  });
+
   it('folds a warning into the result when an unrecognized condition falls back to good', async () => {
     const fetchMock = stubFetch();
     const adapter = new ReverbAdapter('user-1');
@@ -145,7 +164,7 @@ describe('ReverbAdapter.createListing', () => {
     const result = await adapter.createListing({ ...BASE_INPUT, condition: 'mint' });
 
     const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
-    expect(body.condition).toEqual({ uuid: 'f7a3f48c-972a-44c6-b01a-0cd27488d3ab' }); // good
+    expect(body.condition).toEqual({ uuid: 'f7a3f48c-972a-44c6-b01a-0cd27488d3f6' }); // good
     expect(result.warning).toMatch(/condition/i);
   });
 

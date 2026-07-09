@@ -28,12 +28,15 @@ function toReverbShippingRates(rates: unknown[]): unknown[] {
   });
 }
 
+// Live-verified against GET /api/listing_conditions (2026-07-08). The previous
+// map was never validated against the real API — every UUID was invalid, and
+// its "new" value was Reverb's actual Non Functioning UUID.
 const CONDITION_MAP: Record<string, string> = {
-  new: 'fbf35668-96a0-4baa-bcde-ab18d6b1b329',
-  like_new: 'ac5b9c1e-dc78-466d-b0b3-a19b46876097',
-  good: 'f7a3f48c-972a-44c6-b01a-0cd27488d3ab',
-  fair: '98777886-76d0-44a8-8e36-e0b8884c4c6f',
-  poor: 'cda44a45-f57a-4891-a29e-a75e0afb8df0',
+  new: '7c3f45de-2ae0-4c81-8400-fdb6b1d74890',       // Brand New
+  like_new: 'ac5b9c1e-dc78-466d-b0b3-7cf712967a48',  // Mint
+  good: 'f7a3f48c-972a-44c6-b01a-0cd27488d3f6',      // Good
+  fair: '98777886-76d0-44c8-865e-bb40e669e934',      // Fair
+  poor: '6a9dfcad-600b-46c8-9e08-ce6e5057921e',      // Poor
 };
 
 let cachedConditions: Array<{ uuid: string; displayName: string }> | null = null;
