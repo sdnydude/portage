@@ -203,6 +203,6 @@ Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as P
 
 **Parked:** Voice feature (Whisper STT + Chatterbox TTS, Porter voice UI) — removed 2026-07-01 (Execution Phase 2) for a future release; the hardened pre-removal code (A1–A8 fixes included) is preserved at git tag `voice-parked-2026-07`. Etsy marketplace (PKCE OAuth2 adapter, auth routes, UI) — removed 2026-07-09 pending Etsy API key approval; pre-removal code at git tag `etsy-parked-2026-07`; zero etsy DB rows existed at park time, enum value remains inert.
 
-**Remaining:** Reverb OAuth code-grant (token-paste auth is shipped), integration testing (Task 35), version tunnel config into repo. See docs/TODO.md Phases 2–7.
+**Remaining:** notification system, dashboard trends + AI insights, enhanced-photo persistence, pagination on listing/item hooks. Closed 2026-07-09: integration testing (Task 35, PR #184 +43 route tests), tunnel config versioned (PR #182), prod CORS single-origin (PR #189), Reverb OAuth code-grant declared obsolete (PAT selling live-proven). See docs/TODO.md Phases 5–7.
 
 **Demo account:** demo@portage.app / demo1234demo1234
