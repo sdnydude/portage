@@ -65,7 +65,6 @@ export interface ReverbCacheEntry {
 
 export interface MarketplaceData {
   ebay?: MarketplaceCacheEntry;
-  etsy?: MarketplaceCacheEntry;
   reverb?: ReverbCacheEntry;
 }
 
@@ -109,7 +108,7 @@ export interface Listing {
   id: string;
   itemId: string;
   userId: string;
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
   marketplaceListingId?: string;
   marketplaceSpecificFields?: Record<string, unknown>;
   status: 'draft' | 'active' | 'sold' | 'archived';
@@ -127,7 +126,7 @@ export interface Order {
   listingId: string;
   itemId: string;
   userId: string;
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
   marketplaceOrderId: string;
   buyerUsername: string;
   salePrice: number;
@@ -216,7 +215,7 @@ export interface Notification {
 export interface MarketplaceAccount {
   id: string;
   userId: string;
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
   accessTokenEncrypted: string;
   refreshTokenEncrypted: string;
   tokenExpiresAt: Date;
@@ -354,7 +353,7 @@ export interface ListingFlowState {
   comps: CompResult | null;
   compsStatus: 'idle' | 'loading' | 'loaded' | 'failed';
 
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
 
   shippingMethod: ShippingMethod;
   shippingCost: number | null;
@@ -389,7 +388,7 @@ export interface ListingDraft {
   id: string;
   userId: string;
   itemId: string | null;
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
   title: string | null;
   price: number | null;
   status: string;

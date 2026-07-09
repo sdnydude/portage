@@ -9,6 +9,8 @@ export const ebaySkuSeq = pgSequence('portage_ebay_sku_seq', { startWith: 1 });
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
 export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro', 'beta-tester']);
 export const conditionEnum = pgEnum('item_condition', ['new', 'like_new', 'good', 'fair', 'poor']);
+// 'etsy' parked 2026-07 (tag etsy-parked-2026-07): Postgres cannot drop an enum
+// value, so it stays here inert — no adapter, no routes, no UI offer it.
 export const marketplaceEnum = pgEnum('marketplace_type', ['ebay', 'etsy', 'reverb']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'active', 'sold', 'archived']);
 export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered']);

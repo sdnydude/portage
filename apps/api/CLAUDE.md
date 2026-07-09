@@ -9,7 +9,7 @@ Express 5 backend. See root CLAUDE.md for architecture overview.
 3. Billing webhook router (mounted **before** JSON parse — Stripe needs raw body)
 4. `express.json({ limit: '10mb' })`
 5. `pinoHttp()` — debug in dev, info in prod
-6. Route handlers (21 routers)
+6. Route handlers (25 routers)
 7. `notFoundHandler`
 8. `errorHandler` (must be last)
 
@@ -47,7 +47,7 @@ Three guards in `src/middleware/auth.ts`:
 | `requireAdmin` | `req.user.role === 'admin'` | 403 ADMIN_REQUIRED |
 | `requirePro` | `req.user.tier === 'pro'` | 403 PRO_REQUIRED |
 
-`req.user` shape: `{ sub: string, email: string, tier: 'free'|'pro', role: 'user'|'admin' }`
+`req.user` shape: `{ sub: string, email: string, tier: 'free'|'pro'|'beta-tester', role: 'user'|'admin', trialEndsAt?: string }`
 
 ## Database Access
 
@@ -88,18 +88,21 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 | Porter | `/porter` | requireAuth |
 | Drafts | `/drafts` | requireAuth |
 | Disclaimer | `/disclaimer` | requireAuth |
+| FAQs | `/faqs` | requireAuth |
 | Prepare listing | `/items` (sub-mount) | requireAuth |
 | Seller profile | `/seller-profile` | requireAuth |
+| Users | `/users/me` | requireAuth |
 | Preferences | `/users/me/preferences` | requireAuth |
 | Usage | `/usage` | requireAuth |
 | Survey | `/survey` | None |
 | Billing | `/billing` | requireAuth |
 | Admin | `/admin/*` | requireAdmin |
-| Marketplace OAuth | `/marketplace/{ebay,etsy}` | requireAuth |
+| Marketplace OAuth | `/marketplace/ebay` | requireAuth |
 | Reverb Auth | `/marketplace/reverb` | requireAuth |
 | Messages | `/messages` | requireAuth |
 | Dashboard | `/dashboard` | requireAuth |
+| Beta | `/beta` | requireAuth |
 
 ## Testing
 
-Vitest. Run `npm test` (once) or `npm run test:watch`. ~227 tests across 22 files covering crypto, JWT, auth, admin, routes, vision, scan, billing, eBay CSV export, and eBay messaging.
+Vitest. Run `npm test` (once) or `npm run test:watch`. 605 tests across 61 files covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, and FAQs.

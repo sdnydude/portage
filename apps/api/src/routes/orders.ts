@@ -7,7 +7,6 @@ import { orders, listings, items } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
-import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { marketplaceAccounts } from '../db/schema.js';
 
@@ -167,9 +166,6 @@ ordersRouter.post('/sync', async (req, res, next) => {
       switch (account.marketplace) {
         case 'ebay':
           adapter = new EbayAdapter(userId);
-          break;
-        case 'etsy':
-          adapter = new EtsyAdapter(userId);
           break;
         case 'reverb':
           adapter = new ReverbAdapter(userId);

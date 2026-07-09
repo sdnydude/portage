@@ -1189,7 +1189,7 @@ function ShippingPhase({
    Phase 5 — Review
 ───────────────────────────────────────────── */
 
-const MARKETPLACE_CYCLE: Array<"ebay" | "reverb" | "etsy"> = ["ebay", "reverb", "etsy"];
+const MARKETPLACE_CYCLE: Array<"ebay" | "reverb"> = ["ebay", "reverb"];
 
 export function ReviewPhase({
   state,
@@ -1214,7 +1214,6 @@ export function ReviewPhase({
   const MARKETPLACE_COLORS: Record<string, string> = {
     ebay: "#E53238",
     reverb: "#0D6EFD",
-    etsy: "#F56400",
   };
 
   const rows = [

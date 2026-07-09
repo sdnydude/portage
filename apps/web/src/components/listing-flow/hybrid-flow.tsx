@@ -24,7 +24,7 @@ export interface HybridFlowProps {
   itemId?: string;
 }
 
-type Marketplace = "ebay" | "etsy" | "reverb";
+type Marketplace = "ebay" | "reverb";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
 
@@ -1083,9 +1083,9 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
       <div style={{ ...rowStyle, paddingTop: 14 }}>
         <label style={labelStyle}>Marketplace</label>
         <div style={{ display: "flex", gap: 6 }}>
-          {(["ebay", "etsy", "reverb"] as Marketplace[]).map((m) => (
+          {(["ebay", "reverb"] as Marketplace[]).map((m) => (
             <Pill key={m} small active={state.marketplace === m} onClick={() => setField("marketplace", m)}>
-              {m === "ebay" ? "eBay" : m === "etsy" ? "Etsy" : "Reverb"}
+              {m === "ebay" ? "eBay" : "Reverb"}
             </Pill>
           ))}
         </div>

@@ -17,7 +17,7 @@ const DISCLAIMER_CLAUSES = [
   },
   {
     title: "Marketplace Compliance",
-    text: "I agree to comply with all applicable marketplace policies, terms of service, and community guidelines for the selected platform (eBay, Etsy, or others).",
+    text: "I agree to comply with all applicable marketplace policies, terms of service, and community guidelines for the selected platform (eBay, Reverb, or others).",
   },
   {
     title: "Prohibited Items",

@@ -9,7 +9,7 @@ export interface Order {
   listingId: string;
   itemId: string;
   userId: string;
-  marketplace: "ebay" | "etsy";
+  marketplace: "ebay" | "reverb";
   marketplaceOrderId: string;
   buyerUsername: string;
   salePrice: number;

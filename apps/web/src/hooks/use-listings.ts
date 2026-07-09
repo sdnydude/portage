@@ -8,7 +8,7 @@ export interface Listing {
   id: string;
   itemId: string;
   userId: string;
-  marketplace: "ebay" | "etsy" | "reverb";
+  marketplace: "ebay" | "reverb";
   marketplaceListingId: string | null;
   marketplaceSpecificFields: Record<string, unknown> | null;
   status: "draft" | "active" | "sold" | "archived";
@@ -69,7 +69,7 @@ export function useListings(options: UseListingsOptions = {}) {
 
   const createListing = useCallback(async (body: {
     itemId: string;
-    marketplace: "ebay" | "etsy" | "reverb";
+    marketplace: "ebay" | "reverb";
     price: number;
     currency?: string;
     publishImmediately?: boolean;

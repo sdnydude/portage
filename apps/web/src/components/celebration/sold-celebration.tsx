@@ -8,7 +8,7 @@ interface SoldCelebrationProps {
   itemTitle: string;
   salePrice: number;
   buyerUsername: string;
-  marketplace: "ebay" | "etsy";
+  marketplace: "ebay" | "reverb";
   onDismiss: () => void;
 }
 
@@ -54,8 +54,8 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-function getMarketplaceLabel(marketplace: "ebay" | "etsy"): string {
-  return marketplace === "ebay" ? "eBay" : "Etsy";
+function getMarketplaceLabel(marketplace: "ebay" | "reverb"): string {
+  return marketplace === "ebay" ? "eBay" : "Reverb";
 }
 
 export function SoldCelebration({

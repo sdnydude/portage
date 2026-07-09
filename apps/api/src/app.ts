@@ -17,7 +17,6 @@ import { ordersRouter } from './routes/orders.js';
 import { porterRouter } from './routes/porter.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { ebayAuthRouter } from './routes/marketplace/ebay-auth.js';
-import { etsyAuthRouter } from './routes/marketplace/etsy-auth.js';
 import { reverbAuthRouter } from './routes/marketplace/reverb-auth.js';
 import { adminRouter } from './routes/admin.js';
 import { disclaimerRouter } from './routes/disclaimer.js';
@@ -101,7 +100,6 @@ export function createApp() {
   app.use('/porter', porterRouter);
   app.use('/dashboard', dashboardRouter);
   app.use('/marketplace/ebay', ebayAuthRouter);
-  app.use('/marketplace/etsy', etsyAuthRouter);
   app.use('/marketplace/reverb', reverbAuthRouter);
   app.use('/admin', adminRouter);
   app.use('/disclaimer', disclaimerRouter);

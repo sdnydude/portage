@@ -62,18 +62,16 @@ const statusConfig: Record<
 
 const marketplaceLabels: Record<string, string> = {
   ebay: "eBay",
-  etsy: "Etsy",
   reverb: "Reverb",
 };
 
 const marketplaceBaseUrls: Record<string, string> = {
   ebay: "https://www.ebay.com/itm/",
-  etsy: "https://www.etsy.com/listing/",
   reverb: "https://reverb.com/item/",
 };
 
 function getOtherMarketplaces(current: string): string[] {
-  return (["ebay", "etsy", "reverb"] as const).filter((m) => m !== current);
+  return (["ebay", "reverb"] as const).filter((m) => m !== current);
 }
 
 export default function ListingDetailPage() {

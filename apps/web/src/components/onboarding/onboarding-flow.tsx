@@ -25,15 +25,6 @@ function EbayIcon() {
   );
 }
 
-function EtsyIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="Etsy">
-      <rect width="28" height="28" rx="6" fill="#F56400" />
-      <text x="5" y="20" fontSize="11" fontWeight="700" fill="white" fontFamily="sans-serif">etsy</text>
-    </svg>
-  );
-}
-
 function ReverbIcon() {
   return (
     <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="Reverb">
@@ -70,12 +61,11 @@ const STEPS: Step[] = [
   {
     id: 2,
     title: "List Anywhere",
-    subtitle: "eBay · Etsy · Reverb — one flow",
+    subtitle: "eBay · Reverb — one flow",
     body: "Choose your marketplace, pick your listing style — conversational, swipe, or hybrid — and Porter handles the details: title, description, pricing, and more.",
     icon: (
       <div className="flex items-center gap-3">
         <EbayIcon />
-        <EtsyIcon />
         <ReverbIcon />
       </div>
     ),

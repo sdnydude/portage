@@ -64,7 +64,7 @@ const updateSchema = z.object({
   defaultDimensionUnit: z.enum(['in', 'cm']).optional(),
   defaultPackageType: z.enum(['box', 'envelope', 'poly_mailer']).optional(),
   ebayPublishMode: z.enum(['draft', 'live']).optional(),
-  preferredMarketplaces: z.array(z.enum(['ebay', 'etsy', 'reverb'])).optional(),
+  preferredMarketplaces: z.array(z.enum(['ebay', 'reverb'])).optional(),
   autoPublish: z.boolean().optional(),
   defaultCurrency: z.string().length(3).optional(),
   pricingSuggestPercentile: z.number().int().min(10).max(90).optional(),

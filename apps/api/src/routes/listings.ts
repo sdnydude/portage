@@ -13,7 +13,6 @@ import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.
 import { ensureItemEbaySku } from '../marketplace/ebay-sku.js';
 import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
 import { applyFooter, descriptionLimitFor } from '../lib/footer.js';
-import { EtsyAdapter } from '../marketplace/etsy-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import type { MarketplaceAdapter, ReverbCacheEntry } from '@portage/shared';
 
@@ -95,11 +94,15 @@ async function applyShipFromOrigin(
 function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): MarketplaceAdapter {
   switch (marketplace) {
     case 'ebay': return new EbayAdapter(userId);
-    case 'etsy': return new EtsyAdapter(userId);
     // Per-user PAT resolved lazily inside the adapter (REVERB_SETUP_REQUIRED when
     // not connected). The global REVERB_API_TOKEN env var remains in use only for
     // seller-agnostic comps reads (ReverbAdapter.searchComps).
     case 'reverb': return new ReverbAdapter(userId);
+    // Etsy parked 2026-07 (tag etsy-parked-2026-07). The DB enum value remains
+    // (Postgres can't drop enum values) so rows still type as 'etsy'-capable,
+    // but there is no adapter; zero etsy rows existed at park time, so a stray
+    // one dead-ends typed instead of crashing.
+    case 'etsy': throw new AppError(400, 'MARKETPLACE_UNSUPPORTED', 'Etsy support is not available in this release');
   }
 }
 
@@ -167,7 +170,7 @@ async function applyReverbEnrichment(
 
 const createListingSchema = z.object({
   itemId: z.string().uuid(),
-  marketplace: z.enum(['ebay', 'etsy', 'reverb']),
+  marketplace: z.enum(['ebay', 'reverb']),
   price: z.number().positive(),
   currency: z.string().length(3).default('USD'),
   publishImmediately: z.boolean().default(false),
@@ -195,7 +198,7 @@ const updateListingSchema = z.object({
 
 const listQuerySchema = z.object({
   status: z.enum(['draft', 'active', 'sold', 'archived']).optional(),
-  marketplace: z.enum(['ebay', 'etsy', 'reverb']).optional(),
+  marketplace: z.enum(['ebay', 'reverb']).optional(),
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).default(0),
 });

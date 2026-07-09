@@ -4,13 +4,12 @@ import { formatPrice } from "@/lib/format";
 
 interface FeeEstimateProps {
   price: number;
-  marketplace: 'ebay' | 'reverb' | 'etsy';
+  marketplace: 'ebay' | 'reverb';
 }
 
 const FEE_RATES: Record<string, { rate: number; label: string }> = {
   ebay: { rate: 0.1325, label: 'eBay fees (13.25%)' },
   reverb: { rate: 0.08, label: 'Reverb fees (8%)' },
-  etsy: { rate: 0.065, label: 'Etsy fees (6.5%)' },
 };
 
 export function FeeEstimate({ price, marketplace }: FeeEstimateProps) {

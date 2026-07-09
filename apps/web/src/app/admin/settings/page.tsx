@@ -19,7 +19,6 @@ const settingsMeta: { key: string; label: string; description: string; type: "nu
   { key: "registration_open", label: "Registration Open", description: "Allow new user signups", type: "boolean" },
   { key: "maintenance_mode", label: "Maintenance Mode", description: "Show maintenance page to non-admin users", type: "boolean" },
   { key: "ebay_enabled", label: "eBay Integration", description: "Allow eBay marketplace connections", type: "boolean" },
-  { key: "etsy_enabled", label: "Etsy Integration", description: "Allow Etsy marketplace connections", type: "boolean" },
   { key: "porter_enabled", label: "Porter AI", description: "Enable the Porter AI assistant", type: "boolean" },
 ];
 

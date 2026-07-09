@@ -1,4 +1,4 @@
-export type MarketplaceType = 'ebay' | 'etsy' | 'reverb';
+export type MarketplaceType = 'ebay' | 'reverb';
 
 export interface MarketplaceListingInput {
   title: string;

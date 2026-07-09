@@ -22,9 +22,7 @@ src/app/
 ├── list/            # Create listing entry
 ├── orders/[id]/     # Order detail
 ├── messages/        # eBay buyer messaging (conversations list + thread view)
-├── settings/        # 7 settings pages (profile, marketplace, seller-profile, billing, notifications, help, admin)
-├── login/           # Auth
-└── register/        # Auth
+└── settings/        # 6 settings pages (profile, marketplace, seller-profile, billing, notifications, help)
 ```
 
 The `(tabs)/layout.tsx` wraps children with bottom padding (`pb-20`) and the `TabBar` component. Routes outside `(tabs)/` don't get the tab bar.
@@ -65,7 +63,7 @@ const data = await api<MyType>('/path', {
 
 ## Auth
 
-localStorage-based (`portage_token`, `portage_refresh`, `portage_user`). Automatic token refresh on 401 via `api()` — refreshes access token, retries the request, and syncs React state through `setOnTokenRefreshed` callback. No route guards in layout — pages check auth ad-hoc via `useAuth()`.
+Cloudflare Access is the identity/session layer — no password, no refresh token. localStorage caches `portage_token` + `portage_user`. On 401, `api()` calls `exchangeSession()` (`GET /auth/session`, re-verifies the CF Access assertion) for a fresh internal token, retries the request, and syncs React state through the `setOnSessionExchanged` callback. No route guards in layout — pages check auth ad-hoc via `useAuth()`. Logout redirects to the CF Access logout endpoint.
 
 ## Hook Contract
 

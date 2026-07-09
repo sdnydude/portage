@@ -385,7 +385,7 @@ adminRouter.get('/listings', async (req, res, next) => {
 
     const conditions = [];
     if (status === 'draft' || status === 'active' || status === 'sold' || status === 'archived') conditions.push(eq(listings.status, status));
-    if (marketplace === 'ebay' || marketplace === 'etsy') conditions.push(eq(listings.marketplace, marketplace));
+    if (marketplace === 'ebay' || marketplace === 'reverb') conditions.push(eq(listings.marketplace, marketplace));
     if (userId) conditions.push(eq(listings.userId, userId));
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -413,7 +413,7 @@ adminRouter.get('/orders', async (req, res, next) => {
 
     const conditions = [];
     if (status === 'payment_received' || status === 'label_purchased' || status === 'shipped' || status === 'delivered') conditions.push(eq(orders.status, status));
-    if (marketplace === 'ebay' || marketplace === 'etsy') conditions.push(eq(orders.marketplace, marketplace));
+    if (marketplace === 'ebay' || marketplace === 'reverb') conditions.push(eq(orders.marketplace, marketplace));
     if (userId) conditions.push(eq(orders.userId, userId));
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -550,12 +550,14 @@ adminRouter.get('/marketplace/health', async (_req, res, next) => {
 
     const summary = {
       ebay: { total: 0, healthy: 0, expiring: 0, expired: 0 },
-      etsy: { total: 0, healthy: 0, expiring: 0, expired: 0 },
       reverb: { total: 0, healthy: 0, expiring: 0, expired: 0 },
     };
 
     for (const a of enriched) {
-      const m = summary[a.marketplace];
+      // A parked-marketplace row (e.g. a stray etsy account) has no summary
+      // bucket — skip it rather than crash the admin page.
+      const m = summary[a.marketplace as keyof typeof summary];
+      if (!m) continue;
       m.total++;
       m[a.status as 'healthy' | 'expiring' | 'expired']++;
     }

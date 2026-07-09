@@ -5,7 +5,7 @@ import { formatPrice, formatMarketplace } from "@/lib/format";
 
 interface PublishSuccessProps {
   listingId: string;
-  marketplace: 'ebay' | 'reverb' | 'etsy';
+  marketplace: 'ebay' | 'reverb';
   title: string;
   price: number;
   photoUrl: string | null;

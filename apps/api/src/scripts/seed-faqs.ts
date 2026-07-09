@@ -17,11 +17,11 @@ const APPROVED_FAQS: Array<{ question: string; answer: string }> = [
   },
   {
     question: 'How do I list an item for sale?',
-    answer: 'Open the item from your Inventory and tap "List on Marketplace," or start from the List tab to use a guided flow (Conversational, Swipe, or Hybrid). Pick eBay, Etsy, or Reverb, set your price, and publish immediately or save a draft.',
+    answer: 'Open the item from your Inventory and tap "List on Marketplace," or start from the List tab to use a guided flow (Conversational, Swipe, or Hybrid). Pick eBay or Reverb, set your price, and publish immediately or save a draft.',
   },
   {
     question: 'How do I connect a marketplace account?',
-    answer: 'Go to Settings → Marketplace Accounts. eBay and Etsy connect through a secure sign-in with those sites. Reverb uses a personal access token — generate one on reverb.com under API & Integrations, then paste it in.',
+    answer: 'Go to Settings → Marketplace Accounts. eBay connects through a secure sign-in. Reverb uses a personal access token — generate one on reverb.com under API & Integrations, then paste it in.',
   },
   {
     question: "What's included in the free tier?",
@@ -37,7 +37,7 @@ const APPROVED_FAQS: Array<{ question: string; answer: string }> = [
   },
   {
     question: 'Which marketplaces does Portage support?',
-    answer: 'eBay, Etsy, and Reverb. You can list the same item on any connected marketplace, and Portage keeps price, inventory, and orders in sync.',
+    answer: 'eBay and Reverb. You can list the same item on any connected marketplace, and Portage keeps price, inventory, and orders in sync.',
   },
   {
     question: "What's the difference between a draft and a published listing?",
@@ -57,7 +57,7 @@ const APPROVED_FAQS: Array<{ question: string; answer: string }> = [
   },
   {
     question: 'Is my marketplace login safe?',
-    answer: 'Portage never sees or stores marketplace passwords. eBay and Etsy use official sign-in (OAuth); Reverb uses a token you can revoke anytime. All tokens are encrypted at rest.',
+    answer: 'Portage never sees or stores marketplace passwords. eBay uses official sign-in (OAuth); Reverb uses a token you can revoke anytime. All tokens are encrypted at rest.',
   },
   {
     question: 'How do I report a bug or give feedback?',

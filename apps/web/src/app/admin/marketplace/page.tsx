@@ -5,7 +5,7 @@ import { useAdminApi } from "@/hooks/use-admin";
 interface MarketplaceAccount {
   id: string;
   userId: string;
-  marketplace: "ebay" | "etsy";
+  marketplace: "ebay" | "reverb";
   tokenExpiresAt: string;
   createdAt: string;
   status: "healthy" | "expiring" | "expired";
@@ -15,7 +15,7 @@ interface MarketplaceHealth {
   accounts: MarketplaceAccount[];
   summary: {
     ebay: { total: number; healthy: number; expiring: number; expired: number };
-    etsy: { total: number; healthy: number; expiring: number; expired: number };
+    reverb: { total: number; healthy: number; expiring: number; expired: number };
   };
 }
 
@@ -49,7 +49,7 @@ export default function AdminMarketplacePage() {
       {data && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <SummaryCard name="eBay" data={data.summary.ebay} />
-          <SummaryCard name="Etsy" data={data.summary.etsy} />
+          <SummaryCard name="Reverb" data={data.summary.reverb} />
         </div>
       )}
 
