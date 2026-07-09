@@ -232,6 +232,32 @@ describe('POST /listings', () => {
     expect(vi.mocked(db.update)).not.toHaveBeenCalled();
   });
 
+  it('detects the 23505 when drizzle wraps it in DrizzleQueryError (code on e.cause)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    // What postgres-js + drizzle actually throw live: a DrizzleQueryError whose
+    // .cause carries the PostgresError with code 23505 — NOT a bare error with a
+    // top-level code. Live-proven 2026-07-09: the top-level-only check 500'd every
+    // same-key replay in production.
+    const wrapped = Object.assign(new Error('Failed query: insert into "listings" ...'), {
+      cause: Object.assign(new Error('duplicate key value violates unique constraint "uq_listings_idempotency_key"'), { code: '23505' }),
+    });
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(wrapped),
+      }),
+    } as any);
+    mockSelectOnce([{ id: 'listing-existing', status: 'active', marketplaceListingId: '3001' }]);
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe('listing-existing');
+    expect(mockCreateListing).not.toHaveBeenCalled();
+  });
+
   it('merges item weight/dimensions into marketplaceSpecific on eBay publish', async () => {
     mockSelectOnce([
       { ...MOCK_ITEM, weightOz: 56, lengthIn: 10, widthIn: 8, heightIn: 4, ebayPackageType: 'MAILING_BOX' },

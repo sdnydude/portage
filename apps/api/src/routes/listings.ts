@@ -397,7 +397,12 @@ listingsRouter.post('/', async (req, res, next) => {
       // against a row stuck as an unpublished draft (insert succeeded, adapter call
       // failed) must RESUME the publish: returning the stale draft would report a
       // silent no-op "success" to the client.
-      if ((e as { code?: string }).code === '23505') {
+      // drizzle wraps driver errors in DrizzleQueryError — the Postgres code rides
+      // on .cause, not the top level (live-proven 2026-07-09; the top-level-only
+      // check 500'd every same-key replay in production).
+      const pgCode = (e as { code?: string }).code
+        ?? ((e as { cause?: { code?: string } }).cause?.code);
+      if (pgCode === '23505') {
         const [existing] = await db.select().from(listings)
           .where(and(eq(listings.userId, userId), eq(listings.idempotencyKey, idempotencyKey)))
           .limit(1);
