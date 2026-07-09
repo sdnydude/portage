@@ -181,12 +181,16 @@ export class ReverbAdapter implements MarketplaceAdapter {
     });
 
     const slug = stateSlug(data.listing?.state);
+    // Trust the PUT response when it reports a state; a 204/empty body means
+    // the update took and the listing state is unchanged (treat as active).
+    // Terminal states (sold/ended) must NOT read as draft — downstream would
+    // think the listing needs re-publishing. Keep active + tell the seller.
+    const terminal = slug === 'sold' || slug === 'ended';
     return {
       marketplaceListingId,
       marketplaceUrl: `https://reverb.com/item/${marketplaceListingId}`,
-      // Trust the PUT response when it reports a state; a 204/empty body means
-      // the update took and the listing state is unchanged (treat as active).
-      status: slug && slug !== 'live' ? 'draft' : 'active',
+      status: slug && slug !== 'live' && !terminal ? 'draft' : 'active',
+      warning: terminal ? `Listing is ${slug} on Reverb — the update was accepted but the listing is no longer for sale` : undefined,
     };
   }
 
