@@ -82,6 +82,24 @@ describe("CreateListingSheet — price prefill", () => {
 });
 
 describe("CreateListingSheet — required aspects are collectable, not a dead-end", () => {
+  it("offers Reverb as a marketplace and posts marketplace 'reverb' when selected", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={200} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Reverb"));
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(bodies[0].marketplace).toBe("reverb");
+    // The eBay-draft toggle must not render for Reverb.
+    expect(screen.queryByText("Save as eBay draft")).toBeNull();
+  });
+
   it("sends publishMode 'ebay_draft' when the eBay-draft toggle is on (not publishing now)", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {

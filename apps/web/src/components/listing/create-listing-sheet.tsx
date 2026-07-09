@@ -38,7 +38,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   const { token } = useAuth();
   // F3b: within the 7-day window the terms sheet is skipped (consent still recorded).
   const { disclaimerSuppressed } = useUserPreferences();
-  const [marketplace, setMarketplace] = useState<"ebay" | "etsy">("ebay");
+  const [marketplace, setMarketplace] = useState<"ebay" | "etsy" | "reverb">("ebay");
   const [price, setPrice] = useState(suggestedPrice?.toString() ?? "");
   // Once the user types their own price it is authoritative — a late-arriving AI
   // suggestion (comps resolve async after mount) must never overwrite it. Adopt
@@ -221,7 +221,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
             Marketplace
           </label>
           <div className="flex gap-2">
-            {(["ebay", "etsy"] as const).map((m) => (
+            {(["ebay", "etsy", "reverb"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setMarketplace(m)}
@@ -231,7 +231,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
                     : "bg-muted text-text-secondary border border-border"
                 }`}
               >
-                {m === "ebay" ? "eBay" : "Etsy"}
+                {m === "ebay" ? "eBay" : m === "etsy" ? "Etsy" : "Reverb"}
               </button>
             ))}
           </div>
