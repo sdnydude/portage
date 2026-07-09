@@ -725,7 +725,7 @@ export class EbayAdapter implements MarketplaceAdapter {
       params.set('filter', `creationdate:[${since.toISOString()}..]`);
     }
 
-    const data = await this.request<{
+    type OrdersPage = {
       orders?: Array<{
         orderId: string;
         orderFulfillmentStatus?: string;
@@ -753,9 +753,23 @@ export class EbayAdapter implements MarketplaceAdapter {
           };
         }>;
       }>;
-    }>(`/sell/fulfillment/v1/order?${params}`);
+      next?: string;
+    };
 
-    return (data.orders ?? []).map((order) => {
+    // Page through the window — the sync heals can only repair orders this
+    // returns, so a hard one-page cap silently strands sellers past 50 orders.
+    // MAX_PAGES bounds a runaway `next` chain (500 orders covers the window).
+    const MAX_PAGES = 10;
+    const allOrders: NonNullable<OrdersPage['orders']> = [];
+    let path: string | undefined = `/sell/fulfillment/v1/order?${params}`;
+    for (let page = 0; page < MAX_PAGES && path; page++) {
+      const data: OrdersPage = await this.request<OrdersPage>(path);
+      allOrders.push(...(data.orders ?? []));
+      // `next` is absolute — re-anchor it to a path for request().
+      path = data.next ? data.next.replace(/^https?:\/\/[^/]+/, '') : undefined;
+    }
+
+    return allOrders.map((order) => {
       const shipTo = order.fulfillmentStartInstructions?.[0]?.shippingStep?.shipTo;
       const address = shipTo?.contactAddress;
 

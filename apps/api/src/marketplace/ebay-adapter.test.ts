@@ -543,6 +543,35 @@ describe('EbayAdapter.getOrders — creationdate range filter', () => {
 
     expect(results[0].fulfillmentStatus).toBe('canceled');
   });
+
+  it('pages through results — a seller with >50 orders is not silently truncated', async () => {
+    const order = (orderId: string) => ({
+      orderId,
+      orderFulfillmentStatus: 'FULFILLED',
+      creationDate: '2026-06-10T00:00:00.000Z',
+      buyer: { username: 'buyer1' },
+      pricingSummary: { total: { value: '10.00', currency: 'USD' }, deliveryCost: { value: '0' } },
+      lineItems: [{ legacyItemId: '3001', title: 'X' }],
+    });
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes('offset=50')) {
+        return new Response(JSON.stringify({ orders: [order('o-51')] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        orders: Array.from({ length: 50 }, (_, i) => order(`o-${i + 1}`)),
+        next: 'https://api.ebay.com/sell/fulfillment/v1/order?limit=50&offset=50',
+      }), { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+
+    const results = await adapter.getOrders();
+
+    // The heals can only repair what the fetch returns — a hard 50 cap
+    // silently strands every order past the first page.
+    expect(results).toHaveLength(51);
+    expect(results[50].marketplaceOrderId).toBe('o-51');
+  });
 });
 
 describe('resolveEbayCategoryCondition — auto-correct decision + warning policy', () => {

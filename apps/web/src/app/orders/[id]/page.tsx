@@ -249,7 +249,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </section>
 
-        {/* Shipping status flow */}
+        {/* Shipping status flow — a canceled order gets a plain notice instead
+            of an ambiguous all-incomplete timeline. */}
+        {order.status === "canceled" ? (
+          <section className="py-3">
+            <div className="rounded-2xl border border-border bg-muted p-4 text-sm text-text-secondary" style={{ boxShadow: "var(--shadow-subtle)" }}>
+              <span className="font-semibold text-text-primary">Order canceled.</span>{" "}
+              This order was canceled on {order.marketplace === "ebay" ? "eBay" : "the marketplace"} and does not need shipping.
+            </div>
+          </section>
+        ) : (
         <section className="py-3">
           <h2 className="font-[family-name:var(--font-instrument)] font-semibold text-text-primary mb-3" style={{ fontSize: "var(--text-headline)" }}>
             Shipping Status
@@ -294,6 +303,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
         </section>
+        )}
 
         {/* Tracking info */}
         {order.trackingNumber && (
