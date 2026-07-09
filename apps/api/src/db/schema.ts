@@ -244,6 +244,16 @@ export const designReviewComments = pgTable('design_review_comments', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const faqs = pgTable('faqs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  question: varchar('question', { length: 500 }).notNull(),
+  answer: text('answer').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  published: boolean('published').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 export const disclaimerAcceptances = pgTable('disclaimer_acceptances', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
