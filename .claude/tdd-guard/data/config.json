@@ -1,15 +1,1 @@
-{
-  "guardEnabled": true,
-  "ignorePatterns": [
-    "*.md",
-    "*.txt",
-    "*.log",
-    "*.json",
-    "*.yml",
-    "*.yaml",
-    "*.xml",
-    "*.html",
-    "*.css",
-    "**/aifactory3.5/**"
-  ]
-}
+{"guardEnabled":true}

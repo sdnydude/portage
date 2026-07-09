@@ -3,12 +3,9 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { sellerProfiles, marketplaceAccounts } from '../db/schema.js';
+import { sellerProfiles } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
-import { getEbayAccessToken } from '../marketplace/token-manager.js';
-import { env } from '../lib/env.js';
-import { EBAY_USER_AGENT } from '../marketplace/ebay-constants.js';
 
 const logger = createLogger('seller-profile');
 
@@ -118,71 +115,7 @@ sellerProfileRouter.patch('/', async (req, res, next) => {
   }
 });
 
-sellerProfileRouter.get('/ebay-policies', async (req, res, next) => {
-  try {
-    const userId = req.user!.sub;
-
-    const [account] = await db.select()
-      .from(marketplaceAccounts)
-      .where(eq(marketplaceAccounts.userId, userId))
-      .limit(1);
-
-    if (!account) {
-      res.json({ fulfillment: [], payment: [], returnPolicy: [] });
-      return;
-    }
-
-    const token = await getEbayAccessToken(userId);
-    const baseUrl = env().EBAY_SANDBOX
-      ? 'https://api.sandbox.ebay.com'
-      : 'https://api.ebay.com';
-
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': EBAY_USER_AGENT,
-    };
-
-    const [fulfillmentRes, paymentRes, returnRes] = await Promise.allSettled([
-      fetch(`${baseUrl}/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_US`, { headers }),
-      fetch(`${baseUrl}/sell/account/v1/payment_policy?marketplace_id=EBAY_US`, { headers }),
-      fetch(`${baseUrl}/sell/account/v1/return_policy?marketplace_id=EBAY_US`, { headers }),
-    ]);
-
-    const extractPolicies = async (result: PromiseSettledResult<Response>, key: string) => {
-      if (result.status === 'rejected') return [];
-      if (!result.value.ok) return [];
-      const data = await result.value.json() as Record<string, Array<{ [k: string]: string }>>;
-      const policies = data[key] ?? [];
-      return policies.map((p: Record<string, string>) => ({
-        policyId: p.fulfillmentPolicyId ?? p.paymentPolicyId ?? p.returnPolicyId ?? p.policyId,
-        name: p.name ?? 'Unnamed',
-        description: p.description,
-      }));
-    };
-
-    const fulfillment = await extractPolicies(fulfillmentRes, 'fulfillmentPolicies');
-    const payment = await extractPolicies(paymentRes, 'paymentPolicies');
-    const returnPolicy = await extractPolicies(returnRes, 'returnPolicies');
-
-    res.json({ fulfillment, payment, returnPolicy });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Demoted under Trade-First inline terms (Decision 5): the account is opted OUT of
-// Business Policies, and publish sends inline ReturnsNotAccepted + Calculated buyer-paid
-// USPS + DispatchTimeMax=1. Creating "Portage Standard" fulfillment/payment/return
-// policies here (or re-opting-in) would make eBay reject the inline terms — so this
-// one-time setup is no longer required. Kept as a short-circuit (not removed) so the
-// existing FE "Set up eBay Selling" button surfaces a clear message; the dead
-// policy/location creation helpers are removed in the 1.20 dead-code pass.
-sellerProfileRouter.post('/ebay/auto-setup', async (_req, _res, next) => {
-  try {
-    throw new AppError(400, 'EBAY_SETUP_NOT_REQUIRED',
-      'eBay selling now uses inline terms — no Business Policy setup is required. Add your ship-from address in your seller profile to enable calculated shipping.');
-  } catch (err) {
-    next(err);
-  }
-});
+// Business Policies endpoints (GET /ebay-policies, POST /ebay/auto-setup) were
+// REMOVED 2026-07-09: Trade-First publishes with inline terms (Decision 5 —
+// account opted OUT of Business Policies), and the seller-profile screen no
+// longer renders policy pickers or the setup button they served.

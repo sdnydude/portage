@@ -492,10 +492,6 @@ export interface EbayPreparedFields {
   weight: { value: number; unit: string };
   dimensions: { length: number; width: number; height: number; unit: string };
   packageType: string;
-  fulfillmentPolicyId: string;
-  paymentPolicyId: string;
-  returnPolicyId: string;
-  merchantLocationKey: string;
   /** Best-Offer auto-accept floor (seller opted in); flows to the adapter via marketplaceSpecific. */
   bestOfferAutoAcceptPrice?: number;
 }
@@ -534,18 +530,6 @@ export interface PreparedListingData {
   warnings: string[];
   /** Seller's default footer — display-only in previews; appended server-side at publish. */
   listingFooter?: string | null;
-}
-
-export interface EbayPolicy {
-  policyId: string;
-  name: string;
-  description?: string;
-}
-
-export interface EbayPoliciesResponse {
-  fulfillment: EbayPolicy[];
-  payment: EbayPolicy[];
-  returnPolicy: EbayPolicy[];
 }
 
 // ─── Porter rich content blocks (SSE streaming protocol) ──
