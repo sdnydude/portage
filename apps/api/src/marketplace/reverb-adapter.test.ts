@@ -33,6 +33,10 @@ const BASE_INPUT = {
   photos: [{ url: 'https://img.example/1.jpg', isPrimary: true }],
 };
 
+// searchComps tests mutate REVERB_API_TOKEN + the env cache — restore both so
+// leakage never bleeds into other suites in the same worker.
+const ORIGINAL_REVERB_API_TOKEN = process.env.REVERB_API_TOKEN;
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getReverbAccessToken).mockResolvedValue('test-reverb-pat');
@@ -40,6 +44,12 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  if (ORIGINAL_REVERB_API_TOKEN === undefined) {
+    delete process.env.REVERB_API_TOKEN;
+  } else {
+    process.env.REVERB_API_TOKEN = ORIGINAL_REVERB_API_TOKEN;
+  }
+  resetEnv();
 });
 
 describe('ReverbAdapter.createListing', () => {
@@ -260,6 +270,15 @@ describe('ReverbAdapter.updateListing — status mapping', () => {
 
     const result = await adapter.updateListing('12345678', { price: 999, currency: 'USD' });
     expect(result.status).toBe('active');
+  });
+
+  it('does not collapse a terminal state (sold/ended) into draft — keeps active with a warning', async () => {
+    stubFetch({ listing: { id: 12345678, state: { slug: 'sold', description: 'Sold' } } });
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.updateListing('12345678', { price: 999, currency: 'USD' });
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/sold/i);
   });
 });
 
