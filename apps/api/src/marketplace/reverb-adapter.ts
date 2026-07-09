@@ -31,6 +31,12 @@ function toReverbShippingRates(rates: unknown[]): unknown[] {
 // Live-verified against GET /api/listing_conditions (2026-07-08). The previous
 // map was never validated against the real API — every UUID was invalid, and
 // its "new" value was Reverb's actual Non Functioning UUID.
+/** Reverb returns state as a plain string in some payloads and {slug} in others. */
+function stateSlug(state: unknown): string | undefined {
+  if (typeof state === 'string') return state;
+  return (state as { slug?: string } | null | undefined)?.slug;
+}
+
 const CONDITION_MAP: Record<string, string> = {
   new: '7c3f45de-2ae0-4c81-8400-fdb6b1d74890',       // Brand New
   like_new: 'ac5b9c1e-dc78-466d-b0b3-7cf712967a48',  // Mint
@@ -137,7 +143,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
       // _links can be absent on shape drift / review-pending responses — never
       // crash a successful publish over the URL.
       marketplaceUrl: data.listing._links?.web?.href ?? `https://reverb.com/item/${data.listing.id}`,
-      status: data.listing.state === 'live' ? 'active' : 'draft',
+      status: stateSlug(data.listing.state) === 'live' ? 'active' : 'draft',
       warning: conditionWarning,
     };
   }
@@ -169,17 +175,18 @@ export class ReverbAdapter implements MarketplaceAdapter {
       updates.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
     }
 
-    const data = await this.request<{ listing?: { state?: string } }>(`/listings/${marketplaceListingId}`, {
+    const data = await this.request<{ listing?: { state?: string | { slug?: string } } }>(`/listings/${marketplaceListingId}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     });
 
+    const slug = stateSlug(data.listing?.state);
     return {
       marketplaceListingId,
       marketplaceUrl: `https://reverb.com/item/${marketplaceListingId}`,
       // Trust the PUT response when it reports a state; a 204/empty body means
       // the update took and the listing state is unchanged (treat as active).
-      status: data.listing?.state && data.listing.state !== 'live' ? 'draft' : 'active',
+      status: slug && slug !== 'live' ? 'draft' : 'active',
     };
   }
 
@@ -189,8 +196,8 @@ export class ReverbAdapter implements MarketplaceAdapter {
 
   async getListingStatus(marketplaceListingId: string): Promise<'active' | 'sold' | 'ended' | 'unknown'> {
     try {
-      const data = await this.request<{ state: string }>(`/listings/${marketplaceListingId}`);
-      switch (data.state) {
+      const data = await this.request<{ state: string | { slug?: string } }>(`/listings/${marketplaceListingId}`);
+      switch (stateSlug(data.state)) {
         case 'live': return 'active';
         case 'sold': return 'sold';
         case 'ended': return 'ended';

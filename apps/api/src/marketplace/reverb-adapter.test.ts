@@ -189,6 +189,16 @@ describe('ReverbAdapter.createListing', () => {
       status: 'draft',
     });
   });
+
+  it('recognizes the object state shape ({slug:"live"}) Reverb actually returns', async () => {
+    stubFetch({
+      listing: { id: 999, state: { slug: 'live', description: 'Live' }, _links: { web: { href: 'https://reverb.com/item/999' } } },
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.createListing(BASE_INPUT);
+    expect(result.status).toBe('active');
+  });
 });
 
 describe('ReverbAdapter.updateListing', () => {
@@ -243,6 +253,14 @@ describe('ReverbAdapter.updateListing — status mapping', () => {
     const result = await adapter.updateListing('12345678', { price: 999, currency: 'USD' });
     expect(result.status).toBe('draft');
   });
+
+  it('recognizes the object state shape ({slug:"live"}) on the PUT response', async () => {
+    stubFetch({ listing: { id: 12345678, state: { slug: 'live', description: 'Live' } } });
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.updateListing('12345678', { price: 999, currency: 'USD' });
+    expect(result.status).toBe('active');
+  });
 });
 
 describe('ReverbAdapter.deleteListing', () => {
@@ -274,6 +292,16 @@ describe('ReverbAdapter.getListingStatus', () => {
 
     stubFetch(null, false, 404, '{"message":"Not found"}');
     expect(await adapter.getListingStatus('1')).toBe('unknown');
+  });
+
+  it('reads the object state shape ({slug}) the live GET endpoint returns', async () => {
+    const adapter = new ReverbAdapter('user-1');
+
+    stubFetch({ state: { slug: 'live', description: 'Live' } });
+    expect(await adapter.getListingStatus('1')).toBe('active');
+
+    stubFetch({ state: { slug: 'sold', description: 'Sold' } });
+    expect(await adapter.getListingStatus('1')).toBe('sold');
   });
 
   it('returns unknown (not a throw) when the user has no connected Reverb account', async () => {
