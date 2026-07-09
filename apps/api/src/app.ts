@@ -21,6 +21,7 @@ import { etsyAuthRouter } from './routes/marketplace/etsy-auth.js';
 import { reverbAuthRouter } from './routes/marketplace/reverb-auth.js';
 import { adminRouter } from './routes/admin.js';
 import { disclaimerRouter } from './routes/disclaimer.js';
+import { faqsRouter } from './routes/faqs.js';
 import { surveyRouter } from './routes/survey.js';
 import { draftsRouter } from './routes/drafts.js';
 import { preferencesRouter } from './routes/preferences.js';
@@ -104,6 +105,7 @@ export function createApp() {
   app.use('/marketplace/reverb', reverbAuthRouter);
   app.use('/admin', adminRouter);
   app.use('/disclaimer', disclaimerRouter);
+  app.use('/faqs', faqsRouter);
   app.use('/survey', surveyRouter);
   app.use('/drafts', draftsRouter);
   app.use('/users/me', usersRouter);

@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { users, items, listings, orders, conversations, marketplaceAccounts, adminAuditLog, appSettings } from '../db/schema.js';
-import { eq, sql, desc, count, sum, and, isNull, isNotNull, ilike, or, inArray, gte } from 'drizzle-orm';
+import { users, items, listings, orders, conversations, marketplaceAccounts, adminAuditLog, appSettings, faqs } from '../db/schema.js';
+import { eq, sql, desc, asc, count, sum, and, isNull, isNotNull, ilike, or, inArray, gte } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { getAllowlist, addEmail, removeEmail } from '../lib/cf-allowlist.js';
@@ -685,6 +685,89 @@ adminRouter.get('/audit', async (req, res, next) => {
     const rows = await db.select().from(adminAuditLog).where(where).orderBy(desc(adminAuditLog.createdAt)).limit(limit).offset(offset);
 
     res.json({ entries: rows, total, page, limit });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── FAQ Management ───
+
+const faqCreateSchema = z.object({
+  question: z.string().min(1).max(500),
+  answer: z.string().min(1).max(5000),
+  sortOrder: z.number().int().min(0).optional(),
+  published: z.boolean().optional(),
+});
+
+adminRouter.post('/faqs', async (req, res, next) => {
+  try {
+    const body = faqCreateSchema.parse(req.body);
+    const [faq] = await db.insert(faqs).values({
+      question: body.question,
+      answer: body.answer,
+      sortOrder: body.sortOrder ?? 0,
+      published: body.published ?? true,
+    }).returning();
+    await logAuditAction(req.user!.sub, 'faq_create', 'faq', faq.id, { question: faq.question });
+    res.status(201).json({ faq });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const faqUpdateSchema = faqCreateSchema.partial();
+
+adminRouter.patch('/faqs/:id', async (req, res, next) => {
+  try {
+    const body = faqUpdateSchema.parse(req.body);
+    const [faq] = await db.update(faqs)
+      .set({ ...body, updatedAt: new Date() })
+      .where(eq(faqs.id, req.params.id))
+      .returning();
+    if (!faq) throw new AppError(404, 'NOT_FOUND', 'FAQ not found');
+    await logAuditAction(req.user!.sub, 'faq_update', 'faq', faq.id, { fields: Object.keys(body) });
+    res.json({ faq });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.delete('/faqs/:id', async (req, res, next) => {
+  try {
+    const [deleted] = await db.delete(faqs)
+      .where(eq(faqs.id, req.params.id))
+      .returning({ id: faqs.id });
+    if (!deleted) throw new AppError(404, 'NOT_FOUND', 'FAQ not found');
+    await logAuditAction(req.user!.sub, 'faq_delete', 'faq', deleted.id);
+    res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.get('/faqs', async (_req, res, next) => {
+  try {
+    const rows = await db.select().from(faqs).orderBy(asc(faqs.sortOrder));
+    res.json({ faqs: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const faqReorderSchema = z.object({
+  ids: z.array(z.string().uuid().or(z.string().min(1))).min(1).max(200),
+});
+
+adminRouter.put('/faqs/reorder', async (req, res, next) => {
+  try {
+    const { ids } = faqReorderSchema.parse(req.body);
+    for (let i = 0; i < ids.length; i++) {
+      await db.update(faqs)
+        .set({ sortOrder: i, updatedAt: new Date() })
+        .where(eq(faqs.id, ids[i]));
+    }
+    await logAuditAction(req.user!.sub, 'faq_reorder', 'faq', null, { count: ids.length });
+    res.json({ reordered: true });
   } catch (err) {
     next(err);
   }
