@@ -270,6 +270,23 @@ describe('POST /orders/sync', () => {
     expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'shipped' }));
   });
 
+  it('syncs a 90-day window so heals reach orders older than a month', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    mockGetOrders.mockResolvedValueOnce([]);
+
+    await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    // A 30-day window left 6 real shipped orders permanently un-healed — the
+    // sync can only repair rows eBay actually returns.
+    const since = mockGetOrders.mock.calls[0][0] as Date;
+    const ageDays = (Date.now() - since.getTime()) / 86_400_000;
+    expect(ageDays).toBeGreaterThan(89);
+    expect(ageDays).toBeLessThan(91);
+  });
+
   it('falls back to the order line-item title (not a placeholder) when GetItem fails', async () => {
     const token = createTestToken({ sub: 'user-1' });
     queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);

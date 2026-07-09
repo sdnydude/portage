@@ -153,7 +153,11 @@ ordersRouter.post('/sync', async (req, res, next) => {
       return;
     }
 
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    // 90 days: the status/soldAt heals can only repair rows the marketplace
+    // returns — a 30-day window left older mis-imported orders stuck forever.
+    // (eBay fetch caps at 50 orders per call, no pagination — acceptable at
+    // current volume; widen with pagination if a seller exceeds it.)
+    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     let totalSynced = 0;
     const newOrderIds: string[] = [];
     const errors: { marketplace: string; message: string }[] = [];
