@@ -13,7 +13,12 @@ interface UserDetail {
   role: "user" | "admin";
   subscriptionTier: "free" | "pro" | "beta-tester";
   aiScansThisMonth: number;
+  aiListingsThisMonth: number;
+  aiListingCredits: number;
   bgRemovalsThisMonth: number;
+  trialEndsAt: string | null;
+  limitOverrides: Partial<Record<"aiScansPerMonth" | "aiListingsPerMonth" | "bgRemovalsPerMonth", number | null>> | null;
+  stripeSubscriptionId: string | null;
   onboardingCompleted: boolean;
   disabledAt: string | null;
   disabledReason: string | null;
@@ -55,6 +60,57 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
     }
   };
 
+  // Whole-panel edit mode (item-detail precedent): one Save = one PATCH.
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ displayName: "", role: "user", tier: "free", trialEndsAt: "", credits: "0", scans: "", listings: "", bgRemovals: "" });
+
+  const startEdit = () => {
+    if (!user) return;
+    setForm({
+      displayName: user.displayName ?? "",
+      role: user.role,
+      tier: user.subscriptionTier,
+      trialEndsAt: user.trialEndsAt ? user.trialEndsAt.slice(0, 10) : "",
+      credits: String(user.aiListingCredits),
+      scans: user.limitOverrides?.aiScansPerMonth != null ? String(user.limitOverrides.aiScansPerMonth) : "",
+      listings: user.limitOverrides?.aiListingsPerMonth != null ? String(user.limitOverrides.aiListingsPerMonth) : "",
+      bgRemovals: user.limitOverrides?.bgRemovalsPerMonth != null ? String(user.limitOverrides.bgRemovalsPerMonth) : "",
+    });
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    if (!token || !user) return;
+    setActionLoading(true);
+    try {
+      const overrideOf = (v: string) => (v.trim() === "" ? undefined : Math.max(0, Math.round(Number(v))));
+      // The backend replaces limitOverrides whole — start from the stored
+      // object so keys this form doesn't show (porter, marketplaces) survive.
+      const overrides: Record<string, number | null> = { ...(user.limitOverrides ?? {}) };
+      for (const [key, v] of [["aiScansPerMonth", form.scans], ["aiListingsPerMonth", form.listings], ["bgRemovalsPerMonth", form.bgRemovals]] as const) {
+        const n = overrideOf(v);
+        if (n !== undefined && Number.isFinite(n)) overrides[key] = n;
+        else delete overrides[key]; // blank = back to plan default
+      }
+      const body: Record<string, unknown> = {
+        displayName: form.displayName.trim() === "" ? null : form.displayName.trim(),
+        role: form.role,
+        subscriptionTier: form.tier,
+        aiListingCredits: Math.max(0, Math.round(Number(form.credits)) || 0),
+        // Blank date clears the trial; blank overrides clear back to tier limits.
+        trialEndsAt: form.trialEndsAt ? new Date(`${form.trialEndsAt}T00:00:00.000Z`).toISOString() : null,
+        limitOverrides: Object.keys(overrides).length > 0 ? overrides : null,
+      };
+      await api(`/admin/users/${id}`, { method: "PATCH", body, token });
+      setEditing(false);
+      refetch();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleResetUsage = async () => {
     if (!token || !confirm("Reset all AI usage counters to zero?")) return;
     setActionLoading(true);
@@ -90,14 +146,85 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-surface rounded-xl border border-border p-4">
-          <h2 className="text-sm font-semibold text-text-primary mb-3">Profile</h2>
-          <InfoRow label="Email" value={user.email} />
-          <InfoRow label="Name" value={user.displayName || "—"} />
-          <InfoRow label="Role" value={<span className={user.role === "admin" ? "text-blue-600" : ""}>{user.role}</span>} />
-          <InfoRow label="Plan" value={<span className={user.subscriptionTier === "pro" ? "text-green-600" : ""}>{user.subscriptionTier}</span>} />
-          <InfoRow label="Joined" value={new Date(user.createdAt).toLocaleDateString()} />
-          <InfoRow label="Last Active" value={user.lastActiveAt ? new Date(user.lastActiveAt).toLocaleString() : "Never"} />
-          <InfoRow label="Status" value={user.disabledAt ? <span className="text-red-600">Disabled: {user.disabledReason || "No reason"}</span> : <span className="text-green-600">Active</span>} />
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-text-primary">Profile</h2>
+            {!editing && (
+              <button onClick={startEdit} className="px-3 py-1 text-sm rounded-lg bg-forest-green-50 text-forest-green hover:bg-forest-green-100">Edit</button>
+            )}
+          </div>
+          {editing ? (
+            <div className="space-y-3">
+              <label className="block text-sm">
+                <span className="text-text-secondary block mb-1">Name</span>
+                <input value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-surface" />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="text-text-secondary block mb-1">Role</span>
+                  <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-surface">
+                    <option value="user">user</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="text-text-secondary block mb-1">Plan</span>
+                  <select value={form.tier} onChange={e => setForm({ ...form, tier: e.target.value })} className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-surface">
+                    <option value="free">free</option>
+                    <option value="pro">pro</option>
+                    <option value="beta-tester">beta-tester</option>
+                  </select>
+                </label>
+              </div>
+              <label className="block text-sm">
+                <span className="text-text-secondary block mb-1">Trial ends (blank = no trial)</span>
+                <input type="date" aria-label="Trial ends" value={form.trialEndsAt} onChange={e => setForm({ ...form, trialEndsAt: e.target.value })} className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-surface" />
+              </label>
+              <label className="block text-sm">
+                <span className="text-text-secondary block mb-1">Listing credits</span>
+                <input type="number" min={0} aria-label="Listing credits" value={form.credits} onChange={e => setForm({ ...form, credits: e.target.value })} className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-surface" />
+              </label>
+              <div className="pt-1">
+                <span className="text-text-secondary text-xs block mb-2">Monthly limit overrides — blank = plan default, 0 = blocked</span>
+                <div className="grid grid-cols-3 gap-2">
+                  <label className="block text-xs">
+                    <span className="text-text-secondary block mb-1">AI scans / month override</span>
+                    <input type="number" min={0} aria-label="AI scans / month override" value={form.scans} onChange={e => setForm({ ...form, scans: e.target.value })} className="w-full rounded-lg border border-border px-2 py-1.5 text-sm bg-surface" />
+                  </label>
+                  <label className="block text-xs">
+                    <span className="text-text-secondary block mb-1">AI listings / month override</span>
+                    <input type="number" min={0} aria-label="AI listings / month override" value={form.listings} onChange={e => setForm({ ...form, listings: e.target.value })} className="w-full rounded-lg border border-border px-2 py-1.5 text-sm bg-surface" />
+                  </label>
+                  <label className="block text-xs">
+                    <span className="text-text-secondary block mb-1">BG removals / month override</span>
+                    <input type="number" min={0} aria-label="BG removals / month override" value={form.bgRemovals} onChange={e => setForm({ ...form, bgRemovals: e.target.value })} className="w-full rounded-lg border border-border px-2 py-1.5 text-sm bg-surface" />
+                  </label>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button disabled={actionLoading} onClick={handleSave} className="px-3 py-1.5 text-sm rounded-lg bg-forest-green text-white disabled:opacity-50">Save changes</button>
+                <button disabled={actionLoading} onClick={() => setEditing(false)} className="px-3 py-1.5 text-sm rounded-lg bg-muted text-text-secondary">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <InfoRow label="Email" value={user.email} />
+              <InfoRow label="Name" value={user.displayName || "—"} />
+              <InfoRow label="Role" value={<span className={user.role === "admin" ? "text-blue-600" : ""}>{user.role}</span>} />
+              <InfoRow label="Plan" value={<span className={user.subscriptionTier === "pro" ? "text-green-600" : ""}>{user.subscriptionTier}</span>} />
+              <InfoRow label="Trial ends" value={user.trialEndsAt ? new Date(user.trialEndsAt).toLocaleDateString() : "—"} />
+              <InfoRow label="Listing credits" value={user.aiListingCredits} />
+              <InfoRow
+                label="Limit overrides"
+                value={user.limitOverrides && Object.keys(user.limitOverrides).length > 0
+                  ? Object.entries(user.limitOverrides).map(([k, v]) => `${k.replace("PerMonth", "")}: ${v ?? "∞"}`).join(" · ")
+                  : "plan defaults"}
+              />
+              <InfoRow label="Stripe" value={user.stripeSubscriptionId ? <span className="text-amber-600">Active subscription</span> : "—"} />
+              <InfoRow label="Joined" value={new Date(user.createdAt).toLocaleDateString()} />
+              <InfoRow label="Last Active" value={user.lastActiveAt ? new Date(user.lastActiveAt).toLocaleString() : "Never"} />
+              <InfoRow label="Status" value={user.disabledAt ? <span className="text-red-600">Archived: {user.disabledReason || "No reason"}</span> : <span className="text-green-600">Active</span>} />
+            </>
+          )}
         </div>
 
         <div className="bg-surface rounded-xl border border-border p-4">

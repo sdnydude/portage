@@ -10,7 +10,7 @@ import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryCondition } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
-import { computeEffectiveTier } from '../lib/billing-utils.js';
+import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
 import { limitsForTier } from '@portage/shared';
 import type { PreparedListingData, PricingData, CompResult, ReverbCompResult, MarketplaceCacheEntry, ReverbCacheEntry } from '@portage/shared';
 
@@ -182,6 +182,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       aiListingsThisMonth: users.aiListingsThisMonth,
       aiListingCredits: users.aiListingCredits,
       scanCountResetAt: users.scanCountResetAt,
+      limitOverrides: users.limitOverrides,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (!billingUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
@@ -202,7 +203,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     }
 
     const effectiveTier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
-    const limit = limitsForTier(effectiveTier).aiListingsPerMonth;
+    const limit = effectiveLimits(effectiveTier, billingUser.limitOverrides).aiListingsPerMonth;
 
     // C2: Atomic reserve — try monthly allocation first
     const reserved = await db.update(users)
