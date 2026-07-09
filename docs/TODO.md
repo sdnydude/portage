@@ -1,7 +1,7 @@
 # Portage — Roadmap
 
-**Progress: 48/52 tasks complete · 1 superseded (carrier APIs) · 1 partial (tunnel config) · 2 open (integration testing, Reverb OAuth)**
-**Last updated:** 2026-07-01
+**Progress: 50/52 tasks complete · 1 superseded (carrier APIs) · 1 obsolete (Reverb OAuth code-grant — PAT auth ships selling, live-proven PRs #173–#177)**
+**Last updated:** 2026-07-09
 
 ---
 
@@ -73,16 +73,15 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 
 ### Phase 6 — Feature completeness
 
-- [ ] Reverb OAuth code-grant (token-paste shipped; OAuth needed for selling, 4h)
 - [ ] Notification system — push + in-app center (8h)
 - [ ] Dashboard trends + AI insights — sparklines, category breakdown (6h)
 - [ ] Enhanced-photo persistence — "Replace Photo" action after before/after (2h)
 
 ### Phase 7 — Quality & hardening
 
-- [ ] Integration testing — uncovered routes (Task 35, 12h)
+- [x] Integration testing — uncovered routes (Task 35) — route coverage +43 tests (PR #184, 2026-07-09); suites ~664 API + 293 web; ephemeral e2e stack in CI
 - [x] Version Cloudflare tunnel config into repo (Task 34 gap) — `infra/cloudflared/config-portage.yml` + deploy README (2026-07-09)
-- [ ] Prod CORS single-origin restriction (1h)
+- [x] Prod CORS single-origin restriction — done via PR #189 (2026-07-09): api now runs NODE_ENV=production, CORS list = prod domain only
 - [ ] Pagination on listing/item hooks (4h)
 
 ---
@@ -182,8 +181,8 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 
 ### Production & Testing
 
-- [~] **Task 34:** Cloudflare tunnel + production Docker config — tunnel live (`portage.digitalharmonyai.com`, `portage-api.digitalharmonyai.com`), Docker production mode working with HTTPS cert mount. **GAP: config not versioned in repo.**
-- [ ] **Task 35:** Integration testing + final polish
+- [x] **Task 34:** Cloudflare tunnel + production Docker config — tunnel live (`portage.digitalharmonyai.com`, `portage-api.digitalharmonyai.com`), Docker production mode with HTTPS cert mount. Gap closed 2026-07-09: config versioned at `infra/cloudflared/config-portage.yml` (PR #182)
+- [x] **Task 35:** Integration testing + final polish — route coverage +43 tests (PR #184, 2026-07-09); suites ~664 API + 293 web; ephemeral e2e stack in CI
 
 ---
 
@@ -338,8 +337,8 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 | 3 — AI-specifics follow-through (PR #132 merged 06-23) | E-panel decision, fake-camera e2e, aspect auto-pick, SKU check, #126 (5) | ~6h |
 | 4 — Repo hygiene & Trade-First housekeeping | #127, Dependabot ×8, GTC renewal, verify-wiring decision, dead-code sweep, burndown+docs refresh (7) | ~5h |
 | 5 — Deferred product gaps (registry) | weight/dims, publish-mode, preview reachability, photo gallery, batch-enhance (5) | ~12h |
-| 6 — Feature completeness | Reverb OAuth, notifications, dashboard trends, photo persistence (4) | ~20h |
-| 7 — Quality & hardening | integration testing, tunnel config, CORS, pagination (4) | ~19h |
+| 6 — Feature completeness | notifications, dashboard trends, photo persistence (3) | ~16h |
+| 7 — Quality & hardening | pagination (1) — integration testing, tunnel config, CORS all closed 2026-07-09 | ~4h |
 | ~~Voice-audit sweep~~ | DELETED — evaluator verified A1–A8 all already fixed on main (2026-07-01) | — |
 | Completed (all time) | 48 roadmap tasks + 8 major ships May 26→Jul 1 (PRs #73/#74/#79/#84/#94/#125/#133/#139) | — |
 | Superseded | Task 21 carrier APIs → redirect-to-eBay (stub deleted in W4) | — |
@@ -360,12 +359,12 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 | API | Express 5, TypeScript, pino |
 | Frontend | Next.js 16, React 19, Tailwind v4 |
 | Database | PostgreSQL 15, Drizzle ORM |
-| Auth | JWT + refresh tokens, bcrypt |
+| Auth | Cloudflare Access (IdP) + short-lived internal JWT — no passwords (bcrypt/refresh tokens removed, PRs #168–#172) |
 | Images | Cloudflare R2, Sharp |
 | AI | Claude Sonnet (vision + tool_use + SSE streaming via MessageStream) |
 | Voice STT/TTS | REMOVED 2026-07-01 (Execution Phase 2) — parked at git tag `voice-parked-2026-07` for a future release |
 | BG Removal | @imgly/background-removal (WASM) |
-| Marketplaces | eBay (Trading API for listings + Fulfillment REST for orders), Etsy (REST + PKCE), Reverb (REST, token-paste auth; OAuth pending) |
+| Marketplaces | eBay (Trading API for listings + Fulfillment REST for orders), Reverb (REST, per-user PAT auth — selling live-proven), Etsy PARKED 2026-07-09 (tag `etsy-parked-2026-07`) |
 | Token encryption | AES-256-GCM |
 
 ## Ports
