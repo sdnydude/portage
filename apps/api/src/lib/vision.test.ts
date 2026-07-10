@@ -279,6 +279,23 @@ describe('identifyItemsMulti', () => {
     expect(result.reasoning).toEqual(['Black over-ear design', 'Sony branding visible']);
   });
 
+  it('accepts null conditionNotes from the model (Gemini sends null, live 502 2026-07-10)', async () => {
+    const withNullNotes = {
+      ...VALID_DETAILED_JSON,
+      candidates: [{ ...VALID_DETAILED_JSON.candidates[0], conditionNotes: null }],
+    };
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(withNullNotes),
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    const result = await identifyItemsMulti(mockImages);
+    expect(result.candidates[0].conditionNotes).toBe('');
+  });
+
   it('uses single-image prompt when given 1 image', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify(VALID_DETAILED_JSON),
