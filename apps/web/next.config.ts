@@ -5,6 +5,13 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@portage/shared"],
   allowedDevOrigins: ["10.0.0.251"],
   turbopack: {},
+  experimental: {
+    // The /backend rewrite proxies every API call; Next's default proxy
+    // timeout is 30s, which aborts scans that legitimately run 30-40s
+    // (two-pass refine + vision-provider fallback). Must stay above the
+    // slowest real scan.
+    proxyTimeout: 120_000,
+  },
   async rewrites() {
     // Same-origin API: the browser talks only to this app's origin, so the
     // Cloudflare Access cookie + Cf-Access-Jwt-Assertion header ride along on
