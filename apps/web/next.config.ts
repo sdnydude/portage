@@ -6,11 +6,11 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["10.0.0.251"],
   turbopack: {},
   experimental: {
-    // The /backend rewrite proxies every API call; Next's default proxy
-    // timeout is 30s, which aborts scans that legitimately run 30-40s
-    // (two-pass refine + vision-provider fallback). Must stay above the
-    // slowest real scan.
-    proxyTimeout: 120_000,
+    // Next's default, written explicitly as a product decision (2026-07-10):
+    // users abandon after ~20-30s, so a request that needs longer is already
+    // failed UX — fix the latency, don't raise the timeout. Scans exceeding
+    // this die as errors; keep them fast (Gemini billed: 4-12s typical).
+    proxyTimeout: 30_000,
   },
   async rewrites() {
     // Same-origin API: the browser talks only to this app's origin, so the
