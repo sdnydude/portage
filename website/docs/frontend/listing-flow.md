@@ -20,7 +20,7 @@ Porter-guided chat bubbles alongside inline cards. Combines AI guidance with dir
 - AI recognition card with candidate selection
 - Metadata fields (title, description, category, condition)
 - Pricing strategy picker (Fast Sale / Market Price / Maximize)
-- Marketplace selector (eBay, Etsy, Reverb)
+- Marketplace selector (eBay, Reverb — Etsy was parked 2026-07-09 pending API key approval)
 - Shipping configuration card
 - Fee estimate breakdown
 
@@ -34,10 +34,11 @@ Card-stack rapid-entry mode for bulk listing. Swipe gestures for quick decisions
 
 ## State Machine
 
-The `useListingFlow` hook (`apps/web/src/hooks/use-listing-flow.ts`) manages the entire listing lifecycle:
+The `useListingFlow` hook (`apps/web/src/hooks/use-listing-flow.ts`) manages the entire listing lifecycle. Progress is tracked as `lastStepCompleted` checkpoints (persisted with the draft):
 
 ```
-idle → photo_capture → recognition → metadata → pricing → shipping → review → publishing → published
+idle → recognizing → recognition → confirmed → details → pricing → published
+       (error paths: recognition-failed, publish-failed)
 ```
 
 ### Key Actions
@@ -53,6 +54,8 @@ idle → photo_capture → recognition → metadata → pricing → shipping →
 | `addPhotos(files)` | Add more photos to the listing |
 | `publish()` | Submit to marketplace |
 | `cancel()` | Exit the flow |
+
+`publish()` creates the inventory item first if needed (`ensureItemCreated`), runs prepare-listing for marketplace-specific fields (non-fatal on failure), and sends a scoped idempotency key per publish attempt so retries and replays cannot create duplicate listings. eBay supports both `draft` and `live` publish modes (defaulted from the seller profile's `ebayPublishMode`, with a per-publish toggle).
 
 ## Auto-Draft Persistence
 
@@ -83,7 +86,6 @@ Located in `apps/web/src/components/listing-flow/`:
 | `swipe-flow.tsx` | Card-stack rapid entry |
 | `photo-capture-flow.tsx` | Multi-angle photo capture |
 | `photo-capture-overlay.tsx` | Full-screen photo capture |
-| `photo-editor.tsx` | Crop/enhance/BG removal tools |
 | `photo-grid.tsx` | Drag-reorderable photo grid |
 | `crop-tool.tsx` | Interactive crop/rotate canvas |
 | `recognition-fork.tsx` | Multi-candidate disambiguation |
@@ -91,3 +93,5 @@ Located in `apps/web/src/components/listing-flow/`:
 | `shipping-config-card.tsx` | Package dimensions and weight |
 | `fee-estimate.tsx` | Marketplace fee breakdown |
 | `publish-success.tsx` | Confetti success state |
+
+Photo editing (rotate, crop, exposure, enhance, BG removal) lives in `components/capture/` as `photo-edit-overlay.tsx` and `photo-edit-panel.tsx`, shared with the scan flow.

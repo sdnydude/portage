@@ -6,74 +6,38 @@ sidebar_position: 2
 
 # Authentication
 
-Portage uses JWT access/refresh tokens with bcrypt password hashing. Three auth levels exist: public, authenticated, and admin.
+Portage uses **Cloudflare Access** as its identity provider — there are no passwords, no registration endpoint, and no refresh tokens. Cloudflare authenticates the user at the edge (against an admin-managed allowlist), and the API exchanges the resulting identity assertion for a short-lived internal JWT. Three auth levels exist: public, authenticated, and admin.
 
 ## Endpoints
 
-### Register
+### Session Exchange
 
 ```
-POST /auth/register
+GET /auth/session
 ```
 
-**Body:**
+**Auth:** Cloudflare Access (via `Cf-Access-Jwt-Assertion` header)
 
-```json
-{
-  "email": "user@example.com",
-  "password": "minimum8chars"
-}
-```
-
-**Response** `201`:
-
-```json
-{
-  "user": { "id": "uuid", "email": "user@example.com", "role": "user" },
-  "token": "eyJ...",
-  "refreshToken": "eyJ..."
-}
-```
-
-### Login
-
-```
-POST /auth/login
-```
-
-**Body:**
-
-```json
-{
-  "email": "user@example.com",
-  "password": "password123"
-}
-```
-
-**Response** `200`: Same shape as register.
-
-### Refresh Token
-
-```
-POST /auth/refresh
-```
-
-**Body:**
-
-```json
-{
-  "refreshToken": "eyJ..."
-}
-```
+Verifies the `Cf-Access-Jwt-Assertion` header injected by Cloudflare Access against the team JWKS, then mints a **15-minute internal JWT** the rest of the API consumes. On a user's first login the account is auto-provisioned (the Access allowlist is the signup gate) with a 7-day Pro trial.
 
 **Response** `200`:
 
 ```json
 {
   "token": "eyJ...",
-  "refreshToken": "eyJ..."
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "displayName": "John",
+    "subscriptionTier": "free",
+    "role": "user",
+    "onboardingCompleted": true,
+    "trialEndsAt": "2026-07-16T00:00:00Z"
+  }
 }
 ```
+
+**Errors:** `401 CF_REQUIRED` (no assertion header), `401 CF_INVALID` (assertion failed JWKS verification), `403 ACCOUNT_DISABLED` (account archived by an admin).
 
 ### Get Current User
 
@@ -87,14 +51,12 @@ GET /users/me
 
 ```json
 {
-  "user": {
-    "id": "uuid",
-    "email": "user@example.com",
-    "displayName": "John",
-    "role": "user",
-    "plan": "free",
-    "onboardingCompleted": true
-  }
+  "email": "user@example.com",
+  "displayName": "John",
+  "subscriptionTier": "free",
+  "address": { "street1": "123 Main St", "city": "Portland", "state": "OR", "zip": "97201", "country": "US" },
+  "notificationPreferences": { "sale": true, "buyer_message": true },
+  "createdAt": "2026-05-01T..."
 }
 ```
 
@@ -112,13 +74,36 @@ PATCH /users/me
 {
   "displayName": "John Doe",
   "address": {
-    "street": "123 Main St",
+    "street1": "123 Main St",
     "city": "Portland",
     "state": "OR",
-    "zip": "97201"
+    "zip": "97201",
+    "country": "US"
   }
 }
 ```
+
+Accepts `displayName`, `address`, and `notificationPreferences` (at least one field required).
+
+### Complete Onboarding
+
+```
+PATCH /users/me/onboarding
+```
+
+**Auth:** Required
+
+**Body:** `{ "completed": true }`
+
+### List Marketplace Accounts
+
+```
+GET /users/me/marketplace-accounts
+```
+
+**Auth:** Required
+
+Returns the user's connected marketplace accounts (id, marketplace, marketplaceUserId, tokenExpiresAt).
 
 ### Update Preferences
 
@@ -139,11 +124,16 @@ PATCH /users/me/preferences
 
 ## Token Lifecycle
 
-1. **Login/Register** returns an access token and refresh token
-2. Access tokens are short-lived; refresh tokens are longer-lived
-3. On **401 response**, the client automatically calls `POST /auth/refresh`
-4. The refresh call is deduplicated via a promise singleton (prevents parallel refresh storms)
-5. On successful refresh, the original request is retried with the new token
+1. Cloudflare Access authenticates the user at the edge and forwards `Cf-Access-Jwt-Assertion`
+2. The client calls `GET /auth/session` on mount; the API verifies the assertion and mints a **15-minute** internal access token
+3. All subsequent API calls send `Authorization: Bearer <token>`
+4. On **401 response**, the client re-exchanges via `GET /auth/session` (deduplicated via a promise singleton to prevent parallel exchange storms) and retries the original request
+5. There is no refresh token — Cloudflare Access is re-consulted each time the internal JWT expires
+
+## Roles and Tiers
+
+- **Roles:** `user` | `admin`
+- **Tiers:** `free` | `pro` | `beta-tester` (beta testers get unlimited AI and Porter limits)
 
 ## Auth Middleware
 
@@ -151,8 +141,8 @@ Three middleware functions protect routes:
 
 | Middleware | Requirement |
 |-----------|-------------|
-| `requireAuth` | Valid JWT in Authorization header |
-| `requirePro` | Valid JWT + `plan === 'pro'` |
+| `requireAuth` | Valid internal JWT in Authorization header |
+| `requirePro` | Valid JWT + `tier === 'pro'` |
 | `requireAdmin` | Valid JWT + `role === 'admin'` |
 
 All middleware uses `next(err)` for error propagation (not synchronous `throw`), ensuring Express error handlers catch auth failures gracefully.

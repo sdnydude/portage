@@ -10,9 +10,9 @@ This page documents how code in this repository talks to the DHG Registry — th
 
 ## Decoupling Principle
 
-Nothing in the Portage **product** talks to the registry. `apps/api` and `apps/web` contain zero references to port 8011. The app's only `10.0.0.251` runtime dependencies are PostgreSQL (`:5436`) and display-only links to Grafana (`:3001`) and Prometheus (`:9090`) on the admin observability page.
+Almost nothing in the Portage **product** talks to the registry. The one exception is the in-app beta-reporting endpoint (`POST /beta/report` in `apps/api/src/routes/beta.ts`, added with the CF Access beta migration): the API proxies beta-tester/admin reports to the registry's `/api/beta-reports` (base URL from `REGISTRY_URL`, default `http://10.0.0.251:8011`), returning a 502 if the registry is unreachable. Beyond that, the app's only `10.0.0.251` runtime dependencies are PostgreSQL (`:5436`) and display-only links to Grafana (`:3001`) and Prometheus (`:9090`) on the admin observability page.
 
-The DHG Registry is a **dev/ops sidecar, not a runtime dependency.** If it is down, Portage runs normally. Only Claude Code session memory-capture and briefing degrade, and they fail silently by design.
+The DHG Registry is otherwise a **dev/ops sidecar, not a runtime dependency.** If it is down, Portage runs normally except beta reporting. Claude Code session memory-capture and briefing degrade, and they fail silently by design.
 
 ## Base Mechanism
 
@@ -26,10 +26,11 @@ The primary write channel. Rules in `.claude/rules/*.md` instruct Claude Code to
 ~/.claude/scripts/post-insight.sh  →  /home/swebber64/DHG/dhg-memreg/scripts/memreg_capture.py
 ```
 
-`memreg_capture.py` maps 7 subcommands 1:1 to registry endpoints:
+`memreg_capture.py` maps 8 subcommands 1:1 to registry endpoints:
 
 | Command | Endpoint |
 |---|---|
+| `post-agent-session` | `POST /api/agent-sessions` |
 | `post-insight` | `POST /api/insights` |
 | `post-decision-logs` | `POST /api/decision-logs` |
 | `post-bug-fixes` | `POST /api/bug-fixes` |

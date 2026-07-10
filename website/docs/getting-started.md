@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Getting Started
 
-Portage is an AI-powered personal effects inventory and multi-marketplace seller platform. Capture photos of your items, let AI identify and value them, then list across eBay, Etsy, and Reverb from a single mobile-first interface.
+Portage is an AI-powered personal effects inventory and multi-marketplace seller platform. Capture photos of your items, let AI identify and value them, then list across eBay and Reverb from a single mobile-first interface.
 
 ## Prerequisites
 
@@ -34,9 +34,12 @@ docker compose ps
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| portage-app | `https://localhost:3002` | Next.js frontend |
+| portage-app | `http://localhost:3002` | Next.js frontend (standalone, HTTP) |
 | portage-api | `https://localhost:8016` | Express API |
-| portage-db | `localhost:5436` | PostgreSQL |
+| portage-db | `localhost:5436` | PostgreSQL (loopback-only) |
+| portage-rembg | `http://localhost:7000` | Background removal service |
+
+Both application containers are image-baked — after code changes, redeploy with `docker compose up -d --build <service>`. An opt-in hot-reload overlay exists for API development: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build portage-api`.
 
 ## Quick Start (Manual)
 
@@ -71,7 +74,7 @@ portage/
   packages/
     shared/       TypeScript types and constants
   docker-compose.yml
-  docker-compose.override.yml
+  docker-compose.dev.yml    # opt-in hot-reload overlay
 ```
 
 Portage uses **npm workspaces** to manage the monorepo. The three packages (`apps/api`, `apps/web`, `packages/shared`) share dependencies and types through the workspace root.
@@ -81,15 +84,12 @@ Portage uses **npm workspaces** to manage the monorepo. The three packages (`app
 ```bash
 npm run typecheck     # TypeScript across all workspaces
 npm run lint          # ESLint (web)
-npm run test:api      # Vitest test suite (93 tests)
+npm run test:api      # Vitest API test suite (~664 tests)
 ```
 
-## Demo Account
+## Authentication
 
-A demo account is available for exploring the app:
-
-- **Email:** `demo@portage.app`
-- **Password:** `demo1234demo1234`
+Cloudflare Access is the identity provider — there are no passwords. Signing in requires your email to be on the admin-managed Cloudflare Access allowlist; the API verifies the CF Access JWT and auto-provisions your user account on first login. For LAN development without a Cloudflare edge, set `CF_ACCESS_DEV_EMAIL` (honored only when `NODE_ENV=development`).
 
 ## Next Steps
 

@@ -19,7 +19,7 @@ Portage uses **PostgreSQL 15** with **Drizzle ORM** in schema-push mode (no migr
 
 ## Schema
 
-The database has 16 tables:
+The database has 18 tables:
 
 ### Core Tables
 
@@ -39,8 +39,9 @@ The database has 16 tables:
 | `marketplace_accounts` | OAuth tokens (AES-256-GCM encrypted) |
 | `listing_drafts` | Auto-saved listing drafts |
 | `seller_profiles` | Return policy, shipping terms |
-| `shipping_presets` | Saved package dimensions |
-| `shipping_providers` | Carrier API keys (EasyPost/Shippo) |
+| `ebay_messages` | Synced eBay buyer messages |
+| `faqs` | DB-backed FAQ content (admin CRUD) |
+| `export_tokens` | Short-lived tokens for CSV export downloads |
 | `admin_audit_log` | Admin action audit trail |
 | `app_settings` | System-level configuration |
 | `stripe_events` | Idempotent Stripe webhook event log |
@@ -93,15 +94,13 @@ const token = decrypt(encrypted, ENCRYPTION_KEY);
 
 ### Partial Unique Index
 
-The `shipping_presets` table uses a partial unique index to enforce a single default preset per user:
+The `listings` table uses a partial unique index on `(user_id, idempotency_key)` to make publishing idempotent — a replayed publish attempt hits the unique constraint instead of creating a duplicate listing:
 
-```sql
-CREATE UNIQUE INDEX shipping_presets_one_default_per_user
-ON shipping_presets (user_id)
-WHERE is_default = true;
+```typescript
+uniqueIndex('uq_listings_idempotency_key')
+  .on(t.userId, t.idempotencyKey)
+  .where(sql`${t.idempotencyKey} IS NOT NULL`)
 ```
-
-This is wrapped in a database transaction for TOCTOU race protection.
 
 ## Querying
 

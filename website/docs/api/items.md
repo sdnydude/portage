@@ -22,7 +22,7 @@ GET /items
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `search` | string | Filter by name (partial match) |
+| `search` | string | Filter by title (partial match) |
 | `category` | string | Filter by category |
 | `condition` | string | Filter by condition |
 | `limit` | number | Items per page (default: 50) |
@@ -35,7 +35,7 @@ GET /items
   "items": [
     {
       "id": "uuid",
-      "name": "Fender Stratocaster",
+      "title": "Fender Stratocaster",
       "category": "Musical Instruments",
       "condition": "good",
       "brand": "Fender",
@@ -72,7 +72,7 @@ POST /items
 
 ```json
 {
-  "name": "Fender Stratocaster",
+  "title": "Fender Stratocaster",
   "category": "Musical Instruments",
   "condition": "good",
   "brand": "Fender",
@@ -104,15 +104,17 @@ DELETE /items/:id
 
 **Auth:** Required (owner only)
 
-### Bulk Delete
+### Bulk Operations
 
 ```
-POST /items/bulk-delete
+POST /items/bulk/delete          # Delete multiple items
+POST /items/bulk/update          # Update fields on multiple items
+POST /items/bulk/export          # Export selected items
 ```
 
 **Auth:** Required
 
-**Body:**
+**Body (delete):**
 
 ```json
 {
@@ -128,7 +130,7 @@ GET /items/comps/search?q=<query>
 
 **Auth:** Required
 
-Searches eBay's Browse API for comparable sold and active listings.
+Searches eBay's Browse API for comparable sold and active listings. `q` must be at least 3 characters; an optional `category` parameter narrows the search.
 
 **Response** `200`:
 
@@ -157,7 +159,10 @@ GET /items/export?format=<format>
 
 | Param | Type | Options |
 |-------|------|---------|
-| `format` | string | `ebay-csv`, `json` |
+| `format` | string | `ebay_csv`, `json` (default) |
+| `ids` | string | Optional comma-separated item IDs |
+| `category` | string | Optional category filter |
+| `condition` | string | Optional condition filter |
 
 Returns a downloadable file. The eBay CSV format follows eBay's **Seller Hub Reports draft-import** specification, with `Action(SiteID=US|Country=US|Currency=USD|Version=1193|CC=UTF-8)` header metadata. Includes Category ID, eBay-optimized title, pipe-delimited PicURLs, Custom Label (SKU), Brand/Model columns, and condition description.
 
@@ -169,23 +174,31 @@ POST /items/:id/prepare-listing
 
 **Auth:** Required
 
-AI-generates optimized listing fields from item data.
+AI-generates optimized listing fields from item data, with comps-based pricing. Billing-gated (consumes one AI listing from the monthly allocation, or a purchased credit).
 
 **Body:**
 
 ```json
 {
-  "targetMarketplaces": ["ebay", "etsy"]
+  "targetMarketplaces": ["ebay", "reverb"]
 }
 ```
 
-**Response** `200`:
+`targetMarketplaces` accepts `ebay` and/or `reverb`.
+
+**Response** `200` (abridged):
 
 ```json
 {
   "title": "Fender American Professional II Stratocaster - Excellent Condition",
   "description": "...",
-  "suggestedPrice": 1400,
-  "categoryMappings": { "ebay": "33034", "etsy": "..." }
+  "condition": "good",
+  "brand": "Fender",
+  "model": "American Professional II",
+  "pricing": { "suggested": 1400, "low": 1250, "high": 1550, "confidence": "high" },
+  "comps": { "ebay": { "sold": ["..."], "active": ["..."] }, "reverb": null },
+  "ebay": { "categoryId": "33034", "aspects": { "...": ["..."] } },
+  "reverb": null,
+  "warnings": []
 }
 ```

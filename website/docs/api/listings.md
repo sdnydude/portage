@@ -23,7 +23,7 @@ GET /listings
 | Param | Type | Description |
 |-------|------|-------------|
 | `status` | string | Filter: `active`, `draft`, `sold`, `archived` |
-| `marketplace` | string | Filter: `ebay`, `etsy`, `reverb` |
+| `marketplace` | string | Filter: `ebay`, `reverb` |
 | `limit` | number | Items per page (default: 50) |
 | `offset` | number | Pagination offset (default: 0) |
 
@@ -36,7 +36,7 @@ GET /listings
       "id": "uuid",
       "itemId": "uuid",
       "marketplace": "ebay",
-      "marketplaceListingId": "v1|123456|0",
+      "marketplaceListingId": "307034606520",
       "status": "active",
       "title": "Fender Stratocaster American Professional II",
       "description": "...",
@@ -70,13 +70,18 @@ POST /listings
 {
   "itemId": "uuid",
   "marketplace": "ebay",
-  "title": "Fender Stratocaster American Professional II",
-  "description": "...",
   "price": 1400,
-  "condition": "good",
-  "categoryId": "33034"
+  "currency": "USD",
+  "publishImmediately": false,
+  "marketplaceSpecificFields": { "categoryId": "33034", "aspects": { "Brand": ["Fender"] } },
+  "idempotencyKey": "itemId:ebay:abc123",
+  "disclaimerAccepted": true
 }
 ```
+
+`marketplace` accepts `ebay` or `reverb`. Title, description, and condition come from the item and `marketplaceSpecificFields`. When `publishImmediately` is true, the listing is published to the marketplace in the same request.
+
+**Publish idempotency:** the optional `idempotencyKey` (scoped `itemId:marketplace:random` per publish attempt) is enforced insert-first via a partial unique index on `listings.idempotency_key`, so a retried publish can never double-list; the server resumes the stuck draft on a replay instead of creating an orphan.
 
 ### Update Listing
 
@@ -106,12 +111,22 @@ POST /listings/:id/publish
 
 **Auth:** Required
 
-Publishes a draft listing to its marketplace.
+Publishes a draft listing to its marketplace. For eBay this is a **Trading API** `AddFixedPriceItem` call with inline shipping terms (no Business Policies); the leaf category, item aspects, and package weight/dimensions are self-healed from the item when the draft lacks them. Only `draft` listings can be published.
+
+### GTC Auto-End Sweep
+
+```
+POST /listings/gtc-sweep
+```
+
+**Auth:** Required
+
+Opt-in (per-user `gtc_auto_end` setting), triggered post-login: ends active eBay listings via `EndFixedPriceItem` two days before their monthly GTC renewal anniversary, archives them, and notifies the seller. No auto-relist.
 
 ### Bulk Delete
 
 ```
-POST /listings/bulk-delete
+POST /listings/bulk/delete
 ```
 
 **Auth:** Required
@@ -125,7 +140,7 @@ POST /listings/bulk-delete
 ### Bulk Archive
 
 ```
-POST /listings/bulk-archive
+POST /listings/bulk/archive
 ```
 
 **Auth:** Required
@@ -133,7 +148,7 @@ POST /listings/bulk-archive
 ### Bulk Activate
 
 ```
-POST /listings/bulk-activate
+POST /listings/bulk/activate
 ```
 
 **Auth:** Required

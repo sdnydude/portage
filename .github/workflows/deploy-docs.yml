@@ -24,6 +24,10 @@ jobs:
           cp -r website/docs "$DOCS_SITE/projects/portage"
           # Fix cross-references from /docs/ to /portage/
           find "$DOCS_SITE/projects/portage" -name "*.md" -exec sed -i 's|](/docs/|](/portage/|g' {} \;
+          # Fix image refs: assets are copied to static/portage/img (served at
+          # /portage/img/...), but repo docs reference /img/... — without this
+          # rewrite every image 404s on the deployed site.
+          find "$DOCS_SITE/projects/portage" -name "*.md" -exec sed -i 's|](/img/|](/portage/img/|g' {} \;
           # Copy static assets referenced by docs (recursive: subdirs like
           # img/sitemap and img/verification, plus PDFs — the old *.svg glob
           # silently dropped everything in subdirectories)

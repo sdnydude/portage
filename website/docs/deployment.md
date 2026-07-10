@@ -13,7 +13,7 @@ Portage runs on a dedicated Ubuntu server with Docker Compose. Production traffi
 | Component | Details |
 |-----------|---------|
 | Server | g700data1 (10.0.0.251), Ubuntu 24.04, 64GB RAM |
-| Containers | Docker Compose (3 services) |
+| Containers | Docker Compose (4 services: db, api, app, rembg) |
 | CDN/Proxy | Cloudflare Tunnel |
 | Image Storage | Cloudflare R2 |
 | Secrets | Doppler |
@@ -21,21 +21,25 @@ Portage runs on a dedicated Ubuntu server with Docker Compose. Production traffi
 
 ## Docker Services
 
-```yaml
-services:
-  portage-db:
-    image: postgres:15
-    ports: ["5436:5432"]
+| Service | Port | Image |
+|---------|------|-------|
+| `portage-db` | 5436 (loopback-only) | postgres:15-alpine |
+| `portage-api` | 8016 (HTTPS) | Built from `apps/api/Dockerfile` (compiled `dist`, `NODE_ENV=production`) |
+| `portage-app` | 3002 (host) → 3000 (container) | Built from `apps/web/Dockerfile` (Next.js standalone) |
+| `portage-rembg` | 7000 | danielgatis/rembg (background removal) |
 
-  portage-api:
-    build: .
-    target: api
-    ports: ["8016:8016"]
+The docs site (`dhg-docs`, nginx on port 8017) runs separately from this compose stack.
 
-  portage-app:
-    build: .
-    target: web
-    ports: ["3002:3002"]
+**Both application containers are image-baked** — code changes do not hot-reload. The default deploy ritual for any code change is:
+
+```bash
+docker compose up -d --build <service>
+```
+
+For hot-reload development, an explicit opt-in overlay (`docker-compose.dev.yml`) bind-mounts the API source into a tsx-watch container:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build portage-api
 ```
 
 ### Common Commands
@@ -44,8 +48,9 @@ services:
 # Start all services
 docker compose up -d
 
-# Rebuild after code changes
-docker compose up -d --build portage-api portage-app
+# Rebuild after code changes (the default deploy ritual)
+docker compose up -d --build portage-api
+docker compose up -d --build portage-app
 
 # View logs
 docker compose logs -f portage-api
@@ -63,19 +68,17 @@ docker compose restart portage-api
 Production traffic reaches the server through a Cloudflare Tunnel, avoiding the need to expose ports publicly:
 
 ```
-Browser → Cloudflare Edge → Tunnel → https://localhost:3002 (Next.js)
+Browser → Cloudflare Edge → Tunnel → http://localhost:3002 (Next.js)
                                    → https://localhost:8016 (API)
 ```
 
-The tunnel is configured with `noTLSVerify` since the local services use self-signed certificates.
+Cloudflare Access sits in front as the identity provider — see [Authentication](/docs/architecture/overview#authentication). The tunnel is configured with `noTLSVerify` for the API since it uses a self-signed certificate.
 
 ## HTTPS
 
-Both the API and web services run HTTPS in production:
-
-- **Next.js**: Uses `--experimental-https` with certificates at `certs/key.pem` and `certs/cert.pem`
-- **Express**: HTTPS server with the same certificate files
-- **Camera access**: `getUserMedia` requires HTTPS — this is not optional
+- **Express API**: HTTPS in the production container using certificates at `certs/key.pem` and `certs/cert.pem` (exits if certs are missing in production)
+- **Next.js**: The production container serves plain HTTP (standalone mode) behind the Cloudflare Tunnel; `--experimental-https` with the same certs is used in `npm run dev:web` only
+- **Camera access**: `getUserMedia` requires a secure context — in production Cloudflare terminates TLS; in LAN dev the Next.js HTTPS dev mode provides it
 
 ## Database
 
@@ -115,10 +118,11 @@ npm run build -w packages/shared
 
 ## Health Checks
 
-Docker health checks are configured for all three services:
+Docker health checks are configured for all four services:
 
 | Service | Health Check |
 |---------|-------------|
 | portage-db | `pg_isready` |
-| portage-api | `curl -sk https://localhost:8016/health` |
-| portage-app | `curl -sk https://localhost:3002` |
+| portage-api | Node HTTPS probe of `https://localhost:8016/health` |
+| portage-app | Node HTTP probe of `http://localhost:3000` |
+| portage-rembg | Python urllib probe of `http://localhost:7000/api` |
