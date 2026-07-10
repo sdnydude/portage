@@ -20,8 +20,10 @@ actually hit) and returns the same pass/fail every run.
 |-------|----------|
 | Runner | `@playwright/test` (apps/web devDependency) |
 | Config | `apps/web/playwright.config.ts` (baseURL `E2E_BASE_URL`, default `http://10.0.0.251:3002`) |
+| Auth | `apps/web/e2e/auth.setup.ts` — one CF Access session exchange per run (dev bypass or `E2E_CF_CLIENT_ID/SECRET` service token), shared with all specs via `storageState` |
 | Specs | `apps/web/e2e/*.spec.ts` |
 | Script | `npm run test:e2e -w apps/web` (also chained into root `test:all`) |
+| CI | `.github/workflows/e2e.yml` — builds an isolated ephemeral stack from `docker-compose.e2e.yml`, pushes schema, seeds demo data, runs the suite, tears down |
 
 ```bash
 # 1. Rebuild the container so it serves the latest code (no hot-reload)
@@ -32,8 +34,8 @@ npm run test:e2e -w apps/web
 
 ## Worked example — item-detail inline edit
 
-`e2e/inline-edit.spec.ts` logs in as the demo user, opens the first inventory
-item, edits the **Brand** field in the inline edit panel, saves, **reloads the
+`e2e/inline-edit.spec.ts` authenticates via the shared session (auth.setup.ts),
+opens the first inventory item, edits the **Brand** field in the inline edit panel, saves, **reloads the
 page**, and asserts the change persisted — then restores the original value so the
 test is repeatable and non-destructive. The reload is the point: it proves the
 `PATCH /items/:id` actually persisted, not just local React state.

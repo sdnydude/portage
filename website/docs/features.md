@@ -7,7 +7,7 @@ sidebar_position: 2
 
 # Portage Features
 
-*Last updated: 2026-05-18*
+*Last updated: 2026-07-09*
 
 Portage is an AI-powered personal effects inventory and multi-marketplace seller app. This document covers every shipped feature, its implementation status, and what makes it unique in the reseller tool market.
 
@@ -41,11 +41,11 @@ Choose how you create listings: Conversational (guided Q&A), Swipe (card stack f
 - **Benefit:** Reduces listing fatigue; new sellers get guidance while experienced sellers get speed
 - **Nearest competitor:** Nobody — every other tool offers a single form paradigm with no UX variation
 
-### Zero-Cost Background Removal
+### Zero-API-Fee Background Removal
 
-Runs entirely in your browser via WebAssembly — no server round-trip, no API fee, no monthly quota.
+Runs on Portage's own self-hosted rembg service — no third-party API fee, no per-image cost passed through from PhotoRoom-style vendors.
 
-- **Advantage:** Process unlimited photos with no per-image cost; works offline after initial WASM load
+- **Advantage:** Background removal costs Portage nothing per image, so tier limits are generous instead of vendor-capped
 - **Benefit:** Professional product photos on every listing without paying $10-50/mo for PhotoRoom or burning through monthly caps
 - **Nearest competitor:** All others (Crosslist, List Perfectly, Vendoo) use PhotoRoom with 50-200/month caps
 
@@ -62,7 +62,7 @@ Expandable sold/active comp cards with thumbnails, prices, sold dates, and one-t
 The only cross-listing tool that supports Reverb — the marketplace for musical instruments, audio gear, and DJ equipment.
 
 - **Advantage:** Reach the #1 marketplace for instruments ($1B+ annual GMV) that no other tool connects to
-- **Benefit:** Musicians and gear resellers can manage Reverb alongside eBay/Etsy in one app instead of switching between platforms
+- **Benefit:** Musicians and gear resellers can manage Reverb alongside eBay in one app instead of switching between platforms
 - **Nearest competitor:** Nobody — not even the 15-marketplace tools support Reverb
 
 ---
@@ -73,9 +73,9 @@ These features exist in other tools, but Portage's implementation offers distinc
 
 | Feature | What others do | What Portage does better |
 |---------|---------------|--------------------------|
-| **AI Item Scanning** | Barcode lookup (List Perfectly) or basic image match (Underpriced) | Claude Vision with multi-candidate results, confidence scores, feature extraction, and AI reasoning display |
+| **AI Item Scanning** | Barcode lookup (List Perfectly) or basic image match (Underpriced) | Multi-provider vision chain (Gemini 2.5 primary, Claude fallback) with multi-candidate results, confidence scores, feature extraction, and AI reasoning display |
 | **AI Listing Generation** | Template-fill from image context alone | Generates from comps data + seller profile + marketplace-specific optimization (80-char eBay titles, HTML descriptions) |
-| **Background Removal** | Server-side API with monthly caps (50-200 images) | Client-side WASM — unlimited, zero-cost, works offline, no account needed |
+| **Background Removal** | Third-party API (PhotoRoom) with monthly caps (50-200 images) | Self-hosted rembg service — no third-party API fees, tier-gated in-app |
 | **Bulk CSV Export** | Generic CSV download | eBay Seller Hub Reports format with Action headers, numeric category IDs, pipe-delimited photos — ready for direct bulk import |
 | **Mobile Experience** | Responsive web or native app requiring App Store approval | PWA installable from browser — no App Store review, no 30% Apple tax, instant updates |
 | **Photo Editing** | Upload and maybe crop | Full pipeline: capture → crop → rotate → enhance → BG remove → before/after preview, all inline |
@@ -92,7 +92,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| AI Item Scanning | Shipped | Claude Vision identifies items from photos — name, category, brand, model, features, value range, condition |
+| AI Item Scanning | Shipped | Vision provider chain (Gemini 2.5 primary, Claude fallback) identifies items from photos — name, category, brand, model, features, value range, condition |
 | Multi-Candidate Results | Shipped | AI returns ranked candidates with confidence scores; user picks the best match |
 | AI Reasoning Display | Shipped | Collapsible "Why this identification?" showing the AI's reasoning steps |
 | Comp-Grounded Pricing | Shipped | Real eBay sold/active comparable listings feed pricing decisions |
@@ -106,7 +106,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 |---------|--------|-------------|
 | Multi-Photo Capture | Shipped | Camera capture up to 12 photos per item with upload-on-capture |
 | Gallery Import | Shipped | Pick existing photos from device gallery |
-| Background Removal | Shipped | @imgly/background-removal WASM — runs entirely in-browser |
+| Background Removal | Shipped | Self-hosted rembg service via `POST /images/remove-bg` (billing-gated) |
 | Crop Tool | Shipped | Interactive crop with aspect ratio options |
 | Rotate | Shipped | 90-degree rotation with server-side processing |
 | Before/After Preview | Shipped | Slider comparison for enhance and BG removal results |
@@ -155,12 +155,14 @@ These features exist in other tools, but Portage's implementation offers distinc
 | Feature | Status | Description |
 |---------|--------|-------------|
 | eBay OAuth2 | Shipped | Full auth code grant flow with encrypted token storage |
-| eBay Inventory API | Shipped | SKU/offer/publish workflow, listing sync |
+| eBay Trading API Listings | Shipped | Full listing lifecycle (add/revise/end) with inline shipping terms — no Business Policies required |
 | eBay Comps (Browse API) | Shipped | Sold + active comparable search with stats |
 | eBay Taxonomy | Shipped | Category suggestion from item metadata |
-| Etsy PKCE OAuth2 | Shipped | Auth flow with photo upload support |
-| Etsy Listings API | Shipped | Create/update/deactivate with receipts |
-| Reverb Token Auth | Shipped | Personal Access Token validated against live API |
+| eBay Buyer Messaging | Shipped | Inbox sync, conversation threads, reply via Trading API |
+| eBay GTC Auto-End | Shipped | Opt-in sweep ends listings before the monthly GTC renewal fee |
+| Etsy | Parked | Adapter removed 2026-07-09 pending Etsy API key approval (tag `etsy-parked-2026-07`) |
+| Reverb Token Auth | Shipped | Per-user Personal Access Token validated against live API |
+| Reverb Publish | Shipped | Create/update listing — live-proven with a real published listing |
 | Reverb Comps Search | Shipped | Comparable listings for musical instruments |
 | Reverb OAuth Code Grant | Planned | Full OAuth2 flow (token-paste auth is live) |
 
@@ -168,14 +170,10 @@ These features exist in other tools, but Portage's implementation offers distinc
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Orders List | Shipped | All orders with status, buyer info, items |
+| Orders List | Shipped | Sold-orders panel with thumbnail, title, sold date, gross price |
 | Order Detail | Shipped | Full order view with shipping address, tracking |
-| Order Sync | Shipped | Pull orders from connected marketplaces |
-| Ship Order Flow | Shipped | Step-by-step shipping workflow UI |
-| Shipping Presets | Shipped | Save common package dimensions/weights |
-| Shipping Provider Config | Shipped | Connect Shippo or EasyPost accounts |
-| Rate Quotes | Partial | UI built; carrier API calls stubbed |
-| Label Purchase | Partial | UI built; carrier API calls stubbed |
+| Order Sync | Shipped | Login-triggered + manual Sync button; external eBay sales ingested via GetItem backfill |
+| Ship-It → eBay | Shipped | Shipping labels handled on eBay — one-tap jump to the eBay order (carrier APIs deliberately not integrated) |
 
 ### Billing & Monetization
 
@@ -196,7 +194,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 | Dark Mode | Shipped | System preference-driven with CSS variables |
 | Glass Morphism UI | Shipped | Backdrop-filter panels with `@supports` fallback |
 | Sold Celebration | Shipped | Confetti animation on successful sale |
-| Settings (8 pages) | Shipped | Profile, marketplace, seller profile, shipping, billing, notifications, help, admin |
+| Settings (6 pages) | Shipped | Profile, marketplace, seller profile, billing, notifications, help |
 
 ### Admin & Ops
 
@@ -213,7 +211,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| JWT + Refresh Tokens | Shipped | Auto-refresh on 401 with retry |
+| Cloudflare Access Auth | Shipped | CF Access is the identity provider — no passwords; short-lived internal JWT minted per session |
 | AES-256-GCM Token Encryption | Shipped | Marketplace OAuth tokens encrypted at rest |
 | Role-Based Access | Shipped | User/Admin roles with middleware guards |
 | Input Validation | Shipped | Zod schemas on all route inputs |
@@ -228,9 +226,10 @@ These features exist in other tools, but Portage's implementation offers distinc
 |---------|----------|-----------|
 | Poshmark Adapter | High | #1 competitive gap — most requested marketplace |
 | Mercari Adapter | High | Second most-requested marketplace for resellers |
-| Carrier API Integration | Medium | EasyPost/Shippo live rate quotes and label purchase |
-| Buyer Messaging | Medium | In-app message management across marketplaces |
+| Etsy Re-enable | Medium | Adapter parked pending Etsy API key approval (tag `etsy-parked-2026-07`) |
 | Reverb OAuth Code Grant | Low | Token-paste auth works; OAuth is polish |
+
+Carrier API integration (EasyPost/Shippo) was superseded 2026-07-01 — shipping labels are handled by redirecting to eBay, and the stubbed carrier subsystem was deleted. eBay buyer messaging shipped (see Marketplace Integrations above).
 
 ---
 
@@ -245,7 +244,7 @@ For developers working on these features:
 | Listing Flow | `apps/web/src/components/listing-flow/`, `apps/web/src/hooks/use-listing-flow.ts` |
 | Porter AI | `apps/api/src/routes/porter.ts`, tool definitions in route file |
 | Photo Tools | `apps/web/src/hooks/use-enhance.ts`, `use-bg-removal.ts`, `apps/api/src/routes/images.ts` |
-| Marketplace Adapters | `apps/api/src/marketplace/` (ebay-adapter, etsy-adapter, reverb-adapter) |
+| Marketplace Adapters | `apps/api/src/marketplace/` (ebay-adapter, reverb-adapter, ebay-trading-client) |
 | Billing | `apps/api/src/routes/billing.ts`, Stripe webhook handler |
 | Admin | `apps/api/src/routes/admin.ts`, `apps/web/src/app/admin/` |
 | Shared Types | `packages/shared/src/types.ts`, `packages/shared/src/marketplace.ts` |

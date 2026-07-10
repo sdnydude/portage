@@ -31,6 +31,10 @@ POST /images
     "width": 2048,
     "height": 2048,
     "size": 524288
+  },
+  "thumbnail": {
+    "key": "items/uuid/photo-1_thumb.jpg",
+    "url": "https://images.portage.app/items/uuid/photo-1_thumb.jpg"
   }
 }
 ```
@@ -43,7 +47,7 @@ POST /images/enhance
 
 **Auth:** Required
 
-Server-side auto-enhancement via Sharp (auto-level, sharpen, color correction).
+Server-side auto-enhancement via Sharp (auto-level, sharpen, color correction). A batch variant, `POST /images/batch-enhance`, enhances multiple `imageUrls` in one call.
 
 **Body:**
 
@@ -117,6 +121,25 @@ Rotates an image by the specified degrees (90, 180, 270).
 }
 ```
 
+### Adjust Exposure
+
+```
+POST /images/exposure
+```
+
+**Auth:** Required
+
+Adjusts exposure by an EV value between -2 and +2.
+
+**Body:**
+
+```json
+{
+  "imageUrl": "https://images.portage.app/items/uuid/photo-1.jpg",
+  "ev": 0.5
+}
+```
+
 ### Crop Image
 
 ```
@@ -149,15 +172,24 @@ Crops an image to the specified rectangle (pixel coordinates).
 }
 ```
 
+### Delete Image
+
+```
+DELETE /images
+```
+
+**Auth:** Required (owner only)
+
+Deletes an image from storage by its key.
+
 ## Billing Gates
 
-Enhance and background removal are gated by the user's subscription tier:
+Background removal is gated by the user's effective subscription tier:
 
-- **Free tier:** Limited monthly uses (resets on billing cycle)
-- **Pro tier:** Unlimited uses
-- **Credit packs:** Additional uses beyond free tier limit
+- **Free tier:** Limited monthly uses (idempotent reset on billing cycle)
+- **Pro / beta-tester tier:** Unlimited uses
 
-The API returns `403` with `code: "BILLING_LIMIT_REACHED"` when the limit is exceeded.
+The API returns `429` with `code: "BG_REMOVAL_LIMIT_REACHED"` when the limit is exceeded. Usage is deducted only after a successful removal.
 
 ## Storage
 

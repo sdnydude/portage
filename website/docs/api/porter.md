@@ -10,13 +10,15 @@ Porter is Portage's AI assistant, accessible from the Porter tab. It uses Claude
 
 ## Endpoints
 
-### Send Message
+### Stream Message (primary)
 
 ```
-POST /porter/message
+POST /porter/stream
 ```
 
 **Auth:** Required
+
+The primary chat endpoint. Streams the response as **Server-Sent Events** (`data: {...}` frames) via Claude Sonnet's `client.messages.stream()`, emitting text deltas, tool-call events, and action pills as they arrive.
 
 **Body:**
 
@@ -28,6 +30,16 @@ POST /porter/message
 ```
 
 `conversationId` is optional — omit it (or send `null`) to start a new conversation.
+
+### Send Message (non-streaming fallback)
+
+```
+POST /porter/message
+```
+
+**Auth:** Required
+
+Same body as `/porter/stream`; returns the complete response in one JSON payload.
 
 **Response** `200`:
 
@@ -43,6 +55,16 @@ POST /porter/message
   ]
 }
 ```
+
+### List Conversations
+
+```
+GET /porter/conversations
+```
+
+**Auth:** Required
+
+Returns the user's 20 most recent conversations (id + timestamps).
 
 ### Get Conversation History
 
@@ -68,7 +90,11 @@ The tool_use loop allows Porter to call multiple tools in sequence to answer com
 
 ## Conversation Storage
 
-Conversations persist in the `conversations` table, allowing users to reference past interactions. The Porter tab shows the current conversation with a "New Chat" button to start fresh.
+Conversations persist in the `conversations` table as a JSONB message array in `blocks: ContentBlock[]` format, allowing users to reference past interactions. The Porter tab shows the current conversation with a "New Chat" button to start fresh.
+
+## Limits
+
+Porter exchanges are billing-gated per day (`porterExchangesPerDay` by effective tier; unlimited for Pro and beta-tester). Exceeding the limit returns `429 LIMIT_REACHED`.
 
 ## Suggested Prompts
 

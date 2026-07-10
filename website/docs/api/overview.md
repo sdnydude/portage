@@ -17,13 +17,13 @@ https://portage-api.digitalharmonyai.com  # Production
 
 ## Authentication
 
-Most endpoints require a JWT bearer token:
+**Cloudflare Access** is the identity provider — there are no passwords. The client exchanges the CF Access assertion for a short-lived (15-minute) internal JWT via `GET /auth/session`, then sends it as a bearer token:
 
 ```
 Authorization: Bearer <access_token>
 ```
 
-See [Authentication](/docs/api/authentication) for login, registration, and token refresh flows.
+See [Authentication](/docs/api/authentication) for the Cloudflare Access session exchange and token lifecycle.
 
 ## Request Format
 
@@ -43,11 +43,9 @@ All responses follow a consistent shape:
 
 // Error
 {
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Title is required",
-    "details": ["title: Required"]
-  }
+  "error": "Validation failed",
+  "code": "VALIDATION_ERROR",
+  "details": ["title: Required"]
 }
 ```
 
@@ -55,21 +53,22 @@ All responses follow a consistent shape:
 
 | Group | Prefix | Description |
 |-------|--------|-------------|
-| [Authentication](/docs/api/authentication) | `/auth` | Login, register, refresh, profile |
+| [Authentication](/docs/api/authentication) | `/auth` | Cloudflare Access session exchange, profile |
 | [Items](/docs/api/items) | `/items` | Inventory CRUD, comps, export |
 | [Images](/docs/api/images) | `/images` | Upload, enhance, background removal |
 | [Scan](/docs/api/scan) | `/scan` | AI item identification |
 | [Listings](/docs/api/listings) | `/listings` | Marketplace listing management |
-| [Orders](/docs/api/orders) | `/orders` | Order tracking and shipping |
+| [Orders](/docs/api/orders) | `/orders` | Order tracking and fulfillment sync |
 | [Drafts](/docs/api/drafts) | `/drafts` | Listing draft persistence |
-| [Shipping](/docs/api/shipping) | `/shipping` | Presets, rates, labels, providers |
+| [Shipping](/docs/api/shipping) | — | Removed in PR #142 — labels via eBay |
 | [Marketplace](/docs/api/marketplace) | `/marketplace` | OAuth and account management |
 | [Porter](/docs/api/porter) | `/porter` | AI assistant chat |
+| [Billing](/docs/api/billing) | `/billing` | Stripe subscriptions, credits, usage |
 | [Admin](/docs/api/admin) | `/admin` | System administration |
 
 ## Rate Limiting
 
-Free-tier users have daily limits on AI scan requests. See the scan endpoint documentation for details.
+Free-tier users have monthly limits on AI scans, AI listing preparation, and background removals, plus a daily limit on Porter exchanges. Pro and beta-tester tiers are unlimited. See [Billing](/docs/api/billing) for enforcement details.
 
 ## Error Handling
 

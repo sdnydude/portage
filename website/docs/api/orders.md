@@ -6,7 +6,7 @@ sidebar_position: 5
 
 # Orders
 
-Track sales and manage shipping across all connected marketplaces.
+Track sales and fulfillment across all connected marketplaces.
 
 ## Endpoints
 
@@ -29,7 +29,7 @@ GET /orders
       "marketplace": "ebay",
       "marketplaceOrderId": "12-34567-89012",
       "buyerUsername": "buyer123",
-      "status": "awaiting_shipment",
+      "status": "payment_received",
       "salePrice": 1400,
       "shippingAddress": {
         "name": "Jane Doe",
@@ -61,24 +61,27 @@ POST /orders/sync
 
 **Auth:** Required
 
-Pulls new orders from all connected marketplace accounts. Each adapter's `syncOrders()` method fetches recent orders and matches them to Portage listings via `marketplaceListingId`.
+Pulls orders from all connected marketplace accounts (eBay via the **Fulfillment API**, Reverb via its orders API) over a 90-day window and matches them to Portage listings via `marketplaceListingId`. Runs automatically on login and via the manual **Sync** button; per-marketplace failures are surfaced in `errors` instead of failing the whole sync.
+
+Sync also:
+
+- **Backfills orphans** — an eBay sale with no matching Portage listing gets one item + one listing created per eBay ItemID via Trading API `GetItem`
+- **Heals existing rows** — `soldAt`, marketplace fees, and fulfillment status are corrected in place on re-sync; orders shipped or canceled on eBay are marked `shipped` / `canceled` locally (never downgraded the other direction)
 
 **Response** `200`:
 
 ```json
 {
   "synced": 3,
-  "marketplaces": {
-    "ebay": { "new": 2, "updated": 0 },
-    "etsy": { "new": 1, "updated": 0 }
-  }
+  "newOrders": ["uuid1", "uuid2", "uuid3"],
+  "errors": []
 }
 ```
 
-### Mark as Shipped
+### Update Order / Mark as Shipped
 
 ```
-POST /orders/:id/ship
+PATCH /orders/:id
 ```
 
 **Auth:** Required
@@ -87,18 +90,22 @@ POST /orders/:id/ship
 
 ```json
 {
+  "status": "shipped",
   "trackingNumber": "1Z999AA10123456784",
   "carrier": "UPS"
 }
 ```
 
+`status` accepts `payment_received`, `label_purchased`, `shipped`, `delivered`, `canceled`. Setting `shipped` or `delivered` stamps the corresponding timestamp.
+
 ## Order Lifecycle
 
 ```
-awaiting_shipment → shipped → delivered
+payment_received → shipped → delivered
+                 → canceled (via marketplace sync)
 ```
 
-Orders are created automatically via sync, not manually. The shipping workflow on the frontend handles package configuration, rate shopping, and label purchase before marking an order as shipped.
+Orders are created automatically via sync, not manually. The in-app carrier subsystem was removed in PR #142 — **Ship It** opens the item's eBay page for label purchase, and fulfillment status syncs back from the eBay Fulfillment API (see [Shipping](/docs/api/shipping)).
 
 ## Shipping Address
 

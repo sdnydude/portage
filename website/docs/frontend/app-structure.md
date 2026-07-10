@@ -12,15 +12,17 @@ The Portage frontend is a **Next.js 16** app with **React 19**, built as a mobil
 
 ### Tab Bar Pages
 
-The main app shell uses a 5-tab bottom navigation with a center camera FAB:
+The main app shell uses a 6-tab bottom navigation with a center Scan button:
 
 | Route | Tab | Description |
 |-------|-----|-------------|
 | `/home` | Home | Dashboard with portfolio value, pending shipments, recent listings, stats grid |
 | `/inventory` | Inventory | Item grid/list with search, filters, bulk select, export |
-| Camera FAB | (center) | Opens ScanFlow modal for photo capture and AI scanning |
-| `/orders` | Orders | "Needs Shipping" and "All Orders" sections with marketplace badges |
-| `/more` | More | Settings hub with profile, marketplace, shipping, notifications links |
+| `/listings` | Listings | Active and sold listings |
+| Scan button | (center) | Opens ScanFlow modal for photo capture and AI scanning |
+| `/porter` | Porter | Porter AI assistant (text SSE chat) |
+| `/orders` | Orders | Sold-orders list (thumbnail, title, sold date, gross price; Ship It → eBay) |
+| `/more` | More | Settings hub with profile, marketplace, notifications links |
 
 ### Detail Pages
 
@@ -29,8 +31,9 @@ The main app shell uses a 5-tab bottom navigation with a center camera FAB:
 | `/inventory/[id]` | Item detail: photo gallery, editing tools, eBay comps, listing actions |
 | `/inventory/[id]/edit` | Edit form for item fields |
 | `/listings/[id]` | Listing detail: inline editing, marketplace sync, publish/archive/delete |
-| `/orders/[id]` | Order detail: financials, shipping timeline, buyer info |
-| `/orders/[id]/ship` | Shipping workflow: package config, rate shopping, label purchase |
+| `/orders/[id]` | Order detail: financials, buyer info (shipping labels are handled on eBay — Ship It links out) |
+| `/messages` | eBay buyer messaging: conversations list |
+| `/messages/[conversationKey]` | Conversation thread with reply |
 
 ### Listing Flow
 
@@ -40,19 +43,15 @@ The main app shell uses a 5-tab bottom navigation with a center camera FAB:
 
 ### Auth
 
-| Route | Description |
-|-------|-------------|
-| `/login` | Email + password sign-in |
-| `/register` | Account creation with validation |
+There are no login or register pages. Cloudflare Access is the identity layer — users authenticate at the CF Access edge before reaching the app, and the frontend exchanges the CF assertion for an internal session via `GET /auth/session`. Logout redirects to the CF Access logout endpoint.
 
 ### Settings (outside tab bar)
 
 | Route | Description |
 |-------|-------------|
 | `/settings/profile` | Display name, address |
-| `/settings/marketplace` | eBay/Etsy/Reverb connection management |
+| `/settings/marketplace` | eBay/Reverb connection management |
 | `/settings/seller-profile` | Return policy, shipping terms |
-| `/settings/shipping` | Ship-from address, presets, carrier API keys |
 | `/settings/billing` | Subscription tier, usage, credits, upgrade |
 | `/settings/notifications` | Sale alerts, shipping reminders |
 | `/settings/help` | FAQ and support |
@@ -70,6 +69,7 @@ src/
   app/              Route pages (Next.js App Router)
     (tabs)/          Tab bar wrapped pages
     admin/           Admin panel (sidebar layout)
+    messages/        eBay buyer messaging
     settings/        Settings pages
   components/
     auth/            AuthProvider context
@@ -89,7 +89,7 @@ src/
 
 Portage uses **React Context only** — no Redux, Zustand, or other state libraries.
 
-- **`AuthContext`**: The sole global provider. Manages JWT tokens, user object, login/logout, and onboarding state.
+- **`AuthContext`**: The sole global provider. Manages the internal session token (exchanged from Cloudflare Access), user object, logout, and onboarding state.
 - **Page-level state**: Each page manages its own data via custom hooks (`useItems`, `useListings`, `useOrders`, etc.)
 - **Listing flow state**: The `useListingFlow` hook is a shared state machine consumed by all three listing interfaces.
 
@@ -104,6 +104,6 @@ The app is configured as a Progressive Web App:
 
 ## Key Architectural Notes
 
-- **Auth model**: localStorage tokens with automatic silent refresh on 401. No route guards in layouts — each page checks `useAuth().isAuthenticated`.
+- **Auth model**: Cloudflare Access is the session layer — no passwords. localStorage caches `portage_token` + `portage_user`; on 401 the `api()` wrapper calls `exchangeSession()` (`GET /auth/session` re-verifies the CF assertion) and retries. No route guards in layouts — each page checks `useAuth().isAuthenticated`.
 - **Camera access**: Requires HTTPS. Dev mode uses `--experimental-https` with local certs.
-- **API client** (`lib/api.ts`): Thin `fetch` wrapper with automatic JWT refresh and error handling via `ApiError` class.
+- **API client** (`lib/api.ts`): Thin `fetch` wrapper. `API_BASE = NEXT_PUBLIC_API_URL ?? "/backend"` — same-origin `/backend/*` is rewritten by Next to the API container. Automatic session re-exchange on 401 and error handling via `ApiError` class.

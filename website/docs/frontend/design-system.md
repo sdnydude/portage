@@ -6,27 +6,33 @@ sidebar_position: 2
 
 # Design System
 
-Portage uses a custom design system built on **Tailwind v4** with CSS custom properties. The aesthetic is Apple-inspired minimalism with a forest green brand identity and glass morphism effects.
+Portage uses a custom design system built on **Tailwind v4** with CSS custom properties. Since 2026-06-09 the app follows the **DHG design system** — graphite ink and warm-stone surfaces with orange (primary CTA) and deep teal (AI/intelligence) accents — with Apple-inspired minimalism and glass morphism effects. The original forest-green palette survives only as legacy tokens pending per-screen migration.
 
 ## Brand Colors
 
 | Token | Light | Dark | Usage |
 |-------|-------|------|-------|
-| `--forest-green` | `#2D5A27` | `#4CAF50` | Primary actions, active states |
+| `--orange` | `#F77E2D` | `#FF9A52` | Primary CTA (also `--color-primary`) |
+| `--teal` | `#0D7377` | `#19A5AB` | AI / intelligence accent (Porter) |
+| `--graphite` | `#2D2A26` | — | Primary ink |
+| `--warm-stone` | `#F5F2EB` | `#1B1814` | Warm surface tone |
+| `--forest-green` | `#2D5A27` | `#4CAF50` | Legacy brand — kept until per-screen migration off forest-green |
 | `--accent-warm` | `#D4A574` | `#D4A574` | Warm accent (tan) |
-| `--accent-error` | `#DC3545` | — | Error states |
+| `--accent-error` | `#DC3545` | `#F87171` | Error states |
 | `--accent-warning` | `#F59E0B` | — | Warning states |
-| `--accent-success` | `#2D5A27` | — | Success states |
+| `--accent-success` | `#0F9D58` | `#2EC27E` | Success states |
 | `--accent-info` | `#3B82F6` | — | Info states |
+
+The orange and teal scales each have `-bright`, `-dark`, and `-soft` variants (e.g. `--orange-soft`, `--teal-dark`).
 
 ## Surfaces
 
 | Token | Light | Dark |
 |-------|-------|------|
-| `--background` | `#F8F7F4` | `#0F1210` |
-| `--surface` | `#FFFFFF` | `#1A1F1A` |
-| `--surface-elevated` | `#FFFFFF` | `#242B24` |
-| `--muted` | `#F5F3EF` | `#1A1F1A` |
+| `--background` | `#F5F2EB` | `#14130F` |
+| `--surface` | `#FFFFFF` | `#1A1713` |
+| `--surface-elevated` | `#FFFFFF` | `#221E1A` |
+| `--muted` | `#EFEBE1` | `#1B1814` |
 
 ## Typography
 
@@ -89,18 +95,21 @@ Tailwind v4 is configured entirely in CSS (no `tailwind.config.js`):
 @import "tailwindcss";
 
 @theme inline {
-  --color-forest-green: var(--forest-green);
+  --color-primary: var(--orange);
+  --color-teal: var(--teal);
+  --color-orange: var(--orange);
+  --color-graphite: var(--graphite);
   --color-surface: var(--surface);
   --color-border-focus: var(--border-focus);
   /* ... all tokens mapped */
 }
 ```
 
-This allows usage like `text-forest-green`, `bg-surface`, `border-border-focus` directly in class names.
+This allows usage like `bg-orange`, `text-teal`, `bg-surface`, `border-border-focus` directly in class names (legacy `text-forest-green` utilities remain mapped during the migration).
 
 ## Dark Mode
 
-Dark mode is the default (`defaultMode: 'dark'` in Docusaurus config). The app respects `prefers-color-scheme` and all tokens have light/dark variants via `[data-theme='dark']` selectors.
+Dark mode is applied via a `.dark` class on `<html>`: a theme-init script in the root layout defaults it to the OS `prefers-color-scheme` preference and honors a stored user override (the ThemeToggle component). All tokens have light/dark variants under the `:root.dark` selector in `globals.css`.
 
 ## iOS Considerations
 

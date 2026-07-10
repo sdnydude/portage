@@ -60,8 +60,8 @@ Total: **55** sessions.
 | 47 | [eBay return-policy diagnosis + 56-deferral audit + c3b3013c ](047-ebay-return-policy-diagnosis-56-deferral-audit-c3b3013c-publ) | complete | — | 3 |
 | 48 | [eBay package weight & dimension capture](048-ebay-package-weight-dimension-capture) | in_progress | — | 2 |
 | 49 | [eBay publish hardening — Calculated default + AI weight esti](049-ebay-publish-hardening-calculated-default-ai-weight-estimati) | complete | [#101](https://github.com/sdnydude/portage/pull/101) | 2 |
-| 50 | [Redesign Ship 1 — DHG design system + Porter home + tab bar ](050-redesign-ship-1-dhg-design-system-porter-home-tab-bar-porter) | in_progress | — | 3 |
-| 51 | [Redesign Ship 1 — DHG design system + Porter home + tab bar ](051-redesign-ship-1-dhg-design-system-porter-home-tab-bar-porter) | complete | [#102](https://github.com/sdnydude/portage/pull/102) | 2 |
+| 50 | [Redesign Ship 1 — DHG design system + Porter home + tab bar ](redesign-ship-1-build) | in_progress | — | 3 |
+| 51 | [Redesign Ship 1 — DHG design system + Porter home + tab bar ](redesign-ship-1-phase6) | complete | [#102](https://github.com/sdnydude/portage/pull/102) | 2 |
 | 52 | [Stage 1: Scan-review redesign + inline eBay Item Specifics (](052-stage-1-scan-review-redesign-inline-ebay-item-specifics-aspe) | complete | [#104](https://github.com/sdnydude/portage/pull/104) | 3 |
 | 53 | [Claude tooling + batch-enhance backend + eBay updateListing ](053-claude-tooling-batch-enhance-backend-ebay-updatelisting-pack) | complete | [#101](https://github.com/sdnydude/portage/pull/101) | 1 |
 | 54 | [Stage 2: pricing engine — R-7 percentile bands + seller tuna](054-stage-2-pricing-engine-r-7-percentile-bands-seller-tunables-) | complete | [#106](https://github.com/sdnydude/portage/pull/106) | 7 |

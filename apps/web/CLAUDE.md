@@ -77,7 +77,7 @@ All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. K
 | `useComps` | Comparable listings for pricing |
 | `usePrepareListing` | AI field generation |
 | `useDrafts` | Draft persistence |
-| `useBgRemoval` | @imgly background removal (in-browser) |
+| `useBgRemoval` | Background removal via API (`POST /images/remove-bg`, server-side rembg) |
 | `useEnhance` | AI photo enhancement (server-side Sharp) |
 | `useConversations` | eBay message conversation list |
 | `useConversationMessages` | Messages in a single thread |

@@ -6,26 +6,26 @@ sidebar_position: 3
 
 # Scan
 
-AI-powered item identification using Claude Vision.
+AI-powered item identification using a configurable vision provider chain (`VISION_PROVIDERS` — Gemini primary with Claude fallback).
 
 ## Endpoints
 
 ### Basic Scan
 
 ```
-GET /scan?imageUrl=<url>&detail=full
+POST /scan?detail=full
 ```
 
-**Auth:** Required
+**Auth:** Required  
+**Content-Type:** `multipart/form-data`
 
-Single-image scan. Returns identification data for one photo.
+Single-image scan. Upload the photo as an `image` form field (JPEG/PNG/WebP/HEIC, max 10 MB); the API processes it, uploads it to storage, and returns identification data.
 
 **Query Parameters:**
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `imageUrl` | string | URL of the image to scan |
-| `detail` | string | `full` for detailed analysis |
+| `detail` | string | `full` for detailed multi-candidate analysis (with eBay aspect prefill) |
 
 ### Refined Multi-Image Scan
 
@@ -91,17 +91,19 @@ All image URLs are validated against the `R2_PUBLIC_URL` environment variable pr
 
 ### Scan Limits
 
-Free-tier users have a daily scan limit. The `checkScanLimit()` function:
+Free-tier users have a **monthly** scan limit (Pro and beta-tester are unlimited; admins can set per-user overrides). The `checkScanLimit()` function:
 
 1. Validates the authenticated user exists in the database
 2. Missing users receive a 401 (not a silent bypass)
-3. Checks the daily scan count against the tier limit
+3. Checks the monthly scan count against the effective-tier limit (idempotent monthly reset)
 
 ## Error Responses
 
 | Code | Error | Description |
 |------|-------|-------------|
-| 400 | `VALIDATION_ERROR` | Invalid image URLs or failed SSRF check |
+| 400 | `INVALID_INPUT` | Invalid image URLs or failed SSRF check (refine) |
+| 400 | `NO_FILE` / `INVALID_FILE_TYPE` | Missing or unsupported upload (basic scan) |
 | 401 | `USER_NOT_FOUND` | Authenticated user not in database |
-| 429 | `SCAN_LIMIT_EXCEEDED` | Daily scan limit reached |
-| 502 | `AI_RESPONSE_INVALID` | Claude returned unparseable response |
+| 429 | `LIMIT_REACHED` | Monthly scan limit reached |
+| 502 | `PHOTO_FETCH_FAILED` | None of the provided images could be fetched |
+| 502 | `AI_RESPONSE_INVALID` | AI returned an unparseable response |

@@ -18,7 +18,7 @@ capture → uploading → scanning → review → saving → (done)
 |-------|-------------|
 | `capture` | Camera preview or image picker. User takes/selects photos. |
 | `uploading` | Photos upload to Cloudflare R2 immediately on capture. |
-| `scanning` | `POST /scan/refine` sends R2 URLs to Claude Vision for identification. |
+| `scanning` | `POST /scan/refine` sends R2 URLs to the AI vision provider chain (configured via `VISION_PROVIDERS`; Gemini primary with automatic fallback) for identification. |
 | `review` | AI candidates displayed with confidence %. User selects/edits fields. |
 | `saving` | Item saves to database with photos and metadata. |
 
@@ -78,8 +78,9 @@ The review screen includes photo editing tools above the AI-identified fields:
 |------|-------------|
 | Rotate | 90-degree rotation |
 | Crop | Interactive crop with aspect ratio options |
+| Exposure | EV slider, baked server-side via Sharp |
 | Enhance | Server-side auto-level/sharpen via Sharp |
-| Remove BG | Client-side WASM background removal |
+| Remove BG | Background removal with before/after preview slider |
 
 Editing creates a new version of the photo (original is preserved).
 
@@ -109,4 +110,7 @@ Related components in `components/capture/`:
 | `camera-capture.tsx` | Live camera preview with shutter button |
 | `capture-sheet.tsx` | Camera vs. gallery choice sheet |
 | `image-picker.tsx` | File input wrapper for gallery selection |
-| `scan-fab.tsx` | Floating action button that opens ScanFlow |
+| `photo-edit-overlay.tsx` / `photo-edit-panel.tsx` | Full-screen photo editor (rotate, crop, exposure, enhance, BG remove) |
+| `scan-aspects-section.tsx` | Scan-time eBay item-aspect prefill and editing |
+
+ScanFlow opens from the center Scan button in the `TabBar` (`components/layout/tab-bar.tsx`).
