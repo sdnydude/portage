@@ -6,7 +6,7 @@ sidebar_position: 5
 
 # App Sitemap
 
-Visual map of every shipped route (34 pages) plus the full-screen panels and
+Visual map of every shipped route (35 pages) plus the full-screen panels and
 overlays, with typed connectors:
 
 - **solid green** — route navigation

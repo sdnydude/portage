@@ -209,14 +209,13 @@ SETTINGS = [("Profile","/settings/profile"),("Marketplace","/settings/marketplac
 def build_landscape(admin_collapsed=False):
     d = Draw()
     W = 2480
-    H = 1480 if admin_collapsed else 1900
+    H = 1480 if admin_collapsed else 2060
     variant = " · admin collapsed" if admin_collapsed else ""
     d.header("Portage — App Sitemap",
-             f"Every shipped route (34 pages) + full-screen panels/overlays · generated from apps/web/src/app{variant}", 1650)
+             f"Every shipped route (35 pages) + full-screen panels/overlays · generated from apps/web/src/app{variant}", 1650)
 
     d.cluster(40, 120, 420, 250, "AUTH & LEGAL")
-    d.card(70, 155, "Login", "/login", "form", w=150, h=110)
-    d.card(260, 155, "Register", "/register", "form", w=150, h=110)
+    d.card(70, 155, "Cloudflare Access", "edge IdP · no passwords", "form", w=340, h=110, accent="#c07a24", badge="CF gate")
     d.card(70, 305, "Privacy", "/legal/privacy", "rows", w=150, h=46)
     d.card(260, 305, "Terms", "/legal/terms", "rows", w=150, h=46)
 
@@ -227,8 +226,7 @@ def build_landscape(admin_collapsed=False):
         d.card(x, TABY, t, route, kind, w=170, h=120)
     d.fab(1290, 270, 322)
 
-    d.wire([(145,155),(145,108),(500,108),(500,250),(560,250)], "nav", "sign in", label_at=1)
-    d.link(410, 195, 560, 235, "nav")
+    d.wire([(240,155),(240,108),(500,108),(500,250),(560,250)], "nav", "authenticated", label_at=1)
 
     d.cluster(40, 470, 560, 640, "CAPTURE (overlays)", TEAL)
     d.card(90, 520, "ScanFlow", "overlay z-60", "detail", accent=TEAL, badge="AI scan")
@@ -273,6 +271,7 @@ def build_landscape(admin_collapsed=False):
     d.card(SX, 160+6*118+16, "OAuth callback", "/settings/marketplace/callback", "rows", w=170, h=46)
     d.card(SX, 160+6*118+122, "Messages", "/messages", "rows", w=170, h=76)
     d.card(SX, 160+6*118+248, "Thread", "/messages/[key]", "chat", w=170, h=90)
+    d.card(SX, 160+6*118+384, "Beta Report", "/beta/report · via Beta badge", "form", w=170, h=76, badge="beta")
     for i in range(6):
         d.link(2020, 270, SX, 198+i*118, "nav", None, bend=0.6)
     d.vlink(SX+85, 852, SX+85, 882, "nav")
@@ -285,19 +284,19 @@ def build_landscape(admin_collapsed=False):
         d.wire([(1935,378),(1935,1255),(1050,1255),(1050,1325),(980,1325)], "nav", None)
         d.parts.append(f'<text x="1120" y="1243" font-size="10" fill="{GREEN}" font-weight="700">More → Admin (role gate)</text>')
     else:
-        d.cluster(660, 1220, 1780, 560, "ADMIN (requires role=admin · sidebar layout)")
-        d.card(720, 1290, "Admin Home", "/admin", "dash", badge="admin")
+        d.cluster(660, 1380, 1780, 560, "ADMIN (requires role=admin · sidebar layout)")
+        d.card(720, 1450, "Admin Home", "/admin", "dash", badge="admin")
         for i,(t,route,kind) in enumerate(ADMIN_CHILDREN):
             col = i % 5; row = i // 5
-            x = 990 + col*280; y = 1290 + row*250
+            x = 990 + col*280; y = 1450 + row*250
             d.card(x, y, t, route, kind, w=170, h=110)
             if row == 0:
-                d.wire([(805,1290),(805,1268),(x+85,1268),(x+85,y)], "nav", None)
+                d.wire([(805,1450),(805,1428),(x+85,1428),(x+85,y)], "nav", None)
             else:
-                d.wire([(805,1400),(805,1495),(x+85,1495),(x+85,y)], "nav", None)
-        d.link(1160, 1345, 1270, 1345, "nav", None, bend=0.5)
-        d.wire([(1935,378),(1935,1255),(805,1255),(805,1290)], "nav", None)
-        d.parts.append(f'<text x="1080" y="1218" font-size="10" fill="{GREEN}" font-weight="700">More → Admin (role gate)</text>')
+                d.wire([(805,1560),(805,1655),(x+85,1655),(x+85,y)], "nav", None)
+        d.link(1160, 1505, 1270, 1505, "nav", None, bend=0.5)
+        d.wire([(1935,378),(1935,1415),(805,1415),(805,1450)], "nav", None)
+        d.parts.append(f'<text x="1080" y="1378" font-size="10" fill="{GREEN}" font-weight="700">More → Admin (role gate)</text>')
 
     return d.svg(W, H), d
 
@@ -305,12 +304,11 @@ def build_landscape(admin_collapsed=False):
 def build_vertical():
     d = Draw()
     W, H = 1240, 2900
-    d.header("Portage — App Sitemap", "Vertical · 34 routes + overlays · generated from apps/web/src/app", 880)
+    d.header("Portage — App Sitemap", "Vertical · 35 routes + overlays · generated from apps/web/src/app", 880)
 
     # AUTH
     d.cluster(40, 110, 1160, 230, "AUTH & LEGAL")
-    d.card(80, 150, "Login", "/login", "form", w=150, h=110)
-    d.card(290, 150, "Register", "/register", "form", w=150, h=110)
+    d.card(80, 150, "Cloudflare Access", "edge IdP · no passwords", "form", w=360, h=110, accent="#c07a24", badge="CF gate")
     d.card(900, 150, "Privacy", "/legal/privacy", "rows", w=150, h=46)
     d.card(900, 232, "Terms", "/legal/terms", "rows", w=150, h=46)
 
@@ -322,8 +320,7 @@ def build_vertical():
         d.card(x, 440, t, route, kind, w=150, h=110)
     d.fab(632, 495, 560)
 
-    d.vlink(155, 260, 145, 440, "nav", "sign in")
-    d.vlink(365, 260, 200, 440, "nav")
+    d.vlink(260, 260, 145, 440, "nav", "authenticated")
 
     # CAPTURE
     d.cluster(40, 720, 1160, 300, "CAPTURE (overlays)", TEAL)
@@ -370,6 +367,7 @@ def build_vertical():
         col = i % 3; row = i // 3
         d.card(90 + col*260, 1670 + row*130, t, route, "form", w=200, h=76, badge=("GTC toggle" if t=="Seller Profile" else None))
     d.card(890, 1670, "OAuth callback", "/settings/marketplace/callback", "rows", w=200, h=46)
+    d.card(890, 1800, "Beta Report", "/beta/report · via Beta badge", "form", w=200, h=76, badge="beta")
     d.wire([(1135,588),(1135,1640),(1010,1640),(1010,1670)], "nav", None)   # More → settings column
     d.parts.append(f'<text x="1140" y="1100" font-size="10" fill="{GREEN}" font-weight="700" transform="rotate(90 1140 1100)">More → Settings · Messages · Admin</text>')
     d.wire([(450,1670),(450,1654),(990,1654),(990,1670)], "nav", "OAuth", label_at=1, dy=-3)
