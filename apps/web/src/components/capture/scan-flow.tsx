@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { api, API_BASE } from "@/lib/api";
+import { api, apiUpload } from "@/lib/api";
 import { CameraCapture } from "./camera-capture";
 import { ImagePicker } from "./image-picker";
 import { useEnhance } from "@/hooks/use-enhance";
@@ -260,18 +260,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
         const formData = new FormData();
         formData.append("image", file);
 
-        const response = await fetch(`${API_BASE}/images`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({ error: "Upload failed" }));
-          throw new Error(data.error ?? "Upload failed");
-        }
-
-        const data = await response.json();
+        const data = await apiUpload<{
+          image: { url: string; key: string; width: number; height: number };
+        }>("/images", formData, { token });
         return {
           url: data.image.url,
           key: data.image.key,

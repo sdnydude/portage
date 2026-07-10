@@ -11,6 +11,20 @@ describe("next.config /backend proxy", () => {
     expect(nextConfig.experimental?.proxyTimeout).toBe(30_000);
   });
 
+  it("redirects the deleted password-auth routes to /home", async () => {
+    // /login and /register were removed in the CF Access migration, but stale
+    // entry points (bookmarks, the CF app launcher, password managers) still
+    // request them — CF authenticates and returns the user to the original
+    // URL, which 404s (live 2026-07-10). Permanent redirects neutralize every
+    // stale entry point at once.
+    const redirects = await nextConfig.redirects!();
+    for (const source of ["/login", "/register"]) {
+      const r = redirects.find((x) => x.source === source);
+      expect(r?.destination).toBe("/home");
+      expect(r?.permanent).toBe(true);
+    }
+  });
+
   it("keeps the /backend rewrite in place", async () => {
     const rewrites = await nextConfig.rewrites!();
     const list = Array.isArray(rewrites) ? rewrites : (rewrites.beforeFiles ?? []);

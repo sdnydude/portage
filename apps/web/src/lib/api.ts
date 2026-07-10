@@ -113,3 +113,54 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   return response.json() as Promise<T>;
 }
+
+// Multipart uploads. Same 401 → session re-exchange → single retry contract as
+// api(), but the browser must set the Content-Type (multipart boundary), so the
+// JSON default above can't be reused. FormData bodies are safe to resend.
+export async function apiUpload<T>(
+  path: string,
+  form: FormData,
+  options: { token?: string } = {},
+): Promise<T> {
+  const { token } = options;
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: form });
+
+  if (response.status === 401 && token) {
+    let newToken: string;
+    try {
+      if (!_exchangePromise) {
+        _exchangePromise = exchangeSession().finally(() => { _exchangePromise = null; });
+      }
+      newToken = await _exchangePromise;
+    } catch {
+      const data = await response.json().catch(() => ({ error: "Session expired", code: "UNAUTHORIZED" }));
+      throw new ApiError(401, data.code, data.error, data.details);
+    }
+
+    const retryResponse = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${newToken}` },
+      body: form,
+    });
+
+    if (!retryResponse.ok) {
+      const data = await retryResponse.json().catch(() => ({ error: "Unknown error", code: "UNKNOWN" }));
+      throw new ApiError(retryResponse.status, data.code, data.error, data.details);
+    }
+
+    return retryResponse.json() as Promise<T>;
+  }
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({ error: "Unknown error", code: "UNKNOWN" }));
+    throw new ApiError(response.status, data.code, data.error, data.details);
+  }
+
+  return response.json() as Promise<T>;
+}
