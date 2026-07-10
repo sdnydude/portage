@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { API_BASE } from "@/lib/api";
+import { apiUpload } from "@/lib/api";
 import { PhotoGrid } from "./photo-grid";
 import { CameraCapture } from "../capture/camera-capture";
 import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
@@ -248,21 +248,10 @@ export function PhotoCaptureFlow({
         const filename = `photo-${Date.now()}.jpg`;
         formData.append("image", blob, filename);
 
-        const res = await fetch(`${API_BASE}/images`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token ?? ""}` },
-          body: formData,
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({ error: "Upload failed" }));
-          throw new Error(errData.error ?? "Upload failed");
-        }
-
-        const data = (await res.json()) as {
+        const data = await apiUpload<{
           image: { key: string; url: string; width?: number; height?: number };
           thumbnail: { key: string; url: string };
-        };
+        }>("/images", formData, { token: token ?? undefined });
 
         return {
           key: data.image.key,

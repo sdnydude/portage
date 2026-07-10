@@ -84,9 +84,11 @@ vi.mock("@/hooks/use-scan-aspects", () => ({
 }));
 
 const apiMock = vi.fn();
+const apiUploadMock = vi.fn();
 vi.mock("@/lib/api", () => ({
   API_BASE: "http://test-api",
   api: (...args: unknown[]) => apiMock(...args),
+  apiUpload: (...args: unknown[]) => apiUploadMock(...args),
 }));
 
 const CANDIDATE = {
@@ -130,6 +132,10 @@ async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: 
 describe("ScanFlow review wiring", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Photo uploads go through apiUpload (401-aware multipart wrapper).
+    apiUploadMock.mockResolvedValue({
+      image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 },
+    });
     scanAspectsState.aspects = {};
     scanAspectsState.missingRequired = [];
     scanAspectsState.aspectsBlockPublish = false;

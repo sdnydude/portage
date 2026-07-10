@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { api, ApiError, API_BASE } from "@/lib/api";
+import { api, apiUpload, ApiError } from "@/lib/api";
 import { useAuth } from "./use-auth";
 import { useDrafts } from "./use-drafts";
 import type {
   ListingFlowState,
   CompResult,
   RecognitionResult,
+  RecognitionCandidate,
   PricingStrategy,
   EbayPreparedFields,
   PreparedListingData,
@@ -158,20 +159,17 @@ export function useListingFlow() {
         formData.append('image', blob, 'photo.jpg');
       }
 
-      const result = await fetch(`${API_BASE}/scan?detail=full`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      if (!result.ok) throw new Error('Scan failed');
-      const data = await result.json();
+      const data = await apiUpload<{
+        detailed?: RecognitionResult;
+        identification?: Omit<RecognitionCandidate, 'confidence'>;
+        image?: { url: string; key: string; width: number; height: number };
+      }>('/scan?detail=full', formData, { token: token ?? undefined });
 
       const detailed = data.detailed as RecognitionResult | undefined;
       const candidates = detailed?.candidates ?? [{
         ...data.identification,
         confidence: 0.8,
-      }];
+      } as RecognitionCandidate];
       const reasoning = detailed?.reasoning ?? [];
 
       setState(prev => {
@@ -428,7 +426,22 @@ export function useListingFlow() {
     const s = stateRef.current;
     if (!s.title) return { success: false, error: 'Title is required' };
     if (!s.price) return { success: false, error: 'Price is required' };
-    if (s.photos.length === 0) return { success: false, error: 'At least one photo is required' };
+    if (s.photos.length === 0) {
+      // Flow state can be stale: photos added on the item page after this
+      // flow was seeded never reach s.photos (live 2026-07-10). The listings
+      // route publishes from items.photos (the DB row), so the server item is
+      // the authority — only refuse when IT has no photos either.
+      let serverHasPhotos = false;
+      if (s.inventoryItemId) {
+        try {
+          const item = await api<{ photos?: unknown[] }>(`/items/${s.inventoryItemId}`, { token });
+          serverHasPhotos = (item.photos?.length ?? 0) > 0;
+        } catch {
+          // Unreachable item — fall through to the photo guard error.
+        }
+      }
+      if (!serverHasPhotos) return { success: false, error: 'At least one photo is required' };
+    }
 
     setState(prev => ({ ...prev, publishStatus: 'publishing' }));
 

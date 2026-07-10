@@ -9,6 +9,7 @@ import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
 import { FullChat } from "@/components/porter/full-chat";
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
+import { LoggedOutHero } from "@/components/auth/logged-out-hero";
 import { CompsSearchSheet } from "@/components/comps-search-sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
 import Link from "next/link";
@@ -99,26 +100,7 @@ export default function HomePage() {
   };
 
   if (!isAuthenticated) {
-    return (
-      <div className="px-4 py-6 max-w-lg mx-auto">
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-20 h-20 rounded-3xl bg-forest-green-50 flex items-center justify-center mb-6">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-          </div>
-          <h1 className="font-[family-name:var(--font-instrument)] font-bold text-text-primary mb-2 text-2xl">
-            Welcome to Portage
-          </h1>
-          <p className="text-text-secondary mb-6 max-w-xs text-sm">
-            AI-powered inventory and marketplace selling. Scan, list, and sell your items in seconds.
-          </p>
-          <Link href="/" className="px-8 py-3 rounded-full bg-forest-green text-white font-semibold text-sm">
-            Get Started
-          </Link>
-        </div>
-      </div>
-    );
+    return <LoggedOutHero />;
   }
 
   if (isLoading) {

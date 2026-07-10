@@ -13,7 +13,7 @@ import { ListingOptimizerPanel } from "@/components/listing/listing-optimizer-pa
 import { CropTool } from "@/components/listing-flow/crop-tool";
 import { ExposureTool } from "@/components/capture/exposure-tool";
 import { useComps } from "@/hooks/use-comps";
-import { api, API_BASE } from "@/lib/api";
+import { api, apiUpload } from "@/lib/api";
 import type { CompListing } from "@portage/shared";
 import { formatCondition } from "@/lib/format";
 import { resolvePublishPriceWithSource } from "@/lib/price";
@@ -61,13 +61,9 @@ export default function ItemDetailPage() {
           const formData = new FormData();
           formData.append("image", file);
           try {
-            const res = await fetch(`${API_BASE}/images`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
-              body: formData,
-            });
-            if (!res.ok) { failCount++; continue; }
-            const data = await res.json();
+            const data = await apiUpload<{
+              image: { url: string; key: string; width: number; height: number };
+            }>("/images", formData, { token });
             newPhotos.push({
               url: data.image.url,
               key: data.image.key,

@@ -24,6 +24,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    // The password-auth routes were deleted in the CF Access migration, but
+    // stale entry points (bookmarks, CF app-launcher targets, password
+    // managers) still request them; CF authenticates and returns the browser
+    // to the original URL, which 404'd. Send every stale entry home.
+    return [
+      { source: "/login", destination: "/home", permanent: true },
+      { source: "/register", destination: "/home", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {
