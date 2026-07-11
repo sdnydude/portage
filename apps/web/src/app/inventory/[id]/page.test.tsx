@@ -68,6 +68,19 @@ vi.mock("@/components/listing/listing-optimizer-panel", () => ({
 
 import ItemDetailPage from "./page";
 
+// jsdom has no scrollIntoView; the deep-link test installs one. Capture
+// whatever is there so every test starts from the same prototype state.
+const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
+afterEach(() => {
+  mockListings = [];
+  mockListingsLoading = false;
+  mockListingsError = null;
+  mockSearchParams = new URLSearchParams();
+  refetchListingsMock.mockClear();
+  pushMock.mockClear();
+  window.HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+});
+
 describe("inventory detail — editable price", () => {
   it("routes Edit to the canonical /edit page (no inline static-category editor)", () => {
     render(<ItemDetailPage />);
@@ -273,10 +286,6 @@ describe("inventory detail — photo gallery strip + editor overlay", () => {
 });
 
 describe("marketplace listings section", () => {
-  afterEach(() => {
-    mockListings = [];
-  });
-
   it("renders the Marketplace Listings heading and a card when the item has a listing", () => {
     mockListings = [{
       id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",

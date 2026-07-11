@@ -21,18 +21,29 @@ async function seedItemWithDraft(page: import("@playwright/test").Page) {
   });
   expect(itemRes.ok(), `item seed failed: ${itemRes.status()}`).toBeTruthy();
   const item = await itemRes.json();
-  // Draft mode — no marketplace call is made.
-  const listingRes = await page.request.post(`${API_BASE}/listings`, {
-    headers, data: { itemId: item.id, marketplace: "ebay", price: 1200 },
-  });
-  expect(listingRes.ok(), `listing seed failed: ${listingRes.status()}`).toBeTruthy();
-  const listing = await listingRes.json();
-  return { token, headers, itemId: item.id as string, listingId: listing.id as string };
+  try {
+    // Draft mode — no marketplace call is made.
+    const listingRes = await page.request.post(`${API_BASE}/listings`, {
+      headers, data: { itemId: item.id, marketplace: "ebay", price: 1200 },
+    });
+    expect(listingRes.ok(), `listing seed failed: ${listingRes.status()}`).toBeTruthy();
+    const listing = await listingRes.json();
+    return { token, headers, itemId: item.id as string, listingId: listing.id as string };
+  } catch (err) {
+    // Roll back the half-seeded fixture — the caller never got the ids, so its
+    // finally-cleanup can't run.
+    await page.request.delete(`${API_BASE}/items/${item.id}`, { headers });
+    throw err;
+  }
 }
 
 async function cleanup(page: import("@playwright/test").Page, s: { headers: Record<string, string>; itemId: string; listingId: string }) {
-  await page.request.delete(`${API_BASE}/listings/${s.listingId}`, { headers: s.headers });
-  await page.request.delete(`${API_BASE}/items/${s.itemId}`, { headers: s.headers });
+  // Surface failures (expect.soft: recorded without masking the test's own
+  // error) but always attempt both deletes.
+  const listingDel = await page.request.delete(`${API_BASE}/listings/${s.listingId}`, { headers: s.headers });
+  expect.soft(listingDel.ok(), `listing cleanup failed: ${listingDel.status()}`).toBeTruthy();
+  const itemDel = await page.request.delete(`${API_BASE}/items/${s.itemId}`, { headers: s.headers });
+  expect.soft(itemDel.ok(), `item cleanup failed: ${itemDel.status()}`).toBeTruthy();
 }
 
 test("item detail shows the Marketplace Listings section and survives reload", async ({ page }) => {
