@@ -1,16 +1,25 @@
 name: Claude Review
 
+# On-demand only (decision 2026-07-11): local /code-review is the standard
+# pre-PR step; CodeRabbit is the always-on CI reviewer. Trigger this by adding
+# the `claude-review` label to a PR, or manually via workflow_dispatch.
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review"
+        required: true
 
 # Superseded pushes cancel the in-flight review — one paid review per head SHA.
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
   review:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'claude-review'
     runs-on: self-hosted
     permissions:
       contents: read
@@ -26,7 +35,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
 
             Review this pull request diff for:
             - Correctness bugs (state races, error paths, edge cases)
