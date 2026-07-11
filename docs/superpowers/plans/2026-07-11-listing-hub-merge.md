@@ -1,5 +1,7 @@
 # Listing Hub Merge Implementation Plan
 
+> **EXECUTED 2026-07-11** — all 6 tasks shipped and merged same-day: #207 (T1 itemId filter), #208 (T2 hub section), #209 (T3 card actions), #210 (T4 redirect cutover, −913 lines), #212 (T5 preview + PNG share), #211 (T6 Reverb edit-sync). Two execution deviations from spec, both documented in their PRs: `useAuth` exposes no `isReady` (T4 guard is `!isAuthenticated`), and T5's CORS gate resolved via the `/img-cdn` next.config rewrite instead of a bucket CORS rule (no R2-admin credential; Stephen directive).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Merge the listing detail page into the item detail page — `inventory/[id]` becomes the single canonical detail page with a "Marketplace Listings" card section; `listings/[id]` becomes a redirect.
