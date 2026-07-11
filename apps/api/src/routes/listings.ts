@@ -75,7 +75,7 @@ function mpnFromAspects(specific: Record<string, unknown> | undefined): string |
  * Trading API needs OriginatingPostalCode for inline calculated shipping; there are
  * no Business-Policy IDs to resolve anymore (the account is opted out of them).
  */
-async function applyShipFromOrigin(
+export async function applyShipFromOrigin(
   userId: string,
   specific: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown> | undefined> {

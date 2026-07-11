@@ -85,8 +85,8 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 - [x] Prod CORS single-origin restriction — done via PR #189 (2026-07-09): api now runs NODE_ENV=production, CORS list = prod domain only
 - [ ] Pagination on listing/item hooks (4h)
 - [x] Reverb listings don't sync on item edit — RESOLVED PR #211 (2026-07-11): sync loop widened to Reverb (syncs on listingId alone incl. remote drafts; eBay stays active-only), adapter maps brand/model→make/model. Live-proven: PUT /listings/99270095 fired; Reverb 403 "account under review" is the known shop-setup gate
-- [ ] eBay edit-sync silently failing for item bbaddd00 (ESI MoCo, ItemID 307038681268) — revise rejects "valid eBay leaf category required"; stored marketplaceSpecificFields likely lacks categoryId. Surfaced during Task 6 live proof (registry deferred item) (1h)
-- [ ] R2 bucket CORS for portage-images — /img-cdn rewrite is the working same-origin mechanism; swap to bucket CORS when an R2-Admin token exists (both Doppler CF tokens are one token, no R2 scope) and drop the rewrite (30m + token)
+- [x] eBay edit-sync silently failing for GetItem-imported listings — FIXED same session (fix/ebay-edit-sync-category-heal): sync loop reuses resolveEbayCategoryId self-heal + applyShipFromOrigin publish parity; live-proven ReviseFixedPriceItem success on ItemID 307038681268 (all 4 affected rows heal from item cache)
+- [x] R2 CORS for portage-images — CLOSED: /img-cdn next.config rewrite is the permanent same-origin mechanism (decision logged); bucket CORS unnecessary
 - [ ] Self-hosted runner hardening before public launch — `claude-review.yml`, `e2e.yml`, `deploy-docs.yml` all run `pull_request` jobs on the stateful g700data1 runner; gate to same-repo PRs (`github.event.pull_request.head.repo.full_name == github.repository`) or move untrusted jobs to `ubuntu-latest`. Fork PRs also receive no secrets. Low urgency while repo is private/solo (CodeRabbit finding, PR #203) (1h)
 
 ---
