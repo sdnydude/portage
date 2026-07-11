@@ -10,7 +10,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
-import { mergeItemShipping, mergeItemAspects } from './listings.js';
+import { mergeItemShipping, mergeItemAspects, applyShipFromOrigin } from './listings.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
 import type { MarketplaceData } from '@portage/shared';
 import { isAllowedImageOrigin } from './images.js';
@@ -543,11 +543,14 @@ itemsRouter.patch('/:id', async (req, res, next) => {
             // Taxonomy suggestion); imported items have the cache, so this is
             // a no-op lookup for them.
             const specifics = listed.marketplaceSpecificFields as Record<string, unknown> | undefined;
-            const healed = { ...(specifics ?? {}) };
+            let healed = { ...(specifics ?? {}) };
             if (!healed.categoryId || healed.categoryId === '99') {
               const cat = await resolveEbayCategoryId(healed, updated);
               if (cat.categoryId) healed.categoryId = cat.categoryId;
             }
+            // Publish parity: inline calculated shipping needs the seller's
+            // ship-from ZIP; imported rows carry none in their specifics.
+            healed = (await applyShipFromOrigin(userId, healed)) as Record<string, unknown>;
             const adapter = new EbayAdapter(userId);
             await adapter.updateListing(syncId, {
               title: updated.title,

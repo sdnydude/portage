@@ -557,6 +557,23 @@ describe('PATCH /items/:id', () => {
     expect(input.marketplaceSpecific?.categoryId).toBe('123445');
   });
 
+  it('injects the seller-profile ship-from ZIP on eBay edit-sync (calculated shipping parity with publish)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'Zip', marketplaceData: { ebay: { categoryId: '123445' } }, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307038681268', ebaySku: null, marketplaceSpecificFields: {}, currency: 'USD' }]);
+    mockSelectReturnOnce([{ userId: 'test-user-id', shipFromAddress: { zip: '12561' } }]); // seller profile
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307038681268', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Zip' });
+
+    expect(res.status).toBe(200);
+    const [, input] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
+    expect(input.marketplaceSpecific?.originPostalCode).toBe('12561');
+  });
+
   it('still saves the item edit when the eBay sync fails (best-effort)', async () => {
     mockSelectReturnOnce([{ id: 'item-1' }]); // existence
     mockUpdateReturns([{ ...MOCK_ITEM, title: 'Saved Locally' }]);
