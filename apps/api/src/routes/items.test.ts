@@ -21,7 +21,22 @@ vi.mock('../marketplace/ebay-adapter.js', () => {
   statics.searchComps = vi.fn();
   statics.getCategorySuggestion = vi.fn();
   statics.getRequiredAspects = vi.fn();
-  return { EbayAdapter };
+  // Contract double of the real resolver (explicit → item cache → suggestion)
+  // wired to the mocked static so tests control the suggestion path. The REAL
+  // implementation is covered directly in ebay-adapter.test.ts ("self-healing
+  // leaf category") — if its contract changes, those tests break first.
+  const resolveEbayCategoryId = async (
+    specific: Record<string, unknown> | undefined,
+    item: { title: string; marketplaceData?: unknown },
+  ) => {
+    const explicit = specific?.categoryId as string | undefined;
+    if (explicit && explicit !== '99') return { categoryId: explicit, categoryName: null, newlyResolved: false };
+    const cached = (item.marketplaceData as { ebay?: { categoryId?: string; categoryName?: string } } | null | undefined)?.ebay;
+    if (cached?.categoryId && cached.categoryId !== '99') return { categoryId: cached.categoryId, categoryName: cached.categoryName ?? null, newlyResolved: false };
+    const s = await statics.getCategorySuggestion(item.title);
+    return { categoryId: s?.categoryId ?? null, categoryName: s?.categoryName ?? null, newlyResolved: !!s?.categoryId };
+  };
+  return { EbayAdapter, resolveEbayCategoryId };
 });
 vi.mock('../marketplace/reverb-adapter.js', () => ({
   ReverbAdapter: vi.fn(() => ({ updateListing: mockReverbUpdateListing })),
@@ -522,6 +537,24 @@ describe('PATCH /items/:id', () => {
     expect(res.status).toBe(200);
     expect(mockReverbUpdateListing).toHaveBeenCalledTimes(1);
     expect(mockUpdateListing).toHaveBeenCalledTimes(1); // eBay row still synced
+  });
+
+  it('self-heals a missing categoryId on eBay edit-sync (GetItem-imported rows have empty specifics)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    // Imported item: category cached on the item, listing specifics EMPTY —
+    // without the heal, ReviseFixedPriceItem rejects "valid leaf category required".
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'Healed', marketplaceData: { ebay: { categoryId: '123445', categoryName: 'Audio' } }, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307038681268', ebaySku: null, marketplaceSpecificFields: {}, currency: 'USD' }]);
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307038681268', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Healed' });
+
+    expect(res.status).toBe(200);
+    const [, input] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
+    expect(input.marketplaceSpecific?.categoryId).toBe('123445');
   });
 
   it('still saves the item edit when the eBay sync fails (best-effort)', async () => {

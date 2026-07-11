@@ -8,7 +8,7 @@ import { db } from '../db/index.js';
 import { items, exportTokens, listings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
-import { EbayAdapter } from '../marketplace/ebay-adapter.js';
+import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { mergeItemShipping, mergeItemAspects } from './listings.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
@@ -537,6 +537,17 @@ itemsRouter.patch('/:id', async (req, res, next) => {
         if (listed.marketplace === 'ebay' && listed.status !== 'active') continue;
         try {
           if (listed.marketplace === 'ebay') {
+            // GetItem-imported rows carry EMPTY specifics — without a leaf
+            // categoryId, ReviseFixedPriceItem rejects every edit-sync. Reuse
+            // the publish path's self-heal (listing intent → item cache →
+            // Taxonomy suggestion); imported items have the cache, so this is
+            // a no-op lookup for them.
+            const specifics = listed.marketplaceSpecificFields as Record<string, unknown> | undefined;
+            const healed = { ...(specifics ?? {}) };
+            if (!healed.categoryId || healed.categoryId === '99') {
+              const cat = await resolveEbayCategoryId(healed, updated);
+              if (cat.categoryId) healed.categoryId = cat.categoryId;
+            }
             const adapter = new EbayAdapter(userId);
             await adapter.updateListing(syncId, {
               title: updated.title,
@@ -551,7 +562,7 @@ itemsRouter.patch('/:id', async (req, res, next) => {
               features: updated.features as string[],
               ebaySku: listed.ebaySku ?? undefined,
               // eBay-Trading-specific merges — never applied to Reverb.
-              marketplaceSpecific: mergeItemAspects(updated, mergeItemShipping(updated, listed.marketplaceSpecificFields as Record<string, unknown> | undefined)),
+              marketplaceSpecific: mergeItemAspects(updated, mergeItemShipping(updated, healed)),
             });
           } else {
             const adapter = new ReverbAdapter(userId);
