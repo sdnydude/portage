@@ -73,7 +73,7 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 
 ### Phase 6 — Feature completeness
 
-- [ ] **Listing-hub merge** — merge listings/[id] into inventory/[id] as ListingCard hub + /inventory/[id]/preview PNG-share page. Plan FINAL after 4 review rounds: `docs/superpowers/plans/2026-07-11-listing-hub-merge.md` (5 tasks = 5 PRs; local /code-review + /simplify steps in checklists) (2-3 days)
+- [ ] **Listing-hub merge** — merge listings/[id] into inventory/[id] as ListingCard hub + /inventory/[id]/preview PNG-share page. Plan FINAL after 4 review rounds: `docs/superpowers/plans/2026-07-11-listing-hub-merge.md` (6 tasks = 6 PRs; local /code-review + /simplify steps in checklists; Task 6 = Reverb edit-sync, independent) (2-3 days)
 - [ ] Notification system — push + in-app center (8h)
 - [ ] Dashboard trends + AI insights — sparklines, category breakdown (6h)
 - [ ] Enhanced-photo persistence — "Replace Photo" action after before/after (2h)
@@ -84,7 +84,7 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 - [x] Version Cloudflare tunnel config into repo (Task 34 gap) — `infra/cloudflared/config-portage.yml` + deploy README (2026-07-09)
 - [x] Prod CORS single-origin restriction — done via PR #189 (2026-07-09): api now runs NODE_ENV=production, CORS list = prod domain only
 - [ ] Pagination on listing/item hooks (4h)
-- [ ] Reverb listings don't sync on item edit — `PATCH /items` best-effort revises active eBay listings only (`items.ts:506-555`); an item edit (title/desc/price/photos) never reaches a live Reverb listing. Extend the sync loop to Reverb rows via `ReverbAdapter.updateListing` (note: adapter update path is thin — title/desc/price only, may need widening). Found 2026-07-11 during listing-hub-merge advisor review (2h)
+- [ ] Reverb listings don't sync on item edit — `PATCH /items` best-effort revises active eBay listings only (`items.ts:506-555`). **Scheduled as Task 6 (PR 6) in `docs/superpowers/plans/2026-07-11-listing-hub-merge.md`** — independent of Tasks 1-5. (Stale note corrected: adapter `updateListing` already covers title/desc/price/condition/qty/photos; only make/model mapping missing.) Found 2026-07-11 during listing-hub-merge advisor review (2h)
 - [ ] Self-hosted runner hardening before public launch — `claude-review.yml`, `e2e.yml`, `deploy-docs.yml` all run `pull_request` jobs on the stateful g700data1 runner; gate to same-repo PRs (`github.event.pull_request.head.repo.full_name == github.repository`) or move untrusted jobs to `ubuntu-latest`. Fork PRs also receive no secrets. Low urgency while repo is private/solo (CodeRabbit finding, PR #203) (1h)
 
 ---
