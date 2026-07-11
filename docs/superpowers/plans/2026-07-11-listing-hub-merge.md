@@ -442,6 +442,39 @@ Page fetches item + listings, renders `<div ref={cardRef}><ListingPreviewShareCa
 
 - [ ] **Step 7: Commit + PR** — `feat(web): sharable listing preview with PNG share`
 
+### Task 6 (PR 6): Item-edit sync → Reverb listings
+
+**Files:**
+- Modify: `apps/api/src/routes/items.ts:512-555` (PATCH item-edit sync loop — currently eBay-only)
+- Modify: `apps/api/src/marketplace/reverb-adapter.ts` (`updateListing` — add brand/model mapping)
+- Tests: `apps/api/src/routes/items.test.ts`, `apps/api/src/marketplace/reverb-adapter.test.ts`
+
+**Interfaces:**
+- Consumes: `ReverbAdapter.updateListing(marketplaceListingId, Partial<MarketplaceListingInput>)` — already handles title/description/price/condition/quantity/photos/specifics (the TODO note claiming the update path is "title/desc/price only" is stale; only make/model are missing)
+- Produces: `PATCH /items/:id` revises the item's Reverb listing(s) with the same best-effort, per-row-isolated semantics as the existing eBay sync
+
+**Independent of Tasks 1–5** — no ordering constraint, shippable any time.
+
+Design notes:
+- The eBay guard `status !== 'active' || !marketplaceListingId → skip` does NOT transfer to Reverb: a Reverb row can be `status='draft'` WITH a `marketplaceListingId` (publish returns draft state until the seller's shop setup completes — the live listing from PR #177 is exactly this). Remote Reverb drafts are revisable via the same PUT. Reverb sync guard = `marketplaceListingId` present, status in the query's `['active','draft']` set.
+- `mergeItemAspects` / `mergeItemShipping` are eBay-Trading-specific — never pass their output to Reverb. Reverb gets `marketplaceSpecific: listed.marketplaceSpecificFields` as stored (carries conditionUuid/categoryUuid/shippingRates captured at publish).
+
+- [ ] **Step 1: Failing adapter test** — in `reverb-adapter.test.ts`: `updateListing` maps `brand` → body `make` and `model` → body `model` when provided (createListing sets them; update currently drops them, so a brand/model item edit would never reach Reverb).
+
+- [ ] **Step 2: Run red → implement** — in `updateListing`: `if (input.brand !== undefined) updates.make = input.brand;` / `if (input.model !== undefined) updates.model = input.model;`. Run green.
+
+- [ ] **Step 3: Failing route tests** — in `items.test.ts`, alongside the existing eBay edit-sync tests (reuse their adapter-mock pattern):
+  - PATCH with an active Reverb row → `ReverbAdapter.updateListing` called with edited title/description/price/currency/condition/quantity/photos/brand/model and the row's stored `marketplaceSpecificFields`
+  - Reverb row with `marketplaceListingId` but `status='draft'` → still synced (see design note)
+  - Reverb row with no `marketplaceListingId` → skipped
+  - Reverb adapter throw → logged warning, response still 200, eBay row in the same loop still synced
+
+- [ ] **Step 4: Run red → implement** — in the sync loop: widen `eq(listings.marketplace, 'ebay')` to `inArray(listings.marketplace, ['ebay', 'reverb'])` (line 522 only — the research/traffic query at :388 stays eBay-only), add `marketplace` to the select, branch per row: eBay path byte-identical to today; Reverb path per the design notes. Run green.
+
+- [ ] **Step 5: Verify** — tests + typecheck; deploy (`docker compose up -d --build portage-api`); live proof: edit title/price on the item backing the real Reverb listing (PR #177), confirm the PUT in api logs and the changed fields on reverb.com. Screenshots in PR.
+
+- [ ] **Step 6: Commit + PR** — `fix(api): sync item edits to Reverb listings`
+
 ## Deferred (explicitly out of scope)
 
 - Retrofitting `ConfirmSheet` into item-delete and other existing modals (separate cleanup PR)

@@ -1400,6 +1400,65 @@ describe('GET /listings — list includes the item title', () => {
   });
 });
 
+describe('GET /listings — itemId filter', () => {
+  it('filters by itemId when provided', async () => {
+    const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+    for (const m of ['from', 'leftJoin', 'where', 'orderBy', 'limit']) {
+      chain[m] = vi.fn().mockReturnValue(chain);
+    }
+    chain.offset = vi.fn().mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValueOnce(chain as never);
+    const countChain: Record<string, ReturnType<typeof vi.fn>> = {};
+    countChain.from = vi.fn().mockReturnValue(countChain);
+    countChain.where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    vi.mocked(db.select).mockReturnValueOnce(countChain as never);
+
+    const res = await request(app)
+      .get('/listings?itemId=c19d41df-6807-4efc-8436-ea5289f4c4fa')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('applies itemId to the WHERE clause as a bound param', async () => {
+    const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+    for (const m of ['from', 'leftJoin', 'where', 'orderBy', 'limit']) {
+      chain[m] = vi.fn().mockReturnValue(chain);
+    }
+    chain.offset = vi.fn().mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValueOnce(chain as never);
+    const countChain: Record<string, ReturnType<typeof vi.fn>> = {};
+    countChain.from = vi.fn().mockReturnValue(countChain);
+    countChain.where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    vi.mocked(db.select).mockReturnValueOnce(countChain as never);
+
+    await request(app)
+      .get('/listings?itemId=c19d41df-6807-4efc-8436-ea5289f4c4fa')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    // A schema-only change (param accepted but ignored) must fail here: the
+    // itemId has to reach the WHERE clause as a bound param or every listing
+    // is returned regardless of the filter.
+    const collectParams = (node: unknown, out: unknown[] = []): unknown[] => {
+      if (!node || typeof node !== 'object') return out;
+      const n = node as { value?: unknown; queryChunks?: unknown[]; constructor?: { name?: string } };
+      if (n.constructor?.name === 'Param') { out.push(n.value); return out; }
+      if (Array.isArray(node)) { for (const c of node) collectParams(c, out); return out; }
+      if (Array.isArray(n.queryChunks)) for (const c of n.queryChunks) collectParams(c, out);
+      return out;
+    };
+    expect(collectParams(chain.where.mock.calls[0][0])).toContain('c19d41df-6807-4efc-8436-ea5289f4c4fa');
+  });
+
+  it('rejects a non-uuid itemId with 400', async () => {
+    const res = await request(app)
+      .get('/listings?itemId=not-a-uuid')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('GET /listings/:id/ebay-offer — F-GATE verification read', () => {
   const LISTING_ID = '00000000-0000-0000-0000-0000000000ef';
 
