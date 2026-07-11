@@ -1766,6 +1766,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
           >
             <PublishSuccess
               listingId={state.listingId}
+              itemId={state.inventoryItemId}
               warning={state.publishWarning ?? undefined}
               marketplace={state.marketplace}
               title={state.title}

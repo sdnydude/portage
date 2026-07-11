@@ -38,9 +38,9 @@ test("GTC auto-end toggle persists across reload; detail page shows the GTC date
   expect(listingsRes.ok()).toBeTruthy();
   const { listings } = await listingsRes.json();
   if (listings.length > 0 && listings[0].publishedAt) {
-    await page.goto(`/listings/${listings[0].id}`);
+    await page.goto(`/inventory/${listings[0].itemId}?listing=${listings[0].id}`);
     const expected = !original ? "Auto-ends" : "GTC renews";
-    await expect(page.getByText(expected, { exact: true })).toBeVisible();
+    await expect(page.getByText(new RegExp(`^${expected}`))).toBeVisible();
     await page.screenshot({ path: path.join(SHOT, "03-detail-gtc-date.png"), fullPage: true });
   }
 

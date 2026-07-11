@@ -385,7 +385,7 @@ export default function HomePage() {
               {filteredListings.map((listing) => (
                 <Link
                   key={listing.id}
-                  href={`/listings/${listing.id}`}
+                  href={`/inventory/${listing.itemId}?listing=${listing.id}`}
                   className="rounded-xl bg-[var(--surface)] border border-[var(--border)] overflow-hidden block"
                   style={{ boxShadow: "var(--shadow-subtle)" }}
                 >

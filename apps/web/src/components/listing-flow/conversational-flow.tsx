@@ -811,6 +811,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         <div className="flex-1 overflow-auto">
           <PublishSuccess
             listingId={state.listingId}
+            itemId={state.inventoryItemId}
             warning={state.publishWarning ?? undefined}
             marketplace={state.marketplace}
             title={state.title}
