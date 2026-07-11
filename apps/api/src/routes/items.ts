@@ -9,6 +9,7 @@ import { items, exportTokens, listings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
+import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { mergeItemShipping, mergeItemAspects } from './listings.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
 import type { MarketplaceData } from '@portage/shared';
@@ -503,14 +504,15 @@ itemsRouter.patch('/:id', async (req, res, next) => {
 
     logger.info({ userId, itemId: updated.id }, 'Item updated');
 
-    // Push field edits to the item's eBay listing(s) — eBay rejects UI edits on
-    // Inventory-API listings, so Portage is the source of truth. An item can have
-    // more than one live/draft eBay row (and orphan drafts with no offer id), so
-    // sync every syncable row and skip the rest — never just an arbitrary first.
+    // Push field edits to the item's marketplace listing(s) — eBay rejects UI
+    // edits on Inventory-API listings, and Reverb listings otherwise drift, so
+    // Portage is the source of truth. An item can have more than one syncable
+    // row, so sync every one and skip the rest — never just an arbitrary first.
     // Entire block is best-effort: a failure fetching or syncing listings must
     // not 500 the saved item edit.
     try {
-      const ebayListings = await db.select({
+      const marketplaceListings = await db.select({
+        marketplace: listings.marketplace,
         status: listings.status,
         marketplaceListingId: listings.marketplaceListingId,
         ebaySku: listings.ebaySku,
@@ -519,39 +521,62 @@ itemsRouter.patch('/:id', async (req, res, next) => {
       }).from(listings).where(and(
         eq(listings.itemId, updated.id),
         eq(listings.userId, userId),
-        eq(listings.marketplace, 'ebay'),
+        inArray(listings.marketplace, ['ebay', 'reverb']),
         // Only live rows — never a stale archived/sold history row for this item.
         inArray(listings.status, ['active', 'draft']),
       ));
 
-      for (const listed of ebayListings) {
-        // Trade-First: only a published listing (active + Trading ItemID) can be revised.
-        // A DB-only draft has no live listing to sync until it is published.
+      for (const listed of marketplaceListings) {
         const syncId = listed.marketplaceListingId;
-        if (listed.status !== 'active' || !syncId) continue;
+        // eBay Trade-First: only a published listing (active + Trading ItemID)
+        // can be revised; a DB-only draft has no live listing until published.
+        // Reverb differs: publish can return a remote DRAFT that still carries
+        // a marketplaceListingId (shop setup pending) and remote drafts are
+        // revisable via the same PUT — so Reverb syncs on listingId alone.
+        if (!syncId) continue;
+        if (listed.marketplace === 'ebay' && listed.status !== 'active') continue;
         try {
-          const adapter = new EbayAdapter(userId);
-          await adapter.updateListing(syncId, {
-            title: updated.title,
-            description: updated.description,
-            price: updated.price ?? undefined,
-            currency: listed.currency,
-            condition: updated.condition,
-            quantity: updated.quantity,
-            brand: updated.brand,
-            model: updated.model,
-            photos: (updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
-            features: updated.features as string[],
-            ebaySku: listed.ebaySku ?? undefined,
-            marketplaceSpecific: mergeItemAspects(updated, mergeItemShipping(updated, listed.marketplaceSpecificFields as Record<string, unknown> | undefined)),
-          });
+          if (listed.marketplace === 'ebay') {
+            const adapter = new EbayAdapter(userId);
+            await adapter.updateListing(syncId, {
+              title: updated.title,
+              description: updated.description,
+              price: updated.price ?? undefined,
+              currency: listed.currency,
+              condition: updated.condition,
+              quantity: updated.quantity,
+              brand: updated.brand,
+              model: updated.model,
+              photos: (updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
+              features: updated.features as string[],
+              ebaySku: listed.ebaySku ?? undefined,
+              // eBay-Trading-specific merges — never applied to Reverb.
+              marketplaceSpecific: mergeItemAspects(updated, mergeItemShipping(updated, listed.marketplaceSpecificFields as Record<string, unknown> | undefined)),
+            });
+          } else {
+            const adapter = new ReverbAdapter(userId);
+            await adapter.updateListing(syncId, {
+              title: updated.title,
+              description: updated.description,
+              price: updated.price ?? undefined,
+              currency: listed.currency,
+              condition: updated.condition,
+              quantity: updated.quantity,
+              brand: updated.brand,
+              model: updated.model,
+              photos: (updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
+              // Publish-time specifics as stored (conditionUuid/categoryUuid/
+              // shippingRates) — no eBay aspect/shipping merging.
+              marketplaceSpecific: listed.marketplaceSpecificFields as Record<string, unknown> | undefined,
+            });
+          }
         } catch (err) {
           // One failed row must not block syncing the others.
-          logger.warn({ itemId: updated.id, syncId, error: (err as Error).message }, 'Failed to sync item edit to eBay listing');
+          logger.warn({ itemId: updated.id, marketplace: listed.marketplace, syncId, error: (err as Error).message }, 'Failed to sync item edit to marketplace listing');
         }
       }
     } catch (err) {
-      logger.warn({ itemId: updated.id, error: (err as Error).message }, 'Failed to load eBay listings for item-edit sync');
+      logger.warn({ itemId: updated.id, error: (err as Error).message }, 'Failed to load listings for item-edit sync');
     }
 
     res.json(updated);

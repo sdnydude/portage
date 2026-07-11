@@ -12,7 +12,9 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
-const { mockUpdateListing, mockGetTrafficReport } = vi.hoisted(() => ({ mockUpdateListing: vi.fn(), mockGetTrafficReport: vi.fn() }));
+const { mockUpdateListing, mockGetTrafficReport, mockReverbUpdateListing } = vi.hoisted(() => ({
+  mockUpdateListing: vi.fn(), mockGetTrafficReport: vi.fn(), mockReverbUpdateListing: vi.fn(),
+}));
 vi.mock('../marketplace/ebay-adapter.js', () => {
   const EbayAdapter = vi.fn(() => ({ updateListing: mockUpdateListing, getTrafficReport: mockGetTrafficReport }));
   const statics = EbayAdapter as unknown as Record<string, ReturnType<typeof vi.fn>>;
@@ -21,6 +23,9 @@ vi.mock('../marketplace/ebay-adapter.js', () => {
   statics.getRequiredAspects = vi.fn();
   return { EbayAdapter };
 });
+vi.mock('../marketplace/reverb-adapter.js', () => ({
+  ReverbAdapter: vi.fn(() => ({ updateListing: mockReverbUpdateListing })),
+}));
 
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 
@@ -439,6 +444,84 @@ describe('PATCH /items/:id', () => {
     expect(input.marketplaceSpecific?.weight).toBeDefined();           // avoids eBay 25020
     expect(input.marketplaceSpecific?.categoryId).toBe('175669');       // preserves listing specifics
     expect((input.marketplaceSpecific?.aspects as Record<string, string[]>)?.Brand).toEqual(['Sony']);
+  });
+
+  it('re-syncs an active Reverb listing on item edit (title/price/brand reach the adapter)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'New Title', brand: 'Fender', model: 'Strat', price: 1200, condition: 'good', quantity: 1 }]);
+    mockSelectReturnOnce([{ marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: { conditionUuid: 'cu-1', categoryUuid: 'cat-1' }, currency: 'USD' }]);
+    mockReverbUpdateListing.mockResolvedValue({ marketplaceListingId: '87654321', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'New Title' });
+
+    expect(res.status).toBe(200);
+    expect(mockReverbUpdateListing).toHaveBeenCalledTimes(1);
+    const [idArg, input] = mockReverbUpdateListing.mock.calls[0] as [string, {
+      title?: string; price?: number; brand?: string; model?: string; marketplaceSpecific?: Record<string, unknown>;
+    }];
+    expect(idArg).toBe('87654321');
+    expect(input.title).toBe('New Title');
+    expect(input.price).toBe(1200);
+    expect(input.brand).toBe('Fender');
+    // Stored publish-time specifics ride along untouched (conditionUuid etc.);
+    // the eBay-only aspect/shipping merges must NOT be applied to Reverb.
+    expect(input.marketplaceSpecific?.conditionUuid).toBe('cu-1');
+    expect(input.marketplaceSpecific?.aspects).toBeUndefined();
+  });
+
+  it('syncs a Reverb row that is draft-with-listingId (remote Reverb drafts are revisable)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T2' }]);
+    // Publish can return a remote DRAFT that still carries a listing id
+    // (shop setup pending) — the eBay "draft = nothing to sync" rule must
+    // not apply to Reverb.
+    mockSelectReturnOnce([{ marketplace: 'reverb', status: 'draft', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: {}, currency: 'USD' }]);
+    mockReverbUpdateListing.mockResolvedValue({ marketplaceListingId: '87654321', status: 'draft' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'T2' });
+
+    expect(res.status).toBe(200);
+    expect(mockReverbUpdateListing).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a Reverb row with no marketplaceListingId (nothing remote to revise)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T4' }]);
+    mockSelectReturnOnce([{ marketplace: 'reverb', status: 'draft', marketplaceListingId: null, ebaySku: null, marketplaceSpecificFields: {}, currency: 'USD' }]);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'T4' });
+
+    expect(res.status).toBe(200);
+    expect(mockReverbUpdateListing).not.toHaveBeenCalled();
+  });
+
+  it('a failed Reverb sync neither blocks the eBay row nor fails the request', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T3', weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectReturnOnce([
+      { marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: {}, currency: 'USD' },
+      { marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' },
+    ]);
+    mockReverbUpdateListing.mockRejectedValue(new Error('Reverb 500'));
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307000000001', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'T3' });
+
+    expect(res.status).toBe(200);
+    expect(mockReverbUpdateListing).toHaveBeenCalledTimes(1);
+    expect(mockUpdateListing).toHaveBeenCalledTimes(1); // eBay row still synced
   });
 
   it('still saves the item edit when the eBay sync fails (best-effort)', async () => {
