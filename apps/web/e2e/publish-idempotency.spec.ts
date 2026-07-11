@@ -30,24 +30,40 @@ test("UI draft-save stamps the scoped idempotencyKey on the listing row", async 
     await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
 
     // The persisted row must carry the client's scoped key — a bare server-minted
-    // UUID here means the browser build did not send one.
-    const res = await page.request.get(`${API_BASE}/listings?limit=10`, { headers: seedHeaders });
+    // UUID here means the browser build did not send one. Query by itemId — a
+    // global limit can push the fresh row off the first page on a busy stack.
+    const res = await page.request.get(`${API_BASE}/listings?itemId=${itemId}`, { headers: seedHeaders });
     expect(res.ok()).toBeTruthy();
     const data = await res.json();
     const row = (data.listings as Array<{ id: string; itemId: string; idempotencyKey?: string; createdAt: string }>)
-      .filter(l => l.itemId === itemId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     expect(row, "no listing row found for the item just drafted").toBeTruthy();
     rowId = row.id;
     expect(row.idempotencyKey).toMatch(new RegExp(`^${itemId}:ebay:`));
   } finally {
     // Cleanup the seeded rows even on failure (draft listing → no marketplace
-    // call on delete). A draft row may exist even if an assertion failed.
-    if (!rowId) {
-      const res = await page.request.get(`${API_BASE}/listings?itemId=${itemId}`, { headers: seedHeaders });
-      if (res.ok()) rowId = ((await res.json()).listings as Array<{ id: string }>)[0]?.id;
+    // call on delete). Each delete is attempted independently and failures are
+    // surfaced at the end via expect.soft (reported without masking the test's
+    // own error).
+    const cleanupFailures: string[] = [];
+    try {
+      if (!rowId) {
+        const res = await page.request.get(`${API_BASE}/listings?itemId=${itemId}`, { headers: seedHeaders });
+        if (res.ok()) rowId = ((await res.json()).listings as Array<{ id: string }>)[0]?.id;
+      }
+      if (rowId) {
+        const del = await page.request.delete(`${API_BASE}/listings/${rowId}`, { headers: seedHeaders });
+        if (!del.ok()) cleanupFailures.push(`listing delete ${del.status()}`);
+      }
+    } catch (err) {
+      cleanupFailures.push(`listing cleanup threw: ${(err as Error).message}`);
     }
-    if (rowId) await page.request.delete(`${API_BASE}/listings/${rowId}`, { headers: seedHeaders });
-    await page.request.delete(`${API_BASE}/items/${itemId}`, { headers: seedHeaders });
+    try {
+      const del = await page.request.delete(`${API_BASE}/items/${itemId}`, { headers: seedHeaders });
+      if (!del.ok()) cleanupFailures.push(`item delete ${del.status()}`);
+    } catch (err) {
+      cleanupFailures.push(`item cleanup threw: ${(err as Error).message}`);
+    }
+    expect.soft(cleanupFailures, "seeded-fixture cleanup failed").toEqual([]);
   }
 });

@@ -97,7 +97,14 @@ function ItemDetailContent() {
   );
   const renderListingCard = (l: (typeof itemListings)[number]) => (
     <div key={l.id} id={`listing-${l.id}`}>
-      <ListingCard listing={l} token={token} onChanged={refetchListings} highlight={l.id === highlightId} />
+      <ListingCard
+        listing={l}
+        token={token}
+        onChanged={refetchListings}
+        highlight={l.id === highlightId}
+        itemBrand={item?.brand || undefined}
+        itemModel={item?.model || undefined}
+      />
     </div>
   );
 
