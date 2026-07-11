@@ -183,6 +183,21 @@ describe('GET /items', () => {
     expect(firstSelectArg).toHaveProperty('listed');
     expect(res.body.items[0].listed).toBe(false);
   });
+
+  it('renders the listed EXISTS subquery with a qualified outer items.id correlation', async () => {
+    // Regression: drizzle strips table qualifiers on single-table selects, so an
+    // interpolated ${items.id} inside the subquery rendered as bare "id", which
+    // Postgres resolved to listings.id — correlation always false, every item
+    // badged Unlisted despite active listings.
+    const { itemListedExpr } = await import('./items.js');
+    const { drizzle } = await import('drizzle-orm/postgres-js');
+    const { items } = await import('../db/schema.js');
+
+    const mockDb = drizzle.mock();
+    const { sql: text } = mockDb.select({ listed: itemListedExpr }).from(items).toSQL();
+
+    expect(text).toContain('"item_id" = "items"."id"');
+  });
 });
 
 describe('GET /items/:id', () => {

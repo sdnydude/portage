@@ -16,6 +16,14 @@ import { isAllowedImageOrigin } from './images.js';
 
 const logger = createLogger('items');
 
+// Drives the inventory "Unlisted" chip: confirm-time item creation (fresh-scan
+// prepare) means items can exist with no marketplace presence — drafts don't
+// count as listed. The outer items.id correlation must be sql.raw-qualified:
+// drizzle strips table qualifiers on single-table selects, so an interpolated
+// ${items.id} renders as bare "id", which Postgres resolves to listings.id
+// inside the subquery — an always-false correlation.
+export const itemListedExpr = sql<boolean>`exists (select 1 from ${listings} where ${listings.itemId} = ${sql.raw('"items"."id"')} and ${listings.status} in ('active', 'sold'))`;
+
 const photoSchema = z.object({
   url: z.string(),
   key: z.string(),
@@ -178,10 +186,7 @@ itemsRouter.get('/', async (req, res, next) => {
     const [results, countResult] = await Promise.all([
       db.select({
         ...getTableColumns(items),
-        // Drives the inventory "Unlisted" chip: confirm-time item creation
-        // (fresh-scan prepare) means items can exist with no marketplace
-        // presence — drafts don't count as listed.
-        listed: sql<boolean>`exists (select 1 from ${listings} where ${listings.itemId} = ${items.id} and ${listings.status} in ('active', 'sold'))`,
+        listed: itemListedExpr,
       }).from(items)
         .where(and(...conditions))
         .orderBy(desc(items.createdAt))
