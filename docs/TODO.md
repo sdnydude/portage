@@ -73,7 +73,7 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 
 ### Phase 6 — Feature completeness
 
-- [ ] **Listing-hub merge** — merge listings/[id] into inventory/[id] as ListingCard hub + /inventory/[id]/preview PNG-share page. Plan FINAL after 4 review rounds: `docs/superpowers/plans/2026-07-11-listing-hub-merge.md` (6 tasks = 6 PRs; local /code-review + /simplify steps in checklists; Task 6 = Reverb edit-sync, independent) (2-3 days)
+- [x] **Listing-hub merge** — EXECUTED 2026-07-11, all 6 plan tasks shipped as PRs #207–#212: itemId filter (API), Marketplace Listings hub on inventory/[id], ListingCard action surface, listings/[id] retired to a resolver-redirect (−913 lines), /inventory/[id]/preview PNG share (CORS solved via /img-cdn next.config rewrite — R2 bucket CORS deferred, no R2-admin credential), Reverb edit-sync. Plan: `docs/superpowers/plans/2026-07-11-listing-hub-merge.md`
 - [ ] Notification system — push + in-app center (8h)
 - [ ] Dashboard trends + AI insights — sparklines, category breakdown (6h)
 - [ ] Enhanced-photo persistence — "Replace Photo" action after before/after (2h)
@@ -84,7 +84,9 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 - [x] Version Cloudflare tunnel config into repo (Task 34 gap) — `infra/cloudflared/config-portage.yml` + deploy README (2026-07-09)
 - [x] Prod CORS single-origin restriction — done via PR #189 (2026-07-09): api now runs NODE_ENV=production, CORS list = prod domain only
 - [ ] Pagination on listing/item hooks (4h)
-- [ ] Reverb listings don't sync on item edit — `PATCH /items` best-effort revises active eBay listings only (`items.ts:506-555`). **Scheduled as Task 6 (PR 6) in `docs/superpowers/plans/2026-07-11-listing-hub-merge.md`** — independent of Tasks 1-5. (Stale note corrected: adapter `updateListing` already covers title/desc/price/condition/qty/photos; only make/model mapping missing.) Found 2026-07-11 during listing-hub-merge advisor review (2h)
+- [x] Reverb listings don't sync on item edit — RESOLVED PR #211 (2026-07-11): sync loop widened to Reverb (syncs on listingId alone incl. remote drafts; eBay stays active-only), adapter maps brand/model→make/model. Live-proven: PUT /listings/99270095 fired; Reverb 403 "account under review" is the known shop-setup gate
+- [ ] eBay edit-sync silently failing for item bbaddd00 (ESI MoCo, ItemID 307038681268) — revise rejects "valid eBay leaf category required"; stored marketplaceSpecificFields likely lacks categoryId. Surfaced during Task 6 live proof (registry deferred item) (1h)
+- [ ] R2 bucket CORS for portage-images — /img-cdn rewrite is the working same-origin mechanism; swap to bucket CORS when an R2-Admin token exists (both Doppler CF tokens are one token, no R2 scope) and drop the rewrite (30m + token)
 - [ ] Self-hosted runner hardening before public launch — `claude-review.yml`, `e2e.yml`, `deploy-docs.yml` all run `pull_request` jobs on the stateful g700data1 runner; gate to same-repo PRs (`github.event.pull_request.head.repo.full_name == github.repository`) or move untrusted jobs to `ubuntu-latest`. Fork PRs also receive no secrets. Low urgency while repo is private/solo (CodeRabbit finding, PR #203) (1h)
 
 ---
