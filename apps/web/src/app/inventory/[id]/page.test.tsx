@@ -359,6 +359,12 @@ describe("marketplace listings section", () => {
     expect(await screen.findByDisplayValue("Canon")).toBeInTheDocument();
   });
 
+  it("Preview listing CTA routes to the share preview page", () => {
+    render(<ItemDetailPage />);
+    fireEvent.click(screen.getByRole("button", { name: /preview listing/i }));
+    expect(pushMock).toHaveBeenCalledWith("/inventory/i1/preview");
+  });
+
   it("cross-list CTA restricts the sheet to marketplaces without a non-archived listing", () => {
     mockListings = [{
       id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",

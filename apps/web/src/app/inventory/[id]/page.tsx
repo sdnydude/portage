@@ -390,6 +390,13 @@ function ItemDetailContent() {
             onAddPhotos={handleAddPhotos}
             maxPhotos={12}
           />
+          {/* Buyer-eye share preview (listing-hub Task 5) */}
+          <button
+            onClick={() => router.push(`/inventory/${params.id}/preview`)}
+            className="w-full py-2.5 rounded-xl border border-border text-sm font-medium text-text-primary"
+          >
+            Preview listing
+          </button>
           {isUploading && (
             <div className="flex items-center gap-2 text-sm text-text-secondary">
               <div className="w-4 h-4 border-2 border-[var(--teal)] border-t-transparent rounded-full animate-spin" />
