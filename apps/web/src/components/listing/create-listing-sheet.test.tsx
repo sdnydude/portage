@@ -36,6 +36,17 @@ import { CreateListingSheet } from "./create-listing-sheet";
 
 beforeEach(() => h.apiMock.mockReset());
 
+describe("CreateListingSheet — allowedMarketplaces", () => {
+  it("offers only the allowed marketplaces when restricted", () => {
+    const noop = () => {};
+    render(
+      <CreateListingSheet itemId="i1" allowedMarketplaces={["reverb"]} onCreated={noop} onClose={noop} />,
+    );
+    expect(screen.getByRole("button", { name: "Reverb" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "eBay" })).toBeNull();
+  });
+});
+
 describe("CreateListingSheet — price prefill", () => {
   it("keeps the price input in sync when suggestedPrice resolves after mount", () => {
     const noop = () => {};

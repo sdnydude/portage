@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({
@@ -15,9 +15,11 @@ const h = vi.hoisted(() => ({
 }));
 
 const pushMock = vi.fn();
+const mockSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "i1" }),
   useRouter: () => ({ push: pushMock }),
+  useSearchParams: () => mockSearchParams,
 }));
 vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true, token: "t" }) }));
 vi.mock("@/hooks/use-item", () => ({
@@ -36,7 +38,12 @@ vi.mock("@/hooks/use-enhance", () => ({
 vi.mock("@/hooks/use-comps", () => ({
   useComps: () => ({ comps: null, isLoading: false, error: null, fetchComps: vi.fn() }),
 }));
-vi.mock("@/hooks/use-listings", () => ({ useListings: () => ({ createListing: vi.fn() }) }));
+import type { Listing } from "@/hooks/use-listings";
+let mockListings: Listing[] = [];
+const refetchListingsMock = vi.fn();
+vi.mock("@/hooks/use-listings", () => ({
+  useListings: () => ({ listings: mockListings, isLoading: false, refetch: refetchListingsMock, createListing: vi.fn() }),
+}));
 vi.mock("@/components/image/before-after-slider", () => ({ BeforeAfterSlider: () => null }));
 vi.mock("@/components/capture/image-picker", () => ({ ImagePicker: () => null }));
 vi.mock("@/components/listing-flow/crop-tool", () => ({
@@ -45,9 +52,9 @@ vi.mock("@/components/listing-flow/crop-tool", () => ({
   ),
 }));
 vi.mock("@/components/listing/create-listing-sheet", () => ({
-  CreateListingSheet: ({ suggestedPrice, onCreated }: { suggestedPrice?: number; onCreated: () => void }) => (
+  CreateListingSheet: ({ suggestedPrice, allowedMarketplaces, onCreated }: { suggestedPrice?: number; allowedMarketplaces?: string[]; onCreated: () => void }) => (
     <div>
-      sheet-open price:{suggestedPrice ?? "none"}
+      sheet-open price:{suggestedPrice ?? "none"} allowed:{allowedMarketplaces ? allowedMarketplaces.join(",") : "all"}
       <button onClick={onCreated}>finish-create</button>
     </div>
   ),
@@ -76,14 +83,18 @@ describe("inventory detail — editable price", () => {
     // goes through the price-confirming sheet.
     expect(screen.queryByText("List for Sale")).toBeNull();
     fireEvent.click(screen.getByText("List on Marketplace"));
-    expect(screen.getByText("sheet-open price:75")).toBeInTheDocument();
+    expect(screen.getByText(/sheet-open price:75/)).toBeInTheDocument();
   });
 
-  it("after creating a listing from the sheet, redirects to inventory (not listings)", () => {
+  it("after creating a listing from the sheet, stays on the page and refetches listings", () => {
+    pushMock.mockClear();
+    refetchListingsMock.mockClear();
     render(<ItemDetailPage />);
     fireEvent.click(screen.getByText("List on Marketplace"));
     fireEvent.click(screen.getByText("finish-create"));
-    expect(pushMock).toHaveBeenCalledWith("/inventory");
+    // Listing-hub contract: the new card appears in place — no redirect.
+    expect(pushMock).not.toHaveBeenCalledWith("/inventory");
+    expect(refetchListingsMock).toHaveBeenCalled();
   });
 
   it("renders the Listing Optimizer panel for the item", () => {
@@ -256,5 +267,37 @@ describe("inventory detail — photo gallery strip + editor overlay", () => {
         photos: [{ url: "https://example.com/1-crop.jpg", key: "k1-crop", width: 30, height: 40 }],
       });
     });
+  });
+});
+
+describe("marketplace listings section", () => {
+  afterEach(() => {
+    mockListings = [];
+  });
+
+  it("renders the Marketplace Listings heading and a card when the item has a listing", () => {
+    mockListings = [{
+      id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
+      marketplaceListingId: "307054605978", marketplaceSpecificFields: null,
+      status: "active", price: 1200, currency: "USD",
+      createdAt: "2026-07-10T17:24:31Z", publishedAt: "2026-07-10T17:24:33Z",
+      soldAt: null, itemTitle: "Canon AE-1",
+    }];
+    render(<ItemDetailPage />);
+    expect(screen.getByText("Marketplace Listings")).toBeInTheDocument();
+    expect(screen.getByText(/\$1,?200/)).toBeInTheDocument();
+  });
+
+  it("cross-list CTA restricts the sheet to marketplaces without a non-archived listing", () => {
+    mockListings = [{
+      id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
+      marketplaceListingId: "307054605978", marketplaceSpecificFields: null,
+      status: "active", price: 1200, currency: "USD",
+      createdAt: "2026-07-10T17:24:31Z", publishedAt: "2026-07-10T17:24:33Z",
+      soldAt: null, itemTitle: "Canon AE-1",
+    }];
+    render(<ItemDetailPage />);
+    fireEvent.click(screen.getByText(/List on another marketplace/));
+    expect(screen.getByText(/allowed:reverb/)).toBeInTheDocument();
   });
 });

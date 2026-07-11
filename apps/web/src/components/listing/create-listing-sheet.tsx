@@ -31,15 +31,21 @@ interface CreateListingSheetProps {
   initialEbayDraft?: boolean;
   /** F1: seed the publish-now toggle (e.g. seller profile default = live). */
   initialPublishNow?: boolean;
+  /**
+   * Cross-list guard: marketplaces still open for this item (no non-archived
+   * listing). Omit for the unrestricted picker.
+   */
+  allowedMarketplaces?: Array<"ebay" | "reverb">;
   onCreated: () => void;
   onClose: () => void;
 }
 
-export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialPublishNow = false, onCreated, onClose }: CreateListingSheetProps) {
+export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialPublishNow = false, allowedMarketplaces, onCreated, onClose }: CreateListingSheetProps) {
   const { token } = useAuth();
   // F3b: within the 7-day window the terms sheet is skipped (consent still recorded).
   const { disclaimerSuppressed } = useUserPreferences();
-  const [marketplace, setMarketplace] = useState<"ebay" | "reverb">("ebay");
+  const marketplaceOptions = allowedMarketplaces ?? (["ebay", "reverb"] as const);
+  const [marketplace, setMarketplace] = useState<"ebay" | "reverb">(marketplaceOptions[0] ?? "ebay");
   const [price, setPrice] = useState(suggestedPrice?.toString() ?? "");
   // Once the user types their own price it is authoritative — a late-arriving AI
   // suggestion (comps resolve async after mount) must never overwrite it. Adopt
@@ -232,7 +238,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
             Marketplace
           </label>
           <div className="flex gap-2">
-            {(["ebay", "reverb"] as const).map((m) => (
+            {marketplaceOptions.map((m) => (
               <button
                 key={m}
                 onClick={() => setMarketplace(m)}
