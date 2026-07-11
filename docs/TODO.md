@@ -83,6 +83,7 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 - [x] Version Cloudflare tunnel config into repo (Task 34 gap) — `infra/cloudflared/config-portage.yml` + deploy README (2026-07-09)
 - [x] Prod CORS single-origin restriction — done via PR #189 (2026-07-09): api now runs NODE_ENV=production, CORS list = prod domain only
 - [ ] Pagination on listing/item hooks (4h)
+- [ ] Reverb listings don't sync on item edit — `PATCH /items` best-effort revises active eBay listings only (`items.ts:506-555`); an item edit (title/desc/price/photos) never reaches a live Reverb listing. Extend the sync loop to Reverb rows via `ReverbAdapter.updateListing` (note: adapter update path is thin — title/desc/price only, may need widening). Found 2026-07-11 during listing-hub-merge advisor review (2h)
 
 ---
 
