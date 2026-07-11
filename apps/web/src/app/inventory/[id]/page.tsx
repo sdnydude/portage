@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useCallback, useEffect, useRef, Suspense } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
+import { useListings } from "@/hooks/use-listings";
+import { ListingCard } from "@/components/listing/listing-card";
 import { useAuth } from "@/hooks/use-auth";
 import { useEnhance } from "@/hooks/use-enhance";
 import { useBgRemoval } from "@/hooks/use-bg-removal";
@@ -26,7 +28,11 @@ const conditionColors: Record<string, string> = {
   poor: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
 };
 
-export default function ItemDetailPage() {
+// Card ordering: GTC auto-end + relist cycles accumulate archived rows, and
+// createdAt desc can stack them above the live card. Live state first.
+const STATUS_ORDER = { active: 0, draft: 1, sold: 2, archived: 3 } as const;
+
+function ItemDetailContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
@@ -47,6 +53,53 @@ export default function ItemDetailPage() {
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(params.id);
   const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
+
+  // Marketplace Listings hub (listing-hub Task 2): this page is becoming the
+  // single canonical detail page; each listing renders as a ListingCard.
+  const { listings: itemListings, isLoading: listingsLoading, error: listingsError, refetch: refetchListings } =
+    useListings({ itemId: params.id });
+  const searchParams = useSearchParams();
+  const focusListingId = searchParams.get("listing");
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  // One-shot: without the ref, every refetchListings() toggles listingsLoading
+  // and this effect would re-yank scroll to the card after every card action.
+  // The ref is only set once the card element is actually found — an archived
+  // target isn't in the DOM until the archive section expands, so marking
+  // "handled" any earlier would silently drop the deep link.
+  const scrolledRef = useRef(false);
+  useEffect(() => {
+    if (scrolledRef.current || !focusListingId || listingsLoading || isLoading) return;
+    const target = itemListings.find((l) => l.id === focusListingId);
+    if (target?.status === "archived" && !showArchived) {
+      setShowArchived(true);
+      return; // re-runs once the archived cards are in the DOM
+    }
+    // Double-rAF so layout settles before measuring; instant (not smooth) —
+    // smooth-scrolling a long mobile page is seconds of jank.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = document.getElementById(`listing-${focusListingId}`);
+      if (!el) return;
+      scrolledRef.current = true;
+      el.scrollIntoView({ block: "center" });
+      setHighlightId(focusListingId);
+      setTimeout(() => setHighlightId(null), 2000);
+    }));
+  }, [focusListingId, listingsLoading, isLoading, itemListings, showArchived]);
+
+  const orderedListings = [...itemListings].sort(
+    (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status],
+  );
+  const visibleListings = orderedListings.filter((l) => l.status !== "archived");
+  const archivedListings = orderedListings.filter((l) => l.status === "archived");
+  const availableMarketplaces = (["ebay", "reverb"] as const).filter(
+    (m) => !visibleListings.some((l) => l.marketplace === m),
+  );
+  const renderListingCard = (l: (typeof itemListings)[number]) => (
+    <div key={l.id} id={`listing-${l.id}`}>
+      <ListingCard listing={l} token={token} onChanged={refetchListings} highlight={l.id === highlightId} />
+    </div>
+  );
 
   const handleAddPhotos = useCallback(
     async (files: File[]) => {
@@ -516,16 +569,54 @@ export default function ItemDetailPage() {
             </div>
           )}
 
+          {/* Marketplace Listings hub — HIGH placement (advisor review): live-listing
+              state is first-screen adjacent, above the optimizer. Hidden when the
+              item has no listings (the primary CTA below covers that case). */}
+          {itemListings.length > 0 && (
+            <section className="mt-4">
+              <h2 className="text-sm font-semibold text-text-primary mb-2">Marketplace Listings</h2>
+              <div className="flex flex-col gap-2">
+                {visibleListings.map(renderListingCard)}
+                {archivedListings.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => setShowArchived((v) => !v)}
+                      className="text-xs text-text-secondary font-medium py-1 text-left"
+                    >
+                      {showArchived ? "Hide archived" : `Show ${archivedListings.length} archived`}
+                    </button>
+                    {showArchived && archivedListings.map(renderListingCard)}
+                  </>
+                )}
+              </div>
+              {/* Demoted cross-list CTA — only marketplaces without a live/draft/sold
+                  listing; the cards above are the duplicate-listing evidence. */}
+              {availableMarketplaces.length > 0 && (
+                <button
+                  onClick={() => setShowListingSheet(true)}
+                  className="w-full mt-2 py-2.5 rounded-xl border border-border text-sm font-medium text-text-primary"
+                >
+                  List on another marketplace — reach more buyers
+                </button>
+              )}
+            </section>
+          )}
+
           {/* Listing Optimizer — eBay item-specific gaps, demand, performance */}
           <ListingOptimizerPanel itemId={params.id} onFilled={refetchItem} />
 
-          {/* List on Marketplace CTA */}
-          <button
-            onClick={() => setShowListingSheet(true)}
-            className="w-full py-3 rounded-xl bg-forest-green text-white text-sm font-semibold hover:bg-forest-green/90 transition-colors"
-          >
-            List on Marketplace
-          </button>
+          {/* List on Marketplace CTA — primary only when a SUCCESSFUL fetch
+              says the item is unlisted. While loading (listings init to []) or
+              after a fetch error, an existing listing would read as absent and
+              invite a duplicate. */}
+          {!listingsLoading && !listingsError && itemListings.length === 0 && (
+            <button
+              onClick={() => setShowListingSheet(true)}
+              className="w-full py-3 rounded-xl bg-forest-green text-white text-sm font-semibold hover:bg-forest-green/90 transition-colors"
+            >
+              List on Marketplace
+            </button>
+          )}
 
           {/* Comparable Listings */}
           <div className="space-y-3">
@@ -658,15 +749,33 @@ export default function ItemDetailPage() {
           itemId={item.id}
           suggestedPrice={resolvePublishPriceWithSource(item, comps?.stats).price ?? undefined}
           priceSource={resolvePublishPriceWithSource(item, comps?.stats).source ?? undefined}
+          allowedMarketplaces={itemListings.length > 0 ? availableMarketplaces : undefined}
           onCreated={() => {
+            // Stay on the page — the new card appears in place (listing-hub Task 2).
+            // The list-page usage of this sheet keeps its own redirect.
             setShowListingSheet(false);
-            // Save-redirect contract: land on inventory, not listings
-            router.push("/inventory");
+            refetchListings();
           }}
           onClose={() => setShowListingSheet(false)}
         />
       )}
     </div>
+  );
+}
+
+export default function ItemDetailPage() {
+  // useSearchParams (deep-link ?listing=) requires a Suspense boundary in an
+  // App Router page or the build fails prerendering — same split as list/page.tsx.
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="w-8 h-8 border-3 border-forest-green border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <ItemDetailContent />
+    </Suspense>
   );
 }
 

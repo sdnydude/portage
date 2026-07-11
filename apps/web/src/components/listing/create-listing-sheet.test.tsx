@@ -36,6 +36,26 @@ import { CreateListingSheet } from "./create-listing-sheet";
 
 beforeEach(() => h.apiMock.mockReset());
 
+describe("CreateListingSheet — allowedMarketplaces", () => {
+  it("offers only the allowed marketplaces when restricted", () => {
+    const noop = () => {};
+    render(
+      <CreateListingSheet itemId="i1" allowedMarketplaces={["reverb"]} onCreated={noop} onClose={noop} />,
+    );
+    expect(screen.getByRole("button", { name: "Reverb" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "eBay" })).toBeNull();
+  });
+
+  it("disables creation when no marketplace is allowed (never falls back to eBay)", () => {
+    const noop = () => {};
+    render(
+      <CreateListingSheet itemId="i1" suggestedPrice={10} allowedMarketplaces={[]} onCreated={noop} onClose={noop} />,
+    );
+    // Price is prefilled, so only the empty marketplace list may disable this.
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeDisabled();
+  });
+});
+
 describe("CreateListingSheet — price prefill", () => {
   it("keeps the price input in sync when suggestedPrice resolves after mount", () => {
     const noop = () => {};

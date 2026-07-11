@@ -31,6 +31,7 @@ interface ListingsResponse {
 interface UseListingsOptions {
   status?: string;
   marketplace?: string;
+  itemId?: string;
   limit?: number;
   offset?: number;
 }
@@ -51,6 +52,7 @@ export function useListings(options: UseListingsOptions = {}) {
       const params = new URLSearchParams();
       if (options.status) params.set("status", options.status);
       if (options.marketplace) params.set("marketplace", options.marketplace);
+      if (options.itemId) params.set("itemId", options.itemId);
       if (options.limit != null) params.set("limit", String(options.limit));
       if (options.offset != null) params.set("offset", String(options.offset));
 
@@ -63,7 +65,7 @@ export function useListings(options: UseListingsOptions = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [token, options.status, options.marketplace, options.limit, options.offset]);
+  }, [token, options.status, options.marketplace, options.itemId, options.limit, options.offset]);
 
   useEffect(() => {
     fetchListings();
