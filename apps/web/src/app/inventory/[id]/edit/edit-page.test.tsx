@@ -62,8 +62,25 @@ vi.mock("@/hooks/use-scan-aspects", () => ({
   useScanAspects: () => scanAspectsState,
 }));
 
+let mockEditListings: Array<{ status: string }> = [];
+vi.mock("@/hooks/use-listings", () => ({
+  useListings: () => ({ listings: mockEditListings, isLoading: false, error: null, refetch: vi.fn(), createListing: vi.fn() }),
+}));
+
 beforeEach(() => {
   updateItemMock.mockClear();
+});
+
+describe("EditItemPage — shared-fields notice (listing-hub)", () => {
+  it("shows the cross-marketplace copy when the item has a non-archived listing", () => {
+    mockEditListings = [{ status: "active" }];
+    try {
+      render(<EditItemPage />);
+      expect(screen.getByText(/shared across marketplaces/i)).toBeInTheDocument();
+    } finally {
+      mockEditListings = [];
+    }
+  });
 });
 
 describe("EditItemPage — eBay taxonomy category + price", () => {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
+import { useListings } from "@/hooks/use-listings";
 import { useAuth } from "@/hooks/use-auth";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
 import { PriceField } from "@/components/listing/price-field";
@@ -23,6 +24,10 @@ export default function EditItemPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const { item, isLoading, error, updateItem } = useItem(params.id);
+  // Shared-fields notice: title/description edits propagate to live eBay
+  // listings via the PATCH /items sync (items.ts) — tell the seller.
+  const { listings: itemListings } = useListings({ itemId: params.id });
+  const hasLiveListing = itemListings.some((l) => l.status !== "archived");
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -205,6 +210,12 @@ export default function EditItemPage() {
           <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
             {saveError}
           </div>
+        )}
+
+        {hasLiveListing && (
+          <p className="text-xs text-text-secondary">
+            Title and description are shared across marketplaces — saving updates your live eBay listing.
+          </p>
         )}
 
         <FieldGroup label="Title">

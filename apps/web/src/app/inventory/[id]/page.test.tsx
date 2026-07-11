@@ -335,6 +335,30 @@ describe("marketplace listings section", () => {
     }
   });
 
+  it("threads the item's brand/model into the card's aspect-sheet prefill", async () => {
+    mockListings = [{
+      id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
+      marketplaceListingId: null, marketplaceSpecificFields: null,
+      status: "draft", price: 75, currency: "USD",
+      createdAt: "2026-07-10T17:24:31Z", publishedAt: null,
+      soldAt: null, itemTitle: "Canon AE-1",
+    }];
+    const { ApiError } = await import("@/lib/api");
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (String(path).includes("/publish")) {
+        throw new ApiError(422, "EBAY_ASPECTS_REQUIRED", "aspects", [
+          { name: "Brand", required: true } as never,
+        ]);
+      }
+      return path === "/seller-profile" ? { profile: {} } : {};
+    });
+    render(<ItemDetailPage />);
+    fireEvent.click(screen.getByRole("button", { name: /publish to ebay/i }));
+    // The sheet must open prefilled with the item's brand — the card doesn't
+    // hold the item, so the page threads itemBrand/itemModel down.
+    expect(await screen.findByDisplayValue("Canon")).toBeInTheDocument();
+  });
+
   it("cross-list CTA restricts the sheet to marketplaces without a non-archived listing", () => {
     mockListings = [{
       id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
