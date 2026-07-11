@@ -97,6 +97,7 @@ services:
       - "8018:80"
     volumes:
       - ./graphify-out:/usr/share/nginx/html:ro
+      - ./infra/portal:/srv/portal:ro
       - ./infra/graphify-nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - portage-network

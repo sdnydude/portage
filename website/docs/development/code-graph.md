@@ -14,6 +14,7 @@ relationships (imports, calls) plus LLM-inferred semantic links. 2,536 nodes /
 
 | What | Where |
 |------|-------|
+| **Stack portal** (hub for all resources: docs, graph, wiki, KB search, ops) | [http://10.0.0.251:8018/portal/](http://10.0.0.251:8018/portal/) |
 | Interactive graph | [http://10.0.0.251:8018/](http://10.0.0.251:8018/) (`graph.html`) |
 | Written report (communities, god nodes, stats) | [GRAPH_REPORT.md](http://10.0.0.251:8018/GRAPH_REPORT.md) |
 | Raw graph data | [graph.json](http://10.0.0.251:8018/graph.json) |

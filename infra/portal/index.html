@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portage Stack Portal</title>
+<style>
+  :root {
+    --bg: #14130f; --panel: #1d1c17; --panel2: #24221c; --border: #35332a;
+    --text: #e8e4da; --dim: #9a958a; --accent: #e8833a; --teal: #2aa198;
+    --green: #3fb950; --red: #f85149; --amber: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, sans-serif;
+    display: grid; grid-template-rows: auto 1fr auto; height: 100vh; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 15px; font-weight: 700; letter-spacing: .3px; }
+  header h1 span { color: var(--accent); }
+  #presets { display: flex; gap: 6px; margin-left: auto; }
+  .preset {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--dim);
+    padding: 4px 10px; border-radius: 999px; cursor: pointer; font-size: 12px;
+  }
+  .preset:hover, .preset.active { color: var(--text); border-color: var(--accent); }
+  main { display: grid; grid-template-columns: 290px 1fr; min-height: 0; }
+  aside {
+    background: var(--panel); border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 10px;
+  }
+  #search {
+    width: 100%; background: var(--panel2); border: 1px solid var(--border);
+    color: var(--text); padding: 7px 10px; border-radius: 8px; margin-bottom: 10px;
+    font: inherit;
+  }
+  #search:focus { outline: none; border-color: var(--teal); }
+  .group { margin-bottom: 12px; }
+  .group h2 {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--dim); margin: 8px 4px 5px;
+  }
+  .res {
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    background: none; border: 1px solid transparent; border-radius: 8px;
+    padding: 7px 9px; cursor: pointer; color: var(--text); font: inherit;
+  }
+  .res:hover { background: var(--panel2); }
+  .res.sel { background: var(--panel2); border-color: var(--accent); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+  .dot.up { background: var(--green); } .dot.down { background: var(--red); }
+  .res .meta { min-width: 0; }
+  .res .name { font-weight: 600; font-size: 13px; }
+  .res .desc { color: var(--dim); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { margin-left: auto; font-size: 10px; color: var(--amber); flex: none; }
+  #stage { display: grid; grid-template-rows: auto 1fr; min-width: 0; min-height: 0; }
+  #stagebar {
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  #stagebar .url { font: 12px ui-monospace, monospace; color: var(--teal); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #stagebar a.open {
+    margin-left: auto; flex: none; background: var(--accent); color: #14130f; font-weight: 700;
+    padding: 5px 14px; border-radius: 8px; text-decoration: none; font-size: 12.5px;
+  }
+  #view { position: relative; min-height: 0; }
+  #frame { width: 100%; height: 100%; border: 0; background: #fff; }
+  #card {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    background: var(--bg);
+  }
+  #card .inner { max-width: 460px; text-align: center; padding: 30px; }
+  #card h2 { margin-bottom: 8px; font-size: 18px; }
+  #card p { color: var(--dim); margin-bottom: 18px; }
+  #card a, #kbrun {
+    background: var(--accent); color: #14130f; font-weight: 700; padding: 9px 20px;
+    border-radius: 10px; text-decoration: none; display: inline-block; border: 0; cursor: pointer; font: inherit; font-weight: 700;
+  }
+  #kbwrap { position: absolute; inset: 0; display: none; flex-direction: column; background: var(--bg); padding: 20px; gap: 12px; overflow-y: auto; }
+  #kbwrap .row { display: flex; gap: 8px; }
+  #kbq { flex: 1; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 9px 12px; border-radius: 9px; font: inherit; }
+  #kbout { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-y: auto; flex: 1; color: var(--text); }
+  footer {
+    display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+    padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--border);
+  }
+  #prompt { font: 12.5px ui-monospace, monospace; color: var(--dim); white-space: pre-wrap; }
+  #copy {
+    background: var(--teal); color: #14130f; border: 0; font-weight: 700; font: inherit; font-weight: 700;
+    padding: 8px 18px; border-radius: 9px; cursor: pointer;
+  }
+  #copy.done { background: var(--green); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>◆</span> Portage Stack Portal</h1>
+  <div id="presets"></div>
+</header>
+<main>
+  <aside>
+    <input id="search" type="search" placeholder="Filter resources…" autocomplete="off" aria-label="Filter resources">
+    <div id="catalog"></div>
+  </aside>
+  <section id="stage">
+    <div id="stagebar">
+      <span class="dot" id="seldot"></span>
+      <span class="url" id="selurl"></span>
+      <a class="open" id="openbtn" href="#" target="_blank" rel="noopener">Open ↗</a>
+    </div>
+    <div id="view">
+      <iframe id="frame" title="preview"></iframe>
+      <div id="card"><div class="inner">
+        <h2 id="cardtitle"></h2>
+        <p id="cardwhy"></p>
+        <a id="cardopen" href="#" target="_blank" rel="noopener">Open in new tab ↗</a>
+      </div></div>
+      <div id="kbwrap">
+        <div class="row">
+          <input id="kbq" aria-label="Registry knowledge base query" placeholder="Search the registry knowledge base… (decisions, bug fixes, insights, session reports)">
+          <button id="kbrun">Search</button>
+        </div>
+        <div id="kbout">Results appear here. If the browser blocks the cross-origin call, the equivalent curl command is shown instead.</div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>
+  <div id="prompt"></div>
+  <button id="copy">Copy prompt</button>
+</footer>
+<script>
+const R = [
+  // group, id, name, desc, url, embed: iframe|card|kb, whyCard, ping
+  ["Product", "app",  "Portage App",   "the live product (via Cloudflare)", "https://portage.digitalharmonyai.com/home", "card",
+    "The app sends frame-ancestors 'self' — browsers refuse to embed it.", "https://portage.digitalharmonyai.com/manifest.json"],
+  ["Product", "api",  "API health",    "portage-api :8016 (HTTPS, self-signed)", "https://10.0.0.251:8016/health", "card",
+    "Self-signed LAN cert — browsers block embedding; open directly (accept the cert once).", null],
+  ["Knowledge", "docs",  "Docs site",      "Docusaurus · all project docs", "http://10.0.0.251:8017/portage/getting-started/", "iframe", "", "http://10.0.0.251:8017/portage/getting-started/"],
+  ["Knowledge", "graph", "Code graph",     "interactive knowledge graph", "http://10.0.0.251:8018/graph.html", "iframe", "", "http://10.0.0.251:8018/graph.html"],
+  ["Knowledge", "report","Graph report",   "communities · god nodes · stats", "http://10.0.0.251:8018/GRAPH_REPORT.md", "iframe", "", null],
+  ["Knowledge", "wiki",  "Code wiki",      "339 articles, one per community", "http://10.0.0.251:8018/wiki/index.md", "iframe", "", null],
+  ["Knowledge", "kb",    "Registry KB search", "decisions · bugs · insights · reports", "http://10.0.0.251:8011/api/kb/search", "kb", "", "http://10.0.0.251:8011/docs"],
+  ["Ops", "grafana",    "Grafana",     "dashboards :3001", "http://10.0.0.251:3001/", "card",
+    "Grafana blocks embedding by default (allow_embedding=false).", "http://10.0.0.251:3001/login"],
+  ["Ops", "prometheus", "Prometheus",  "raw metrics :9090", "http://10.0.0.251:9090/", "iframe", "", "http://10.0.0.251:9090/-/ready"],
+  ["Ops", "session",    "Session reports", "narrative reports API", "http://10.0.0.251:8011/api/session-reports?project_name=portage", "iframe", "", null],
+];
+const PRESETS = { "Daily": "docs", "Knowledge": "graph", "Ops": "grafana", "Search": "kb" };
+const state = { sel: "docs", q: "", kbq: "", health: {} };
+
+const $ = (id) => document.getElementById(id);
+const res = (id) => R.find(r => r[1] === id);
+
+function renderCatalog() {
+  const groups = {};
+  for (const r of R) {
+    const [g,, name, desc] = r;
+    const hay = (name + " " + desc + " " + g).toLowerCase();
+    if (state.q && !hay.includes(state.q)) continue;
+    (groups[g] ??= []).push(r);
+  }
+  $("catalog").innerHTML = Object.entries(groups).map(([g, rs]) =>
+    `<div class="group"><h2>${g}</h2>` + rs.map(r => {
+      const [, id, name, desc,, embed] = r;
+      const h = state.health[id];
+      const dot = h === true ? "up" : h === false ? "down" : "";
+      const badge = embed === "card" ? `<span class="badge">↗ tab</span>` : "";
+      return `<button class="res ${state.sel === id ? "sel" : ""}" data-id="${id}">
+        <span class="dot ${dot}"></span>
+        <span class="meta"><div class="name">${name}</div><div class="desc">${desc}</div></span>${badge}
+      </button>`;
+    }).join("") + `</div>`).join("");
+  document.querySelectorAll(".res").forEach(b =>
+    b.addEventListener("click", () => { state.sel = b.dataset.id; updateAll(); }));
+}
+
+function renderStage() {
+  const r = res(state.sel); if (!r) return;
+  const [, id, name,, url, embed, why] = r;
+  $("selurl").textContent = url;
+  $("openbtn").href = url;
+  const h = state.health[id];
+  $("seldot").className = "dot " + (h === true ? "up" : h === false ? "down" : "");
+  $("frame").style.display = embed === "iframe" ? "" : "none";
+  $("card").style.display = embed === "card" ? "flex" : "none";
+  $("kbwrap").style.display = embed === "kb" ? "flex" : "none";
+  if (embed === "iframe" && $("frame").dataset.src !== url) {
+    $("frame").src = url; $("frame").dataset.src = url;
+  }
+  if (embed === "card") {
+    $("cardtitle").textContent = name;
+    $("cardwhy").textContent = why;
+    $("cardopen").href = url;
+  }
+}
+
+function updatePrompt() {
+  const r = res(state.sel);
+  let p;
+  if (state.sel === "kb" && state.kbq.trim()) {
+    p = `Search the Portage registry KB for "${state.kbq.trim()}" and synthesize what prior sessions decided or learned about it.`;
+  } else if (state.sel === "graph") {
+    p = `Using the Portage code knowledge graph (graphify-out/graph.json, dashboard at 10.0.0.251:8018), explain the area I'm looking at — run graphify query/explain as needed.`;
+  } else if (state.sel === "wiki" || state.sel === "report") {
+    p = `Read ${r[4]} and summarize the part relevant to my current task.`;
+  } else if (state.sel === "session") {
+    p = `Pull the latest Portage session reports from the registry (/api/session-reports) and give me the story since my last session.`;
+  } else {
+    p = `Check ${r[2]} (${r[4]}) — confirm it's healthy and tell me anything unusual.`;
+  }
+  $("prompt").textContent = p;
+}
+
+function updateAll() { renderCatalog(); renderStage(); updatePrompt(); }
+
+// Health pings: no-cors fetch resolves on network reachability regardless of CORS.
+function ping(id, url) {
+  if (!url) return;
+  const t = new Promise((_, rej) => setTimeout(rej, 4000));
+  Promise.race([fetch(url, { mode: "no-cors", cache: "no-store" }), t])
+    .then(() => { state.health[id] = true; })
+    .catch(() => { state.health[id] = false; })
+    .finally(() => { renderCatalog(); renderStage(); });
+}
+R.forEach(r => ping(r[1], r[7]));
+
+// KB search: try live fetch; if CORS blocks, show the curl equivalent.
+$("kbrun").addEventListener("click", runKb);
+$("kbq").addEventListener("keydown", e => { if (e.key === "Enter") runKb(); });
+$("kbq").addEventListener("input", () => { state.kbq = $("kbq").value; updatePrompt(); });
+async function runKb() {
+  const q = $("kbq").value.trim(); if (!q) return;
+  state.kbq = q; updatePrompt();
+  const body = JSON.stringify({ query: q, project_name: "portage", limit: 10 });
+  $("kbout").textContent = "Searching…";
+  try {
+    const resp = await fetch("http://10.0.0.251:8011/api/kb/search", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body,
+    });
+    const j = await resp.json();
+    const hits = j.results ?? j.hits ?? j;
+    $("kbout").textContent = Array.isArray(hits) && hits.length
+      ? hits.map((h, i) => `${i + 1}. [${h.source ?? h.type ?? "?"}] ${h.title ?? h.tldr ?? h.name ?? JSON.stringify(h).slice(0, 120)}`).join("\n\n")
+      : JSON.stringify(j, null, 2).slice(0, 4000);
+  } catch {
+    $("kbout").textContent =
+      "Browser blocked the cross-origin call (registry has no CORS headers).\n\nRun from a terminal:\n\n" +
+      `curl -s -X POST http://10.0.0.251:8011/api/kb/search \\\n  -H "Content-Type: application/json" \\\n  -d '${body}'\n\n` +
+      "…or copy the prompt below and let Claude run the search.";
+  }
+}
+
+$("search").addEventListener("input", () => { state.q = $("search").value.toLowerCase(); renderCatalog(); });
+$("copy").addEventListener("click", async () => {
+  await navigator.clipboard.writeText($("prompt").textContent);
+  $("copy").classList.add("done"); $("copy").textContent = "Copied!";
+  setTimeout(() => { $("copy").classList.remove("done"); $("copy").textContent = "Copy prompt"; }, 1200);
+});
+$("presets").innerHTML = Object.keys(PRESETS).map(p => `<button class="preset" data-p="${p}">${p}</button>`).join("");
+document.querySelectorAll(".preset").forEach(b =>
+  b.addEventListener("click", () => { state.sel = PRESETS[b.dataset.p]; updateAll(); }));
+
+updateAll();
+</script>
+</body>
+</html>
