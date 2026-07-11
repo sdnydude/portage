@@ -22,6 +22,13 @@ const nextConfig: NextConfig = {
         source: "/backend/:path*",
         destination: `${process.env.API_INTERNAL_URL ?? "https://10.0.0.251:8016"}/:path*`,
       },
+      {
+        // Same-origin item photos: the R2 public domain sends no CORS headers,
+        // which taints any canvas capture (preview PNG share). Proxying the
+        // public bucket through the app origin sidesteps CORS entirely.
+        source: "/img-cdn/:path*",
+        destination: "https://portage-images.digitalharmonyai.com/:path*",
+      },
     ];
   },
   async redirects() {

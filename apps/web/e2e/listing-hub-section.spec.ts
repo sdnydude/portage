@@ -95,6 +95,30 @@ test("?listing= deep link scrolls the card into view", async ({ page }) => {
   }
 });
 
+test("preview page captures and downloads a real PNG of the share card", async ({ page }) => {
+  // Force the desktop download fallback — headless share sheets are flaky.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "canShare", { value: undefined });
+  });
+  await page.goto("/home");
+  const s = await seedItemWithDraft(page);
+  try {
+    await page.goto(`/inventory/${s.itemId}/preview`);
+    await expect(page.getByText("Sold with Portage")).toBeVisible();
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 15_000 }),
+      page.getByRole("button", { name: "Share" }).click(),
+    ]);
+    const path = await download.path();
+    const { statSync } = await import("node:fs");
+    // A tainted/failed capture yields no blob at all; a real card PNG is >1KB.
+    expect(statSync(path!).size).toBeGreaterThan(1024);
+    await page.screenshot({ path: "test-results/proof/listing-hub/7-preview-page.png", fullPage: true });
+  } finally {
+    await cleanup(page, s);
+  }
+});
+
 test("card actions: price edit persists and delete removes the card", async ({ page }) => {
   await page.goto("/home");
   const s = await seedItemWithDraft(page);
