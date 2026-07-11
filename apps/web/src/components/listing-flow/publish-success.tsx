@@ -5,6 +5,8 @@ import { formatPrice, formatMarketplace } from "@/lib/format";
 
 interface PublishSuccessProps {
   listingId: string;
+  /** The listing's item — targets the item-hub deep link; null falls back to /inventory. */
+  itemId?: string | null;
   marketplace: 'ebay' | 'reverb';
   title: string;
   price: number;
@@ -16,7 +18,7 @@ interface PublishSuccessProps {
 }
 
 export function PublishSuccess({
-  listingId, marketplace, title, price, photoUrl,
+  listingId, itemId, marketplace, title, price, photoUrl,
   isFirstListing, onListAnother, warning,
 }: PublishSuccessProps) {
   const router = useRouter();
@@ -73,7 +75,7 @@ export function PublishSuccess({
           Back to Inventory
         </button>
         <button
-          onClick={() => router.push(`/listings/${listingId}`)}
+          onClick={() => router.push(itemId ? `/inventory/${itemId}?listing=${listingId}` : "/inventory")}
           className="w-full py-3 rounded-xl font-semibold text-[15px] border"
           style={{ color: 'var(--flow-accent)', borderColor: 'var(--flow-accent)' }}
         >

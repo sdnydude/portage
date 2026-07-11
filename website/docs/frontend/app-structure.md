@@ -28,9 +28,9 @@ The main app shell uses a 6-tab bottom navigation with a center Scan button:
 
 | Route | Description |
 |-------|-------------|
-| `/inventory/[id]` | Item detail: photo gallery, editing tools, eBay comps, listing actions |
+| `/inventory/[id]` | Item detail hub: photo gallery, editing tools, eBay comps, Marketplace Listings cards (price edit, publish w/ recovery, archive/delete, relist, GTC date) |
 | `/inventory/[id]/edit` | Edit form for item fields |
-| `/listings/[id]` | Listing detail: inline editing, marketplace sync, publish/archive/delete |
+| `/listings/[id]` | Redirect → `/inventory/[itemId]?listing=[id]` — item detail is the canonical page; per-listing actions live on its ListingCards (listing-hub merge, 2026-07) |
 | `/orders/[id]` | Order detail: financials, buyer info (shipping labels are handled on eBay — Ship It links out) |
 | `/messages` | eBay buyer messaging: conversations list |
 | `/messages/[conversationKey]` | Conversation thread with reply |

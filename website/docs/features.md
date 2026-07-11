@@ -148,7 +148,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 | Photo Capture Flow | Shipped | Dedicated photo stage within listing creation |
 | Marketplace Selection | Shipped | Choose target marketplace before publishing |
 | Listings CRUD | Shipped | Create, edit, update, delete with marketplace sync |
-| Listing Detail Page | Shipped | Full view with status, marketplace link, pricing, photos |
+| Listing Detail Page | Merged into item detail | `/listings/[id]` redirects to the item hub; status, marketplace link, pricing, and actions render as ListingCards on `/inventory/[id]` |
 
 ### Marketplace Integrations
 

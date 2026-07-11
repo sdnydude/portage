@@ -19,6 +19,7 @@ test("publish a live listing, then Archive it -> verify it ended on eBay", async
   test.setTimeout(150_000);
   const token = (await (async () => { await login(page); return page.evaluate(() => localStorage.getItem("portage_token")); })())!;
   let listingId: string | null = null;
+  let itemId: string | null = null;
 
   await test.step("publish-now -> live listing (id starts with 3)", async () => {
     await page.goto(ITEM_URL);
@@ -36,6 +37,7 @@ test("publish a live listing, then Archive it -> verify it ended on eBay", async
     ]);
     const body = await resp.json().catch(() => ({}));
     listingId = body?.id ?? null;
+    itemId = body?.itemId ?? null;
     await page.waitForTimeout(2500);
     await page.screenshot({ path: path.join(SHOT, "1-published.png"), fullPage: true });
 
@@ -47,7 +49,7 @@ test("publish a live listing, then Archive it -> verify it ended on eBay", async
   });
 
   await test.step("Archive the live listing -> ends on eBay (offer UNPUBLISHED)", async () => {
-    await page.goto(`/listings/${listingId}`);
+    await page.goto(`/inventory/${itemId}?listing=${listingId}`);
     await page.getByRole("button", { name: "Archive Listing" }).click();
     const [resp] = await Promise.all([
       page.waitForResponse((r) => r.request().method() === "PATCH" && /\/listings\/[^/]+$/.test(new URL(r.url()).pathname), { timeout: 60_000 }),

@@ -13,6 +13,7 @@ test("scan -> eBay draft -> live publish (real)", async ({ page }) => {
   test.skip(!process.env.E2E_EBAY_LIVE, "Requires a live eBay-connected account + seeded active listing; set E2E_EBAY_LIVE=1 to run");
   test.setTimeout(180_000);
   let listingId: string | null = null;
+  let itemId: string | null = null;
 
   await login(page);
   const token = await page.evaluate(() => localStorage.getItem("portage_token"));
@@ -42,13 +43,14 @@ test("scan -> eBay draft -> live publish (real)", async ({ page }) => {
     ]);
     const body = await resp.json().catch(() => ({}));
     listingId = body?.id ?? null;
+    itemId = body?.itemId ?? null;
     await page.waitForTimeout(2500);
     await page.screenshot({ path: path.join(SHOT, "3-draft-result.png"), fullPage: true });
   });
 
   await test.step("open the draft and publish it live", async () => {
     expect(listingId, "scan must have created a listing").toBeTruthy();
-    await page.goto(`/listings/${listingId}`);
+    await page.goto(`/inventory/${itemId}?listing=${listingId}`);
     const publishBtn = page.getByRole("button", { name: /Publish to eBay/i });
     await expect(publishBtn).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: path.join(SHOT, "4-draft-detail.png"), fullPage: true });

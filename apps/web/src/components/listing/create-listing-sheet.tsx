@@ -202,7 +202,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
           )}
           <div className="flex flex-col gap-3 pt-2">
             <a
-              href={`/listings/${result.id}`}
+              href={`/inventory/${itemId}?listing=${result.id}`}
               className="w-full py-2.5 rounded-xl border border-border text-sm font-medium text-text-primary"
             >
               View listing

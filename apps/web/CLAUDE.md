@@ -15,10 +15,10 @@ src/app/
 │   └── more/        # Settings/profile
 ├── admin/           # Separate layout tree (sidebar nav)
 ├── inventory/[id]/  # Item detail + edit
-├── listings/[id]/   # Listing detail
+├── listings/[id]/   # Redirect → /inventory/[itemId]?listing=[id] (hub)
 ├── list/            # Create listing entry
 ├── inventory/[id]/  # Item detail + edit
-├── listings/[id]/   # Listing detail
+├── listings/[id]/   # Redirect → /inventory/[itemId]?listing=[id] (hub)
 ├── list/            # Create listing entry
 ├── orders/[id]/     # Order detail
 ├── messages/        # eBay buyer messaging (conversations list + thread view)

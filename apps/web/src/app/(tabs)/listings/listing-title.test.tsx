@@ -33,6 +33,11 @@ describe("ListingsPage — item title on each row", () => {
     expect(screen.getByText("Sony WH-1000XM4")).toBeInTheDocument();
   });
 
+  it("row links to the item hub deep link (listing-hub Task 4)", () => {
+    render(<ListingsPage />);
+    expect(screen.getByRole("link")).toHaveAttribute("href", "/inventory/i1?listing=L1");
+  });
+
   it("falls back to 'Untitled item' when the joined title is missing", () => {
     listingsMock.mockReturnValue({
       listings: [{

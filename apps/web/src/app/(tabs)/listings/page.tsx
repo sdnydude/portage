@@ -98,7 +98,7 @@ function ListingCard({ listing, isSelecting, isSelected, onToggle }: ListingCard
   }
 
   return (
-    <Link href={`/listings/${listing.id}`}>
+    <Link href={`/inventory/${listing.itemId}?listing=${listing.id}`}>
       {cardContent}
     </Link>
   );
