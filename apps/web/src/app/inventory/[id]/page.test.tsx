@@ -15,7 +15,7 @@ const h = vi.hoisted(() => ({
 }));
 
 const pushMock = vi.fn();
-const mockSearchParams = new URLSearchParams();
+let mockSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "i1" }),
   useRouter: () => ({ push: pushMock }),
@@ -40,9 +40,11 @@ vi.mock("@/hooks/use-comps", () => ({
 }));
 import type { Listing } from "@/hooks/use-listings";
 let mockListings: Listing[] = [];
+let mockListingsLoading = false;
+let mockListingsError: string | null = null;
 const refetchListingsMock = vi.fn();
 vi.mock("@/hooks/use-listings", () => ({
-  useListings: () => ({ listings: mockListings, isLoading: false, refetch: refetchListingsMock, createListing: vi.fn() }),
+  useListings: () => ({ listings: mockListings, isLoading: mockListingsLoading, error: mockListingsError, refetch: refetchListingsMock, createListing: vi.fn() }),
 }));
 vi.mock("@/components/image/before-after-slider", () => ({ BeforeAfterSlider: () => null }));
 vi.mock("@/components/capture/image-picker", () => ({ ImagePicker: () => null }));
@@ -286,6 +288,42 @@ describe("marketplace listings section", () => {
     render(<ItemDetailPage />);
     expect(screen.getByText("Marketplace Listings")).toBeInTheDocument();
     expect(screen.getByText(/\$1,?200/)).toBeInTheDocument();
+  });
+
+  it("hides the primary CTA while listings are loading or errored (duplicate-listing guard)", () => {
+    mockListingsLoading = true;
+    const { unmount } = render(<ItemDetailPage />);
+    expect(screen.queryByText("List on Marketplace")).toBeNull();
+    unmount();
+
+    mockListingsLoading = false;
+    mockListingsError = "network down";
+    render(<ItemDetailPage />);
+    expect(screen.queryByText("List on Marketplace")).toBeNull();
+    mockListingsError = null;
+  });
+
+  it("deep link to an archived listing auto-expands the archive section and scrolls to it", async () => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockSearchParams = new URLSearchParams("listing=la1");
+    mockListings = [{
+      id: "la1", itemId: "i1", userId: "u1", marketplace: "ebay",
+      marketplaceListingId: null, marketplaceSpecificFields: null,
+      status: "archived", price: 500, currency: "USD",
+      createdAt: "2026-07-01T00:00:00Z", publishedAt: null,
+      soldAt: null, itemTitle: "Canon AE-1",
+    }];
+    try {
+      render(<ItemDetailPage />);
+      // The effect must expand the collapsed archive section so the card can
+      // enter the DOM, then scroll to it.
+      await waitFor(() => expect(screen.getByText("Hide archived")).toBeInTheDocument());
+      await waitFor(() =>
+        expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled(),
+      );
+    } finally {
+      mockSearchParams = new URLSearchParams();
+    }
   });
 
   it("cross-list CTA restricts the sheet to marketplaces without a non-archived listing", () => {

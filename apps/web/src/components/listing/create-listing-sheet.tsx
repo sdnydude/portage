@@ -371,7 +371,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
                   handleCreate();
                 }
               }}
-              disabled={isCreating || !price}
+              disabled={isCreating || !price || marketplaceOptions.length === 0}
               className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium disabled:opacity-50"
             >
               {isCreating

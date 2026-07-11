@@ -56,7 +56,7 @@ function ItemDetailContent() {
 
   // Marketplace Listings hub (listing-hub Task 2): this page is becoming the
   // single canonical detail page; each listing renders as a ListingCard.
-  const { listings: itemListings, isLoading: listingsLoading, refetch: refetchListings } =
+  const { listings: itemListings, isLoading: listingsLoading, error: listingsError, refetch: refetchListings } =
     useListings({ itemId: params.id });
   const searchParams = useSearchParams();
   const focusListingId = searchParams.get("listing");
@@ -64,18 +64,28 @@ function ItemDetailContent() {
   const [showArchived, setShowArchived] = useState(false);
   // One-shot: without the ref, every refetchListings() toggles listingsLoading
   // and this effect would re-yank scroll to the card after every card action.
+  // The ref is only set once the card element is actually found — an archived
+  // target isn't in the DOM until the archive section expands, so marking
+  // "handled" any earlier would silently drop the deep link.
   const scrolledRef = useRef(false);
   useEffect(() => {
     if (scrolledRef.current || !focusListingId || listingsLoading || isLoading) return;
-    scrolledRef.current = true;
+    const target = itemListings.find((l) => l.id === focusListingId);
+    if (target?.status === "archived" && !showArchived) {
+      setShowArchived(true);
+      return; // re-runs once the archived cards are in the DOM
+    }
     // Double-rAF so layout settles before measuring; instant (not smooth) —
     // smooth-scrolling a long mobile page is seconds of jank.
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      document.getElementById(`listing-${focusListingId}`)?.scrollIntoView({ block: "center" });
+      const el = document.getElementById(`listing-${focusListingId}`);
+      if (!el) return;
+      scrolledRef.current = true;
+      el.scrollIntoView({ block: "center" });
       setHighlightId(focusListingId);
       setTimeout(() => setHighlightId(null), 2000);
     }));
-  }, [focusListingId, listingsLoading, isLoading]);
+  }, [focusListingId, listingsLoading, isLoading, itemListings, showArchived]);
 
   const orderedListings = [...itemListings].sort(
     (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status],
@@ -595,8 +605,11 @@ function ItemDetailContent() {
           {/* Listing Optimizer — eBay item-specific gaps, demand, performance */}
           <ListingOptimizerPanel itemId={params.id} onFilled={refetchItem} />
 
-          {/* List on Marketplace CTA — primary only while the item is unlisted */}
-          {itemListings.length === 0 && (
+          {/* List on Marketplace CTA — primary only when a SUCCESSFUL fetch
+              says the item is unlisted. While loading (listings init to []) or
+              after a fetch error, an existing listing would read as absent and
+              invite a duplicate. */}
+          {!listingsLoading && !listingsError && itemListings.length === 0 && (
             <button
               onClick={() => setShowListingSheet(true)}
               className="w-full py-3 rounded-xl bg-forest-green text-white text-sm font-semibold hover:bg-forest-green/90 transition-colors"

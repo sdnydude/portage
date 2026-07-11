@@ -42,7 +42,7 @@ export function ListingCard({ listing, highlight }: ListingCardProps) {
   return (
     <div
       className={`bg-surface border border-border rounded-xl p-3 transition-shadow ${
-        highlight ? "ring-2 ring-[var(--teal)]" : ""
+        highlight ? "ring-2 ring-(--teal)" : ""
       }`}
     >
       <div className="flex items-center justify-between">
@@ -66,7 +66,7 @@ export function ListingCard({ listing, highlight }: ListingCardProps) {
           href={marketplaceItemUrl(listing.marketplace, listing.marketplaceListingId)}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-2 inline-block text-sm text-[var(--teal)] font-medium"
+          className="mt-2 inline-block text-sm text-(--teal) font-medium"
         >
           View on {formatMarketplace(listing.marketplace)} ↗
         </a>

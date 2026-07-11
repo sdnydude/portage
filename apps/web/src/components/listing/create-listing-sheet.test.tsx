@@ -45,6 +45,15 @@ describe("CreateListingSheet — allowedMarketplaces", () => {
     expect(screen.getByRole("button", { name: "Reverb" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "eBay" })).toBeNull();
   });
+
+  it("disables creation when no marketplace is allowed (never falls back to eBay)", () => {
+    const noop = () => {};
+    render(
+      <CreateListingSheet itemId="i1" suggestedPrice={10} allowedMarketplaces={[]} onCreated={noop} onClose={noop} />,
+    );
+    // Price is prefilled, so only the empty marketplace list may disable this.
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeDisabled();
+  });
 });
 
 describe("CreateListingSheet — price prefill", () => {

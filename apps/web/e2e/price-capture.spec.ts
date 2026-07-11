@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 
 const SHOT_DIR = path.join(process.cwd(), "test-results", "proof");
+const API_BASE = process.env.E2E_API_URL ?? "https://10.0.0.251:8016";
 
 // Save is gated on a real change, so alternate the price each run to stay
 // idempotent (always a change, non-accumulating).
@@ -18,12 +19,17 @@ async function login(page: Page) {
 test("price persists through the item editor and prefills the publish sheet (editable)", async ({ page }) => {
   await login(page);
 
-  await page.goto("/inventory");
-  const firstItem = page.locator('a[href^="/inventory/"]').first();
-  await expect(firstItem).toBeVisible();
-  const href = await firstItem.getAttribute("href");
-  expect(href).toBeTruthy();
-  await page.goto(href!);
+  // Seed a fresh item: an item that already has a listing hides the primary
+  // "List on Marketplace" CTA (listing-hub cross-list demotion).
+  const seedToken = (await page.evaluate(() => localStorage.getItem("portage_token")))!;
+  const seedHeaders = { Authorization: `Bearer ${seedToken}` };
+  const itemRes = await page.request.post(`${API_BASE}/items`, {
+    headers: seedHeaders, data: { title: "E2E price-capture item" },
+  });
+  expect(itemRes.ok(), `item seed failed: ${itemRes.status()}`).toBeTruthy();
+  const itemId = (await itemRes.json()).id as string;
+  const href = `/inventory/${itemId}`;
+  await page.goto(href);
 
   // Set an editable price in the inline editor (alternate so Save is enabled).
   await page.getByRole("button", { name: "Edit item" }).click();

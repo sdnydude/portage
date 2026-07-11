@@ -10,7 +10,11 @@ import type { Page } from "@playwright/test";
  */
 export async function installSessionStub(page: Page): Promise<void> {
   const state = await page.context().storageState();
-  const ls = state.origins[0]?.localStorage ?? [];
+  // Locate the origin actually carrying the session — origins[0] is not
+  // guaranteed to be the app origin when multiple origins hold state.
+  const ls =
+    state.origins.find((o) => o.localStorage.some((e) => e.name === "portage_token"))
+      ?.localStorage ?? [];
   const token = ls.find((e) => e.name === "portage_token")?.value;
   const user = ls.find((e) => e.name === "portage_user")?.value;
   await page.route("**/backend/auth/session", (route) =>
