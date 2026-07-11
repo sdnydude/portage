@@ -253,6 +253,20 @@ describe('ReverbAdapter.updateListing', () => {
       shipping: { rates: [{ region_code: 'US_CON', rate: { amount: '30.00', currency: 'USD' } }], local: false },
     });
   });
+
+  it('maps brand/model to make/model so item edits reach the Reverb listing', async () => {
+    const fetchMock = stubFetch({});
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.updateListing('12345678', {
+      brand: 'Fender',
+      model: 'Stratocaster',
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.make).toBe('Fender');
+    expect(body.model).toBe('Stratocaster');
+  });
 });
 
 describe('ReverbAdapter.updateListing — stale photo cleanup', () => {

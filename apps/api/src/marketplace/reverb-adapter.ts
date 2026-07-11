@@ -153,6 +153,10 @@ export class ReverbAdapter implements MarketplaceAdapter {
     const updates: Record<string, unknown> = {};
     if (input.title) updates.title = input.title;
     if (input.description) updates.description = input.description;
+    // createListing maps brand/model to make/model; update must too or an
+    // item's brand/model edit never reaches the live Reverb listing.
+    if (input.brand !== undefined) updates.make = input.brand;
+    if (input.model !== undefined) updates.model = input.model;
     if (input.price) updates.price = { amount: String(input.price), currency: input.currency ?? 'USD' };
     const conditionUuid = specific.conditionUuid as string | undefined
       ?? (input.condition ? CONDITION_MAP[input.condition] : undefined);
