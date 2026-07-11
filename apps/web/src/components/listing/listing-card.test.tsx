@@ -169,6 +169,13 @@ describe("ListingCard actions", () => {
     expect(writeText).toHaveBeenCalledWith("307054605978");
     expect(await screen.findByText(/copied/i)).toBeInTheDocument();
   });
+
+  it("surfaces a copy failure instead of failing silently (plain-HTTP LAN has no clipboard)", async () => {
+    Object.assign(navigator, { clipboard: undefined });
+    render(<ListingCard listing={LISTING} token="t" onChanged={vi.fn()} highlight={false} />);
+    await userEvent.click(screen.getByRole("button", { name: /307054605978/ }));
+    expect(await screen.findByText(/couldn't copy/i)).toBeInTheDocument();
+  });
 });
 
 describe("ListingCard GTC date (ported from listings/[id]/gtc-date.test.tsx)", () => {

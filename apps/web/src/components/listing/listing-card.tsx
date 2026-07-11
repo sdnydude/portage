@@ -7,6 +7,7 @@ import type { Listing } from "@/hooks/use-listings";
 import { api, ApiError } from "@/lib/api";
 import { marketplaceItemUrl } from "@/lib/marketplace-urls";
 import { formatCurrency, formatMarketplace } from "@/lib/format";
+import { parsePriceInput } from "@/lib/price";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 import { WeightFillSheet } from "./weight-fill-sheet";
 import type { WeightDimsValue } from "./weight-dims-inputs";
@@ -68,8 +69,8 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
   const handleSavePrice = async () => {
     if (!token) return;
     // Ported guard (old page): reject before the PATCH ever fires.
-    const parsedPrice = parseFloat(editedPrice);
-    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+    const parsedPrice = parsePriceInput(editedPrice);
+    if (parsedPrice == null) {
       setActionError("Please enter a valid price");
       return;
     }
@@ -110,7 +111,9 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard unavailable (plain-HTTP LAN) — the ID is still selectable text
+      // clipboard needs a secure context (undefined on plain-HTTP LAN) and
+      // button text isn't drag-selectable — surface the failure, don't eat it.
+      setActionError("Couldn't copy — clipboard needs HTTPS");
     }
   };
 
@@ -151,15 +154,24 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
     }
   };
 
+  // Shared success tail of every publish path (initial, post-weight,
+  // post-aspects): POST, surface the server warning, refresh the parent.
+  // The three catch blocks stay separate — their error routing intentionally
+  // differs (ported behavior).
+  const publishAndRefresh = async () => {
+    if (!token) return;
+    const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}/publish`, { method: "POST", token });
+    setActionWarning(updated.warning ?? null);
+    onChanged();
+  };
+
   const handlePublish = async () => {
     if (!token) return;
     setIsPublishing(true);
     setActionError(null);
     setActionWarning(null);
     try {
-      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}/publish`, { method: "POST", token });
-      setActionWarning(updated.warning ?? null);
-      onChanged();
+      await publishAndRefresh();
     } catch (err) {
       // eBay needs category-required item specifics — collect them, then re-publish.
       if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
@@ -195,10 +207,8 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
           weightEstimated: false,
         },
       });
-      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}/publish`, { method: "POST", token });
-      setActionWarning(updated.warning ?? null);
+      await publishAndRefresh();
       setWeightMissing(false);
-      onChanged();
     } catch (err) {
       // A cascade (eBay then surfaced required specifics) hands off to the aspect
       // sheet; anything else is shown inline in the weight sheet.
@@ -229,10 +239,8 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
         token,
         body: { marketplaceSpecificFields: { ...existing, aspects: { ...existingAspects, ...aspects } } },
       });
-      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}/publish`, { method: "POST", token });
-      setActionWarning(updated.warning ?? null);
+      await publishAndRefresh();
       setAspectMissing(null);
-      onChanged();
     } catch (err) {
       // A cascade (eBay surfaced more required specifics) keeps the sheet open
       // with the new list; anything else is shown inline in the sheet.
@@ -255,7 +263,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
     >
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-text-primary">
-          {formatMarketplace(listing.marketplace)}
+          {marketplaceLabel}
         </span>
         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${status.className}`}>
           {status.label}
@@ -284,8 +292,8 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
             </button>
             <button
               onClick={() => {
+                // No re-seed needed: opening the editor always seeds fresh.
                 setEditingPrice(false);
-                setEditedPrice(String(listing.price));
                 setActionError(null);
               }}
               className="px-2 py-1.5 text-sm text-text-secondary"
@@ -455,6 +463,9 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
 }
 
 // GTC listings renew monthly. Ported from listings/[id]/page.tsx GtcDateField.
+// NOTE: fetches the user-level gtcAutoEnd flag at leaf depth — fine while the
+// item page renders at most one active eBay card, but a future multi-item
+// consumer of ListingCard should lift this fetch to the page and pass a prop.
 function GtcDateLine({ publishedAt, token }: { publishedAt: string | Date; token: string | null }) {
   const [autoEnd, setAutoEnd] = useState<boolean | null>(null);
 

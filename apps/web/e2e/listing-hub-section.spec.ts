@@ -39,11 +39,12 @@ async function seedItemWithDraft(page: import("@playwright/test").Page) {
 
 async function cleanup(page: import("@playwright/test").Page, s: { headers: Record<string, string>; itemId: string; listingId: string }) {
   // Surface failures (expect.soft: recorded without masking the test's own
-  // error) but always attempt both deletes.
+  // error) but always attempt both deletes. 404 = already cleaned by the test
+  // body itself — that's success, not a leak.
   const listingDel = await page.request.delete(`${API_BASE}/listings/${s.listingId}`, { headers: s.headers });
-  expect.soft(listingDel.ok(), `listing cleanup failed: ${listingDel.status()}`).toBeTruthy();
+  expect.soft(listingDel.ok() || listingDel.status() === 404, `listing cleanup failed: ${listingDel.status()}`).toBeTruthy();
   const itemDel = await page.request.delete(`${API_BASE}/items/${s.itemId}`, { headers: s.headers });
-  expect.soft(itemDel.ok(), `item cleanup failed: ${itemDel.status()}`).toBeTruthy();
+  expect.soft(itemDel.ok() || itemDel.status() === 404, `item cleanup failed: ${itemDel.status()}`).toBeTruthy();
 }
 
 test("item detail shows the Marketplace Listings section and survives reload", async ({ page }) => {
@@ -91,5 +92,32 @@ test("?listing= deep link scrolls the card into view", async ({ page }) => {
     await page.screenshot({ path: path.join(SHOT, "2-deeplink.png"), fullPage: false });
   } finally {
     await cleanup(page, s);
+  }
+});
+
+test("card actions: price edit persists and delete removes the card", async ({ page }) => {
+  await page.goto("/home");
+  const s = await seedItemWithDraft(page);
+  try {
+    await page.goto(`/inventory/${s.itemId}`);
+    const card = page.locator(`#listing-${s.listingId}`);
+    await expect(card).toBeVisible();
+
+    // Price edit through the card → PATCH persists (reload re-asserts).
+    await card.getByRole("button", { name: "Edit price" }).click();
+    await card.getByLabel("Price").fill("1150");
+    await card.getByRole("button", { name: "Save" }).click();
+    await expect(card.getByText("$1,150")).toBeVisible();
+    await page.reload();
+    await expect(page.locator(`#listing-${s.listingId}`).getByText("$1,150")).toBeVisible();
+    await page.screenshot({ path: path.join(SHOT, "3-price-edited.png"), fullPage: true });
+
+    // Delete the draft through the card's confirm sheet → card leaves the DOM.
+    await page.locator(`#listing-${s.listingId}`).getByRole("button", { name: "Delete Listing" }).click();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.locator(`#listing-${s.listingId}`)).toHaveCount(0, { timeout: 10_000 });
+    await page.screenshot({ path: path.join(SHOT, "4-deleted.png"), fullPage: true });
+  } finally {
+    await cleanup(page, s); // deletes are idempotent server-side; soft-reported
   }
 });
