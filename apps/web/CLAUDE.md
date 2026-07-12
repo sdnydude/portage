@@ -14,10 +14,7 @@ src/app/
 │   ├── porter/      # AI assistant
 │   └── more/        # Settings/profile
 ├── admin/           # Separate layout tree (sidebar nav)
-├── inventory/[id]/  # Item detail + edit
-├── listings/[id]/   # Redirect → /inventory/[itemId]?listing=[id] (hub)
-├── list/            # Create listing entry
-├── inventory/[id]/  # Item detail + edit
+├── inventory/[id]/  # Item detail + edit + Marketplace Listings section (ListingCard) + /preview PNG-share subroute
 ├── listings/[id]/   # Redirect → /inventory/[itemId]?listing=[id] (hub)
 ├── list/            # Create listing entry
 ├── orders/[id]/     # Order detail
@@ -35,7 +32,7 @@ Directories mirror feature areas, not component types:
 |-----------|----------|
 | `capture/` | ScanFlow, ScanFab, CameraCapture, CaptureSheet, ImagePicker |
 | `listing-flow/` | HybridFlow, ConversationalFlow, SwipeFlow, PhotoCaptureFlow, PhotoEditor, CropTool, PhotoGrid, PricingStrategyPicker |
-| `listing/` | ListingPreviewCard, CompsPricingWidget, CreateListingSheet, BulkListingBar |
+| `listing/` | ListingCard, ListingPreviewCard, CompsPricingWidget, CreateListingSheet, BulkListingBar |
 | `inventory/` | ItemCard, SearchBar, ViewControls, BulkActionBar |
 | `layout/` | PageHeader (sticky top), TabBar (bottom nav + scan FAB) |
 | `image/` | BeforeAfterSlider, BgRemovalPanel |
@@ -116,7 +113,7 @@ Glass morphism has `@supports` fallback for browsers without `backdrop-filter`.
 
 ## State Management
 
-React Context only — no Zustand/Jotai/Redux. `AuthContext` is the only provider. All other state lives in hooks or component-local `useState`.
+React Context only — no Zustand/Jotai/Redux. Two providers: `AuthProvider` (app-wide, in app/layout.tsx) and `PorterProvider` (src/hooks/use-porter-context.tsx, Porter feature scope). All other state lives in hooks or component-local `useState`.
 
 ## Gotchas
 

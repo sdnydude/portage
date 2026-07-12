@@ -2,8 +2,6 @@
 
 AI-powered personal effects inventory and multi-marketplace seller app. Standalone project — not part of the DHG AI Factory stack.
 
-**Owner:** Stephen Webber — CEO/Founder, Digital Harmony Group. Bills at $600/hour. Expects Fortune 500 execution quality.
-
 **Server:** g700data1 (10.0.0.251), Ubuntu 24.04, 64GB RAM.
 
 **Repo:** https://github.com/sdnydude/portage.git — Branch: main.
@@ -27,7 +25,8 @@ npm workspaces monorepo with three packages:
 | portage-db | 5436 | PostgreSQL 15 |
 | portage-api | 8016 | Express 5 + TypeScript + pino |
 | portage-app | 3002 | Next.js 16 (standalone mode) |
-| dhg-docs | 8017 | nginx serving Docusaurus build |
+| portage-rembg | — | background-removal container (`REMBG_URL`) |
+| dhg-docs | 8017 | nginx serving Docusaurus build (runs outside docker-compose.yml — separate nginx) |
 | portage-graph | 8018 | nginx serving graphify-out/ code knowledge graph |
 
 ### Database
@@ -156,24 +155,12 @@ npx tsx apps/api/src/scripts/promote-admin.ts <email>
 ## Dev Environment Notes
 
 - All URLs use **10.0.0.251** not localhost (server IP)
-- Next.js dev: polling mode (`WATCHPACK_POLLING=true`) for reliable HMR over network
 - next.config.ts: `allowedDevOrigins: ["10.0.0.251"]`
-- HTTPS dev mode requires certs at `certs/key.pem` + `certs/cert.pem` (Next.js uses `--experimental-https`)
-- Secrets managed via Doppler — `.env` auto-synced by SessionStart hook
+- Secrets managed via Doppler — `.env` auto-synced by SessionStart hook. Never
+  commit secrets (.env, API keys, passwords, demo credentials)
+- WATCHPACK_POLLING + HTTPS-cert details: see apps/web/CLAUDE.md Gotchas
 - Shared package must be rebuilt after changes: `npm run build -w packages/shared`
 - Both containers are image-baked (no bind-mounts): deploy = `docker compose up -d --build <service>`. Hot-reload dev is explicit opt-in only: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build portage-api`
-
----
-
-## Production Rules
-
-1. No placeholders, TODOs, or provisional logic. Every file works on first deploy.
-2. View files before editing. State what you're changing and why.
-3. Run verification after any change. Show proof.
-4. One fix per hypothesis when debugging.
-5. Planning and building are separate phases.
-6. Never commit secrets (.env, API keys, passwords).
-7. Quality over speed. Always.
 
 ---
 
@@ -193,12 +180,15 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-As of 2026-07-01: roadmap essentially complete — 48/52 tasks done, 1 superseded (carrier APIs), 1 partial (tunnel config not versioned), 2 open (integration testing, Reverb OAuth). See `docs/TODO.md` for the live backlog and in-flight branches.
+As of 2026-07-12: roadmap essentially complete — 51/52 tasks done (integration testing, tunnel-config versioning, and Reverb OAuth resolution closed 2026-07-09), 1 superseded (carrier APIs). See `docs/TODO.md` for the live backlog and in-flight branches.
 
-**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (6 pages: profile, marketplace, seller profile, billing, notifications, help), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling), JWT auto-refresh, object URL leak fixes, test infra (557 API + 230 web tests as of 2026-07-01), auth middleware next(err), TOCTOU race fix, shared logger (28 files), AI SDK singletons, shippingAddress column, pagination, shared format helpers, listing flow component extraction, PWA (icons + favicon + service worker), admin observability (Prometheus + Grafana), bulk operations (select/delete/archive/activate/export), eBay CSV export (Seller Hub Reports draft format), onboarding flow (5-step carousel), Stripe billing (subscriptions + credits + enforcement gates), Reverb token-paste auth, photo tools UX (crop/rotate/enhance/BG-remove with before-after preview), eBay buyer messaging (inbox sync + conversation threads + reply via Trading API, 20 tests), eBay orders sync (login-triggered + manual Sync button with visible errors; GetItem backfill ingests external eBay sales as one item+listing per ItemID — proven live importing 11 real orders, PR #139), eBay Trade-First migration (PR #133, 52 commits: full eBay listing lifecycle moved from Inventory API to Trading API with inline terms, no Business Policies; insert-first idempotency; live-proven publish/revise/end on real eBay ItemIDs 307034606520 + 307034773471), AI-specifics scan→publish (PR #132: scan-time aspect prefill, inline [AI] auto-fill + chips, quantity capture, MPN "Does Not Apply" sentinel, malformed-aspect guard + enum validation), orders Phase-1 rebuild (PR #142, merged + live-verified 2026-07-01: sold-date fix, Ship-It→eBay, simplified sold-orders panel with thumbnail/title/date/gross-price rows, soldAt heal on re-sync — 11 live orders healed from stamped 06-30 to real dates 06-02…06-23, and full carrier-subsystem deletion −2,474 lines with the disclaimer flow relocated to /disclaimer), Phase 3 AI-specifics follow-through (PR #147: aspect-pick Type auto-pick live-proven + thinking-model token-starvation fix, camera-scan-save e2e via canvas-stream getUserMedia polyfill, SKU Custom-label GetItem proof), Phase 4 repo hygiene (2026-07-01: Dependabot triage via single lockfile PR #148 — alerts 23→1; capture-guarantee Stop hook wired PR #149; anthropic-sdk 0.109.1 + sharp 0.35.3 PR #150; open PRs 27→6 deliberate defers), GTC auto-end (PR #151: opt-in gtc_auto_end toggle, login-triggered /listings/gtc-sweep ends eBay listings via EndFixedPriceItem 2 days before the monthly GTC renewal anniversary, archives + notifies, no auto-relist; Auto-ends date on listing detail; error path live-proven), CF Access beta migration (PRs #168-172: Cloudflare Access OAuth replaces password auth entirely — JWT/bcrypt/refresh-token flow removed, admin-managed allowlist, private beta-tester tier with unlimited AI/Porter limits, in-app beta reporting to DHG Registry, live cutover with demo account reassigned to admin), FAQ system (PR #178: DB-backed faqs table, admin CRUD via /admin/faqs, admin editor UI, 14 seeded FAQs), Reverb publish live-proof (PRs #173-177: per-user token publish flow, real Reverb listing published), and publish idempotency hardening (branch fix/publish-idempotency-key, PR #180 merged 2026-07-09: scoped idempotencyKey per publish attempt stops orphan drafts, server resumes a stuck draft on 23505 replay, fixed a drizzle DrizzleQueryError-wrapped error-code bug that had made the replay path dead code in production).
+**Done:** see docs/TODO.md and website/docs/ship-log/ for the full change
+history. Highlights: eBay Trade-First lifecycle (PR #133), CF Access auth
+(PRs #168-172), Reverb publish live-proven (PRs #173-177), listing-hub merge
+(PRs #207-213). Test suite: 676 API / 337 web as of 2026-07-12.
 
-
-Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as PR #132 on 2026-06-23 (scan-time eBay aspect prefill, inline [AI] auto-fill + chips, quantity capture, MPN sentinel, malformed-aspect guard). Stale journal syncs can misreport it as open.
+Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
+PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
 
 **Superseded:** Carrier API integration (EasyPost/Shippo) — replaced by redirect-to-eBay for labels (decision 2026-07-01); the stubbed carrier subsystem was deleted in PR #142. W2 Fulfillment sync-back and W5 ebay-api SDK were dropped with it.
 
@@ -206,4 +196,4 @@ Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as P
 
 **Remaining:** notification system, dashboard trends + AI insights, enhanced-photo persistence, pagination on listing/item hooks. Closed 2026-07-09: integration testing (Task 35, PR #184 +43 route tests), tunnel config versioned (PR #182), prod CORS single-origin (PR #189), Reverb OAuth code-grant declared obsolete (PAT selling live-proven). See docs/TODO.md Phases 5–7.
 
-**Demo account:** demo@portage.app / demo1234demo1234
+**Demo account:** credentials live in Doppler, not in this file.
