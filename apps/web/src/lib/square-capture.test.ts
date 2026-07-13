@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { squareCaptureRect, guideCaptureRect } from "./square-capture";
+import { squareCaptureRect, guideCaptureRect, applyZoom } from "./square-capture";
 
 describe("squareCaptureRect", () => {
   it("crops the centered square of a landscape frame and caps output at 2000", () => {
@@ -9,6 +9,17 @@ describe("squareCaptureRect", () => {
   it("handles portrait frames and keeps small frames at native size", () => {
     expect(squareCaptureRect(480, 640)).toEqual({ sx: 0, sy: 80, size: 480, out: 480 });
     expect(squareCaptureRect(640, 480)).toEqual({ sx: 80, sy: 0, size: 480, out: 480 });
+  });
+});
+
+describe("applyZoom — shrinks a capture rect around its center for digital zoom", () => {
+  it("2x zoom halves the crop side, keeping it centered", () => {
+    expect(applyZoom({ sx: 750, sy: 250, size: 500, out: 500 }, 2)).toEqual({
+      sx: 875,
+      sy: 375,
+      size: 250,
+      out: 250,
+    });
   });
 });
 
