@@ -42,6 +42,23 @@ export function guideCaptureRect(
   };
 }
 
+/**
+ * Digital zoom: shrink a capture rect around its center by `zoom` so the
+ * cropped region matches what a CSS scale(zoom) viewfinder shows. Output
+ * side shrinks with the crop — a zoomed capture has fewer source pixels.
+ */
+export function applyZoom(rect: SquareCaptureRect, zoom: number): SquareCaptureRect {
+  if (zoom <= 1) return rect;
+  const size = Math.round(rect.size / zoom);
+  const inset = Math.round((rect.size - size) / 2);
+  return {
+    sx: rect.sx + inset,
+    sy: rect.sy + inset,
+    size,
+    out: Math.min(size, EBAY_MAX_PHOTO_PX),
+  };
+}
+
 export function squareCaptureRect(frameWidth: number, frameHeight: number): SquareCaptureRect {
   const size = Math.min(frameWidth, frameHeight);
   return {
