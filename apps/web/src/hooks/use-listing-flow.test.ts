@@ -551,6 +551,21 @@ describe("useListingFlow.commitPhotoOrder — persist order to the item row", ()
   });
 });
 
+describe("useListingFlow.commitPhotoOrder — no-op without an item", () => {
+  it("skips the PATCH entirely before the item row exists", async () => {
+    apiMock.mockClear();
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.addPhotos([{ url: "https://example.com/1.jpg", key: "k1" }]);
+    });
+    apiMock.mockClear();
+    await act(async () => {
+      await result.current.commitPhotoOrder();
+    });
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("useListingFlow.commitPhotoOrder — syncWarnings surfaced", () => {
   it("a marketplace sync warning from the PATCH lands in the flow error state", async () => {
     apiMock.mockResolvedValue({

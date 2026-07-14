@@ -61,6 +61,13 @@ describe("PhotoGrid baseline — current behavior", () => {
     expect(p.onReorder).toHaveBeenCalledWith(0, 2);
   });
 
+  it("at the photo cap: exactly N real tiles render, no Add tile, no empty slots", () => {
+    renderGrid({ photos, maxPhotos: 3 });
+    expect(screen.getAllByAltText(/^Photo \d$/)).toHaveLength(3);
+    expect(screen.queryByText("Add")).not.toBeInTheDocument();
+    expect(screen.getByText(/maximum photos reached/i)).toBeInTheDocument();
+  });
+
   it("delete button fires onDelete for its tile", () => {
     const p = renderGrid();
     const deleteButtons = screen.getAllByRole("button").filter((b) => b.textContent === "✕");
