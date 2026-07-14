@@ -1,0 +1,364 @@
+# Instincts generated from https://github.com/sdnydude/portage
+# Generated: 2026-07-14T01:36:03.872Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: portage-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/sdnydude/portage
+---
+
+# Portage Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: docs
+
+## Evidence
+
+- 3 commits analyzed
+- Detected conventional commit pattern
+- Examples: docs: F1+F2 design spec + video/marketplace research, docs: 0.5x ultra-wide browser access research
+
+---
+id: portage-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/sdnydude/portage
+---
+
+# Portage Commit Length
+
+## Action
+
+Write moderate-length commit messages (~56 characters)
+
+## Evidence
+
+- Average commit message length: 56 chars
+- Based on 3 commits
+
+---
+id: portage-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/sdnydude/portage
+---
+
+# Portage Naming Files
+
+## Action
+
+Use kebab-case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: kebab-case
+
+---
+id: portage-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/sdnydude/portage
+---
+
+# Portage Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: portage-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/sdnydude/portage
+---
+
+# Portage Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: portage-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/sdnydude/portage
+---
+
+# Portage Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: portage-workflow-add-new-research-or-design-doc
+trigger: "when doing add new research or design doc"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/sdnydude/portage
+---
+
+# Portage Workflow Add New Research Or Design Doc
+
+## Action
+
+Follow the add-new-research-or-design-doc workflow:
+1. Create a new markdown file in docs/research/ or docs/superpowers/specs/ with a date-based filename.
+2. Write research notes or design specs in the new file.
+3. Commit the new file with a descriptive message.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: docs/research/*.md, docs/superpowers/specs/*.md
+
+---
+id: portage-instinct-file-naming
+trigger: "When creating a new file in the codebase"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct File Naming
+
+## Action
+
+Name the file using kebab-case (e.g., my-component.ts)
+
+## Evidence
+
+- Pattern in namingConventions.files: kebab-case
+
+---
+id: portage-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Function Naming
+
+## Action
+
+Name the function using camelCase (e.g., fetchData)
+
+## Evidence
+
+- Pattern in namingConventions.functions: camelCase
+
+---
+id: portage-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase (e.g., UserProfile)
+
+## Evidence
+
+- Pattern in namingConventions.classes: PascalCase
+
+---
+id: portage-instinct-constant-naming
+trigger: "When declaring a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE (e.g., MAX_USERS)
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+---
+id: portage-instinct-import-style
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Import Style
+
+## Action
+
+Use relative import paths (e.g., import { X } from './module')
+
+## Evidence
+
+- Pattern in importStyle: relative
+
+---
+id: portage-instinct-export-style
+trigger: "When exporting code from a module"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Export Style
+
+## Action
+
+Use named exports (e.g., export { MyComponent })
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: portage-instinct-git-commit-prefix
+trigger: "When writing a commit message for documentation changes"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Git Commit Prefix
+
+## Action
+
+Prefix the commit message with 'docs:' (e.g., docs: update API usage guide)
+
+## Evidence
+
+- Seen in commit: docs: F1+F2 design spec + video/marketplace research
+- Pattern in commits.prefixes: docs
+
+---
+id: portage-instinct-git-commit-format-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Git Commit Format Length
+
+## Action
+
+Keep the commit message concise (average length ~56 characters)
+
+## Evidence
+
+- Pattern in commits.averageLength: 56
+- Examples of concise commit messages
+
+---
+id: portage-instinct-git-commit-todo
+trigger: "When committing a change that is a TODO or future task in docs"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Git Commit Todo
+
+## Action
+
+Use 'docs(todo):' as the commit prefix
+
+## Evidence
+
+- Seen in commit: docs(todo): add Phase 6 item — reconcile externally-ended eBay listings
+
+---
+id: portage-instinct-add-research-doc
+trigger: "When documenting research findings or design specs for a new feature or technical investigation"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Add Research Doc
+
+## Action
+
+Create a new markdown file in docs/research/ or docs/superpowers/specs/ with a date-based filename, write the notes/specs, and commit with a descriptive message
+
+## Evidence
+
+- Workflow: add-new-research-or-design-doc
+- Pattern in files: docs/research/*.md, docs/superpowers/specs/*.md
+- Commit examples: docs: F1+F2 design spec + video/marketplace research
+
+---
+id: portage-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: sdnydude/portage
+---
+
+# Portage Instinct Test Location
+
+## Action
+
+Place test files in a separate directory from source files
+
+## Evidence
+
+- Pattern in architecture.testLocation: separate
+
