@@ -291,11 +291,13 @@ function ItemDetailContent() {
           body: { imageUrl: photo.url, crop },
           token,
         });
-        const updatedPhotos = itemPhotos.map((p, i) =>
-          i === photoIndex
-            ? { ...p, url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height }
-            : p
-        );
+        const updatedPhotos = applyToPhoto(photo, photoIndex, {
+          url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height,
+        });
+        if (!updatedPhotos) {
+          setUploadError("Photo changed while editing — please retry.");
+          return;
+        }
         await updateItem({ photos: updatedPhotos });
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : "Crop failed");
@@ -303,7 +305,7 @@ function ItemDetailContent() {
         setShowCrop(false);
       }
     },
-    [token, item, photoIndex, updateItem],
+    [token, item, photoIndex, applyToPhoto, updateItem],
   );
 
   const handleExposureApply = useCallback(
@@ -318,11 +320,13 @@ function ItemDetailContent() {
           body: { imageUrl: photo.url, ev },
           token,
         });
-        const updatedPhotos = itemPhotos.map((p, i) =>
-          i === photoIndex
-            ? { ...p, url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height }
-            : p
-        );
+        const updatedPhotos = applyToPhoto(photo, photoIndex, {
+          url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height,
+        });
+        if (!updatedPhotos) {
+          setUploadError("Photo changed while editing — please retry.");
+          return;
+        }
         await updateItem({ photos: updatedPhotos });
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : "Exposure adjustment failed");
@@ -330,7 +334,7 @@ function ItemDetailContent() {
         setShowExposure(false);
       }
     },
-    [token, item, photoIndex, updateItem],
+    [token, item, photoIndex, applyToPhoto, updateItem],
   );
 
   const handleUseCompTitle = useCallback(

@@ -70,11 +70,13 @@ describe("PhotoGrid baseline — current behavior", () => {
 });
 
 /**
- * Known bugs confirmed by adversarial review — pinned with `it.fails` so the
- * suite stays green while documenting today's broken behavior. Task A4 (hook
- * refactor) fixes each and flips `it.fails` → `it`.
+ * Three bugs confirmed by adversarial review of the pre-refactor PhotoGrid
+ * (delete-✕ pointerup bubble, phantom reorder after pointercancel, editor
+ * pop after a completed drag). They were pinned as expected-fails during the
+ * bug hunt; the use-photo-drag refactor in this same PR fixed all three,
+ * hence the plain assertions below.
  */
-describe("PhotoGrid known bugs (expected-fail until A4)", () => {
+describe("PhotoGrid regression pins (fixed by the use-photo-drag refactor)", () => {
   // BUG: ✕ stops click propagation but not the bubbling pointerup — tapping
   // delete also opens the editor.
   it("tapping delete does NOT also fire onEdit", () => {
