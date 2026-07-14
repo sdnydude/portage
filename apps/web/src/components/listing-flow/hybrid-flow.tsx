@@ -1,5 +1,7 @@
 "use client";
 
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
@@ -980,7 +982,10 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
         <PhotoGalleryStrip
           photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
           onEditPhoto={photoEdit.openEditor}
-          maxPhotos={12}
+          maxPhotos={MAX_PHOTOS_PER_ITEM}
+          onReorder={flow.reorderPhotos}
+          onReorderEnd={flow.commitPhotoOrder}
+          onDelete={flow.removePhoto}
         />
         <div onClick={() => fileInputRef.current?.click()} style={{ fontSize: 12, color: SECONDARY, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
           Replace photos…

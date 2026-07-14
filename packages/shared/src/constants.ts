@@ -53,3 +53,8 @@ export const CREDIT_PACK = {
 
 export const PACKAGE_TYPES = ['box', 'envelope', 'poly_mailer'] as const;
 export const CURRENT_DISCLAIMER_VERSION = 1;
+
+// App-wide per-item photo cap: min of our UX ceiling vs marketplace maxima
+// (eBay 24 PictureURLs, Reverb 25 — verified 2026-07-13, see
+// docs/research/2026-07-13-video-tooling-and-marketplace-limits.md).
+export const MAX_PHOTOS_PER_ITEM = 24;

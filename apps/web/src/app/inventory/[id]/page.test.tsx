@@ -4,7 +4,8 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 const h = vi.hoisted(() => ({
   item: {
     id: "i1", userId: "u1", title: "Canon AE-1", description: "d", category: "electronics",
-    condition: "good", conditionNotes: "", brand: "Canon", model: "AE-1", features: [], photos: [],
+    condition: "good", conditionNotes: "", brand: "Canon", model: "AE-1", features: [],
+    photos: [] as { url: string; key?: string; isPrimary?: boolean; width?: number; height?: number }[],
     estimatedValueMin: null, estimatedValueMax: null, estimatedValueRecommended: null,
     price: null as number | null,
     aiConfidenceScore: 0, quantity: 1, createdAt: "2026-01-01", updatedAt: "2026-01-01",
@@ -12,6 +13,7 @@ const h = vi.hoisted(() => ({
   updateItem: vi.fn().mockResolvedValue({}),
   apiMock: vi.fn(),
   enhanceResult: null as null | { image: { key: string; url: string; width: number; height: number; size: number } },
+  enhanceProcessing: false,
 }));
 
 const pushMock = vi.fn();
@@ -33,7 +35,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   api: h.apiMock,
 }));
 vi.mock("@/hooks/use-enhance", () => ({
-  useEnhance: () => ({ isProcessing: false, result: h.enhanceResult, error: null, enhance: vi.fn(), reset: vi.fn() }),
+  useEnhance: () => ({ isProcessing: h.enhanceProcessing, result: h.enhanceResult, error: null, enhance: vi.fn(), reset: vi.fn() }),
 }));
 vi.mock("@/hooks/use-comps", () => ({
   useComps: () => ({ comps: null, isLoading: false, error: null, fetchComps: vi.fn() }),
@@ -376,5 +378,158 @@ describe("marketplace listings section", () => {
     render(<ItemDetailPage />);
     fireEvent.click(screen.getByText(/List on another marketplace/));
     expect(screen.getByText(/allowed:reverb/)).toBeInTheDocument();
+  });
+});
+
+describe("photo reorder + delete (F1+F2)", () => {
+  const threePhotos = () => [
+    { url: "https://r2.example/a.jpg", key: "ka", isPrimary: true },
+    { url: "https://r2.example/b.jpg", key: "kb", isPrimary: false },
+    { url: "https://r2.example/c.jpg", key: "kc", isPrimary: false },
+  ];
+
+  it("drag reorder in the strip commits ONE PATCH with the normalized order on release", () => {
+    vi.useFakeTimers();
+    try {
+      h.item.photos = threePhotos();
+      h.updateItem.mockClear();
+      render(<ItemDetailPage />);
+      const thumb1 = screen.getByRole("button", { name: /edit photo 1/i });
+      fireEvent.pointerDown(thumb1, { clientX: 10, clientY: 10 });
+      vi.advanceTimersByTime(500);
+      document.elementFromPoint = vi
+        .fn()
+        .mockReturnValue(screen.getByRole("button", { name: /edit photo 3/i }));
+      fireEvent.pointerMove(thumb1, { clientX: 200, clientY: 10 });
+      // Live move — nothing persisted yet.
+      expect(h.updateItem).not.toHaveBeenCalled();
+      fireEvent.pointerUp(thumb1);
+      expect(h.updateItem).toHaveBeenCalledTimes(1);
+      expect(h.updateItem).toHaveBeenCalledWith({
+        photos: [
+          { url: "https://r2.example/b.jpg", key: "kb", isPrimary: true },
+          { url: "https://r2.example/c.jpg", key: "kc", isPrimary: false },
+          { url: "https://r2.example/a.jpg", key: "ka", isPrimary: false },
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+      h.item.photos = [];
+    }
+  });
+
+  it("live drag updates the rendered order BEFORE the PATCH (optimistic preview)", () => {
+    vi.useFakeTimers();
+    try {
+      h.item.photos = threePhotos();
+      h.updateItem.mockClear();
+      render(<ItemDetailPage />);
+      const thumb1 = screen.getByRole("button", { name: /edit photo 1/i });
+      fireEvent.pointerDown(thumb1, { clientX: 10, clientY: 10 });
+      vi.advanceTimersByTime(500);
+      document.elementFromPoint = vi
+        .fn()
+        .mockReturnValue(screen.getByRole("button", { name: /edit photo 3/i }));
+      fireEvent.pointerMove(thumb1, { clientX: 200, clientY: 10 });
+      // No release yet — nothing persisted, but the visible order must have moved.
+      expect(h.updateItem).not.toHaveBeenCalled();
+      const firstImg = screen.getByRole("button", { name: /edit photo 1/i }).querySelector("img")!;
+      expect(firstImg.getAttribute("src")).toContain("b.jpg");
+    } finally {
+      vi.useRealTimers();
+      h.item.photos = [];
+    }
+  });
+
+  it("deleting a photo in the manage sheet PATCHes the remaining photos with isPrimary renormalized", async () => {
+    try {
+      h.item.photos = threePhotos();
+      h.updateItem.mockClear();
+      render(<ItemDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /manage photos/i }));
+      fireEvent.click(screen.getByRole("button", { name: /delete photo 1/i }));
+      await waitFor(() =>
+        expect(h.updateItem).toHaveBeenCalledWith({
+          photos: [
+            { url: "https://r2.example/b.jpg", key: "kb", isPrimary: true },
+            { url: "https://r2.example/c.jpg", key: "kc", isPrimary: false },
+          ],
+        }),
+      );
+    } finally {
+      h.item.photos = [];
+    }
+  });
+
+  it("blocks deleting the last photo while a listing is live, with an explanatory error", async () => {
+    try {
+      h.item.photos = [{ url: "https://r2.example/a.jpg", key: "ka", isPrimary: true }];
+      h.updateItem.mockClear();
+      mockListings = [{
+        id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
+        marketplaceListingId: "307054605978", marketplaceSpecificFields: null,
+        status: "active", price: 1200, currency: "USD",
+        createdAt: "2026-07-10T17:24:31Z", publishedAt: "2026-07-10T17:24:33Z",
+        soldAt: null, itemTitle: "Canon AE-1",
+      }];
+      render(<ItemDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /manage photos/i }));
+      fireEvent.click(screen.getByRole("button", { name: /delete photo 1/i }));
+      expect(await screen.findByText(/last photo/i)).toBeInTheDocument();
+      expect(h.updateItem).not.toHaveBeenCalled();
+    } finally {
+      h.item.photos = [];
+    }
+  });
+
+  it("surfaces marketplace syncWarnings from the PATCH response after a reorder", async () => {
+    vi.useFakeTimers();
+    try {
+      h.item.photos = threePhotos();
+      h.updateItem.mockClear();
+      h.updateItem.mockResolvedValueOnce({ syncWarnings: ["ebay: listing 307 was not updated — revise failed"] });
+      render(<ItemDetailPage />);
+      const thumb1 = screen.getByRole("button", { name: /edit photo 1/i });
+      fireEvent.pointerDown(thumb1, { clientX: 10, clientY: 10 });
+      vi.advanceTimersByTime(500);
+      document.elementFromPoint = vi
+        .fn()
+        .mockReturnValue(screen.getByRole("button", { name: /edit photo 3/i }));
+      fireEvent.pointerMove(thumb1, { clientX: 200, clientY: 10 });
+      fireEvent.pointerUp(thumb1);
+      vi.useRealTimers();
+      expect(await screen.findByText(/was not updated/i)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+      h.item.photos = [];
+    }
+  });
+
+  it("a failed save after accepting an enhance surfaces an error instead of vanishing", async () => {
+    try {
+      h.item.photos = [{ url: "https://r2.example/a.jpg", key: "ka", isPrimary: true }];
+      h.enhanceResult = { image: { key: "ka-enh", url: "https://r2.example/a-enh.jpg", width: 800, height: 600, size: 1000 } };
+      h.updateItem.mockRejectedValueOnce(new Error("PATCH failed"));
+      render(<ItemDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+      fireEvent.click(screen.getByRole("button", { name: /use this photo/i }));
+      expect((await screen.findAllByText(/PATCH failed/i)).length).toBeGreaterThan(0);
+    } finally {
+      h.item.photos = [];
+      h.enhanceResult = null;
+      h.updateItem.mockResolvedValue({});
+    }
+  });
+
+  it("locks reorder while a photo tool is processing (no manage affordance)", () => {
+    try {
+      h.item.photos = threePhotos();
+      h.enhanceProcessing = true;
+      render(<ItemDetailPage />);
+      expect(screen.queryByRole("button", { name: /manage photos/i })).not.toBeInTheDocument();
+    } finally {
+      h.enhanceProcessing = false;
+      h.item.photos = [];
+    }
   });
 });

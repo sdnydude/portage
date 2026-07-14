@@ -36,6 +36,7 @@ describe("PhotoCaptureFlow — unified editor overlay (S2.5-11)", () => {
 
     // Grid tiles open the editor on pointer-up (long-press is reorder).
     const tile = screen.getByAltText("Photo 1").parentElement!;
+    fireEvent.pointerDown(tile, { clientX: 10, clientY: 10 });
     fireEvent.pointerUp(tile);
     // Shared panel signature: indexed header + Close editor + all 4 tools.
     expect(screen.getByText(/edit photo 1 of 1/i)).toBeInTheDocument();
@@ -59,6 +60,7 @@ describe("PhotoCaptureFlow — unified editor overlay (S2.5-11)", () => {
       />,
     );
 
+    fireEvent.pointerDown(screen.getByAltText("Photo 1").parentElement!, { clientX: 10, clientY: 10 });
     fireEvent.pointerUp(screen.getByAltText("Photo 1").parentElement!);
     fireEvent.click(screen.getByRole("button", { name: /rotate/i }));
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
@@ -1196,11 +1198,17 @@ export function ReviewPhase({
   setField,
   onPublish,
   updatePhoto,
+  reorderPhotos,
+  commitPhotoOrder,
+  removePhoto,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   setField: ReturnType<typeof useListingFlow>["setField"];
   onPublish: (publishMode: "draft" | "live") => void;
   updatePhoto: ReturnType<typeof useListingFlow>["updatePhoto"];
+  reorderPhotos?: ReturnType<typeof useListingFlow>["reorderPhotos"];
+  commitPhotoOrder?: ReturnType<typeof useListingFlow>["commitPhotoOrder"];
+  removePhoto?: ReturnType<typeof useListingFlow>["removePhoto"];
 }) {
   const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
   const photoEdit = usePhotoEdit(state.photos, updatePhoto);
@@ -1240,7 +1248,10 @@ export function ReviewPhase({
         <PhotoGalleryStrip
           photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
           onEditPhoto={photoEdit.openEditor}
-          maxPhotos={12}
+          maxPhotos={MAX_PHOTOS_PER_ITEM}
+          onReorder={reorderPhotos}
+          onReorderEnd={commitPhotoOrder}
+          onDelete={removePhoto}
         />
       </div>
 
@@ -1733,6 +1744,9 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
               setField={setField}
               onPublish={handlePublish}
               updatePhoto={flow.updatePhoto}
+              reorderPhotos={flow.reorderPhotos}
+              commitPhotoOrder={flow.commitPhotoOrder}
+              removePhoto={flow.removePhoto}
             />
             {publishError && (
               <div

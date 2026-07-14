@@ -706,6 +706,81 @@ describe('PATCH /items/:id', () => {
   });
 });
 
+describe('PATCH /items/:id — photo cap + key optionality (F2)', () => {
+  it('rejects more than 24 photos with a validation error', async () => {
+    // No db mock: zod rejects before any query runs.
+    const photos = Array.from({ length: 25 }, (_, i) => ({ url: `https://r2.example/p${i}.jpg`, key: `k${i}` }));
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ photos });
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts photos without a key (GetItem-imported rows are keyless)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const photos = [{ url: 'https://i.ebayimg.com/images/g/abc/s-l1600.jpg', isPrimary: true }];
+    mockUpdateReturns([{ ...MOCK_ITEM, photos }]);
+    mockSelectReturnOnce([]); // no listings to sync
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ photos });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('PATCH /items/:id — edit-sync warnings surfaced (F1)', () => {
+  it('returns syncWarnings when a marketplace revise fails, instead of a fully silent 200', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, photos: [{ url: 'https://r2.example/a.jpg', key: 'ka' }] }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' }]);
+    mockUpdateListing.mockRejectedValueOnce(new Error('eBay 21916735: picture URL invalid'));
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ photos: [{ url: 'https://r2.example/a.jpg', key: 'ka' }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.syncWarnings).toHaveLength(1);
+    expect(res.body.syncWarnings[0]).toMatch(/ebay/i);
+  });
+});
+
+describe('PATCH /items/:id — adapter revise warnings propagate (F1)', () => {
+  it('surfaces an adapter warning (e.g. zero-photo keep-old-pictures) in syncWarnings', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    mockUpdateReturns([{ ...MOCK_ITEM, photos: [] }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' }]);
+    mockUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '307000000001', status: 'active', warning: 'Item has no photos — the eBay listing keeps its existing pictures until you add one.' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ photos: [] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.syncWarnings?.some((w: string) => /existing pictures/i.test(w))).toBe(true);
+  });
+});
+
+describe('PATCH /items/:id — eBay picture URL budget warning (F2)', () => {
+  it('warns when total photo URL length exceeds the eBay 3975-char PictureURL budget', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const longBase = 'https://r2.example/' + 'x'.repeat(150) + '/';
+    const photos = Array.from({ length: 24 }, (_, i) => ({ url: `${longBase}${i}.jpg`, key: `k${i}` }));
+    mockUpdateReturns([{ ...MOCK_ITEM, photos }]);
+    mockSelectReturnOnce([]); // no listings
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ photos });
+    expect(res.status).toBe(200);
+    expect(res.body.syncWarnings?.some((w: string) => /3975|picture url/i.test(w))).toBe(true);
+  });
+});
+
 describe('DELETE /items/:id', () => {
   it('deletes item and returns { deleted: true }', async () => {
     mockSelectReturnOnce([{ id: 'item-1' }]);
