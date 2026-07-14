@@ -1,3 +1,4 @@
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -1246,7 +1247,7 @@ export function ReviewPhase({
         <PhotoGalleryStrip
           photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
           onEditPhoto={photoEdit.openEditor}
-          maxPhotos={12}
+          maxPhotos={MAX_PHOTOS_PER_ITEM}
           onReorder={reorderPhotos}
           onReorderEnd={commitPhotoOrder}
           onDelete={removePhoto}

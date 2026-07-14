@@ -16,6 +16,7 @@ import { CropTool } from "@/components/listing-flow/crop-tool";
 import { ExposureTool } from "@/components/capture/exposure-tool";
 import { useComps } from "@/hooks/use-comps";
 import { api, apiUpload } from "@/lib/api";
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 import type { CompListing, ItemPhoto } from "@portage/shared";
 import { movePhoto, removePhotoAt } from "@/lib/photos";
 import { formatCondition } from "@/lib/format";
@@ -467,7 +468,7 @@ function ItemDetailContent() {
               setEditingPhotoIndex(i);
             }}
             onAddPhotos={handleAddPhotos}
-            maxPhotos={12}
+            maxPhotos={MAX_PHOTOS_PER_ITEM}
             onReorder={isToolProcessing ? undefined : handlePhotoReorder}
             onReorderEnd={handlePhotoReorderEnd}
             onDelete={isToolProcessing ? undefined : handlePhotoDelete}

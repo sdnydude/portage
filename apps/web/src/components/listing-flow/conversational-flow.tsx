@@ -1,3 +1,4 @@
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -572,7 +573,7 @@ function deriveMessages(
                 onReorder={handlers.onReorderPhotos}
                 onReorderEnd={handlers.onReorderEnd}
                 onDelete={handlers.onDeletePhoto}
-                maxPhotos={12}
+                maxPhotos={MAX_PHOTOS_PER_ITEM}
               />
             </div>
           )}

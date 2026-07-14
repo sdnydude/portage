@@ -17,6 +17,7 @@ import { demandLabel } from "@/lib/demand";
 import { PhotoGalleryStrip } from "./photo-gallery-strip";
 import { usePhotoDrag } from "@/hooks/use-photo-drag";
 import { movePhoto } from "@/lib/photos";
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 import { PhotoEditPanel } from "./photo-edit-panel";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
@@ -52,7 +53,8 @@ interface ScanFlowProps {
   onClose: (result?: { warning?: string }) => void;
 }
 
-const MAX_PHOTOS = 12;
+// App-wide cap (eBay 24 / Reverb 25 — ours is the min, from @portage/shared).
+const MAX_PHOTOS = MAX_PHOTOS_PER_ITEM;
 
 function mapEbayCondition(ebayCondition: string): "new" | "like_new" | "good" | "fair" | "poor" {
   const lower = ebayCondition.toLowerCase();

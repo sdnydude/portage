@@ -1,3 +1,4 @@
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
@@ -980,7 +981,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
         <PhotoGalleryStrip
           photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
           onEditPhoto={photoEdit.openEditor}
-          maxPhotos={12}
+          maxPhotos={MAX_PHOTOS_PER_ITEM}
           onReorder={flow.reorderPhotos}
           onReorderEnd={flow.commitPhotoOrder}
           onDelete={flow.removePhoto}

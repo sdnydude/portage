@@ -212,6 +212,18 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByLabelText("Remove photo 1")).toBeInTheDocument();
   });
 
+  it("capture stage advertises the 24-photo cap (MAX_PHOTOS_PER_ITEM)", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+    apiMock.mockImplementation(async () => ({}));
+    render(<ScanFlow onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Choose from Gallery"));
+    await screen.findByText(/Scan 1 Photo with Porter/);
+    expect(screen.getByText("1/24")).toBeInTheDocument();
+  });
+
   it("capture-stage strip supports long-press drag reorder before the AI scan", async () => {
     apiUploadMock
       .mockResolvedValueOnce({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } })
