@@ -41,7 +41,9 @@ export function usePhotoDrag(options: UsePhotoDragOptions): UsePhotoDragResult {
   // Hosts pass inline callbacks; a ref keeps handlers fresh without
   // rebuilding getItemProps (and re-rendering every tile) each render.
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref mirror of dragIndex: on touch, every pointer event fires on the

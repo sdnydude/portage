@@ -63,7 +63,9 @@ function ItemDetailContent() {
   // Always-fresh photo array for async callbacks (photo tools resolve their
   // write target against this at response time, not their stale closure).
   const photosRef = useRef<ItemPhoto[]>([]);
-  photosRef.current = pendingPhotos ?? item?.photos ?? [];
+  useEffect(() => {
+    photosRef.current = pendingPhotos ?? item?.photos ?? [];
+  }, [pendingPhotos, item]);
 
   // Photo tools capture a target photo, await a network round trip, then
   // write back. Resolve the write slot by stable key at WRITE time against
@@ -82,6 +84,9 @@ function ItemDetailContent() {
   const handlePhotoReorder = useCallback((from: number, to: number) => {
     const next = movePhoto(photosRef.current, from, to);
     pendingPhotosRef.current = next;
+    // Synchronous ref update too: pointermove bursts can outrun the commit
+    // cycle, and the next onMove must see this move's result.
+    photosRef.current = next;
     setPendingPhotos(next);
   }, []);
 
@@ -122,7 +127,9 @@ function ItemDetailContent() {
   // single canonical detail page; each listing renders as a ListingCard.
   const { listings: itemListings, isLoading: listingsLoading, error: listingsError, refetch: refetchListings } =
     useListings({ itemId: params.id });
-  listingsRef.current = itemListings;
+  useEffect(() => {
+    listingsRef.current = itemListings;
+  }, [itemListings]);
   const searchParams = useSearchParams();
   const focusListingId = searchParams.get("listing");
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -267,7 +274,7 @@ function ItemDetailContent() {
     } finally {
       setIsRotating(false);
     }
-  }, [token, isRotating, isEnhancing, item, photoIndex, applyToPhoto, updateItem]);
+  }, [token, isRotating, isEnhancing, item, photoIndex, updateItem]);
 
   const handleCropApply = useCallback(
     async (crop: { x: number; y: number; width: number; height: number }) => {
@@ -293,7 +300,7 @@ function ItemDetailContent() {
         setShowCrop(false);
       }
     },
-    [token, item, photoIndex, applyToPhoto, updateItem],
+    [token, item, photoIndex, updateItem],
   );
 
   const handleExposureApply = useCallback(
@@ -320,7 +327,7 @@ function ItemDetailContent() {
         setShowExposure(false);
       }
     },
-    [token, item, photoIndex, applyToPhoto, updateItem],
+    [token, item, photoIndex, updateItem],
   );
 
   const handleUseCompTitle = useCallback(
