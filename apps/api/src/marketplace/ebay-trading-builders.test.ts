@@ -11,6 +11,7 @@ import {
   parseGetItemVerification,
   splitOunces,
   type TradingListingInput,
+  validatePictureUrls,
 } from './ebay-trading-builders.js';
 
 const baseInput: TradingListingInput = {
@@ -109,6 +110,20 @@ describe('buildAddFixedPriceItemXml', () => {
   });
 });
 
+describe('validatePictureUrls — eBay hard limits pre-XML (F2)', () => {
+  it('throws a clear error above 24 picture URLs', () => {
+    const urls = Array.from({ length: 25 }, (_, i) => `https://r2.example/p${i}.jpg`);
+    expect(() => validatePictureUrls(urls)).toThrow(/24/);
+  });
+
+  it('throws when total URL characters exceed the 3975 budget; passes under it', () => {
+    const long = Array.from({ length: 24 }, (_, i) => `https://r2.example/${'x'.repeat(150)}/${i}.jpg`);
+    expect(() => validatePictureUrls(long)).toThrow(/3975/);
+    const ok = Array.from({ length: 24 }, (_, i) => `https://r2.example/${i}.jpg`);
+    expect(() => validatePictureUrls(ok)).not.toThrow();
+  });
+});
+
 describe('buildVerifyAddFixedPriceItemXml (dry-run validation, no listing created)', () => {
   it('wraps the SAME item body as Add in a VerifyAddFixedPriceItemRequest', () => {
     const xml = buildVerifyAddFixedPriceItemXml(baseInput, 'T');
@@ -146,6 +161,13 @@ describe('buildReviseFixedPriceItemXml (full content revise)', () => {
     expect(xml).toContain('<Title>Sennheiser HD 600 Headphones</Title>');
     expect(xml).toContain('<ShippingType>Calculated</ShippingType>');
     expect(xml).not.toContain('<SellerProfiles>');
+  });
+});
+
+describe('buildReviseFixedPriceItemXml — empty photos guard (F1 delete)', () => {
+  it('throws instead of omitting PictureDetails when photos is explicitly empty (eBay keeps old pics silently)', () => {
+    const input = { ...baseInput, pictureUrls: [] };
+    expect(() => buildReviseFixedPriceItemXml('307', input, 'tok')).toThrow(/photo/i);
   });
 });
 
