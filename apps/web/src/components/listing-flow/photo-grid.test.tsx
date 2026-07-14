@@ -51,11 +51,13 @@ describe("PhotoGrid baseline — current behavior", () => {
     expect(p.onReorder).not.toHaveBeenCalled();
   });
 
-  it("long-press then entering another tile reorders", () => {
+  it("long-press then dragging over another tile reorders live", () => {
     const p = renderGrid();
-    fireEvent.pointerDown(screen.getByAltText("Photo 1").parentElement!);
+    const tile1 = screen.getByAltText("Photo 1").parentElement!;
+    fireEvent.pointerDown(tile1, { clientX: 10, clientY: 10 });
     act(() => vi.advanceTimersByTime(500));
-    fireEvent.pointerEnter(screen.getByAltText("Photo 3").parentElement!);
+    document.elementFromPoint = vi.fn().mockReturnValue(screen.getByAltText("Photo 3").parentElement!);
+    fireEvent.pointerMove(tile1, { clientX: 200, clientY: 10 });
     expect(p.onReorder).toHaveBeenCalledWith(0, 2);
   });
 
@@ -75,7 +77,7 @@ describe("PhotoGrid baseline — current behavior", () => {
 describe("PhotoGrid known bugs (expected-fail until A4)", () => {
   // BUG: ✕ stops click propagation but not the bubbling pointerup — tapping
   // delete also opens the editor.
-  it.fails("tapping delete does NOT also fire onEdit", () => {
+  it("tapping delete does NOT also fire onEdit", () => {
     const p = renderGrid();
     const deleteButtons = screen.getAllByRole("button").filter((b) => b.textContent === "✕");
     fireEvent.pointerDown(deleteButtons[1]);
@@ -85,28 +87,29 @@ describe("PhotoGrid known bugs (expected-fail until A4)", () => {
     expect(p.onEdit).not.toHaveBeenCalled();
   });
 
-  // BUG: pointercancel is unhandled — a canceled gesture (native scroll
-  // take-over) leaves the grid in dragging state; the next pointerenter
-  // fires a phantom reorder.
-  it.fails("pointercancel aborts the drag — no reorder on later pointerenter", () => {
+  // Fixed by A4: pointercancel aborts cleanly — no phantom reorder after a
+  // native-scroll take-over.
+  it("pointercancel aborts the drag — no reorder on later moves", () => {
     const p = renderGrid();
-    fireEvent.pointerDown(screen.getByAltText("Photo 1").parentElement!);
+    const tile1 = screen.getByAltText("Photo 1").parentElement!;
+    fireEvent.pointerDown(tile1, { clientX: 10, clientY: 10 });
     act(() => vi.advanceTimersByTime(500));
-    fireEvent.pointerCancel(screen.getByAltText("Photo 1").parentElement!);
-    fireEvent.pointerEnter(screen.getByAltText("Photo 3").parentElement!);
+    fireEvent.pointerCancel(tile1);
+    document.elementFromPoint = vi.fn().mockReturnValue(screen.getByAltText("Photo 3").parentElement!);
+    fireEvent.pointerMove(tile1, { clientX: 200, clientY: 10 });
     expect(p.onReorder).not.toHaveBeenCalled();
   });
 
-  // BUG: handleDrop commits + clears drag state on pointerenter; the release
-  // that follows sees !isDragging and fires onEdit — editor pops open after
-  // every completed drag.
-  it.fails("releasing after a completed drop does NOT open the editor", () => {
+  // Fixed by A4: releasing a completed drag commits silently — no editor pop.
+  it("releasing after a completed drag does NOT open the editor", () => {
     const p = renderGrid();
-    fireEvent.pointerDown(screen.getByAltText("Photo 1").parentElement!);
+    const tile1 = screen.getByAltText("Photo 1").parentElement!;
+    fireEvent.pointerDown(tile1, { clientX: 10, clientY: 10 });
     act(() => vi.advanceTimersByTime(500));
-    fireEvent.pointerEnter(screen.getByAltText("Photo 3").parentElement!);
+    document.elementFromPoint = vi.fn().mockReturnValue(screen.getByAltText("Photo 3").parentElement!);
+    fireEvent.pointerMove(tile1, { clientX: 200, clientY: 10 });
     expect(p.onReorder).toHaveBeenCalledWith(0, 2);
-    fireEvent.pointerUp(screen.getByAltText("Photo 3").parentElement!);
+    fireEvent.pointerUp(tile1);
     expect(p.onEdit).not.toHaveBeenCalled();
   });
 });
