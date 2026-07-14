@@ -159,6 +159,14 @@ describe("usePhotoDrag", () => {
     expect(onMove).not.toHaveBeenCalled();
   });
 
+  it("suppresses the long-press context menu on tiles (iOS image callout steals the drag)", () => {
+    render(<Probe />);
+    const tile = screen.getByTestId("tile-0");
+    const e = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    tile.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
   it("suppresses native scroll while dragging via a non-passive document touchmove listener", () => {
     const addSpy = vi.spyOn(document, "addEventListener");
     const removeSpy = vi.spyOn(document, "removeEventListener");

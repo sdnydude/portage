@@ -48,7 +48,7 @@ export function PhotoGrid({ photos, maxPhotos, onAdd, onEdit, onDelete, onReorde
         {photos.map((photo, i) => (
           <div
             key={photo.key ?? photo.url}
-            className="relative aspect-square rounded-xl overflow-hidden transition-all"
+            className="photo-drag-tile relative aspect-square rounded-xl overflow-hidden transition-all"
             style={{
               opacity: dragIndex === i ? 0.5 : 1,
               transform: dragIndex === i ? "scale(0.95)" : "scale(1)",

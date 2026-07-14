@@ -312,6 +312,16 @@ select {
   }
 }
 
+/* Long-press drag tiles: iOS Safari's image save/copy callout and text
+   selection fire on the same long-press that arms photo drag — the callout
+   wins and the drag never starts. Applied to every use-photo-drag surface. */
+.photo-drag-tile,
+.photo-drag-tile img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* WCAG: reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .animate-spring-in,

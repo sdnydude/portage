@@ -23,6 +23,7 @@ export interface PhotoDragItemProps {
   onPointerMove: (e: React.PointerEvent) => void;
   onPointerUp: (e: React.PointerEvent) => void;
   onPointerCancel: (e: React.PointerEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }
 
 export interface UsePhotoDragResult {
@@ -128,6 +129,13 @@ export function usePhotoDrag(options: UsePhotoDragOptions): UsePhotoDragResult {
       },
       onPointerCancel: () => {
         endDrag();
+      },
+      // iOS fires the image save/copy callout (and Android a context menu) on
+      // the same long-press that arms the drag — the menu wins and the drag
+      // never starts. CSS -webkit-touch-callout handles Safari's callout;
+      // this covers the contextmenu event path.
+      onContextMenu: (e) => {
+        e.preventDefault();
       },
     }),
     [clearTimer, endDrag, longPressMs],

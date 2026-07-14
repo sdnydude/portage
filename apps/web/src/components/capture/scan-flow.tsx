@@ -911,7 +911,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                         }
                         setSelectedPhotoIndex(i);
                       }}
-                      className={`relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-colors ${
+                      className={`photo-drag-tile relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-colors ${
                         i === selectedPhotoIndex ? "border-[var(--teal)]" : "border-transparent"
                       }`}
                       style={captureDrag.dragIndex === i ? { opacity: 0.5, transform: "scale(0.95)" } : undefined}

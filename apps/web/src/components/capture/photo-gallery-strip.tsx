@@ -84,7 +84,7 @@ export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos,
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
         {photos.map((photo, i) => {
           const editable = photo.editable !== false;
-          const thumbClass = `relative flex-shrink-0 w-[78px] h-[78px] rounded-[15px] overflow-hidden border-2 ${
+          const thumbClass = `photo-drag-tile relative flex-shrink-0 w-[78px] h-[78px] rounded-[15px] overflow-hidden border-2 ${
             i === 0 ? "border-[var(--teal)]" : "border-transparent"
           }`;
           const dragStyle = dragIndex === i ? { opacity: 0.5, transform: "scale(0.95)" } : undefined;

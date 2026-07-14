@@ -45,7 +45,7 @@ export function PhotoManageSheet({ photos, onClose, onReorder, onReorderEnd, onD
           {photos.map((photo, i) => (
             <div
               key={photo.key ?? photo.url}
-              className="relative aspect-square rounded-xl overflow-hidden"
+              className="photo-drag-tile relative aspect-square rounded-xl overflow-hidden"
               style={dragIndex === i ? { opacity: 0.5, transform: "scale(0.95)" } : undefined}
               {...getItemProps(i)}
             >
