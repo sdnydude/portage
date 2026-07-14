@@ -1,5 +1,6 @@
-import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 "use client";
+
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";

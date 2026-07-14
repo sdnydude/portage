@@ -1,5 +1,6 @@
-import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 "use client";
+
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";

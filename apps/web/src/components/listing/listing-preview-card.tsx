@@ -1,5 +1,6 @@
-import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 "use client";
+
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 
 import { useState, useCallback, useEffect } from "react";
 import { CompsPricingWidget } from "./comps-pricing-widget";

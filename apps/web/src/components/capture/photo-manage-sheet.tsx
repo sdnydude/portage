@@ -32,7 +32,7 @@ export function PhotoManageSheet({ photos, onClose, onReorder, onReorderEnd, onD
   });
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-[#15181b] text-white animate-slide-up-full">
+    <div data-testid="photo-manage-sheet" className="fixed inset-0 z-[70] flex flex-col bg-[#15181b] text-white animate-slide-up-full">
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <span className="font-[family-name:var(--font-jetbrains)] text-[11px] font-semibold uppercase tracking-[0.16em] text-white/60">
           Photos · {photos.length}
