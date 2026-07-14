@@ -16,7 +16,7 @@
     "admin:promote": "tsx src/scripts/promote-admin.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.109.1",
+    "@anthropic-ai/sdk": "^0.111.0",
     "@aws-sdk/client-s3": "^3.1045.0",
     "@portage/shared": "*",
     "bcrypt": "^6.0.0",
