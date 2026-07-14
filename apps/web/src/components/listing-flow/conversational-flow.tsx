@@ -292,6 +292,9 @@ function deriveMessages(
     onConfirmShipping: () => void;
     onAddPhoto: () => void;
     onEditPhoto: (index: number) => void;
+    onReorderPhotos: (from: number, to: number) => void;
+    onReorderEnd: () => void;
+    onDeletePhoto: (index: number) => void;
   }
 ): FlowMessage[] {
   const msgs: FlowMessage[] = [];
@@ -566,6 +569,9 @@ function deriveMessages(
               <PhotoGalleryStrip
                 photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
                 onEditPhoto={handlers.onEditPhoto}
+                onReorder={handlers.onReorderPhotos}
+                onReorderEnd={handlers.onReorderEnd}
+                onDelete={handlers.onDeletePhoto}
                 maxPhotos={12}
               />
             </div>
@@ -781,6 +787,9 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         // Blob (still-uploading) photos render without an edit affordance in
         // the strip, so this only fires for editable photos.
         onEditPhoto: photoEdit.openEditor,
+        onReorderPhotos: flow.reorderPhotos,
+        onReorderEnd: flow.commitPhotoOrder,
+        onDeletePhoto: flow.removePhoto,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state, effectiveLastStep]

@@ -981,6 +981,9 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
           photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
           onEditPhoto={photoEdit.openEditor}
           maxPhotos={12}
+          onReorder={flow.reorderPhotos}
+          onReorderEnd={flow.commitPhotoOrder}
+          onDelete={flow.removePhoto}
         />
         <div onClick={() => fileInputRef.current?.click()} style={{ fontSize: 12, color: SECONDARY, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
           Replace photos…
