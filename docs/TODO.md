@@ -77,6 +77,7 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 - [ ] Notification system — push + in-app center (8h)
 - [ ] Dashboard trends + AI insights — sparklines, category breakdown (6h)
 - [ ] Enhanced-photo persistence — "Replace Photo" action after before/after (2h)
+- [ ] Reconcile externally-ended eBay listings — Seller-Hub-ended rows stay `active` locally (only sold listings heal). Weekly GET active-listings reconciliation pass or manual "Reconcile with eBay" admin action; needed before real user volume (phantom actives + duplicate end-attempts in GTC sweep) (2h)
 
 ### Phase 7 — Quality & hardening
 
