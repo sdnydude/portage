@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { usePhotoDrag } from "@/hooks/use-photo-drag";
 import { ImagePicker } from "./image-picker";
+import { PhotoManageSheet } from "./photo-manage-sheet";
 
 interface StripPhoto {
   key?: string;
@@ -23,6 +24,9 @@ interface PhotoGalleryStripProps {
   onReorder?: (fromIndex: number, toIndex: number) => void;
   /** Fires once when a drag that moved something ends — the persist point. */
   onReorderEnd?: () => void;
+  /** Delete a photo — surfaced inside the manage sheet, not on strip thumbs
+   *  (78px thumbs + accidental taps don't mix). */
+  onDelete?: (index: number) => void;
 }
 
 /**
@@ -32,10 +36,11 @@ interface PhotoGalleryStripProps {
  * there is no always-on inline editor anymore. Hosts that pass onReorder get
  * long-press drag reordering (touch-capable via use-photo-drag).
  */
-export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos, onReorder, onReorderEnd }: PhotoGalleryStripProps) {
+export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos, onReorder, onReorderEnd, onDelete }: PhotoGalleryStripProps) {
   // Set when a gesture reordered something; swallows the browser's trailing
   // click on the origin thumb so a completed drag doesn't pop the editor.
   const didDragRef = useRef(false);
+  const [manageOpen, setManageOpen] = useState(false);
 
   const { dragIndex, getItemProps } = usePhotoDrag({
     onMove: (from, to) => {
@@ -51,11 +56,31 @@ export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos,
   return (
     <div className="rounded-2xl bg-surface border border-border p-3.5">
       <div className="flex items-center justify-between mb-2.5">
-        <span className="font-[family-name:var(--font-jetbrains)] text-[10px] font-semibold uppercase tracking-[0.16em] text-text-secondary">
-          Photos · {photos.length}
-        </span>
+        {dragEnabled ? (
+          <button
+            aria-label="Manage photos"
+            onClick={() => setManageOpen(true)}
+            className="font-[family-name:var(--font-jetbrains)] text-[10px] font-semibold uppercase tracking-[0.16em] text-text-secondary underline decoration-dotted underline-offset-2"
+          >
+            Photos · {photos.length}
+          </button>
+        ) : (
+          <span className="font-[family-name:var(--font-jetbrains)] text-[10px] font-semibold uppercase tracking-[0.16em] text-text-secondary">
+            Photos · {photos.length}
+          </span>
+        )}
         <span className="text-[11px] font-semibold text-[var(--orange)]">Tap to edit</span>
       </div>
+
+      {manageOpen && (
+        <PhotoManageSheet
+          photos={photos}
+          onClose={() => setManageOpen(false)}
+          onReorder={(from, to) => onReorder?.(from, to)}
+          onReorderEnd={onReorderEnd}
+          onDelete={onDelete}
+        />
+      )}
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
         {photos.map((photo, i) => {
           const editable = photo.editable !== false;

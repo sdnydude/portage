@@ -103,6 +103,27 @@ describe("PhotoGalleryStrip", () => {
     }
   });
 
+  it("header opens the manage sheet when reorder is enabled, and stays inert without it", () => {
+    const { rerender } = render(
+      <PhotoGalleryStrip
+        photos={PHOTOS}
+        onEditPhoto={vi.fn()}
+        maxPhotos={12}
+        onReorder={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /manage photos/i }));
+    expect(screen.getByRole("button", { name: /done/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /done/i }));
+    expect(screen.queryByRole("button", { name: /done/i })).not.toBeInTheDocument();
+
+    rerender(
+      <PhotoGalleryStrip photos={PHOTOS} onEditPhoto={vi.fn()} maxPhotos={12} />,
+    );
+    expect(screen.queryByRole("button", { name: /manage photos/i })).not.toBeInTheDocument();
+  });
+
   it("the trailing click after a completed drag does NOT open the editor; the next real tap does", () => {
     vi.useFakeTimers();
     try {
