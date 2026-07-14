@@ -480,6 +480,40 @@ describe("useListingFlow.removePhoto — delete photo (F1 amendment)", () => {
   });
 });
 
+describe("useListingFlow.removePhoto — rapid double-tap", () => {
+  it("two removals before a re-render delete two DIFFERENT photos AND the item PATCHes reflect both (eager stateRef sync)", async () => {
+    apiMock.mockResolvedValue({
+      id: "i1", title: "X", description: "", category: "", condition: "good",
+      brand: "", model: "", features: [], quantity: 1,
+      photos: [
+        { url: "https://example.com/1.jpg", key: "k1" },
+        { url: "https://example.com/2.jpg", key: "k2" },
+        { url: "https://example.com/3.jpg", key: "k3" },
+      ],
+      estimatedValueRecommended: 50, price: 100,
+      weightOz: null, lengthIn: null, widthIn: null, heightIn: null,
+      ebayPackageType: null, weightEstimated: false,
+    });
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => {
+      await result.current.startFromItem("i1");
+    });
+    apiMock.mockClear();
+    apiMock.mockResolvedValue({});
+    await act(async () => {
+      // Same tick — no re-render between the two calls.
+      const p1 = result.current.removePhoto(0);
+      const p2 = result.current.removePhoto(0);
+      await Promise.all([p1, p2]);
+    });
+    expect(result.current.state.photos.map((p) => p.key)).toEqual(["k3"]);
+    const patches = apiMock.mock.calls.filter(([p]) => p === "/items/i1");
+    expect(patches).toHaveLength(2);
+    const lastBody = (patches[1][1] as { body: { photos: Array<{ key: string }> } }).body.photos.map((p) => p.key);
+    expect(lastBody).toEqual(["k3"]);
+  });
+});
+
 describe("useListingFlow.commitPhotoOrder — persist order to the item row", () => {
   it("PATCHes items.photos after a drag ends when the flow has an item; no-op without one", async () => {
     apiMock.mockResolvedValue({
@@ -514,6 +548,35 @@ describe("useListingFlow.commitPhotoOrder — persist order to the item row", ()
         ],
       },
     }));
+  });
+});
+
+describe("useListingFlow.commitPhotoOrder — syncWarnings surfaced", () => {
+  it("a marketplace sync warning from the PATCH lands in the flow error state", async () => {
+    apiMock.mockResolvedValue({
+      id: "i1", title: "X", description: "", category: "", condition: "good",
+      brand: "", model: "", features: [], quantity: 1,
+      photos: [
+        { url: "https://example.com/1.jpg", key: "k1", isPrimary: true },
+        { url: "https://example.com/2.jpg", key: "k2" },
+      ],
+      estimatedValueRecommended: 50, price: 100,
+      weightOz: null, lengthIn: null, widthIn: null, heightIn: null,
+      ebayPackageType: null, weightEstimated: false,
+    });
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => {
+      await result.current.startFromItem("i1");
+    });
+    act(() => {
+      result.current.reorderPhotos(1, 0);
+    });
+    apiMock.mockClear();
+    apiMock.mockResolvedValue({ syncWarnings: ["ebay: listing 307 was not updated — revise failed"] });
+    await act(async () => {
+      await result.current.commitPhotoOrder();
+    });
+    expect(result.current.error).toMatch(/was not updated/);
   });
 });
 

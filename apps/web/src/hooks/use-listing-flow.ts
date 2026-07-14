@@ -371,11 +371,14 @@ export function useListingFlow() {
     const s = stateRef.current;
     if (!s.inventoryItemId || !token || s.photos.length === 0) return;
     try {
-      await api(`/items/${s.inventoryItemId}`, {
+      const saved = await api<{ syncWarnings?: string[] }>(`/items/${s.inventoryItemId}`, {
         method: 'PATCH',
         body: { photos: normalizePhotoOrder(s.photos) },
         token,
       });
+      // A reorder that saved locally but never reached the marketplace must
+      // not read as success — same contract as the inventory page.
+      if (saved?.syncWarnings?.length) setError(saved.syncWarnings.join(' · '));
     } catch {
       // Draft still holds the order; the publish-time PATCH is the backstop.
     }
@@ -385,16 +388,21 @@ export function useListingFlow() {
   // already exists the new array PATCHes through so publish (which reads
   // items.photos, not flow state) can never resurrect a deleted photo.
   const removePhoto = useCallback(async (index: number) => {
-    const next = removePhotoAt(stateRef.current.photos, index);
-    setState(prev => {
-      const nextState = { ...prev, photos: removePhotoAt(prev.photos, index) };
-      triggerAutoSave(nextState);
-      return nextState;
-    });
-    const itemId = stateRef.current.inventoryItemId;
+    // Eager stateRef sync (same trick as confirmRecognition): a second call
+    // in the same tick must compute from THIS removal's result, or its PATCH
+    // body resurrects the photo the first call just deleted.
+    const base = stateRef.current;
+    const next = removePhotoAt(base.photos, index);
+    if (next === base.photos) return; // out-of-range no-op
+    const nextState = { ...base, photos: next };
+    stateRef.current = nextState;
+    setState(nextState);
+    triggerAutoSave(nextState);
+    const itemId = nextState.inventoryItemId;
     if (itemId && token) {
       try {
-        await api(`/items/${itemId}`, { method: 'PATCH', body: { photos: next }, token });
+        const saved = await api<{ syncWarnings?: string[] }>(`/items/${itemId}`, { method: 'PATCH', body: { photos: next }, token });
+        if (saved?.syncWarnings?.length) setError(saved.syncWarnings.join(' · '));
       } catch {
         // Draft still holds the new order; the publish-time PATCH is the backstop.
       }

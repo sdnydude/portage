@@ -116,6 +116,18 @@ describe('validatePictureUrls — eBay hard limits pre-XML (F2)', () => {
     expect(() => validatePictureUrls(urls)).toThrow(/24/);
   });
 
+  it('surfaces as a 400 AppError through the Add builder so routes return the message, not a 500', () => {
+    const urls = Array.from({ length: 25 }, (_, i) => `https://r2.example/p${i}.jpg`);
+    const input = { ...baseInput, pictureUrls: urls };
+    try {
+      buildAddFixedPriceItemXml(input, 'tok');
+      expect.unreachable('should have thrown');
+    } catch (e) {
+      expect((e as { statusCode?: number }).statusCode).toBe(400);
+      expect((e as { code?: string }).code).toBe('EBAY_PICTURE_LIMIT');
+    }
+  });
+
   it('throws when total URL characters exceed the 3975 budget; passes under it', () => {
     const long = Array.from({ length: 24 }, (_, i) => `https://r2.example/${'x'.repeat(150)}/${i}.jpg`);
     expect(() => validatePictureUrls(long)).toThrow(/3975/);

@@ -243,9 +243,17 @@ function ItemDetailContent() {
         setUploadError("Photo changed while editing — please retry.");
         return;
       }
-      await updateItem({ photos: updatedPhotos });
-      resetEnhance();
-      resetBgRemoval();
+      try {
+        await updateItem({ photos: updatedPhotos });
+      } catch (err) {
+        // Fire-and-forget caller (enhance/bg accept) — without this catch a
+        // failed save is an unhandled rejection with zero user feedback.
+        setUploadError(err instanceof Error ? err.message : "Failed to save edited photo");
+        return;
+      } finally {
+        resetEnhance();
+        resetBgRemoval();
+      }
     },
     [item, photoIndex, applyToPhoto, updateItem, resetEnhance, resetBgRemoval],
   );
@@ -397,7 +405,9 @@ function ItemDetailContent() {
     );
   }
 
-  const photos = item.photos ?? [];
+  // pendingPhotos first: the strip/sheet must render the optimistic order
+  // DURING the drag, not after the PATCH round-trip.
+  const photos = pendingPhotos ?? item.photos ?? [];
   const currentPhoto = photos[photoIndex];
 
   const valueDisplay = item.estimatedValueMin && item.estimatedValueMax

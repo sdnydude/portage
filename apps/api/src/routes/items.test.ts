@@ -748,6 +748,23 @@ describe('PATCH /items/:id — edit-sync warnings surfaced (F1)', () => {
   });
 });
 
+describe('PATCH /items/:id — adapter revise warnings propagate (F1)', () => {
+  it('surfaces an adapter warning (e.g. zero-photo keep-old-pictures) in syncWarnings', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    mockUpdateReturns([{ ...MOCK_ITEM, photos: [] }]);
+    mockSelectReturnOnce([{ marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' }]);
+    mockUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '307000000001', status: 'active', warning: 'Item has no photos — the eBay listing keeps its existing pictures until you add one.' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ photos: [] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.syncWarnings?.some((w: string) => /existing pictures/i.test(w))).toBe(true);
+  });
+});
+
 describe('PATCH /items/:id — eBay picture URL budget warning (F2)', () => {
   it('warns when total photo URL length exceeds the eBay 3975-char PictureURL budget', async () => {
     mockSelectReturnOnce([{ id: 'item-1' }]);

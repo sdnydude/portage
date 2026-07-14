@@ -640,6 +640,27 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
     expect(fetchMock.mock.calls.find(([u]) => String(u).includes('/sell/inventory/v1/'))).toBeUndefined();
   });
 
+  it('a content revise for a zero-photo item proceeds (omits PictureDetails) and surfaces a warning — price sync must not starve', async () => {
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url) ? new Response(reviseOk('ReviseFixedPriceItem'), { status: 200 }) : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.updateListing('307034606520', {
+      ...baseInput,
+      title: 'Refreshed Title',
+      photos: [],
+      price: 149,
+      ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup },
+    } as any);
+
+    const call = fetchMock.mock.calls.find(([u]) => isTradingCall(u));
+    expect((call?.[1] as RequestInit).headers).toMatchObject({ 'X-EBAY-API-CALL-NAME': 'ReviseFixedPriceItem' });
+    const body = String((call?.[1] as RequestInit).body);
+    expect(body).toContain('<StartPrice');
+    expect(body).not.toContain('<PictureDetails>');
+    expect(result.warning).toMatch(/existing pictures/i);
+  });
+
   it('snaps condition to a category-valid ConditionID on a content revise (25021 guard, parity with publish)', async () => {
     fetchMock.mockImplementation(async (url: unknown) => {
       if (String(url).includes('get_item_condition_policies')) {

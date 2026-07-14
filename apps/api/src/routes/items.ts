@@ -567,7 +567,7 @@ itemsRouter.patch('/:id', async (req, res, next) => {
             // ship-from ZIP; imported rows carry none in their specifics.
             healed = (await applyShipFromOrigin(userId, healed)) as Record<string, unknown>;
             const adapter = new EbayAdapter(userId);
-            await adapter.updateListing(syncId, {
+            const syncResult = await adapter.updateListing(syncId, {
               title: updated.title,
               description: updated.description,
               price: updated.price ?? undefined,
@@ -582,6 +582,7 @@ itemsRouter.patch('/:id', async (req, res, next) => {
               // eBay-Trading-specific merges — never applied to Reverb.
               marketplaceSpecific: mergeItemAspects(updated, mergeItemShipping(updated, healed)),
             });
+            if (syncResult.warning) syncWarnings.push(`ebay: ${syncResult.warning}`);
           } else {
             const adapter = new ReverbAdapter(userId);
             await adapter.updateListing(syncId, {

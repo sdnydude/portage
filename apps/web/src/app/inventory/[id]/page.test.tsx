@@ -418,6 +418,29 @@ describe("photo reorder + delete (F1+F2)", () => {
     }
   });
 
+  it("live drag updates the rendered order BEFORE the PATCH (optimistic preview)", () => {
+    vi.useFakeTimers();
+    try {
+      h.item.photos = threePhotos();
+      h.updateItem.mockClear();
+      render(<ItemDetailPage />);
+      const thumb1 = screen.getByRole("button", { name: /edit photo 1/i });
+      fireEvent.pointerDown(thumb1, { clientX: 10, clientY: 10 });
+      vi.advanceTimersByTime(500);
+      document.elementFromPoint = vi
+        .fn()
+        .mockReturnValue(screen.getByRole("button", { name: /edit photo 3/i }));
+      fireEvent.pointerMove(thumb1, { clientX: 200, clientY: 10 });
+      // No release yet — nothing persisted, but the visible order must have moved.
+      expect(h.updateItem).not.toHaveBeenCalled();
+      const firstImg = screen.getByRole("button", { name: /edit photo 1/i }).querySelector("img")!;
+      expect(firstImg.getAttribute("src")).toContain("b.jpg");
+    } finally {
+      vi.useRealTimers();
+      h.item.photos = [];
+    }
+  });
+
   it("deleting a photo in the manage sheet PATCHes the remaining photos with isPrimary renormalized", async () => {
     try {
       h.item.photos = threePhotos();
@@ -479,6 +502,22 @@ describe("photo reorder + delete (F1+F2)", () => {
     } finally {
       vi.useRealTimers();
       h.item.photos = [];
+    }
+  });
+
+  it("a failed save after accepting an enhance surfaces an error instead of vanishing", async () => {
+    try {
+      h.item.photos = [{ url: "https://r2.example/a.jpg", key: "ka", isPrimary: true }];
+      h.enhanceResult = { image: { key: "ka-enh", url: "https://r2.example/a-enh.jpg", width: 800, height: 600, size: 1000 } };
+      h.updateItem.mockRejectedValueOnce(new Error("PATCH failed"));
+      render(<ItemDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /edit photo 1/i }));
+      fireEvent.click(screen.getByRole("button", { name: /use this photo/i }));
+      expect((await screen.findAllByText(/PATCH failed/i)).length).toBeGreaterThan(0);
+    } finally {
+      h.item.photos = [];
+      h.enhanceResult = null;
+      h.updateItem.mockResolvedValue({});
     }
   });
 
