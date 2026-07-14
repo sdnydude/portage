@@ -36,6 +36,8 @@ const DEFAULT_LONG_PRESS_MS = 500;
 // Finger travel (px) allowed while the long-press timer is pending; beyond
 // this the gesture is a scroll, not a press, and the pending drag is dropped.
 const PRE_ACTIVATION_TOLERANCE_PX = 10;
+// Mouse drags activate on travel, not hold — anything past a click-wobble.
+const MOUSE_ACTIVATION_PX = 5;
 
 export function usePhotoDrag(options: UsePhotoDragOptions): UsePhotoDragResult {
   const { longPressMs = DEFAULT_LONG_PRESS_MS } = options;
@@ -52,6 +54,10 @@ export function usePhotoDrag(options: UsePhotoDragOptions): UsePhotoDragResult {
   const dragIndexRef = useRef<number | null>(null);
   // Press origin for the scroll-wins tolerance check (see onPointerMove).
   const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  // Pending press bookkeeping for the mouse fast path: which tile is pressed
+  // and with what pointer type (mouse activates on distance, touch on hold).
+  const pressIndexRef = useRef<number | null>(null);
+  const pressPointerTypeRef = useRef<string>("");
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -89,6 +95,8 @@ export function usePhotoDrag(options: UsePhotoDragOptions): UsePhotoDragResult {
         if (optionsRef.current.disabled?.(index)) return;
         clearTimer();
         pressOriginRef.current = { x: e.clientX, y: e.clientY };
+        pressIndexRef.current = index;
+        pressPointerTypeRef.current = e.pointerType;
         timerRef.current = setTimeout(() => {
           timerRef.current = null;
           dragIndexRef.current = index;
@@ -96,13 +104,26 @@ export function usePhotoDrag(options: UsePhotoDragOptions): UsePhotoDragResult {
         }, longPressMs);
       },
       onPointerMove: (e) => {
-        // While the timer is pending, meaningful travel = native scroll:
-        // drop the pending press and let the browser have the gesture.
+        // While the press is pending, movement means opposite things by
+        // pointer type: a mouse drags immediately (desktop press-and-drag,
+        // no hold-still habit); a finger that travels is a native scroll.
         if (timerRef.current !== null && pressOriginRef.current) {
           const dx = e.clientX - pressOriginRef.current.x;
           const dy = e.clientY - pressOriginRef.current.y;
-          if (Math.hypot(dx, dy) > PRE_ACTIVATION_TOLERANCE_PX) clearTimer();
-          return;
+          const dist = Math.hypot(dx, dy);
+          if (pressPointerTypeRef.current === "mouse") {
+            if (dist > MOUSE_ACTIVATION_PX && e.buttons & 1 && pressIndexRef.current !== null) {
+              clearTimer();
+              dragIndexRef.current = pressIndexRef.current;
+              setDragIndex(pressIndexRef.current);
+              // fall through: this same move may already hover a drop target
+            } else {
+              return;
+            }
+          } else {
+            if (dist > PRE_ACTIVATION_TOLERANCE_PX) clearTimer();
+            return;
+          }
         }
         const from = dragIndexRef.current;
         if (from === null) return;
