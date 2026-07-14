@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { api, apiUpload } from "@/lib/api";
 import { CameraCapture } from "./camera-capture";
@@ -15,6 +15,8 @@ import { useScanAspects } from "@/hooks/use-scan-aspects";
 import { resolvePublishPriceWithSource } from "@/lib/price";
 import { demandLabel } from "@/lib/demand";
 import { PhotoGalleryStrip } from "./photo-gallery-strip";
+import { usePhotoDrag } from "@/hooks/use-photo-drag";
+import { movePhoto } from "@/lib/photos";
 import { PhotoEditPanel } from "./photo-edit-panel";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
@@ -317,6 +319,30 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     },
     [photos.length, uploadPhoto],
   );
+
+  // Capture-stage strip drag (pre-AI-scan reorder). The ref swallows the
+  // trailing click after a completed drag so it doesn't re-select a thumb.
+  const captureDragRef = useRef(false);
+  const handleReorderPhotos = useCallback(
+    (from: number, to: number) => {
+      const selKey = photos[selectedPhotoIndex]?.key;
+      const next = movePhoto(photos, from, to);
+      setPhotos(next);
+      // Keep the big preview showing the same photo the user was on.
+      if (selKey) {
+        const ni = next.findIndex((p) => p.key === selKey);
+        if (ni !== -1) setSelectedPhotoIndex(ni);
+      }
+    },
+    [photos, selectedPhotoIndex],
+  );
+
+  const captureDrag = usePhotoDrag({
+    onMove: (from, to) => {
+      captureDragRef.current = true;
+      handleReorderPhotos(from, to);
+    },
+  });
 
   const handleRemovePhoto = useCallback(
     (index: number) => {
@@ -876,10 +902,18 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   {photos.map((photo, i) => (
                     <button
                       key={photo.key}
-                      onClick={() => setSelectedPhotoIndex(i)}
+                      onClick={() => {
+                        if (captureDragRef.current) {
+                          captureDragRef.current = false;
+                          return;
+                        }
+                        setSelectedPhotoIndex(i);
+                      }}
                       className={`relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-colors ${
                         i === selectedPhotoIndex ? "border-[var(--teal)]" : "border-transparent"
                       }`}
+                      style={captureDrag.dragIndex === i ? { opacity: 0.5, transform: "scale(0.95)" } : undefined}
+                      {...captureDrag.getItemProps(i)}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={photo.url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
@@ -888,6 +922,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                       <span
                         role="button"
                         tabIndex={0}
+                        data-photo-drag-ignore
                         onClick={(e) => { e.stopPropagation(); handleRemovePhoto(i); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
@@ -1009,6 +1044,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 }}
                 onAddPhotos={handleGallerySelect}
                 maxPhotos={MAX_PHOTOS}
+                onReorder={handleReorderPhotos}
+                onDelete={handleRemovePhoto}
               />
 
               {/* Candidate selector */}
