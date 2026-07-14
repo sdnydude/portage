@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+import { usePhotoDrag } from "@/hooks/use-photo-drag";
 import { ImagePicker } from "./image-picker";
 
 interface StripPhoto {
@@ -16,15 +18,36 @@ interface PhotoGalleryStripProps {
   /** Omit in hosts that have no photo-upload path — the add tile is hidden. */
   onAddPhotos?: (files: File[]) => void;
   maxPhotos: number;
+  /** Live reorder during a long-press drag. Omit in read-only hosts — thumbs
+   *  stay tap-to-edit only. */
+  onReorder?: (fromIndex: number, toIndex: number) => void;
+  /** Fires once when a drag that moved something ends — the persist point. */
+  onReorderEnd?: () => void;
 }
 
 /**
  * Compact gallery strip per the approved scan-review redesign comp (PHOTO
  * GALLERY SELECTOR): photo count label, COVER tag on the hero photo,
  * per-thumb edit affordance. Tapping a thumb opens the full-screen editor —
- * there is no always-on inline editor anymore.
+ * there is no always-on inline editor anymore. Hosts that pass onReorder get
+ * long-press drag reordering (touch-capable via use-photo-drag).
  */
-export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos }: PhotoGalleryStripProps) {
+export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos, onReorder, onReorderEnd }: PhotoGalleryStripProps) {
+  // Set when a gesture reordered something; swallows the browser's trailing
+  // click on the origin thumb so a completed drag doesn't pop the editor.
+  const didDragRef = useRef(false);
+
+  const { dragIndex, getItemProps } = usePhotoDrag({
+    onMove: (from, to) => {
+      didDragRef.current = true;
+      onReorder?.(from, to);
+    },
+    onDrop: () => onReorderEnd?.(),
+    disabled: (i) => photos[i]?.editable === false,
+  });
+
+  const dragEnabled = Boolean(onReorder);
+
   return (
     <div className="rounded-2xl bg-surface border border-border p-3.5">
       <div className="flex items-center justify-between mb-2.5">
@@ -39,10 +62,18 @@ export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos 
           const thumbClass = `relative flex-shrink-0 w-[78px] h-[78px] rounded-[15px] overflow-hidden border-2 ${
             i === 0 ? "border-[var(--teal)]" : "border-transparent"
           }`;
+          const dragStyle = dragIndex === i ? { opacity: 0.5, transform: "scale(0.95)" } : undefined;
           const contents = (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={photo.url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+              <img
+                src={photo.url}
+                alt={`Photo ${i + 1}`}
+                className="w-full h-full object-cover"
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+              />
               {i === 0 && (
                 <span className="absolute top-1 left-1 font-[family-name:var(--font-jetbrains)] text-[8px] font-bold tracking-wide px-1.5 py-0.5 rounded-[5px] bg-[var(--teal)] text-white">
                   COVER
@@ -60,14 +91,27 @@ export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos 
           return editable ? (
             <button
               key={photo.key ?? photo.url}
-              onClick={() => onEditPhoto(i)}
+              onClick={() => {
+                if (didDragRef.current) {
+                  didDragRef.current = false;
+                  return;
+                }
+                onEditPhoto(i);
+              }}
               aria-label={`Edit photo ${i + 1}`}
               className={`${thumbClass} transition-transform active:scale-95`}
+              style={dragStyle}
+              {...(dragEnabled ? getItemProps(i) : {})}
             >
               {contents}
             </button>
           ) : (
-            <div key={photo.key ?? photo.url} className={thumbClass}>
+            <div
+              key={photo.key ?? photo.url}
+              className={thumbClass}
+              style={dragStyle}
+              {...(dragEnabled ? getItemProps(i) : {})}
+            >
               {contents}
             </div>
           );
