@@ -39,6 +39,9 @@ interface UseCameraReturn {
   zoom: number;
   /** Upper zoom bound — hardware max when native, 3x when digital. */
   maxZoom: number;
+  /** Lower zoom bound — 0.5 on multi-lens iPhones (ultra-wide via the virtual
+   *  Dual Wide/Triple camera, Safari 17+); digital mode can't widen, so 1. */
+  minZoom: number;
   /** "native" = sensor zoom via applyConstraints; "digital" = CSS scale + crop. Null until the stream starts. */
   zoomMode: "native" | "digital" | null;
   setZoom: (zoom: number) => void;
@@ -66,6 +69,7 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoomState] = useState(1);
   const [maxZoom, setMaxZoom] = useState(DIGITAL_MAX_ZOOM);
+  const [minZoom, setMinZoom] = useState(1);
   const [zoomMode, setZoomMode] = useState<"native" | "digital" | null>(null);
   // Track with native zoom support — setZoom applies constraints to it.
   const trackRef = useRef<MediaStreamTrack | null>(null);
@@ -148,10 +152,14 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
         trackRef.current = track;
         setZoomMode("native");
         setMaxZoom(capabilities.zoom.max ?? DIGITAL_MAX_ZOOM);
+        // Web zoom values are display-referenced (1 = normal 1×); a min below
+        // 1 means the sensor stack can widen to the ultra-wide lens.
+        setMinZoom(capabilities.zoom.min ?? 1);
       } else {
         trackRef.current = null;
         setZoomMode("digital");
         setMaxZoom(DIGITAL_MAX_ZOOM);
+        setMinZoom(1);
       }
 
       if (videoRef.current) {
@@ -230,14 +238,14 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
   }, [stop, start]);
 
   const setZoom = useCallback((z: number) => {
-    const clamped = Math.min(Math.max(z, 1), maxZoom);
+    const clamped = Math.min(Math.max(z, minZoom), maxZoom);
     setZoomState(clamped);
     // Native zoom: hand the factor to the sensor. Fire-and-forget — a failed
     // constraint just leaves the previous zoom level.
     trackRef.current
       ?.applyConstraints({ advanced: [{ zoom: clamped } as MediaTrackConstraintSet] })
       .catch(() => {});
-  }, [maxZoom]);
+  }, [minZoom, maxZoom]);
 
-  return { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera, zoom, maxZoom, zoomMode, setZoom, devices, activeDeviceId, selectDevice };
+  return { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera, zoom, maxZoom, minZoom, zoomMode, setZoom, devices, activeDeviceId, selectDevice };
 }

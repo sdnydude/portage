@@ -201,6 +201,34 @@ describe("useCamera zoom", () => {
     expect(drawImage).toHaveBeenCalledWith(fakeVideo, 80, 0, 480, 480, 0, 0, 480, 480);
   });
 
+  it("exposes the hardware minZoom (0.5 on ultra-wide-capable iPhones); digital floor stays 1", async () => {
+    const applyConstraints = vi.fn().mockResolvedValue(undefined);
+    const fakeTrack = {
+      stop: vi.fn(),
+      getCapabilities: () => ({ zoom: { min: 0.5, max: 10 } }),
+      applyConstraints,
+    };
+    const fakeStream = { getTracks: () => [fakeTrack] } as unknown as MediaStream;
+    vi.stubGlobal("navigator", {
+      mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(fakeStream) },
+    });
+    const fakeVideo = {
+      videoWidth: 640, videoHeight: 480,
+      play: vi.fn().mockResolvedValue(undefined),
+      set srcObject(_v: unknown) {},
+    } as unknown as HTMLVideoElement;
+
+    const { result } = renderHook(() => useCamera());
+    result.current.videoRef.current = fakeVideo;
+    await act(async () => { await result.current.start(); });
+    expect(result.current.zoomMode).toBe("native");
+    expect(result.current.minZoom).toBe(0.5);
+    // setZoom below the floor clamps to it, not to 1.
+    await act(async () => { result.current.setZoom(0.25); });
+    expect(result.current.zoom).toBe(0.5);
+    expect(applyConstraints).toHaveBeenCalledWith({ advanced: [{ zoom: 0.5 }] });
+  });
+
   it("switchCamera resets zoom to 1", async () => {
     const fakeStream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream;
     vi.stubGlobal("navigator", {

@@ -9,7 +9,7 @@ interface CameraCaptureProps {
 }
 
 export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
-  const { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera, zoom, maxZoom, zoomMode, setZoom, devices, activeDeviceId, selectDevice } = useCamera();
+  const { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera, zoom, maxZoom, minZoom, zoomMode, setZoom, devices, activeDeviceId, selectDevice } = useCamera();
   const [isCapturing, setIsCapturing] = useState(false);
   const [showDevicePicker, setShowDevicePicker] = useState(false);
   const [shotCount, setShotCount] = useState(0);
@@ -175,21 +175,31 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
 
         {/* Zoom chips */}
         <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
-          {[1, 2, 3]
-            .filter((level) => level <= maxZoom)
+          {[0.5, 1, 2, 3]
+            .filter((level) => level >= minZoom && level <= maxZoom)
             .map((level) => (
               <button
                 key={level}
                 onClick={() => setZoom(level)}
                 aria-label={`Zoom ${level}×`}
                 className={`min-w-10 h-10 px-2 rounded-full backdrop-blur-sm text-sm font-semibold transition-colors ${
-                  Math.round(zoom) === level ? "bg-white text-black" : "bg-black/40 text-white"
+                  (level < 1 ? zoom < 1 : Math.round(zoom) === level) ? "bg-white text-black" : "bg-black/40 text-white"
                 }`}
               >
                 {level}×
               </button>
             ))}
         </div>
+
+        {/* Continuity Camera can't expose zoom to browsers (WebKit gates it
+            to iOS) — the only 0.5×/zoom control is the macOS menu-bar camera
+            panel, so point the user there instead of silently offering less. */}
+        {zoomMode === "digital" &&
+          devices.some((d) => d.deviceId === activeDeviceId && /iphone/i.test(d.label)) && (
+          <p className="absolute bottom-16 left-0 right-0 text-center text-[11px] text-white/70 px-6">
+            iPhone zoom &amp; 0.5× via the Mac camera menu (menu bar → green camera → Video, Center Stage off)
+          </p>
+        )}
 
         {error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6">
