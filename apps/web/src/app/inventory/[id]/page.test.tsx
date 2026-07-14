@@ -459,6 +459,29 @@ describe("photo reorder + delete (F1+F2)", () => {
     }
   });
 
+  it("surfaces marketplace syncWarnings from the PATCH response after a reorder", async () => {
+    vi.useFakeTimers();
+    try {
+      h.item.photos = threePhotos();
+      h.updateItem.mockClear();
+      h.updateItem.mockResolvedValueOnce({ syncWarnings: ["ebay: listing 307 was not updated — revise failed"] });
+      render(<ItemDetailPage />);
+      const thumb1 = screen.getByRole("button", { name: /edit photo 1/i });
+      fireEvent.pointerDown(thumb1, { clientX: 10, clientY: 10 });
+      vi.advanceTimersByTime(500);
+      document.elementFromPoint = vi
+        .fn()
+        .mockReturnValue(screen.getByRole("button", { name: /edit photo 3/i }));
+      fireEvent.pointerMove(thumb1, { clientX: 200, clientY: 10 });
+      fireEvent.pointerUp(thumb1);
+      vi.useRealTimers();
+      expect(await screen.findByText(/was not updated/i)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+      h.item.photos = [];
+    }
+  });
+
   it("locks reorder while a photo tool is processing (no manage affordance)", () => {
     try {
       h.item.photos = threePhotos();

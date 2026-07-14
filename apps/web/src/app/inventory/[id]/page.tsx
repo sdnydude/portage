@@ -103,7 +103,8 @@ function ItemDetailContent() {
       return;
     }
     try {
-      await updateItem({ photos: removePhotoAt(photosRef.current, index) });
+      const saved = (await updateItem({ photos: removePhotoAt(photosRef.current, index) })) as { syncWarnings?: string[] } | null;
+      if (saved?.syncWarnings?.length) setUploadError(saved.syncWarnings.join(" · "));
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Failed to delete photo");
     }
@@ -114,7 +115,8 @@ function ItemDetailContent() {
     if (!next) return;
     pendingPhotosRef.current = null;
     try {
-      await updateItem({ photos: next });
+      const saved = (await updateItem({ photos: next })) as { syncWarnings?: string[] } | null;
+      if (saved?.syncWarnings?.length) setUploadError(saved.syncWarnings.join(" · "));
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Failed to save photo order");
     } finally {
