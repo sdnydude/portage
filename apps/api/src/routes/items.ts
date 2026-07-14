@@ -13,6 +13,7 @@ import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { mergeItemShipping, mergeItemAspects, applyShipFromOrigin } from './listings.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
 import type { MarketplaceData } from '@portage/shared';
+import { MAX_PHOTOS_PER_ITEM } from '@portage/shared';
 import { isAllowedImageOrigin } from './images.js';
 
 const logger = createLogger('items');
@@ -27,7 +28,9 @@ export const itemListedExpr = sql<boolean>`exists (select 1 from ${listings} whe
 
 const photoSchema = z.object({
   url: z.string(),
-  key: z.string(),
+  // Optional: GetItem-imported photos (orphan-order backfill) carry only a
+  // url — requiring a key would 400 every reorder/delete echo on those items.
+  key: z.string().optional(),
   width: z.number().optional(),
   height: z.number().optional(),
   isPrimary: z.boolean().optional(),
@@ -89,7 +92,7 @@ const createItemSchema = z.object({
   heightIn: z.number().positive().optional(),
   ebayPackageType: z.string().max(50).optional(),
   weightEstimated: z.boolean().optional(),
-  photos: z.array(photoSchema).optional(),
+  photos: z.array(photoSchema).max(MAX_PHOTOS_PER_ITEM).optional(),
   marketplaceData: marketplaceDataSchema.optional(),
 });
 
@@ -509,7 +512,19 @@ itemsRouter.patch('/:id', async (req, res, next) => {
     // Portage is the source of truth. An item can have more than one syncable
     // row, so sync every one and skip the rest — never just an arbitrary first.
     // Entire block is best-effort: a failure fetching or syncing listings must
-    // not 500 the saved item edit.
+    // not 500 the saved item edit — but failures are surfaced to the client as
+    // syncWarnings so a reorder that never reached eBay isn't a silent success.
+    const syncWarnings: string[] = [];
+    // eBay hard limit: the total length of all PictureURL values in a listing
+    // must not exceed 3975 characters. Warn at save time so the seller hears
+    // about it before a publish/revise fails on it.
+    const patchedPhotos = updated.photos as Array<{ url: string }> | null;
+    if (body.photos && patchedPhotos) {
+      const totalUrlChars = patchedPhotos.reduce((n, ph) => n + ph.url.length, 0);
+      if (totalUrlChars > 3975) {
+        syncWarnings.push(`Combined photo URL length (${totalUrlChars}) exceeds eBay's 3975-character PictureURL budget — eBay publishes/revisions may fail until some photos are removed.`);
+      }
+    }
     try {
       const marketplaceListings = await db.select({
         marketplace: listings.marketplace,
@@ -587,13 +602,15 @@ itemsRouter.patch('/:id', async (req, res, next) => {
         } catch (err) {
           // One failed row must not block syncing the others.
           logger.warn({ itemId: updated.id, marketplace: listed.marketplace, syncId, error: (err as Error).message }, 'Failed to sync item edit to marketplace listing');
+          syncWarnings.push(`${listed.marketplace}: listing ${syncId} was not updated — ${(err as Error).message}`);
         }
       }
     } catch (err) {
       logger.warn({ itemId: updated.id, error: (err as Error).message }, 'Failed to load listings for item-edit sync');
+      syncWarnings.push('Could not check marketplace listings for this edit — they may be out of date.');
     }
 
-    res.json(updated);
+    res.json(syncWarnings.length > 0 ? { ...updated, syncWarnings } : updated);
   } catch (err) {
     next(err);
   }
