@@ -18,14 +18,19 @@ export const ordersTopic: TutorialTopic = {
       title: "Everything about the sale",
       body: "Open an order for the full picture: item, shipping address, and payout. Mark it shipped once the label is on the box.",
       screenshot: "/tutorials/orders/order-detail.png",
-      overlays: [{ type: "highlight", x: 6, y: 30, w: 88, h: 35 }],
+      // Same empty-state screenshot as orders-tab — ring matches its exact
+      // block bounds instead of oversizing into blank space below.
+      overlays: [{ type: "highlight", x: 6, y: 25, w: 88, h: 20 }],
     },
     {
       id: "ship-it",
       title: "Ship It",
       body: "The Ship It button takes you straight to the marketplace's label purchase page with the order pre-selected — cheapest rates, no re-typing addresses.",
       screenshot: "/tutorials/orders/ship-it.png",
-      overlays: [{ type: "tap", x: 50, y: 75 }],
+      // Same empty-state screenshot — no Ship It button is actually in
+      // frame, so a tap ripple over blank space would falsely imply a
+      // control exists. Callout in the dead space below the block instead.
+      overlays: [{ type: "callout", x: 50, y: 46, text: "Appears on real orders", delay: 300 }],
     },
   ],
 };

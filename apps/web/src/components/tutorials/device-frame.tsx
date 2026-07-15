@@ -75,8 +75,8 @@ export function DeviceFrame({ screenshot, overlays, animationKey, alt, compact }
       className={`relative mx-auto overflow-hidden rounded-[2rem] border-[6px] bg-black ${compact ? "w-28" : "w-full max-w-[280px]"}`}
       style={{ borderColor: "#1a1a1a", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}
     >
-      {/* Notch */}
-      <div className="absolute left-1/2 top-1.5 z-10 h-4 w-20 -translate-x-1/2 rounded-full bg-black" aria-hidden="true" />
+      {/* No fake notch — the captured screenshots carry their own headers
+          flush to the top, and a decorative notch occludes that text. */}
       {/* Screenshot area — 390×844 aspect via padding trick (iOS aspect-ratio collapse gotcha) */}
       <div className="relative w-full" style={{ paddingBottom: `${(844 / 390) * 100}%` }}>
         {showPlaceholder ? (

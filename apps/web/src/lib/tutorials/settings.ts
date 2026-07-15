@@ -10,21 +10,28 @@ export const settingsTopic: TutorialTopic = {
       title: "Everything lives under More",
       body: "Profile, Billing & Plan, Marketplace Accounts, Messages, Seller Profile, Notifications, and Help — all one tap from the More tab.",
       screenshot: "/tutorials/settings/more-tab.png",
-      overlays: [{ type: "highlight", x: 6, y: 30, w: 88, h: 45 }],
+      // Ring the full settings list (Profile → Help & Support) per pixel
+      // measurement of more-tab.png; stops short of the Log Out row, which
+      // sits close to the tab bar.
+      overlays: [{ type: "highlight", x: 5, y: 20, w: 90, h: 67 }],
     },
     {
       id: "marketplace-accounts",
       title: "Marketplace connections",
       body: "See connection status at a glance, reconnect if a token expires, or add a new marketplace as we launch them.",
       screenshot: "/tutorials/settings/marketplace-accounts.png",
-      overlays: [{ type: "highlight", x: 8, y: 25, w: 84, h: 25 }],
+      // Ring both eBay and Reverb rows (pixel-measured); old box started
+      // after eBay's row and overshot far below Reverb into blank space.
+      overlays: [{ type: "highlight", x: 5, y: 9, w: 90, h: 20 }],
     },
     {
       id: "help",
       title: "Help when you need it",
       body: "FAQs, support contact, and these tutorials — all under Help & Support. We typically respond within 24 hours.",
       screenshot: "/tutorials/settings/help.png",
-      overlays: [{ type: "callout", x: 50, y: 25, text: "Come back to tutorials anytime", delay: 300 }],
+      // help.png recaptured post-#231: the Tutorials card now leads the page
+      // (9–18%) — ring it instead of floating a callout over the FAQ list.
+      overlays: [{ type: "highlight", x: 4, y: 8, w: 92, h: 11 }],
     },
   ],
 };

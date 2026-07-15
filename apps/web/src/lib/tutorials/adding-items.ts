@@ -8,9 +8,9 @@ export const addingItemsTopic: TutorialTopic = {
     {
       id: "scan-home",
       title: "Scan anything",
-      body: "Tap the green Scan button in the middle of the tab bar. Point your camera at an item — Porter's AI identifies it, estimates value, and drafts the details for you.",
+      body: "Tap the orange Scan button in the middle of the tab bar. Point your camera at an item — Porter's AI identifies it, estimates value, and drafts the details for you.",
       screenshot: "/tutorials/adding-items/scan-home.png",
-      overlays: [{ type: "tap", x: 50, y: 93 }],
+      overlays: [{ type: "tap", x: 58, y: 93 }],
     },
     {
       id: "inventory-add",
@@ -24,7 +24,7 @@ export const addingItemsTopic: TutorialTopic = {
       title: "Review and refine",
       body: "Every item gets a detail page: photos, condition, value estimate, and AI-drafted description. Edit anything — your input always wins over the AI's suggestion.",
       screenshot: "/tutorials/adding-items/item-detail.png",
-      overlays: [{ type: "highlight", x: 6, y: 45, w: 88, h: 22 }],
+      overlays: [{ type: "highlight", x: 4, y: 8, w: 92, h: 40 }],
     },
   ],
 };

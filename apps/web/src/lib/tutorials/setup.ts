@@ -21,14 +21,14 @@ export const setupTopic: TutorialTopic = {
       title: "Set your seller defaults",
       body: "Your return policy, shipping preferences, and item location live in Seller Profile. Set them once — every new listing inherits them automatically.",
       screenshot: "/tutorials/setup/seller-profile.png",
-      overlays: [{ type: "highlight", x: 8, y: 20, w: 84, h: 30 }],
+      overlays: [{ type: "highlight", x: 4, y: 29, w: 92, h: 53 }],
     },
     {
       id: "billing",
       title: "Pick your plan",
       body: "Billing & Plan shows your tier, usage, and credits. Upgrade any time — AI scans, background removal, and enhancements are metered by plan.",
       screenshot: "/tutorials/setup/billing.png",
-      overlays: [{ type: "callout", x: 50, y: 30, text: "Your current plan and usage", delay: 300 }],
+      overlays: [{ type: "callout", x: 50, y: 44, text: "Plan & usage", delay: 300 }],
     },
   ],
 };
