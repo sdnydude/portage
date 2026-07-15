@@ -15,6 +15,12 @@ export function TopBar() {
   const { count: unreadCount } = useUnreadCount();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const closeMenu = (refocus = false) => {
+    setMenuOpen(false);
+    if (refocus) triggerRef.current?.focus();
+  };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -51,10 +57,31 @@ export function TopBar() {
 
         <ThemeToggle />
 
-        <div className="relative" ref={menuRef}>
+        <div
+          className="relative"
+          ref={menuRef}
+          onKeyDown={(e) => {
+            if (!menuOpen) return;
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              closeMenu(true);
+            } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              const items = Array.from(
+                menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+              );
+              if (items.length === 0) return;
+              const step = e.key === "ArrowDown" ? 1 : -1;
+              const current = items.indexOf(document.activeElement as HTMLElement);
+              items[(current + step + items.length) % items.length]?.focus();
+            }
+          }}
+        >
           <button
+            ref={triggerRef}
             onClick={() => setMenuOpen((o) => !o)}
             aria-label="Account menu"
+            aria-haspopup="menu"
             aria-expanded={menuOpen}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--teal)] font-bold text-white"
           >

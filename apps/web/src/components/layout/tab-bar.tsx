@@ -84,7 +84,7 @@ export function TabBar() {
       {/* Content fade gradient — tracks the bar's height: 48px compact bar +
           8px lift = 3.5rem; 64px full bar + 8px = 4.5rem */}
       <div
-        className="fixed left-0 right-0 z-40 h-8 pointer-events-none lg:hidden"
+        className={`fixed left-0 right-0 z-40 h-8 pointer-events-none lg:hidden ${transitionClass}`}
         style={{
           bottom: `calc(${compact ? "3.5rem" : "4.5rem"} + var(--safe-area-bottom))`,
           background: "linear-gradient(to bottom, transparent, var(--background))",

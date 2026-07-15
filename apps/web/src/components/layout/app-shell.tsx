@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { TabBar } from "./tab-bar";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
+import { UnreadCountProvider } from "@/hooks/use-unread-count";
 
 /**
  * Route-aware responsive shell. Breakpoint switching is CSS-only:
@@ -20,6 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (pathname.startsWith("/admin")) return <>{children}</>;
 
   return (
+    <UnreadCountProvider>
     <div className="min-h-dvh lg:flex">
       <div className="hidden lg:block">
         <Sidebar />
@@ -39,5 +41,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <TabBar />
       </div>
     </div>
+    </UnreadCountProvider>
   );
 }

@@ -52,7 +52,7 @@ export function AskPorterBar() {
               submit(value);
             }
           }}
-          className="min-w-0 flex-1 resize-none bg-transparent py-1.5 text-sm text-text-primary placeholder:text-text-placeholder focus:outline-none"
+          className="min-w-0 flex-1 resize-none rounded-lg bg-transparent py-1.5 text-sm text-text-primary placeholder:text-text-placeholder focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)]"
         />
         {expanded && (
           <button
