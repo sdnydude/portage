@@ -73,7 +73,10 @@ export function TopBar() {
               if (items.length === 0) return;
               const step = e.key === "ArrowDown" ? 1 : -1;
               const current = items.indexOf(document.activeElement as HTMLElement);
-              items[(current + step + items.length) % items.length]?.focus();
+              // From the trigger (not in the list): Down enters at the first
+              // item, Up enters at the last — standard menu keyboard pattern.
+              const next = current === -1 ? (step === 1 ? 0 : items.length - 1) : (current + step + items.length) % items.length;
+              items[next]?.focus();
             }
           }}
         >

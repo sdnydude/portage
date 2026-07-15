@@ -57,6 +57,14 @@ describe("TopBar", () => {
     expect(screen.getByRole("menuitem", { name: "Log out" })).toHaveFocus();
   });
 
+  it("ArrowUp on a freshly opened menu focuses the last item", async () => {
+    const user = (await import("@testing-library/user-event")).default.setup();
+    render(<TopBar />);
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    await user.keyboard("{ArrowUp}");
+    expect(screen.getByRole("menuitem", { name: "Log out" })).toHaveFocus();
+  });
+
   it("marks the account trigger as a menu popup", () => {
     render(<TopBar />);
     expect(screen.getByRole("button", { name: "Account menu" })).toHaveAttribute("aria-haspopup", "menu");

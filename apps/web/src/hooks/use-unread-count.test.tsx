@@ -3,7 +3,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { useUnreadCount } from "./use-unread-count";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/inventory" }));
-vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ token: "t1" }) }));
+const mockAuth = vi.hoisted(() => ({ token: "t1" as string | null }));
+vi.mock("@/hooks/use-auth", () => ({ useAuth: () => mockAuth }));
 vi.mock("@/lib/api", () => ({
   api: vi.fn(async () => ({ count: 4 })),
   ApiError: class ApiError extends Error {},
@@ -19,6 +20,18 @@ function Badge({ id }: { id: string }) {
 describe("useUnreadCount", () => {
   beforeEach(() => {
     vi.mocked(api).mockClear();
+    mockAuth.token = "t1";
+  });
+
+  it("does not stay loading forever when there is no token", async () => {
+    mockAuth.token = null;
+    function LoadingProbe() {
+      const { isLoading } = useUnreadCount();
+      return <span data-testid="loading">{String(isLoading)}</span>;
+    }
+    render(<LoadingProbe />);
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("false"));
+    expect(api).not.toHaveBeenCalled();
   });
 
   it("fetches the unread count without a provider (standalone fallback)", async () => {

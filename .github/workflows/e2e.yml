@@ -61,6 +61,9 @@ jobs:
         env:
           E2E_BASE_URL: http://10.0.0.251:3998
           E2E_API_URL: http://10.0.0.251:8998
+          # Ephemeral stack runs a dev-bypass API behind the app, so the
+          # env-bound orders-sync login-trigger spec can pass here (and only here).
+          E2E_ORDERS_SYNC: "1"
         run: npm run test:e2e -w apps/web
 
       - name: Upload proof screenshots

@@ -41,7 +41,12 @@ function useUnreadCountSource(enabled: boolean): UnreadCountValue {
   const [prevPathname, setPrevPathname] = useState(pathname);
 
   const load = useCallback(async () => {
-    if (!enabled || !token) return;
+    // Skipped fetches must still resolve loading, or tokenless/disabled
+    // consumers would report isLoading=true forever.
+    if (!enabled || !token) {
+      setIsLoading(false);
+      return;
+    }
     try {
       const data = await api<{ count: number }>("/messages/unread-count", { token });
       setCount(data.count);
