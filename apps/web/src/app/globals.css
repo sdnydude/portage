@@ -409,11 +409,12 @@ select {
 
 /* Clears the floating compact tab bar (48px bar + 8px lift + safe area)
    on non-tab routes below lg; desktop has no bar. */
-.compact-bar-clearance {
-  padding-bottom: calc(4rem + var(--safe-area-bottom));
-}
-@media (min-width: 1024px) {
-  .compact-bar-clearance { padding-bottom: 0; }
+/* Mobile-only: unlayered rules beat Tailwind's layered py-*, so a lg reset
+   to 0 would also erase each page's own desktop padding — scope instead. */
+@media (max-width: 1023.98px) {
+  .compact-bar-clearance {
+    padding-bottom: calc(4rem + var(--safe-area-bottom));
+  }
 }
 
 /* Scrollbar hiding for horizontal scroll areas */
