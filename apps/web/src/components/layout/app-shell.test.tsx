@@ -9,6 +9,14 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/layout/tab-bar", () => ({
   TabBar: () => <nav data-testid="tab-bar" />,
 }));
+// AppShell tests cover shell structure only — desktop chrome children are
+// mocked so their hooks (auth, messages, router) never mount here.
+vi.mock("@/components/layout/sidebar", () => ({
+  Sidebar: () => <div data-testid="sidebar" />,
+}));
+vi.mock("@/components/layout/top-bar", () => ({
+  TopBar: () => <div data-testid="top-bar" />,
+}));
 
 describe("AppShell", () => {
   it("passes the admin tree through with no shell chrome", () => {
