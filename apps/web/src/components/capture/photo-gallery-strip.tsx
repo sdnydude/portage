@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { usePhotoDrag } from "@/hooks/use-photo-drag";
-import { ImagePicker } from "./image-picker";
+import { CaptureSheet } from "./capture-sheet";
 import { PhotoManageSheet } from "./photo-manage-sheet";
 
 interface StripPhoto {
@@ -41,6 +41,7 @@ export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos,
   // click on the origin thumb so a completed drag doesn't pop the editor.
   const didDragRef = useRef(false);
   const [manageOpen, setManageOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   const { dragIndex, getItemProps } = usePhotoDrag({
     onMove: (from, to) => {
@@ -71,6 +72,16 @@ export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos,
         )}
         <span className="text-[11px] font-semibold text-[var(--orange)]">Tap to edit</span>
       </div>
+
+      {/* Camera + gallery chooser — beta report 6337abaf: the bare file
+          picker offered no camera on desktop, and none at all outside the
+          scan flow. CaptureSheet is the same chooser the scan entry uses. */}
+      {addOpen && onAddPhotos && (
+        <CaptureSheet
+          onFiles={onAddPhotos}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
 
       {manageOpen && (
         <PhotoManageSheet
@@ -143,16 +154,15 @@ export function PhotoGalleryStrip({ photos, onEditPhoto, onAddPhotos, maxPhotos,
         })}
 
         {onAddPhotos && photos.length < maxPhotos && (
-          <ImagePicker onSelect={onAddPhotos} multiple>
-            <div
-              aria-label="Add photos"
-              className="flex-shrink-0 w-[78px] h-[78px] rounded-[15px] border-2 border-dashed border-border bg-muted grid place-items-center text-text-secondary cursor-pointer hover:text-[var(--teal)] hover:border-[var(--teal)] transition-colors"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </div>
-          </ImagePicker>
+          <button
+            aria-label="Add photos"
+            onClick={() => setAddOpen(true)}
+            className="flex-shrink-0 w-[78px] h-[78px] rounded-[15px] border-2 border-dashed border-border bg-muted grid place-items-center text-text-secondary cursor-pointer hover:text-[var(--teal)] hover:border-[var(--teal)] transition-colors"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
         )}
       </div>
     </div>
