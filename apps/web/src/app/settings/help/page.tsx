@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -41,6 +42,16 @@ export default function HelpPage() {
       </header>
 
       <div className="px-4 py-6 content-container space-y-6 compact-bar-clearance">
+        {/* Tutorials */}
+        <Link
+          href="/tutorials"
+          className="block rounded-2xl border border-border bg-surface p-4 transition-colors hover:bg-muted"
+          style={{ boxShadow: "var(--shadow-subtle)" }}
+        >
+          <h2 className="text-sm font-semibold text-text-primary mb-1">Tutorials</h2>
+          <p className="text-xs text-text-secondary">Step-by-step walkthroughs of every part of Portage.</p>
+        </Link>
+
         {/* Contact */}
         <div className="rounded-2xl border border-border bg-surface p-4" style={{ boxShadow: "var(--shadow-subtle)" }}>
           <h2 className="text-sm font-semibold text-text-primary mb-2">Contact Support</h2>

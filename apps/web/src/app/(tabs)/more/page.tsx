@@ -143,6 +143,18 @@ export default function MorePage() {
           />
 
           <SettingsLink
+            href="/tutorials"
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" />
+                <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" />
+              </svg>
+            }
+            title="Tutorials"
+            description="Learn Portage step by step"
+          />
+
+          <SettingsLink
             href="/settings/help"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
