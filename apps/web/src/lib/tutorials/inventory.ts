@@ -10,7 +10,7 @@ export const inventoryTopic: TutorialTopic = {
       title: "Your personal catalog",
       body: "Everything you've scanned lives in Inventory — with photos, values, and listing status. Grid or list view, your choice.",
       screenshot: "/tutorials/inventory/browse.png",
-      overlays: [{ type: "highlight", x: 6, y: 22, w: 88, h: 40 }],
+      overlays: [{ type: "highlight", x: 6, y: 24, w: 88, h: 38 }],
     },
     {
       id: "search",
@@ -25,7 +25,7 @@ export const inventoryTopic: TutorialTopic = {
       title: "Bulk actions",
       body: "Select multiple items to archive, activate, delete, or export as an eBay-ready CSV in one move.",
       screenshot: "/tutorials/inventory/bulk.png",
-      overlays: [{ type: "callout", x: 50, y: 80, text: "Select items → bulk bar appears", delay: 300 }],
+      overlays: [{ type: "callout", x: 50, y: 65, text: "Select → bulk bar", delay: 300 }],
     },
   ],
 };

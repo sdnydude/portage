@@ -23,15 +23,19 @@ export function TutorialPlayer({ topic }: TutorialPlayerProps) {
   }, []);
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-6 compact-bar-clearance">
-      <DeviceFrame
-        screenshot={step.screenshot}
-        overlays={step.overlays}
-        animationKey={step.id}
-        alt={step.title}
-      />
+    <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-4 compact-bar-clearance">
+      {/* Sized so a full step (frame + text + dots + nav) fits a 390×844
+          viewport without scrolling — the frame is capped, not w-full. */}
+      <div className="w-full max-w-[210px]">
+        <DeviceFrame
+          screenshot={step.screenshot}
+          overlays={step.overlays}
+          animationKey={step.id}
+          alt={step.title}
+        />
+      </div>
 
-      <div className="mt-6 w-full text-center">
+      <div className="mt-4 w-full text-center">
         <h2
           className="font-[family-name:var(--font-instrument)] font-bold text-text-primary"
           style={{ fontSize: "var(--text-title)" }}
@@ -47,7 +51,7 @@ export function TutorialPlayer({ topic }: TutorialPlayerProps) {
       </div>
 
       {/* Dot indicators — same pattern as onboarding-flow.tsx */}
-      <div className="mt-5 flex items-center justify-center gap-2">
+      <div className="mt-4 flex items-center justify-center gap-2">
         {topic.steps.map((s, i) => (
           <div
             key={s.id}
@@ -62,7 +66,7 @@ export function TutorialPlayer({ topic }: TutorialPlayerProps) {
         ))}
       </div>
 
-      <div className="mt-5 flex w-full items-center gap-3">
+      <div className="mt-4 flex w-full items-center gap-3">
         {!isFirst && (
           <button
             onClick={goPrev}
