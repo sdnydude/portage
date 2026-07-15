@@ -2,6 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { usePorter } from "@/hooks/use-porter-context";
+import { usePorterAutosend } from "@/hooks/use-porter-autosend";
 import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
 
@@ -16,6 +17,8 @@ import { ActionPills } from "@/components/porter/action-pills";
 export default function PorterPage() {
   const porter = usePorter();
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  usePorterAutosend(porter.sendMessage);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
