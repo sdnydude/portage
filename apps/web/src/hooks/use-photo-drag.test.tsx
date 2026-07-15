@@ -159,6 +159,31 @@ describe("usePhotoDrag", () => {
     expect(onMove).not.toHaveBeenCalled();
   });
 
+  it("mouse: press-and-drag activates immediately on movement — no long-press hold required", () => {
+    const onMove = vi.fn();
+    render(<Probe onMove={onMove} />);
+    const tile0 = screen.getByTestId("tile-0");
+    fireEvent.pointerDown(tile0, { pointerType: "mouse", buttons: 1, clientX: 10, clientY: 10 });
+    document.elementFromPoint = vi.fn().mockReturnValue(screen.getByTestId("tile-2"));
+    // 20px travel well before the 500ms timer — touch would cancel; mouse must drag.
+    fireEvent.pointerMove(tile0, { pointerType: "mouse", buttons: 1, clientX: 30, clientY: 10 });
+    fireEvent.pointerMove(tile0, { pointerType: "mouse", buttons: 1, clientX: 200, clientY: 10 });
+    expect(onMove).toHaveBeenCalledWith(0, 2);
+    expect(screen.getByTestId("state")).toHaveTextContent("dragging:2");
+  });
+
+  it("mouse: plain click (no meaningful movement) is still a tap", () => {
+    const onTap = vi.fn();
+    const onMove = vi.fn();
+    render(<Probe onTap={onTap} onMove={onMove} />);
+    const tile1 = screen.getByTestId("tile-1");
+    fireEvent.pointerDown(tile1, { pointerType: "mouse", buttons: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(tile1, { pointerType: "mouse", buttons: 1, clientX: 12, clientY: 11 });
+    fireEvent.pointerUp(tile1, { pointerType: "mouse" });
+    expect(onTap).toHaveBeenCalledWith(1);
+    expect(onMove).not.toHaveBeenCalled();
+  });
+
   it("suppresses the long-press context menu on tiles (iOS image callout steals the drag)", () => {
     render(<Probe />);
     const tile = screen.getByTestId("tile-0");
