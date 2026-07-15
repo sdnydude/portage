@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Desktop sidebar + top bar with Ask Porter, breakpoint-based iPad behavior, floating glass mobile tab bar, persistent Home chip, and a shared content-width system — the shell every later phase (workbench, dock, ingest, QR) plugs into.
+**Goal:** Desktop sidebar + top bar with Ask Porter, breakpoint-based iPad behavior, a floating glass mobile tab bar with a compact/minimize-on-scroll state, and a shared content-width system — the shell every later phase (workbench, dock, ingest, QR) plugs into.
 
-**Architecture:** A route-aware client `AppShell` in the root layout renders Sidebar + TopBar + a pane-capable content region at `lg+` and a floating `HomeChip` on non-tab pages below `lg`; the admin tree passes through untouched. `TabBar` becomes a floating inset glass bar hidden at `lg+`. One `AskPorterBar` component mounts in the desktop TopBar and under PageHeader on inventory/listings/orders; submits navigate to `/porter?q=…` which auto-sends once. No API changes.
+**Architecture:** A route-aware client `AppShell` in the root layout renders Sidebar + TopBar + a pane-capable content region at `lg+`, plus the (single, unified) `TabBar` on all non-admin routes below `lg` — `TabBar` renders its full 5-tab state on tab pages and its compact icon-only state everywhere else (HIG "never fully absent"; no separate Home-chip component). `TabBar` is a floating inset glass bar hidden at `lg+`, and minimizes to the compact state on scroll-down on tab pages (restores on scroll-up/tap). One `AskPorterBar` component mounts in the desktop TopBar and under PageHeader on inventory/listings/orders; submits navigate to `/porter?q=…` which auto-sends once. No API changes.
 
 **Tech Stack:** Next.js 16 App Router, React 19, Tailwind v4 (`globals.css` tokens/keyframes), Vitest + Testing Library (jsdom), Playwright e2e.
 
@@ -27,18 +27,18 @@
 
 | File | Responsibility |
 |---|---|
-| `apps/web/src/lib/navigation.ts` | Create — `TAB_ROUTES`, `isTabRoute()`, `PAGE_TITLES`/`pageTitle()`, `PORTER_PILLS`/`porterPills()` |
+| `apps/web/src/lib/navigation.ts` | Create — `BAR_TABS`, `SIDEBAR_SECONDARY`, `isTabRoute()`, `PAGE_TITLES`/`pageTitle()`, `PORTER_PILLS`/`porterPills()` |
 | `apps/web/src/lib/navigation.test.ts` | Create |
-| `apps/web/src/components/layout/home-chip.tsx` + test | Create — floating glass Home chip |
 | `apps/web/src/components/layout/sidebar.tsx` + test | Create — desktop nav rail |
 | `apps/web/src/components/layout/top-bar.tsx` + test | Create — desktop header |
 | `apps/web/src/components/porter/ask-porter-bar.tsx` + test | Create — focus-expanding Porter input + pills |
-| `apps/web/src/components/layout/app-shell.tsx` + test | Create — route-aware shell (Fable builds) |
+| `apps/web/src/components/layout/app-shell.tsx` + test | Create (T3) — route-aware shell (Fable builds); Modify again (T8) — TabBar mount goes unconditional (unified ownership, all non-admin routes) |
 | `apps/web/src/app/layout.tsx` | Modify — mount AppShell inside AuthProvider |
-| `apps/web/src/components/layout/tab-bar.tsx` + test | Modify — floating inset glass bar, `lg:hidden` |
-| `apps/web/src/app/(tabs)/layout.tsx` | Modify — bottom padding for floating bar |
+| `apps/web/src/components/layout/tab-bar.tsx` + test | Modify (T8) — floating inset glass bar, 5 tabs (More removed), compact + minimize-on-scroll state, `lg:hidden` |
+| `apps/web/src/app/(tabs)/layout.tsx` | Modify (T8) — remove TabBar import/mount (ownership moves to AppShell), keep PorterProvider + bottom padding for the floating bar |
 | `apps/web/src/app/(tabs)/porter/page.tsx` (+ test file if absent) | Modify — `?q=` auto-send-once |
-| `apps/web/src/app/(tabs)/inventory/page.tsx`, `(tabs)/listings/page.tsx`, `(tabs)/orders/page.tsx` | Modify — mount AskPorterBar under PageHeader (`lg:hidden`) |
+| `apps/web/src/app/(tabs)/inventory/page.tsx`, `(tabs)/listings/page.tsx`, `(tabs)/orders/page.tsx` | Modify — mount AskPorterBar under PageHeader (`lg:hidden`) + `showAvatar` on PageHeader |
+| `apps/web/src/app/(tabs)/home/page.tsx`, `(tabs)/porter/page.tsx` | Modify (T9) — verify/add 44px `/more` link in their own custom headers (neither uses PageHeader) |
 | `apps/web/src/app/globals.css` | Modify — `.content-container` responsive width utility |
 | core pages (home, inventory, listings, orders, more, messages, settings/*, inventory/[id]) | Modify — swap `max-w-lg` for `.content-container`; fluid grids `md+` |
 
@@ -51,8 +51,9 @@
 - Test: `apps/web/src/lib/navigation.test.ts`
 
 **Interfaces (later tasks rely on these exact names):**
-- `TAB_ROUTES: readonly string[]` — `["/home", "/inventory", "/listings", "/porter", "/orders", "/more"]`
-- `isTabRoute(pathname: string): boolean` — true for exact tab route or `/` root; `/inventory/abc` is NOT a tab route (detail page), `/home` IS
+- `BAR_TABS: readonly string[]` — `["/home", "/inventory", "/listings", "/porter", "/orders"]` — the 5 mobile-bar tabs (HIG ≤5; More is NOT in the bar)
+- `SIDEBAR_SECONDARY: readonly {href, label}[]` — `[{href:"/messages",label:"Messages"},{href:"/more",label:"Settings"}]` (Tutorials joins post-onboarding-hub; Admin appended at render time by role)
+- `isTabRoute(pathname: string): boolean` — true for exact bar-tab route or `/` root; `/more`, `/inventory/abc`, `/settings/*` are NOT (they get the compact bar)
 - `pageTitle(pathname: string): string` — longest-prefix match over a route→title map; fallback `"Portage"`
 - `porterPills(pathname: string): string[]` — pills for inventory/listings/orders prefixes; default set otherwise
 
@@ -65,10 +66,10 @@ import { describe, it, expect } from "vitest";
 import { isTabRoute } from "./navigation";
 
 describe("navigation", () => {
-  it("isTabRoute: true for exact tab routes and root, false for detail/settings routes", () => {
-    for (const r of ["/home", "/inventory", "/listings", "/porter", "/orders", "/more", "/"])
+  it("isTabRoute: true for the 5 bar tabs and root, false for More/detail/settings routes", () => {
+    for (const r of ["/home", "/inventory", "/listings", "/porter", "/orders", "/"])
       expect(isTabRoute(r), r).toBe(true);
-    for (const r of ["/inventory/abc-123", "/settings/help", "/messages", "/list", "/orders/xyz", "/tutorials"])
+    for (const r of ["/more", "/inventory/abc-123", "/settings/help", "/messages", "/list", "/orders/xyz", "/tutorials"])
       expect(isTabRoute(r), r).toBe(false);
   });
 });
@@ -80,20 +81,27 @@ describe("navigation", () => {
 
 ```typescript
 // Shared nav/route constants for the responsive shell (AppShell, Sidebar,
-// TabBar, HomeChip, TopBar, AskPorterBar). Plain data — no React.
+// TabBar, TopBar, AskPorterBar). Plain data — no React.
 
-export const TAB_ROUTES = [
+// HIG alignment (docs/research/2026-07-15-apple-hig-ios26-shell-alignment.md):
+// the mobile bar holds 5 tabs max; More/settings is reached via the PageHeader
+// avatar on mobile and the sidebar secondary section on lg+.
+export const BAR_TABS = [
   "/home",
   "/inventory",
   "/listings",
   "/porter",
   "/orders",
-  "/more",
+] as const;
+
+export const SIDEBAR_SECONDARY = [
+  { href: "/messages", label: "Messages" },
+  { href: "/more", label: "Settings" },
 ] as const;
 
 export function isTabRoute(pathname: string): boolean {
   if (pathname === "/") return true;
-  return (TAB_ROUTES as readonly string[]).includes(pathname);
+  return (BAR_TABS as readonly string[]).includes(pathname);
 }
 
 const PAGE_TITLES: Array<[prefix: string, title: string]> = [
@@ -176,68 +184,101 @@ git commit -m "feat(web): shared navigation constants for responsive shell"
 
 ---
 
-### Task 2: HomeChip
+### Task 2: PageHeader avatar (mobile More access)
 
 **Files:**
-- Create: `apps/web/src/components/layout/home-chip.tsx`
-- Test: `apps/web/src/components/layout/home-chip.test.tsx`
+- Modify: `apps/web/src/components/layout/page-header.tsx`
+- Test: `apps/web/src/components/layout/page-header.test.tsx` (create)
 
 **Interfaces:**
-- `HomeChip()` — no props. Fixed bottom-left glass chip linking to `/home`. Visibility (route + breakpoint) is the CALLER's job (AppShell) — the chip itself always renders.
+- `PageHeader` gains optional `showAvatar?: boolean` (default false). When true and `useAuth().user` exists: a 44×44px link top-right (`aria-label="Settings"`, href `/more`) showing the user's email initial in a teal circle. Renders beside any explicit `action` (flex row, gap-2) — the avatar is never suppressed by a page action.
+- Tab pages (home, inventory, listings, porter, orders) pass `showAvatar` in Task 9's page edits (bundled there to touch each page once).
 
 - [ ] **Step 1: ONE failing test**
 
 ```typescript
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { HomeChip } from "./home-chip";
+import { PageHeader } from "./page-header";
 
-describe("HomeChip", () => {
-  it("renders a Home link to /home", () => {
-    render(<HomeChip />);
-    const link = screen.getByRole("link", { name: "Home" });
-    expect(link).toHaveAttribute("href", "/home");
+vi.mock("@/hooks/use-auth", () => ({
+  useAuth: () => ({ user: { email: "stephen@x.com" } }),
+}));
+
+describe("PageHeader avatar", () => {
+  it("shows a Settings avatar link to /more when showAvatar is set", () => {
+    render(<PageHeader title="Inventory" showAvatar />);
+    const link = screen.getByRole("link", { name: "Settings" });
+    expect(link).toHaveAttribute("href", "/more");
+    expect(link).toHaveTextContent("S");
   });
 });
 ```
 
-- [ ] **Step 2: Run — red**
-- [ ] **Step 3: Implement**
+- [ ] **Step 2: Run — red** (prop doesn't exist)
+- [ ] **Step 3: Implement** — `page-header.tsx` becomes a client component:
 
 ```tsx
 "use client";
 
 import Link from "next/link";
+import { useAuth } from "@/hooks/use-auth";
+import { useUnreadCount } from "@/hooks/use-messages";
 
-/**
- * Persistent Home escape hatch on pages without the tab bar (<lg).
- * Sits at the same x/y the Home tab occupies in the floating tab bar.
- * Same glass idiom as the floating bar (photo-edit-panel toolbar).
- */
-export function HomeChip() {
+interface PageHeaderProps {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+  showAvatar?: boolean;
+}
+
+export function PageHeader({ title, subtitle, action, showAvatar }: PageHeaderProps) {
+  const { user } = useAuth();
+  const { count: unreadCount } = useUnreadCount();
+  const avatar =
+    showAvatar && user ? (
+      <Link
+        href="/more"
+        aria-label={unreadCount > 0 ? `Settings, ${unreadCount} unread messages` : "Settings"}
+        className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[var(--teal)] font-bold text-white"
+      >
+        {user.email.charAt(0).toUpperCase()}
+        {unreadCount > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-[var(--background)] bg-[var(--orange)]" />
+        )}
+      </Link>
+    ) : null;
+
   return (
-    <Link
-      href="/home"
-      aria-label="Home"
-      className="fixed left-4 z-50 flex h-12 w-12 items-center justify-center rounded-full glass-nav border shadow-lg active:scale-95 transition-transform"
-      style={{
-        bottom: "calc(0.75rem + var(--safe-area-bottom))",
-        borderColor: "var(--glass-thin-border)",
-      }}
-    >
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" />
-        <path d="M9 21V12h6v9" />
-      </svg>
-    </Link>
+    <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
+      <div className="flex items-center justify-between max-w-lg mx-auto">
+        <div>
+          <h1 className="text-xl font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="text-sm text-text-secondary mt-0.5">{subtitle}</p>
+          )}
+        </div>
+        {/* action and avatar coexist — avatar must never be suppressed by a
+            page action (it replaces the More tab; Orders' Sync etc. render beside it) */}
+        <div className="flex items-center gap-2">
+          {action}
+          {avatar}
+        </div>
+      </div>
+    </header>
   );
 }
 ```
 
-- [ ] **Step 4: Run — green, commit**
+(Check first whether `page-header.tsx` already has `"use client"` consumers that would break — it's imported by client pages only. `useAuth` requires AuthProvider, present app-wide. Existing `action` users are unaffected: `action` wins.)
+
+- [ ] **Step 4: Run — green; run full web suite** (PageHeader is widely used)
+- [ ] **Step 5: Commit**
 ```bash
-git add apps/web/src/components/layout/home-chip.tsx apps/web/src/components/layout/home-chip.test.tsx
-git commit -m "feat(web): HomeChip - floating glass home link"
+git add apps/web/src/components/layout/page-header.tsx apps/web/src/components/layout/page-header.test.tsx
+git commit -m "feat(web): PageHeader avatar - mobile Settings access"
 ```
 
 ---
@@ -253,9 +294,9 @@ git commit -m "feat(web): HomeChip - floating glass home link"
 - `AppShell({ children }: { children: React.ReactNode })`
 - Renders, by route (via `usePathname`) —
   - `/admin*`: children only (passthrough, no chrome).
-  - otherwise: a wrapper containing (a) desktop chrome visible only at `lg+`: `<Sidebar />` + `<TopBar />` + `<main data-testid="shell-main">` + `<aside data-testid="dock-slot">` (empty reserve, `hidden` until R3), and (b) `<HomeChip />` rendered only when `!isTabRoute(pathname)`, wrapped in a `lg:hidden` container.
+  - otherwise: a wrapper containing (a) desktop chrome visible only at `lg+`: `<Sidebar />` + `<TopBar />` + `<main data-testid="shell-main">` + `<aside data-testid="dock-slot">` (empty reserve, `hidden` until R3), and (b) `<TabBar />` rendered when `!isTabRoute(pathname)`, wrapped in a `lg:hidden` container — non-tab pages get the bar (TabBar itself renders compact there, Task 8). Tab pages keep their `(tabs)/layout.tsx` mount until Task 8 unifies ownership here (renders on ALL non-admin routes) and removes the layout mount in the same commit — no double-render window either way.
 - Breakpoint switching is CSS-only (`hidden lg:flex`, `lg:hidden`) — both mobile children and desktop chrome are in the DOM; media queries decide visibility. No matchMedia JS, no hydration flicker.
-- Sidebar/TopBar don't exist until Tasks 4–5: AppShell imports them from day one, so this task creates minimal placeholder exports (see Step 3) that Tasks 4–5 replace. Placeholders render `null` — NOT stub UI.
+- Sidebar/TopBar don't exist until Tasks 4–5: AppShell imports them from day one, so this task creates minimal placeholder exports (see Step 3) that Tasks 4–5 replace. Placeholders render `null` — NOT stub UI. TabBar exists already — AppShell tests mock it.
 
 - [ ] **Step 1: ONE failing test — admin passthrough**
 
@@ -268,6 +309,9 @@ const mockPathname = vi.fn(() => "/admin/users");
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
 }));
+vi.mock("@/components/layout/tab-bar", () => ({
+  TabBar: () => <nav data-testid="tab-bar" />,
+}));
 
 describe("AppShell", () => {
   it("passes the admin tree through with no shell chrome", () => {
@@ -275,7 +319,7 @@ describe("AppShell", () => {
     render(<AppShell><div data-testid="page" /></AppShell>);
     expect(screen.getByTestId("page")).toBeInTheDocument();
     expect(screen.queryByTestId("shell-main")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("tab-bar")).not.toBeInTheDocument();
   });
 });
 ```
@@ -309,7 +353,7 @@ Create `app-shell.tsx`:
 
 import { usePathname } from "next/navigation";
 import { isTabRoute } from "@/lib/navigation";
-import { HomeChip } from "./home-chip";
+import { TabBar } from "./tab-bar";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 
@@ -319,6 +363,9 @@ import { TopBar } from "./top-bar";
  * visibility, so SSR/hydration never flickers. Admin keeps its own layout.
  * The dock-slot aside is the reserved Phase R3 Porter-dock mount point;
  * shell-main is the pane-capable Phase R1 region.
+ * TabBar mounting: non-tab routes here (compact bar — HIG "never fully
+ * absent"); tab routes keep the (tabs)/layout mount until Task 8 unifies
+ * ownership in AppShell for all non-admin routes.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
@@ -343,7 +390,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       {!isTabRoute(pathname) && (
         <div className="lg:hidden">
-          <HomeChip />
+          <TabBar />
         </div>
       )}
     </div>
@@ -354,22 +401,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 - [ ] **Step 4: Run — green**
 - [ ] **Step 5: Remaining tests ONE AT A TIME (red→green each):**
 
-Test 2 — chip on non-tab route:
+Test 2 — bar on non-tab route:
 ```typescript
-  it("renders the Home chip on non-tab routes", () => {
+  it("renders the tab bar on non-tab routes (compact-state mounting)", () => {
     mockPathname.mockReturnValue("/settings/help");
     render(<AppShell><div /></AppShell>);
-    expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByTestId("tab-bar")).toBeInTheDocument();
   });
 ```
-Test 3 — no chip on tab route:
+Test 3 — no AppShell bar on tab routes (owned by (tabs)/layout until Task 8):
 ```typescript
-  it("hides the Home chip on tab routes", () => {
+  it("does not mount the tab bar on tab routes (layout owns it until unification)", () => {
     mockPathname.mockReturnValue("/inventory");
     render(<AppShell><div /></AppShell>);
-    expect(screen.queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("tab-bar")).not.toBeInTheDocument();
   });
 ```
+(Task 8 updates this test when ownership unifies: bar renders on ALL non-admin routes.)
 Test 4 — shell structure present:
 ```typescript
   it("renders shell-main and the reserved dock slot on app routes", () => {
@@ -397,7 +445,7 @@ Run: `npm run typecheck && npm run lint && npm run test -w apps/web`
 
 ```bash
 git add apps/web/src/components/layout/app-shell.tsx apps/web/src/components/layout/app-shell.test.tsx apps/web/src/components/layout/sidebar.tsx apps/web/src/components/layout/top-bar.tsx apps/web/src/app/layout.tsx
-git commit -m "feat(web): AppShell - route-aware responsive shell + home chip"
+git commit -m "feat(web): AppShell - route-aware responsive shell"
 ```
 
 ---
@@ -409,9 +457,9 @@ git commit -m "feat(web): AppShell - route-aware responsive shell + home chip"
 - Test: `apps/web/src/components/layout/sidebar.test.tsx`
 
 **Interfaces:**
-- `Sidebar()` — no props. `localStorage` key `portage_sidebar_collapsed` (`"1"`/absent). Nav set/order identical to TabBar. Opens `ScanFlow` itself (same pattern as TabBar). Uses `useUnreadCount` for the More badge — test must mock `@/hooks/use-messages`.
+- `Sidebar()` — no props. `localStorage` key `portage_sidebar_collapsed` (`"1"`/absent). **Sections (HIG: sidebar holds MORE than the bar):** main = `BAR_TABS` (5), divider, secondary = `SIDEBAR_SECONDARY` (Messages with unread badge, Settings → `/more`) + Admin item when `useAuth().user?.role === "admin"`. Opens `ScanFlow` itself (same pattern as TabBar). Tests mock `@/hooks/use-messages`, `@/hooks/use-auth`, scan-flow.
 
-- [ ] **Step 1: ONE failing test — renders nav + scan**
+- [ ] **Step 1: ONE failing test — renders sectioned nav + scan**
 
 ```typescript
 import { describe, it, expect, vi } from "vitest";
@@ -419,14 +467,16 @@ import { render, screen } from "@testing-library/react";
 import { Sidebar } from "./sidebar";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/inventory" }));
-vi.mock("@/hooks/use-messages", () => ({ useUnreadCount: () => ({ count: 0 }) }));
+vi.mock("@/hooks/use-messages", () => ({ useUnreadCount: vi.fn(() => ({ count: 0 })) }));
+vi.mock("@/hooks/use-auth", () => ({ useAuth: vi.fn(() => ({ user: { email: "s@x.com", role: "user" } })) }));
 vi.mock("@/components/capture/scan-flow", () => ({ ScanFlow: () => null }));
 
 describe("Sidebar", () => {
-  it("renders all six nav links and the Scan button", () => {
+  it("renders 5 main tabs, Messages + Settings secondary items, and Scan", () => {
     render(<Sidebar />);
-    for (const name of ["Home", "Inventory", "Listings", "Porter", "Orders", "More"])
+    for (const name of ["Home", "Inventory", "Listings", "Porter", "Orders", "Messages", "Settings"])
       expect(screen.getByRole("link", { name: new RegExp(name) })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Admin/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /scan/i })).toBeInTheDocument();
   });
 });
@@ -443,7 +493,8 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ScanFlow } from "@/components/capture/scan-flow";
 import { useUnreadCount } from "@/hooks/use-messages";
-import { TAB_ROUTES } from "@/lib/navigation";
+import { useAuth } from "@/hooks/use-auth";
+import { BAR_TABS, SIDEBAR_SECONDARY } from "@/lib/navigation";
 
 const LABELS: Record<string, string> = {
   "/home": "Home",
@@ -451,7 +502,6 @@ const LABELS: Record<string, string> = {
   "/listings": "Listings",
   "/porter": "Porter",
   "/orders": "Orders",
-  "/more": "More",
 };
 
 const COLLAPSE_KEY = "portage_sidebar_collapsed";
@@ -497,7 +547,19 @@ function NavIcon({ route, active }: { route: string; active: boolean }) {
           <circle cx="18.5" cy="18.5" r="2.5" />
         </svg>
       );
-    default: // "/more"
+    case "/messages":
+      return (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+        </svg>
+      );
+    case "/admin":
+      return (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" />
+        </svg>
+      );
+    case "/more":
       return (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="1" />
@@ -505,6 +567,8 @@ function NavIcon({ route, active }: { route: string; active: boolean }) {
           <circle cx="5" cy="12" r="1" />
         </svg>
       );
+    default:
+      return null;
   }
 }
 
@@ -513,6 +577,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [showScan, setShowScan] = useState(false);
   const { count: unreadCount } = useUnreadCount();
+  const { user } = useAuth();
 
   useEffect(() => {
     try {
@@ -564,13 +629,12 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* Nav */}
-      <div className="flex flex-1 flex-col gap-1 px-3 py-2">
-        {TAB_ROUTES.map((route) => {
+      {/* Main nav — BAR_TABS, the same 5 destinations as the mobile bar */}
+      <div className="flex flex-col gap-1 px-3 py-2">
+        {BAR_TABS.map((route) => {
           const label = LABELS[route];
           const isActive = pathname.startsWith(route);
           const isPorter = route === "/porter";
-          const isMore = route === "/more";
           return (
             <Link
               key={route}
@@ -584,9 +648,36 @@ export function Sidebar() {
                     : "text-text-secondary hover:bg-muted hover:text-text-primary"
               } ${collapsed ? "justify-center px-0" : ""}`}
             >
+              <NavIcon route={route} active={isActive} />
+              {!collapsed && <span>{label}</span>}
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Divider — HIG: sidebar holds MORE than the bar (secondary destinations below) */}
+      <div className="mx-4 my-2 border-t border-border" />
+
+      {/* Secondary nav — SIDEBAR_SECONDARY (Messages w/ unread badge, Settings -> /more)
+          + Admin, appended at render time for admin role only */}
+      <div className="flex flex-1 flex-col gap-1 px-3 pb-2">
+        {SIDEBAR_SECONDARY.map(({ href, label }) => {
+          const isActive = pathname.startsWith(href);
+          const showBadge = href === "/messages" && unreadCount > 0;
+          return (
+            <Link
+              key={href}
+              href={href}
+              title={collapsed ? label : undefined}
+              className={`relative flex h-11 items-center gap-3 rounded-xl px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${
+                isActive
+                  ? "bg-muted font-semibold text-text-primary"
+                  : "text-text-secondary hover:bg-muted hover:text-text-primary"
+              } ${collapsed ? "justify-center px-0" : ""}`}
+            >
               <span className="relative">
-                <NavIcon route={route} active={isActive} />
-                {isMore && unreadCount > 0 && (
+                <NavIcon route={href} active={isActive} />
+                {showBadge && (
                   <span className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface)] bg-[var(--orange)]" />
                 )}
               </span>
@@ -594,6 +685,20 @@ export function Sidebar() {
             </Link>
           );
         })}
+        {user?.role === "admin" && (
+          <Link
+            href="/admin"
+            title={collapsed ? "Admin" : undefined}
+            className={`relative flex h-11 items-center gap-3 rounded-xl px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${
+              pathname.startsWith("/admin")
+                ? "bg-muted font-semibold text-text-primary"
+                : "text-text-secondary hover:bg-muted hover:text-text-primary"
+            } ${collapsed ? "justify-center px-0" : ""}`}
+          >
+            <NavIcon route="/admin" active={pathname.startsWith("/admin")} />
+            {!collapsed && <span>Admin</span>}
+          </Link>
+        )}
       </div>
 
       {/* Collapse toggle */}
@@ -632,16 +737,16 @@ Test 2 — collapse persists:
     expect(localStorage.getItem("portage_sidebar_collapsed")).toBe("1");
   });
 ```
-Test 3 — unread badge:
+Test 3 — unread badge (moved to Messages, not More — More no longer exists on the bar or the sidebar):
 ```typescript
-  it("shows the unread dot on More when count > 0", () => {
+  it("shows the unread dot on Messages when count > 0", () => {
     vi.mocked(useUnreadCount).mockReturnValue({ count: 3 } as ReturnType<typeof useUnreadCount>);
     render(<Sidebar />);
-    const more = screen.getByRole("link", { name: /More/ });
-    expect(more.querySelector("span.bg-\\[var\\(--orange\\)\\]")).not.toBeNull();
+    const messages = screen.getByRole("link", { name: /Messages/ });
+    expect(messages.querySelector("span.bg-\\[var\\(--orange\\)\\]")).not.toBeNull();
   });
 ```
-(For test 3 change the mock to `vi.mock("@/hooks/use-messages", () => ({ useUnreadCount: vi.fn(() => ({ count: 0 })) }));` and add `import { useUnreadCount } from "@/hooks/use-messages";`.)
+(For test 3 change the mock to `vi.mock("@/hooks/use-messages", () => ({ useUnreadCount: vi.fn(() => ({ count: 0 })) }));` and add `import { useUnreadCount } from "@/hooks/use-messages";` — same mock-based approach as before, just retargeted at the Messages link.)
 
 - [ ] **Step 6: Commit**
 ```bash
@@ -1072,65 +1177,135 @@ git commit -m "feat(web): /porter?q= auto-send once via usePorterAutosend"
 
 ---
 
-### Task 8: Floating glass TabBar
+### Task 8: Floating glass TabBar — 5 tabs, compact state, minimize-on-scroll, unified ownership
 
 **Files:**
-- Modify: `apps/web/src/components/layout/tab-bar.tsx`
-- Modify: `apps/web/src/app/(tabs)/layout.tsx`
+- Modify: `apps/web/src/components/layout/tab-bar.tsx` (full rewrite of the tab set/state, not a restyle-only patch)
+- Modify: `apps/web/src/components/layout/app-shell.tsx` (unconditional TabBar mount)
+- Modify: `apps/web/src/components/layout/app-shell.test.tsx` (Task 3's test 3 gets rewritten, not removed)
+- Modify: `apps/web/src/app/(tabs)/layout.tsx` (remove the TabBar mount)
 - Test: `apps/web/src/components/layout/tab-bar.test.tsx` (create if absent)
 
-**Interfaces:** visual restyle only — tab set, ScanFlow wiring, warning toast, unread dot all UNCHANGED.
+**Interfaces (HIG alignment package, spec sections E/F):**
+- Tab set drops from 6 to 5 — `More` is removed entirely (route/link gone; `useUnreadCount` import gone from TabBar — the badge lives on the Sidebar's Messages item (T4) and the PageHeader avatar (T2/T9) now).
+- TWO states, same component: **full** (default on tab pages — labels visible, 64px row, Scan FAB breaks the top edge with `-mt-7`) and **compact** (icon-only, no labels, 48px row, small inline Scan FAB, no breakout). Compact renders in two situations:
+  1. Permanently on non-tab routes (`!isTabRoute(pathname)`) — the bar is never fully absent, per HIG.
+  2. On tab routes, after a scroll-down past a small threshold (~24px) — minimize-on-scroll; scroll-up (or crossing back toward `scrollY <= 0`) restores full state. Only tab routes carry a scroll listener.
+- `prefers-reduced-motion`: the full↔compact transition becomes a fade (`transition-opacity`), never `transition-all` (translate/scale) — checked via `matchMedia("(prefers-reduced-motion: reduce)")`, live-updated via its `change` listener.
+- Unified ownership: **AppShell renders `<TabBar />` unconditionally inside its `lg:hidden` wrapper on every non-admin route** (full state on tab pages, compact everywhere else — TabBar decides its own state internally via `isTabRoute`). `(tabs)/layout.tsx` no longer imports or mounts `TabBar` — removed in this same commit, so there is no double-render window in either direction.
+- UNCHANGED: ScanFlow wiring (`handleScanOpen`/`handleScanClose`), the `scanWarning` toast, active-tab dots, Porter's teal accent, the 5 tab icons, `ScanIcon`. `MoreIcon` is deleted (dead code once the More tab is gone).
 
-- [ ] **Step 1: ONE failing test — floating classes**
+- [ ] **Step 1: ONE failing test — 5 tabs exactly, More absent**
 
 ```typescript
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { TabBar } from "./tab-bar";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/home" }));
-vi.mock("@/hooks/use-messages", () => ({ useUnreadCount: () => ({ count: 0 }) }));
+const mockPathname = vi.fn(() => "/home");
+vi.mock("next/navigation", () => ({ usePathname: () => mockPathname() }));
 vi.mock("@/components/capture/scan-flow", () => ({ ScanFlow: () => null }));
 
+beforeEach(() => {
+  mockPathname.mockReturnValue("/home");
+});
+
 describe("TabBar", () => {
-  it("floats inset with rounded glass styling and hides at lg", () => {
+  it("renders exactly 5 tabs — More is not in the bar", () => {
     render(<TabBar />);
-    const nav = screen.getByRole("navigation");
-    expect(nav.className).toContain("rounded-[22px]");
-    expect(nav.className).toContain("lg:hidden");
-    expect(nav.className).not.toContain("bottom-0 left-0 right-0");
+    for (const name of ["Home", "Inventory", "Listings", "Porter", "Orders"])
+      expect(screen.getByRole("link", { name: new RegExp(name) })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /More/ })).not.toBeInTheDocument();
   });
 });
 ```
 
-- [ ] **Step 2: Run — red**
-- [ ] **Step 3: Restyle the `<nav>`** (only the outer chrome changes)
+Note: `useUnreadCount` is no longer mocked here — TabBar drops the import entirely (badge moved to Sidebar/PageHeader avatar). If tdd-guard's validator complains about the removed mock on a re-run, that's expected — the old mock has nothing left to intercept.
 
-Replace the current nav element:
-
-```tsx
-      <nav
-        className="fixed bottom-0 left-0 right-0 z-50 border-t glass-nav glass-fallback"
-        style={{ paddingBottom: "var(--safe-area-bottom)" }}
-      >
-```
-
-with:
+- [ ] **Step 2: Run — red** (current file has 6 tabs incl. More)
+- [ ] **Step 3: Full implementation** — replace the entire file body (icon functions `HomeIcon`/`InventoryIcon`/`ListingsIcon`/`PorterIcon`/`OrdersIcon`/`ScanIcon` stay byte-identical below this; delete `MoreIcon`):
 
 ```tsx
-      <nav
-        className="fixed left-3 right-3 z-50 mx-auto max-w-lg rounded-[22px] border glass-nav glass-fallback lg:hidden"
-        style={{
-          bottom: "calc(0.5rem + var(--safe-area-bottom))",
-          borderColor: "var(--glass-thin-border)",
-          boxShadow: "var(--shadow-elevated)",
-        }}
-      >
-```
+"use client";
 
-And the fade gradient wrapper (`bottom-16` → clears the floated bar) becomes:
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState, useCallback, useEffect } from "react";
+import { ScanFlow } from "@/components/capture/scan-flow";
+import { isTabRoute } from "@/lib/navigation";
 
-```tsx
+const tabs = [
+  { name: "Home", href: "/home", icon: HomeIcon, position: "left" as const },
+  { name: "Inventory", href: "/inventory", icon: InventoryIcon, position: "left" as const },
+  { name: "Listings", href: "/listings", icon: ListingsIcon, position: "left" as const },
+  { name: "Porter", href: "/porter", icon: PorterIcon, position: "right" as const },
+  { name: "Orders", href: "/orders", icon: OrdersIcon, position: "right" as const },
+] as const;
+
+// Scroll delta (px) before the bar reacts — avoids jitter on small bounces.
+const SCROLL_MINIMIZE_THRESHOLD = 24;
+
+export function TabBar() {
+  const pathname = usePathname() ?? "/";
+  const onTabRoute = isTabRoute(pathname);
+  const [showScan, setShowScan] = useState(false);
+  const [scanWarning, setScanWarning] = useState<string | null>(null);
+  const [minimized, setMinimized] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  const handleScanOpen = useCallback(() => {
+    setShowScan(true);
+  }, []);
+
+  const handleScanClose = useCallback((result?: { warning?: string }) => {
+    setShowScan(false);
+    // Publish-failure / draft-fallback reason (e.g. eBay rejected the publish).
+    // Persists until the seller dismisses it — the old 8s auto-hide was missed on
+    // mobile after the modal closed, so a failed publish read as a silent success.
+    if (result?.warning) setScanWarning(result.warning);
+  }, []);
+
+  // prefers-reduced-motion: full<->compact becomes a fade, never translate/scale.
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(mq.matches);
+    const onChange = () => setReducedMotion(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // Minimize-on-scroll applies only on tab routes — non-tab routes are always
+  // compact regardless of scroll (see `compact` below), so no listener there.
+  useEffect(() => {
+    if (!onTabRoute) return;
+    setMinimized(false); // (re-)entering a tab route always starts full
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const delta = y - lastY;
+      if (delta > SCROLL_MINIMIZE_THRESHOLD) {
+        setMinimized(true);
+        lastY = y;
+      } else if (delta < -SCROLL_MINIMIZE_THRESHOLD || y <= 0) {
+        setMinimized(false);
+        lastY = y;
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [onTabRoute]);
+
+  // Compact (icon-only, no labels) is permanent off tab routes (HIG "never
+  // fully absent") and transient on tab routes once scrolled past threshold.
+  const compact = !onTabRoute || minimized;
+  const transitionClass = reducedMotion ? "transition-opacity duration-150" : "transition-all duration-200";
+
+  const leftTabs = tabs.filter((t) => t.position === "left");
+  const rightTabs = tabs.filter((t) => t.position === "right");
+
+  return (
+    <>
+      {/* Content fade gradient */}
       <div
         className="fixed left-0 right-0 z-40 h-8 pointer-events-none lg:hidden"
         style={{
@@ -1138,28 +1313,287 @@ And the fade gradient wrapper (`bottom-16` → clears the floated bar) becomes:
           background: "linear-gradient(to bottom, transparent, var(--background))",
         }}
       />
+
+      {/* Tab bar — floating inset glass pill */}
+      <nav
+        className={`fixed left-3 right-3 z-50 mx-auto max-w-lg rounded-[22px] border glass-nav glass-fallback lg:hidden ${transitionClass}`}
+        style={{
+          bottom: "calc(0.5rem + var(--safe-area-bottom))",
+          borderColor: "var(--glass-thin-border)",
+          boxShadow: "var(--shadow-elevated)",
+        }}
+      >
+        <div className={`flex items-center justify-around ${compact ? "h-12" : "h-16"} max-w-lg mx-auto px-1 relative`}>
+          {/* Left tabs */}
+          {leftTabs.map((tab) => {
+            const isActive = pathname.startsWith(tab.href);
+            return (
+              <Link
+                key={tab.name}
+                href={tab.href}
+                aria-label={compact ? tab.name : undefined}
+                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${
+                  isActive ? "text-[var(--text-primary)]" : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {isActive && <span aria-hidden className="absolute top-0.5 h-1 w-1 rounded-full bg-current" />}
+                <tab.icon active={isActive} />
+                {!compact && (
+                  <span className={`text-[10px] leading-tight ${isActive ? "font-semibold" : "font-normal"}`}>
+                    {tab.name}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+
+          {/* Center SCAN button — full state breaks the top edge (-mt-7);
+              compact state is a small inline FAB, no breakout */}
+          <div className="flex flex-col items-center justify-center flex-1">
+            <button
+              onClick={handleScanOpen}
+              className={
+                compact
+                  ? "relative w-10 h-10 rounded-full bg-[var(--orange)] flex items-center justify-center active:scale-95 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--orange-dark)] focus-visible:ring-offset-[var(--background)]"
+                  : "relative -mt-7 w-14 h-14 rounded-full bg-[var(--orange)] flex items-center justify-center active:scale-95 transition-transform animate-spring-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--orange-dark)] focus-visible:ring-offset-[var(--background)]"
+              }
+              style={{ boxShadow: "var(--shadow-elevated), 0 0 0 3px var(--background)" }}
+              aria-label="Scan item"
+            >
+              <ScanIcon />
+            </button>
+            {!compact && (
+              <span className="text-[10px] leading-tight font-semibold text-[var(--orange-dark)] mt-0.5">Scan</span>
+            )}
+          </div>
+
+          {/* Right tabs (Porter tinted teal as the AI accent) */}
+          {rightTabs.map((tab) => {
+            const isActive = pathname.startsWith(tab.href);
+            const isPorter = tab.name === "Porter";
+            const colorClass = isPorter
+              ? "text-[var(--teal)]"
+              : isActive
+                ? "text-[var(--text-primary)]"
+                : "text-text-secondary hover:text-text-primary";
+            return (
+              <Link
+                key={tab.name}
+                href={tab.href}
+                aria-label={compact ? tab.name : undefined}
+                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--teal)] ${colorClass}`}
+              >
+                {isActive && <span aria-hidden className="absolute top-0.5 h-1 w-1 rounded-full bg-current" />}
+                <tab.icon active={isActive} />
+                {!compact && (
+                  <span className={`text-[10px] leading-tight ${isActive || isPorter ? "font-semibold" : "font-normal"}`}>
+                    {tab.name}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Scan flow modal */}
+      {showScan && <ScanFlow onClose={handleScanClose} />}
+
+      {/* Save & List publish-failure / draft-fallback (marketplace's actual reason).
+          Persists until dismissed — a failed publish must never read as a silent success. */}
+      {scanWarning && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-24 left-4 right-4 z-50 mx-auto max-w-md px-4 py-3 rounded-xl text-sm font-medium shadow-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/90 dark:border-amber-800 dark:text-amber-200 animate-in fade-in slide-in-from-bottom-2 duration-200 flex items-start gap-3"
+        >
+          <span className="flex-1">{scanWarning}</span>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setScanWarning(null)}
+            className="shrink-0 -mr-1 -mt-0.5 p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900/50"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
 ```
 
-Everything inside the nav (tabs row, Scan FAB, More dot) stays byte-identical.
+- [ ] **Step 4: Run — green**
+- [ ] **Step 5: Remaining tests ONE AT A TIME (red→green each — each already passes once written since Step 3's implementation covers all four behaviors; this mirrors the same already-implemented-then-tested rhythm used in Tasks 1/4/5/6):**
 
-- [ ] **Step 4: `(tabs)/layout.tsx` padding** — floating bar footprint is bar height (64px) + lift (8px) + inset: change `pb-20` to `pb-24`.
+Test 2 — floating classes:
+```typescript
+  it("floats inset with rounded glass styling and hides at lg", () => {
+    render(<TabBar />);
+    const nav = screen.getByRole("navigation");
+    expect(nav.className).toContain("rounded-[22px]");
+    expect(nav.className).toContain("lg:hidden");
+    expect(nav.className).not.toContain("bottom-0 left-0 right-0");
+  });
+```
 
-- [ ] **Step 5: Run — green; run FULL web suite** (`npm run test -w apps/web`) — pre-existing TabBar-dependent tests must stay green.
+Test 3 — compact on non-tab route:
+```typescript
+  it("renders compact (icon-only, no visible labels) on non-tab routes", () => {
+    mockPathname.mockReturnValue("/settings/help");
+    render(<TabBar />);
+    expect(screen.queryByText("Home")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument();
+  });
+```
 
-- [ ] **Step 6: Commit**
+Test 4 — minimize-on-scroll (tab pages only):
+```typescript
+  it("minimizes on scroll-down past threshold on tab pages, restores on scroll-up", () => {
+    render(<TabBar />); // mockPathname is "/home" via beforeEach — a tab route
+    expect(screen.getByText("Home")).toBeInTheDocument();
+    Object.defineProperty(window, "scrollY", { value: 40, configurable: true });
+    fireEvent.scroll(window);
+    expect(screen.queryByText("Home")).not.toBeInTheDocument();
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+    fireEvent.scroll(window);
+    expect(screen.getByText("Home")).toBeInTheDocument();
+  });
+```
+
+Test 5 — reduced-motion class path:
+```typescript
+  it("uses a fade transition (not translate/scale) under prefers-reduced-motion", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    render(<TabBar />);
+    const nav = screen.getByRole("navigation");
+    expect(nav.className).toContain("transition-opacity");
+    expect(nav.className).not.toContain("transition-all");
+    vi.unstubAllGlobals();
+  });
+```
+
+- [ ] **Step 6: `(tabs)/layout.tsx` — remove the TabBar mount** (ownership unifies in AppShell; keep `PorterProvider` and bump padding for the floating bar's footprint)
+
+Replace:
+```tsx
+import { TabBar } from "@/components/layout/tab-bar";
+import { PorterProvider } from "@/hooks/use-porter-context";
+
+export default function TabsLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <PorterProvider>
+      <div className="flex flex-col min-h-dvh">
+        <main className="flex-1 pb-20">
+          {children}
+        </main>
+        {/* TabBar includes scan flow modal — no separate scan route needed */}
+        <TabBar />
+      </div>
+    </PorterProvider>
+  );
+}
+```
+with:
+```tsx
+import { PorterProvider } from "@/hooks/use-porter-context";
+
+export default function TabsLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <PorterProvider>
+      <div className="flex flex-col min-h-dvh">
+        <main className="flex-1 pb-24">
+          {children}
+        </main>
+        {/* TabBar now mounts once in AppShell for ALL non-admin routes
+            (unified ownership, Task 8) — no longer owned by this layout. */}
+      </div>
+    </PorterProvider>
+  );
+}
+```
+(`pb-24` replaces `pb-20` — floating bar footprint is bar height (64px full / 48px compact) + 8px lift + inset.)
+
+- [ ] **Step 7: `app-shell.tsx` — make the TabBar mount unconditional** (unified ownership: AppShell owns TabBar on every non-admin route; TabBar itself decides full vs. compact internally via `isTabRoute`)
+
+Replace:
+```tsx
+      {!isTabRoute(pathname) && (
+        <div className="lg:hidden">
+          <TabBar />
+        </div>
+      )}
+```
+with:
+```tsx
+      <div className="lg:hidden">
+        <TabBar />
+      </div>
+```
+Remove the now-unused `import { isTabRoute } from "@/lib/navigation";` from `app-shell.tsx` (AppShell no longer branches on it; TabBar does).
+
+- [ ] **Step 8: Update `app-shell.test.tsx` test 3** (from Task 3 — it asserted absence; unification means presence)
+
+Replace:
+```typescript
+  it("does not mount the tab bar on tab routes (layout owns it until unification)", () => {
+    mockPathname.mockReturnValue("/inventory");
+    render(<AppShell><div /></AppShell>);
+    expect(screen.queryByTestId("tab-bar")).not.toBeInTheDocument();
+  });
+```
+with:
+```typescript
+  it("mounts the tab bar on tab routes too (unified ownership — AppShell owns TabBar on every non-admin route)", () => {
+    mockPathname.mockReturnValue("/inventory");
+    render(<AppShell><div /></AppShell>);
+    expect(screen.getByTestId("tab-bar")).toBeInTheDocument();
+  });
+```
+
+- [ ] **Step 9: Run — green; run the FULL web suite** (`npm run test -w apps/web`) — TabBar's and AppShell's suites both green; grep the tab-bar test file to confirm no leftover `More`/`useUnreadCount` references (`grep -n "More\|useUnreadCount" apps/web/src/components/layout/tab-bar.test.tsx` → no hits).
+
+- [ ] **Step 10: Commit**
 ```bash
-git add apps/web/src/components/layout/tab-bar.tsx apps/web/src/components/layout/tab-bar.test.tsx "apps/web/src/app/(tabs)/layout.tsx"
-git commit -m "feat(web): floating inset glass tab bar, hidden at lg"
+git add apps/web/src/components/layout/tab-bar.tsx apps/web/src/components/layout/tab-bar.test.tsx apps/web/src/components/layout/app-shell.tsx apps/web/src/components/layout/app-shell.test.tsx "apps/web/src/app/(tabs)/layout.tsx"
+git commit -m "feat(web): floating glass tab bar - 5 tabs, compact state, minimize-on-scroll, unified ownership"
 ```
 
 ---
 
-### Task 9: AskPorterBar rows on inventory/listings/orders (mobile)
+### Task 9: AskPorterBar rows + mobile avatar wiring (inventory/listings/orders, home, porter)
 
 **Files:**
-- Modify: `apps/web/src/app/(tabs)/inventory/page.tsx`, `apps/web/src/app/(tabs)/listings/page.tsx`, `apps/web/src/app/(tabs)/orders/page.tsx`
+- Modify: `apps/web/src/app/(tabs)/inventory/page.tsx`, `apps/web/src/app/(tabs)/listings/page.tsx`, `apps/web/src/app/(tabs)/orders/page.tsx` — AskPorterBar row + `showAvatar` on `PageHeader`
+- Modify: `apps/web/src/app/(tabs)/porter/page.tsx` — add a 44px `/more` link (no PageHeader on this page; it has no mobile More access today)
+- Verify only (no code change expected): `apps/web/src/app/(tabs)/home/page.tsx` — already has an equivalent link (see below)
 
-Each page: directly under its `<PageHeader …/>`, insert:
+**Investigation (read before editing):** Inventory/Listings/Orders each render `<PageHeader/>` from TWO call sites — an unauthenticated-state one with no `action`, and the authenticated-state one, which almost always passes an `action` (Inventory: `ExportButton` + select-toggle once `items.length > 0`; Listings: select-toggle once `listings.length > 0`; Orders: the Sync button, unconditionally). Task 2's `PageHeader` contract is `action ? <div>{action}</div> : avatar` — **action wins**. That means:
+
+> **⚠️ Flagged inconsistency, not resolved here — surface before executing this task:** adding `showAvatar` to the *authenticated* `PageHeader` call on these three pages will be silently inert wherever an `action` is already present — which on Orders is *always* (Sync never goes away), and on Inventory/Listings is the common case (any items/listings). The avatar would only ever render on the empty/unauthenticated header, defeating the point of it being the mobile More-access replacement for the removed bar tab. Two ways to resolve, neither picked here:
+> (a) accept avatar-only-on-empty-state as an R0 gap (Home's gear-icon link, still present per below, remains the fallback More path), or
+> (b) amend `PageHeader` (Task 2 — not yet built in real code, so this is still cheap to change) so `action` and `showAvatar` render side by side instead of action-wins.
+> Recommend (b) — it's a small change (wrap both in a flex row instead of the ternary) and doesn't touch Task 2's existing test (which never passes both props together). Escalate to the orchestrator/Stephen before writing this task's PageHeader edits rather than silently picking.
+
+**Home already has equivalent mobile More access** — `(tabs)/home/page.tsx`'s own header row (it does not use `PageHeader`) already renders a 44×44px `<Link href="/more" aria-label="Settings">` gear-icon button next to `ThemeToggle`. It satisfies the same contract (href, aria-label, touch target) the spec's avatar describes, just with a gear glyph instead of a user-initial circle. No code change required here — verify it still exists and still works at Task 11's DoD walk; do not touch it as part of this task's surgical scope.
+
+**Porter has NO More access today** — `(tabs)/porter/page.tsx`'s own header (Porter identity + "New chat" button) has no `/more` link at all. Add one, copying Home's existing link exactly (same `href="/more"`, `aria-label="Settings"`, 44px target), styled to fit Porter's header (reuse the same gear icon; swap only the hover/background classes to match Porter's palette if they clash — do not redesign it).
+
+Each of Inventory/Listings/Orders: directly under its (authenticated) `<PageHeader …/>`, insert:
 
 ```tsx
       <div className="lg:hidden px-4 pt-3 max-w-lg mx-auto w-full">
@@ -1171,12 +1605,16 @@ with `import { AskPorterBar } from "@/components/porter/ask-porter-bar";`.
 
 `lg:hidden` because desktop already has the TopBar mount — never two bars on one screen.
 
-- [ ] **Step 1: Insert on all three pages** (declarative mounts; AskPorterBar's own tests cover behavior — if tdd-guard blocks, add ONE smoke test per page asserting the textbox renders, with the page's data hooks mocked)
-- [ ] **Step 2: `npm run typecheck && npm run lint && npm run test -w apps/web`** — green
-- [ ] **Step 3: Commit**
+- [ ] **Step 1: Conflict resolved (orchestrator 2026-07-15):** PageHeader renders action AND avatar side-by-side (Task 2 code). Proceed with the page edits below.
+- [ ] **Step 2: Add `showAvatar` to both `PageHeader` call sites** on each of `inventory/page.tsx`, `listings/page.tsx`, `orders/page.tsx` (unauthenticated AND authenticated) per the resolution from Step 1
+- [ ] **Step 3: Insert the `AskPorterBar` row on all three pages** (declarative mounts; AskPorterBar's own tests cover behavior — if tdd-guard blocks, add ONE smoke test per page asserting the textbox renders, with the page's data hooks mocked)
+- [ ] **Step 4: Add a `/more` link to `porter/page.tsx`'s header**, copying Home's existing 44px gear-icon link verbatim (same `href`, `aria-label`, size) — ONE smoke test if tdd-guard requires it: link with `href="/more"` present
+- [ ] **Step 5: Verify Home's existing `/more` link is untouched** — `grep -n 'href="/more"' "apps/web/src/app/(tabs)/home/page.tsx"` still matches; no edit expected
+- [ ] **Step 6: `npm run typecheck && npm run lint && npm run test -w apps/web`** — green
+- [ ] **Step 7: Commit**
 ```bash
-git add "apps/web/src/app/(tabs)/inventory/page.tsx" "apps/web/src/app/(tabs)/listings/page.tsx" "apps/web/src/app/(tabs)/orders/page.tsx"
-git commit -m "feat(web): Ask Porter row on inventory/listings/orders (mobile)"
+git add "apps/web/src/app/(tabs)/inventory/page.tsx" "apps/web/src/app/(tabs)/listings/page.tsx" "apps/web/src/app/(tabs)/orders/page.tsx" "apps/web/src/app/(tabs)/porter/page.tsx"
+git commit -m "feat(web): Ask Porter row + mobile More access on tab pages"
 ```
 
 ---
@@ -1224,9 +1662,9 @@ This is the **Definition of Done** task — frontend-verification skill at execu
 - [ ] **Step 2: Deploy:** `docker compose up -d --build portage-app`
 - [ ] **Step 3: e2e:** `npm run test:e2e` — suite green. e2e runs Desktop Chrome (1280×720): the shell now renders sidebar+topbar there — specs that asserted tab-bar navigation may need their nav path updated (sidebar links have identical hrefs; adjust selectors only where they targeted the bottom bar explicitly).
 - [ ] **Step 4: Live walk + screenshots (light AND dark at each):**
-  - **390×844 (phone):** floating glass bar on the 6 tab pages, orange FAB scans; Home chip on `/settings/help`, `/inventory/<id>`, `/messages` and absent on tab pages; Ask Porter row on inventory/listings/orders — focus expands, pill submit lands in `/porter` and auto-sends exactly once.
+  - **390×844 (phone):** floating glass bar shows exactly **5 tabs** (Home/Inventory/Listings/Porter/Orders — no More) on the 5 tab pages, orange FAB scans; the SAME bar renders **compact** (icon-only, no labels) on `/settings/help`, `/inventory/<id>`, `/messages` — never fully absent; on a tab page, scrolling down past a small threshold **minimizes the bar** (compact), scrolling back up **restores** full state; avatar/gear link on Home/Inventory/Listings/Orders/Porter reaches `/more` (44px target); Ask Porter row on inventory/listings/orders — focus expands, pill submit lands in `/porter` and auto-sends exactly once.
   - **820×1180 (iPad portrait):** mobile chrome + `max-w-2xl` content + 3-col inventory grid.
-  - **1440×900 (desktop):** sidebar expand/collapse persists across reload; top bar title tracks route; Ask Porter in top bar (no duplicate row on list pages); avatar menu; messages badge; NO bottom bar/chip; scan from sidebar works; existing flows (scan→save, listing edit, publish path) intact.
+  - **1440×900 (desktop):** sidebar expand/collapse persists across reload; sidebar shows the main 5 PLUS the secondary section (Messages w/ unread badge, Settings) and Admin for the admin role; top bar title tracks route; Ask Porter in top bar (no duplicate row on list pages); avatar menu; messages badge; NO bottom tab bar; scan from sidebar works; existing flows (scan→save, listing edit, publish path) intact.
 - [ ] **Step 5: PR**
 ```bash
 git push -u origin feat/responsive-shell
@@ -1238,10 +1676,16 @@ CodeRabbit is a required check; merge with `--merge`.
 
 ## Task dispatch order (orchestrator)
 
-1 → 2 → **3 (Fable)** → 6 → 5 → 4 → 7 → 8 → 9 → 10 → 11 (Fable). Sonnet 5 for 1–2, 4–10; two failed reviews on a task → redo with Opus 4.8. Fable reviews at every boundary: spec-compliance + code-quality, verify commit landed, run the file-scoped tests.
+1 (nav constants) → 2 (PageHeader avatar) → **3 (Fable — AppShell)** → 6 (AskPorterBar) → 5 (TopBar) → 4 (Sidebar) → 7 (Porter `?q=` auto-send) → 8 (unified floating TabBar) → 9 (AskPorterBar rows + avatar wiring) → 10 (content-width) → 11 (Fable — DoD). Sonnet 5 for 1–2, 4–10; two failed reviews on a task → redo with Opus 4.8. Fable reviews at every boundary: spec-compliance + code-quality, verify commit landed, run the file-scoped tests.
+
+Dependency notes:
+- **Task 8 depends on Task 3** — it edits `app-shell.tsx` (created in T3) to make the TabBar mount unconditional, and rewrites T3's `app-shell.test.tsx` test 3 from "absent on tab routes" to "present on tab routes." Dispatch already sequences 3 before 8, so this is a same-branch follow-on edit, not a reordering.
+- **Task 8 also depends on Task 1** (`isTabRoute` from `navigation.ts`, consumed inside `TabBar` itself now, not just `AppShell`).
+- **Task 9 depends on Task 2** (`showAvatar` prop) and **Task 6** (`AskPorterBar`). The action-vs-avatar conflict is RESOLVED in Task 2's code: PageHeader renders action and avatar side-by-side (flex gap-2) — the avatar is never suppressed by a page action.
 
 ## Self-Review (performed at write time)
 
-- **Spec coverage:** breakpoints/CSS-only switching (T3), sidebar incl. collapse persistence + badge + Scan (T4), top bar incl. title/theme/avatar/unread (T5), AskPorterBar + pills + `?q=` contract (T6), auto-send-once + strip (T7), floating glass bar + `(tabs)` padding + `lg:hidden` (T8), mobile Porter rows (T9), content-width system + fluid grids + dock-slot/pane reserves (T3, T10), error handling (localStorage guards T4, empty-q T6/T7, title fallback T1), testing section mapped 1:1, DoD (T11). Gap: none found.
-- **Placeholder scan:** all code steps carry full code; Task 10's per-page grid classes flagged as verify-with-Read (page-specific, listed as such — not a placeholder).
-- **Type consistency:** `isTabRoute`/`pageTitle`/`porterPills` (T1) consumed by name in T3/T5/T6; `AskPorterBar` no-props in T5/T6/T9; placeholder-then-replace pattern for Sidebar/TopBar declared in T3 and honored in T4/T5; `usePorterAutosend(send)` signature consistent T7.
+- **Spec coverage:** breakpoints/CSS-only switching (T3), sidebar incl. collapse persistence + badge + secondary section + Admin-by-role (T4), top bar incl. title/theme/avatar/unread (T5), AskPorterBar + pills + `?q=` contract (T6), auto-send-once + strip (T7), 5-tab floating glass bar + compact state + minimize-on-scroll + reduced-motion + unified ownership in AppShell (T8, depends on T3 and T1), mobile Porter rows + avatar/gear wiring on all 5 tab pages (T9), content-width system + fluid grids + dock-slot/pane reserves (T3, T10), error handling (localStorage guards T4, empty-q T6/T7, title fallback T1), testing section mapped 1:1, DoD (T11).
+  **Gap (RESOLVED by orchestrator 2026-07-15):** PageHeader renders action AND avatar side-by-side — `showAvatar` is effective on every page including those with permanent actions (Orders' Sync). Task 2's code reflects this.
+- **Placeholder scan:** all code steps carry full code; Task 10's per-page grid classes flagged as verify-with-Read (page-specific, listed as such — not a placeholder). Task 8's `tab-bar.tsx` step is a full-file rewrite, explicitly called out as such (not a diff-only restyle like the original draft).
+- **Type consistency:** `isTabRoute`/`pageTitle`/`porterPills` (T1) consumed by name in T3/T5/T6/T8; `BAR_TABS`/`SIDEBAR_SECONDARY` (T1) consumed by name in T4 (Sidebar sections) and T8 (TabBar's own tab list); `AskPorterBar` no-props in T5/T6/T9; placeholder-then-replace pattern for Sidebar/TopBar declared in T3 and honored in T4/T5; `usePorterAutosend(send)` signature consistent T7; no remaining `HomeChip`/`TAB_ROUTES`/6-tab/More-on-the-bar references anywhere in this plan (swept 2026-07-15).
