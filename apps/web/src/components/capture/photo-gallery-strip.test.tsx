@@ -40,6 +40,15 @@ describe("PhotoGalleryStrip", () => {
     expect(screen.queryByLabelText(/add photos/i)).not.toBeInTheDocument();
   });
 
+  it("add tile opens the capture sheet (camera + gallery), not a bare file picker", () => {
+    render(
+      <PhotoGalleryStrip photos={PHOTOS} onEditPhoto={vi.fn()} onAddPhotos={vi.fn()} maxPhotos={12} />,
+    );
+    fireEvent.click(screen.getByLabelText(/add photos/i));
+    expect(screen.getByText("Add Photos")).toBeInTheDocument();
+    expect(screen.getByText(/take photo/i)).toBeInTheDocument();
+  });
+
   it("hides the add tile when no onAddPhotos handler is provided (hosts without an upload path)", () => {
     render(
       <PhotoGalleryStrip photos={PHOTOS} onEditPhoto={vi.fn()} maxPhotos={12} />,
