@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useOnboarding } from "@/hooks/use-onboarding";
@@ -69,6 +70,7 @@ const STATUS_BADGE: Record<string, { bg: string; label: string }> = {
 };
 
 export default function HomePage() {
+  const router = useRouter();
   const { isAuthenticated } = useAuth();
   const { data, isLoading, error } = useDashboard();
   const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
@@ -456,6 +458,9 @@ export default function HomePage() {
           onComplete={completeOnboarding}
           onSkip={completeOnboarding}
           isCompleting={isCompleting}
+          onExploreTutorials={() => {
+            void completeOnboarding().then(() => router.push("/tutorials"));
+          }}
         />
       )}
 
