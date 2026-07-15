@@ -31,6 +31,31 @@ describe("DeviceFrame", () => {
     expect(screen.queryByRole("img", { name: "Missing" })).not.toBeInTheDocument();
   });
 
+  it("applies the overlay's animation delay (not reset by the animation shorthand)", () => {
+    render(
+      <DeviceFrame
+        screenshot="/tutorials/setup/billing.png"
+        overlays={[{ type: "callout", x: 50, y: 30, text: "Delayed", delay: 300 }]}
+        animationKey={0}
+        alt="Billing"
+      />,
+    );
+    expect(screen.getByTestId("tutorial-overlay")).toHaveStyle({ animationDelay: "300ms" });
+  });
+
+  it("recovers from the placeholder when the screenshot prop changes", () => {
+    const { rerender } = render(
+      <DeviceFrame screenshot="/tutorials/broken.png" overlays={[]} animationKey={0} alt="Step" />,
+    );
+    fireEvent.error(screen.getByRole("img", { name: "Step" }));
+    expect(screen.getByTestId("device-frame-placeholder")).toBeInTheDocument();
+    rerender(
+      <DeviceFrame screenshot="/tutorials/next.png" overlays={[]} animationKey={1} alt="Step" />,
+    );
+    expect(screen.queryByTestId("device-frame-placeholder")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Step" })).toHaveAttribute("src", "/tutorials/next.png");
+  });
+
   it("renders callout text", () => {
     render(
       <DeviceFrame

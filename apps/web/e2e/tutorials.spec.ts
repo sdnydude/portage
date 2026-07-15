@@ -10,7 +10,7 @@ const SHOT_DIR = path.join(process.cwd(), "test-results", "proof");
 test.describe("tutorial hub", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("hub lists all 8 topics and a topic plays through with overlays, surviving reload", async ({ page }) => {
+  test("hub lists all 8 topics; a topic plays with overlays; reload re-serves the route at step 1", async ({ page }) => {
     await page.goto("/tutorials");
     const slugs = ["setup", "adding-items", "listings", "inventory", "orders", "settings", "porter", "messages"];
     for (const slug of slugs) {

@@ -36,6 +36,8 @@ async function getSession(): Promise<{ token: string; user: unknown }> {
   return (await res.json()) as { token: string; user: unknown };
 }
 
+let skips = 0;
+
 async function runAction(page: Page, topic: string, action: CaptureAction): Promise<void> {
   switch (action.type) {
     case "goto":
@@ -47,6 +49,7 @@ async function runAction(page: Page, topic: string, action: CaptureAction): Prom
       // on an invisible duplicate.
       const el = page.locator(action.selector).locator("visible=true").first();
       if ((await el.count()) === 0) {
+        skips++;
         console.warn(`[${topic}] click target missing, skipping: ${action.selector}`);
         return;
       }
@@ -56,6 +59,7 @@ async function runAction(page: Page, topic: string, action: CaptureAction): Prom
     case "fill": {
       const el = page.locator(action.selector).locator("visible=true").first();
       if ((await el.count()) === 0) {
+        skips++;
         console.warn(`[${topic}] fill target missing, skipping: ${action.selector}`);
         return;
       }
@@ -80,6 +84,17 @@ async function main(): Promise<void> {
   const session = await getSession();
 
   const browser = await chromium.launch();
+  try {
+    await run(browser, session);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function run(
+  browser: Awaited<ReturnType<typeof chromium.launch>>,
+  session: { token: string; user: unknown },
+): Promise<void> {
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 2,
@@ -116,10 +131,16 @@ async function main(): Promise<void> {
     }
   }
 
-  await browser.close();
   if (failures > 0) {
     console.error(`\n${failures} action(s) failed`);
     process.exit(1);
+  }
+  if (skips > 0) {
+    // Skips are by design (empty demo states reuse the previous frame), but
+    // they must never read as silent success — a selector broken by a UI
+    // change looks identical to an empty state.
+    console.warn(`\nAll captures complete with ${skips} skipped click/fill action(s) — verify the affected PNGs.`);
+    return;
   }
   console.log("\nAll captures complete.");
 }

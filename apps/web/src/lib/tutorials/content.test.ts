@@ -34,6 +34,7 @@ describe("tutorial content registry", () => {
       const ids = topic.steps.map((s) => s.id);
       expect(new Set(ids).size).toBe(ids.length);
       expect(topic.steps.length).toBeGreaterThan(0);
+      for (const id of ids) expect(id, topic.slug).toBeTruthy();
     }
   });
 

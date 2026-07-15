@@ -16,8 +16,12 @@ function overlayStyle(o: Overlay): React.CSSProperties {
     position: "absolute",
     left: `${o.x}%`,
     top: `${o.y}%`,
-    animationDelay: o.delay ? `${o.delay}ms` : undefined,
   };
+  // animationDelay must come AFTER the animation shorthand in the style
+  // object — the shorthand resets animation-delay to 0s, and React applies
+  // keys in order. 0 is a valid (immediate) delay.
+  const delay: React.CSSProperties =
+    o.delay != null ? { animationDelay: `${o.delay}ms` } : {};
   if (o.type === "highlight") {
     return {
       ...base,
@@ -26,6 +30,7 @@ function overlayStyle(o: Overlay): React.CSSProperties {
       borderRadius: "12px",
       border: "2px solid var(--forest-green)",
       animation: "tutorial-pulse-ring 1.6s ease-out infinite",
+      ...delay,
     };
   }
   if (o.type === "tap") {
@@ -38,12 +43,14 @@ function overlayStyle(o: Overlay): React.CSSProperties {
       borderRadius: "50%",
       background: "rgba(45, 90, 39, 0.45)",
       animation: "tutorial-tap-ripple 1.4s ease-out infinite",
+      ...delay,
     };
   }
   if (o.type === "swipe") {
     return {
       ...base,
       animation: "tutorial-swipe-x 1.6s ease-in-out infinite",
+      ...delay,
     };
   }
   // callout
@@ -52,11 +59,16 @@ function overlayStyle(o: Overlay): React.CSSProperties {
     transform: "translateX(-50%)",
     maxWidth: "80%",
     animation: "tutorial-callout-in 0.4s ease-out both",
+    ...delay,
   };
 }
 
 export function DeviceFrame({ screenshot, overlays, animationKey, alt, compact }: DeviceFrameProps) {
   const [failed, setFailed] = useState(false);
+  // A load failure belongs to ONE screenshot — a step change must retry the
+  // new image instead of inheriting the previous step's placeholder.
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+  const showPlaceholder = failed && failedFor === screenshot;
 
   return (
     <div
@@ -67,7 +79,7 @@ export function DeviceFrame({ screenshot, overlays, animationKey, alt, compact }
       <div className="absolute left-1/2 top-1.5 z-10 h-4 w-20 -translate-x-1/2 rounded-full bg-black" aria-hidden="true" />
       {/* Screenshot area — 390×844 aspect via padding trick (iOS aspect-ratio collapse gotcha) */}
       <div className="relative w-full" style={{ paddingBottom: `${(844 / 390) * 100}%` }}>
-        {failed ? (
+        {showPlaceholder ? (
           <div
             data-testid="device-frame-placeholder"
             className="absolute inset-0 flex items-center justify-center bg-muted"
@@ -85,7 +97,10 @@ export function DeviceFrame({ screenshot, overlays, animationKey, alt, compact }
               src={screenshot}
               alt={alt}
               className="absolute inset-0 h-full w-full object-cover"
-              onError={() => setFailed(true)}
+              onError={() => {
+                setFailed(true);
+                setFailedFor(screenshot);
+              }}
             />
             <div key={animationKey} className="absolute inset-0" aria-hidden="true">
               {overlays.map((o, i) => (

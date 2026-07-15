@@ -459,7 +459,11 @@ export default function HomePage() {
           onSkip={completeOnboarding}
           isCompleting={isCompleting}
           onExploreTutorials={() => {
-            void completeOnboarding().then(() => router.push("/tutorials"));
+            // Navigate even if completion fails — the carousel will simply
+            // reappear on the next home visit rather than trapping the user.
+            void completeOnboarding()
+              .catch(() => {})
+              .then(() => router.push("/tutorials"));
           }}
         />
       )}
