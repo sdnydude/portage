@@ -393,6 +393,20 @@ select {
   background: var(--glass-control);
 }
 
+/* Responsive content container — replaces scattered per-page max-w-lg.
+   Phone: max-w-lg · tablet portrait: max-w-2xl · desktop: fluid to max-w-5xl. */
+.content-container {
+  width: 100%;
+  margin-inline: auto;
+  max-width: 32rem; /* max-w-lg */
+}
+@media (min-width: 768px) {
+  .content-container { max-width: 42rem; } /* max-w-2xl */
+}
+@media (min-width: 1024px) {
+  .content-container { max-width: 64rem; } /* max-w-5xl */
+}
+
 /* Scrollbar hiding for horizontal scroll areas */
 .scrollbar-hide {
   -ms-overflow-style: none;

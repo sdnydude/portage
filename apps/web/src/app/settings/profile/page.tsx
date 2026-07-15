@@ -86,7 +86,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
-        <div className="flex items-center gap-3 max-w-lg mx-auto">
+        <div className="flex items-center gap-3 content-container">
           <button onClick={() => router.back()} className="p-1 -ml-1" aria-label="Go back">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
@@ -96,7 +96,7 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <div className="px-4 py-6 max-w-lg mx-auto space-y-6">
+      <div className="px-4 py-6 content-container space-y-6">
         {/* Email (read-only) */}
         <div className="rounded-2xl border border-border bg-surface p-4" style={{ boxShadow: "var(--shadow-subtle)" }}>
           <label className="block text-xs font-medium text-text-secondary mb-1">Email</label>

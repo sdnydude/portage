@@ -30,7 +30,7 @@ export function PageHeader({ title, subtitle, action, showAvatar }: PageHeaderPr
 
   return (
     <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
-      <div className="flex items-center justify-between max-w-lg mx-auto">
+      <div className="flex items-center justify-between content-container">
         <div>
           <h1 className="text-xl font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
             {title}

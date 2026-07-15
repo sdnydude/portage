@@ -110,7 +110,7 @@ export default function SellerProfilePage() {
 
   if (loadError) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-8">
+      <div className="content-container px-4 py-8">
         <BackHeader />
         <h1 className="text-2xl font-bold mb-4">Seller Profile</h1>
         <div className="text-sm py-2 px-3 rounded-lg" style={{ background: "rgba(204,51,51,0.1)", color: "#CC3333" }}>
@@ -129,7 +129,7 @@ export default function SellerProfilePage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
+    <div className="content-container px-4 py-8 space-y-6">
       <BackHeader />
       <h1 className="text-2xl font-bold">Seller Profile</h1>
 

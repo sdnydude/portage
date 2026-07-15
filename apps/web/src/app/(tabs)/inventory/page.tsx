@@ -193,7 +193,7 @@ export default function InventoryPage() {
     return (
       <>
         <PageHeader title="Inventory" subtitle="Your items" showAvatar />
-        <div className="px-4 py-6 max-w-lg mx-auto">
+        <div className="px-4 py-6 content-container">
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-16 h-16 rounded-2xl bg-forest-green-50 flex items-center justify-center mb-4">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -236,10 +236,10 @@ export default function InventoryPage() {
           ) : undefined
         }
       />
-      <div className="lg:hidden px-4 pt-3 max-w-lg mx-auto w-full">
+      <div className="lg:hidden px-4 pt-3 content-container w-full">
         <AskPorterBar />
       </div>
-      <div className="px-4 py-3 max-w-lg mx-auto space-y-3">
+      <div className="px-4 py-3 content-container space-y-3">
         <SearchBar value={search} onChange={setSearch} />
         <ViewControls
           view={view}
@@ -289,7 +289,7 @@ export default function InventoryPage() {
           <div
             className={
               view === "grid"
-                ? "grid grid-cols-2 gap-3"
+                ? "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3"
                 : "flex flex-col gap-2"
             }
           >

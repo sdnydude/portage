@@ -5,7 +5,7 @@
 // was a dead loop through the root redirect, live bug 2026-07-10).
 export function LoggedOutHero() {
   return (
-    <div className="px-4 py-6 max-w-lg mx-auto">
+    <div className="px-4 py-6 content-container">
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <div className="w-20 h-20 rounded-3xl bg-forest-green-50 flex items-center justify-center mb-6">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

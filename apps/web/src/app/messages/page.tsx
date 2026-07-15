@@ -55,7 +55,7 @@ export default function MessagesPage() {
     return (
       <>
         <PageHeader title="Messages" />
-        <div className="px-4 py-6 max-w-lg mx-auto">
+        <div className="px-4 py-6 content-container">
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-text-secondary text-sm">Log in to view your messages.</p>
           </div>
@@ -67,7 +67,7 @@ export default function MessagesPage() {
   return (
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
-        <div className="flex items-center gap-3 max-w-lg mx-auto">
+        <div className="flex items-center gap-3 content-container">
           <button onClick={handleBack} className="p-1 -ml-1" aria-label="Go back">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
@@ -88,7 +88,7 @@ export default function MessagesPage() {
         </div>
       </header>
 
-      <div className="px-4 py-4 max-w-lg mx-auto">
+      <div className="px-4 py-4 content-container">
         {syncError && (
           <div className="rounded-2xl border border-accent-error bg-red-50 dark:bg-red-950/30 p-4 text-sm text-accent-error mb-4">
             Sync failed: {syncError}

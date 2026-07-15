@@ -113,7 +113,7 @@ export default function HomePage() {
 
   if (error) {
     return (
-      <div className="px-4 py-6 max-w-2xl mx-auto">
+      <div className="px-4 py-6 content-container">
         <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
           {error}
         </div>
@@ -129,7 +129,7 @@ export default function HomePage() {
       : data.recentListings.filter((l) => l.status === listingFilter);
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pb-8">
+    <div className="content-container px-4 pb-8">
 
       {/* ─── Porter hero ─── */}
       <div

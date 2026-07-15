@@ -84,7 +84,7 @@ export default function OrdersPage() {
     return (
       <>
         <PageHeader title="Orders" showAvatar />
-        <div className="px-4 py-6 max-w-lg mx-auto">
+        <div className="px-4 py-6 content-container">
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-text-secondary text-sm">Log in to view your orders</p>
             <Link href="/" className="mt-4 px-6 py-2.5 rounded-full bg-forest-green text-white text-sm font-medium">
@@ -115,10 +115,10 @@ export default function OrdersPage() {
           </button>
         }
       />
-      <div className="lg:hidden px-4 pt-3 max-w-lg mx-auto w-full">
+      <div className="lg:hidden px-4 pt-3 content-container w-full">
         <AskPorterBar />
       </div>
-      <div className="px-4 py-4 max-w-lg mx-auto">
+      <div className="px-4 py-4 content-container">
         {syncError && (
           <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-sm text-red-700 dark:text-red-300 mb-4">
             Sync failed: {syncError}
