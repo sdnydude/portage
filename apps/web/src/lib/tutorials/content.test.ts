@@ -37,6 +37,15 @@ describe("tutorial content registry", () => {
     }
   });
 
+  it("registers adding-items, listings, inventory after setup", () => {
+    expect(TUTORIAL_TOPICS.map((t) => t.slug)).toEqual([
+      "setup",
+      "adding-items",
+      "listings",
+      "inventory",
+    ]);
+  });
+
   it("every capture manifest's capture steps exactly match its topic's step ids", () => {
     for (const m of CAPTURE_MANIFESTS) {
       const topic = getTopic(m.topic);
