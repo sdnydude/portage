@@ -96,7 +96,7 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <div className="px-4 py-6 content-container space-y-6">
+      <div className="px-4 py-6 content-container space-y-6 compact-bar-clearance">
         {/* Email (read-only) */}
         <div className="rounded-2xl border border-border bg-surface p-4" style={{ boxShadow: "var(--shadow-subtle)" }}>
           <label className="block text-xs font-medium text-text-secondary mb-1">Email</label>

@@ -41,3 +41,6 @@ apps/web/e2e/.auth/
 exports/
 graphify-out/
 .claude/.claude/
+
+# Local scratch notes (untracked working file, not a repo artifact)
+whats-next.md

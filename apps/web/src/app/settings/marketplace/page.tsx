@@ -90,7 +90,7 @@ export default function MarketplacePage() {
         </div>
       </header>
 
-      <div className="px-4 py-6 content-container space-y-3">
+      <div className="px-4 py-6 content-container space-y-3 compact-bar-clearance">
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 rounded-full border-2 border-forest-green border-t-transparent animate-spin" />

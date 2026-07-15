@@ -88,7 +88,7 @@ export default function MessagesPage() {
         </div>
       </header>
 
-      <div className="px-4 py-4 content-container">
+      <div className="px-4 py-4 content-container compact-bar-clearance">
         {syncError && (
           <div className="rounded-2xl border border-accent-error bg-red-50 dark:bg-red-950/30 p-4 text-sm text-accent-error mb-4">
             Sync failed: {syncError}

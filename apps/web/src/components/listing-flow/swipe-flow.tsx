@@ -1672,6 +1672,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
           "--flow-accent": "#F15A22",
           position: "fixed",
           inset: 0,
+          zIndex: 60,
           background: "#0A0A0A",
           color: "#fff",
           overflow: "hidden",

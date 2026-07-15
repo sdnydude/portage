@@ -580,7 +580,7 @@ function ItemDetailContent() {
         )}
 
         {/* Item Info */}
-        <div className="px-4 py-4 space-y-4">
+        <div className="px-4 py-4 space-y-4 compact-bar-clearance">
             <>
               {/* Title + Value */}
               <div className="flex items-start justify-between gap-3">

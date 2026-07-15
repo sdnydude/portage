@@ -407,6 +407,15 @@ select {
   .content-container { max-width: 64rem; } /* max-w-5xl */
 }
 
+/* Clears the floating compact tab bar (48px bar + 8px lift + safe area)
+   on non-tab routes below lg; desktop has no bar. */
+.compact-bar-clearance {
+  padding-bottom: calc(4rem + var(--safe-area-bottom));
+}
+@media (min-width: 1024px) {
+  .compact-bar-clearance { padding-bottom: 0; }
+}
+
 /* Scrollbar hiding for horizontal scroll areas */
 .scrollbar-hide {
   -ms-overflow-style: none;

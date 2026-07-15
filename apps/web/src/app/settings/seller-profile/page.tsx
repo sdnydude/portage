@@ -129,7 +129,7 @@ export default function SellerProfilePage() {
   }
 
   return (
-    <div className="content-container px-4 py-8 space-y-6">
+    <div className="content-container px-4 py-8 space-y-6 compact-bar-clearance">
       <BackHeader />
       <h1 className="text-2xl font-bold">Seller Profile</h1>
 
