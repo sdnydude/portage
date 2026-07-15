@@ -224,6 +224,20 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByText("1/24")).toBeInTheDocument();
   });
 
+  it("capture stage still offers gallery add after the first photo (beta report 6337abaf)", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+    apiMock.mockImplementation(async () => ({}));
+    render(<ScanFlow onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Choose from Gallery"));
+    await screen.findByText(/Scan 1 Photo with Porter/);
+    // Both add paths present: camera re-shot AND gallery pick.
+    expect(screen.getByLabelText("Take another photo")).toBeInTheDocument();
+    expect(screen.getByLabelText("Add from gallery")).toBeInTheDocument();
+  });
+
   it("capture-stage strip supports long-press drag reorder before the AI scan", async () => {
     apiUploadMock
       .mockResolvedValueOnce({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } })
