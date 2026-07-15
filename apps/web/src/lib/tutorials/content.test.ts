@@ -37,12 +37,16 @@ describe("tutorial content registry", () => {
     }
   });
 
-  it("registers adding-items, listings, inventory after setup", () => {
+  it("registers all 8 topics in hub order", () => {
     expect(TUTORIAL_TOPICS.map((t) => t.slug)).toEqual([
       "setup",
       "adding-items",
       "listings",
       "inventory",
+      "orders",
+      "settings",
+      "porter",
+      "messages",
     ]);
   });
 
