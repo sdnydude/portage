@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { api, apiUpload } from "@/lib/api";
 import { CameraCapture } from "./camera-capture";
@@ -15,6 +15,9 @@ import { useScanAspects } from "@/hooks/use-scan-aspects";
 import { resolvePublishPriceWithSource } from "@/lib/price";
 import { demandLabel } from "@/lib/demand";
 import { PhotoGalleryStrip } from "./photo-gallery-strip";
+import { usePhotoDrag } from "@/hooks/use-photo-drag";
+import { movePhoto } from "@/lib/photos";
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 import { PhotoEditPanel } from "./photo-edit-panel";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
@@ -50,7 +53,8 @@ interface ScanFlowProps {
   onClose: (result?: { warning?: string }) => void;
 }
 
-const MAX_PHOTOS = 12;
+// App-wide cap (eBay 24 / Reverb 25 — ours is the min, from @portage/shared).
+const MAX_PHOTOS = MAX_PHOTOS_PER_ITEM;
 
 function mapEbayCondition(ebayCondition: string): "new" | "like_new" | "good" | "fair" | "poor" {
   const lower = ebayCondition.toLowerCase();
@@ -317,6 +321,30 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     },
     [photos.length, uploadPhoto],
   );
+
+  // Capture-stage strip drag (pre-AI-scan reorder). The ref swallows the
+  // trailing click after a completed drag so it doesn't re-select a thumb.
+  const captureDragRef = useRef(false);
+  const handleReorderPhotos = useCallback(
+    (from: number, to: number) => {
+      const selKey = photos[selectedPhotoIndex]?.key;
+      const next = movePhoto(photos, from, to);
+      setPhotos(next);
+      // Keep the big preview showing the same photo the user was on.
+      if (selKey) {
+        const ni = next.findIndex((p) => p.key === selKey);
+        if (ni !== -1) setSelectedPhotoIndex(ni);
+      }
+    },
+    [photos, selectedPhotoIndex],
+  );
+
+  const captureDrag = usePhotoDrag({
+    onMove: (from, to) => {
+      captureDragRef.current = true;
+      handleReorderPhotos(from, to);
+    },
+  });
 
   const handleRemovePhoto = useCallback(
     (index: number) => {
@@ -876,10 +904,18 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   {photos.map((photo, i) => (
                     <button
                       key={photo.key}
-                      onClick={() => setSelectedPhotoIndex(i)}
-                      className={`relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-colors ${
+                      onClick={() => {
+                        if (captureDragRef.current) {
+                          captureDragRef.current = false;
+                          return;
+                        }
+                        setSelectedPhotoIndex(i);
+                      }}
+                      className={`photo-drag-tile relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-colors ${
                         i === selectedPhotoIndex ? "border-[var(--teal)]" : "border-transparent"
                       }`}
+                      style={captureDrag.dragIndex === i ? { opacity: 0.5, transform: "scale(0.95)" } : undefined}
+                      {...captureDrag.getItemProps(i)}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={photo.url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
@@ -888,6 +924,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                       <span
                         role="button"
                         tabIndex={0}
+                        data-photo-drag-ignore
                         onClick={(e) => { e.stopPropagation(); handleRemovePhoto(i); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
@@ -906,7 +943,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                     </button>
                   ))}
 
-                  {/* Add photo button */}
+                  {/* Add photo buttons — camera re-shot AND gallery pick.
+                      Gallery vanished after the first photo pre-fix; on
+                      desktop that left no way to add more (beta 6337abaf). */}
                   {photos.length < MAX_PHOTOS && (
                     <div className="flex gap-2 flex-shrink-0">
                       <button
@@ -915,10 +954,23 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                         className="w-16 h-16 rounded-xl border-2 border-dashed border-border flex items-center justify-center text-text-secondary hover:text-[var(--teal)] hover:border-[var(--teal)] transition-colors disabled:opacity-50"
                         aria-label="Take another photo"
                       >
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                          <path d="M12 5v14M5 12h14" />
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                          <circle cx="12" cy="13" r="4" />
                         </svg>
                       </button>
+                      <ImagePicker onSelect={handleGallerySelect} multiple>
+                        <div
+                          aria-label="Add from gallery"
+                          className="w-16 h-16 rounded-xl border-2 border-dashed border-border flex items-center justify-center text-text-secondary hover:text-[var(--teal)] hover:border-[var(--teal)] transition-colors cursor-pointer"
+                        >
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <path d="M21 15l-5-5L5 21" />
+                          </svg>
+                        </div>
+                      </ImagePicker>
                     </div>
                   )}
                 </div>
@@ -1009,6 +1061,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 }}
                 onAddPhotos={handleGallerySelect}
                 maxPhotos={MAX_PHOTOS}
+                onReorder={handleReorderPhotos}
+                onDelete={handleRemovePhoto}
               />
 
               {/* Candidate selector */}

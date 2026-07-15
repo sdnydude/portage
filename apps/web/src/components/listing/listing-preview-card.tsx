@@ -1,5 +1,7 @@
 "use client";
 
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+
 import { useState, useCallback, useEffect } from "react";
 import { CompsPricingWidget } from "./comps-pricing-widget";
 import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
@@ -167,7 +169,7 @@ export function ListingPreviewCard({
           <PhotoGalleryStrip
             photos={photos}
             onEditPhoto={photoEdit.openEditor}
-            maxPhotos={12}
+            maxPhotos={MAX_PHOTOS_PER_ITEM}
           />
         )}
 

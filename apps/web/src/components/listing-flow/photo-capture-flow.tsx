@@ -1,5 +1,7 @@
 "use client";
 
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { apiUpload } from "@/lib/api";
@@ -212,7 +214,7 @@ export function PhotoCaptureFlow({
   onCancel,
   initialPhotos = [],
   minPhotos = 4,
-  maxPhotos = 12,
+  maxPhotos = MAX_PHOTOS_PER_ITEM,
 }: PhotoCaptureFlowProps) {
   const { token } = useAuth();
   const [photos, setPhotos] = useState<CapturedPhoto[]>(initialPhotos);

@@ -334,6 +334,38 @@ Product descoping 2026-07-01: voice returns in a future release. Removal is inde
 
 ---
 
+## Responsive UI Program (approved 2026-07-15, precedes onboarding-expansion build)
+
+Sequencing note: the onboarding-expansion ship (plan `docs/superpowers/plans/2026-07-14-onboarding-expansion.md`, spec PR #228) is QUEUED BEHIND Phase R0 — its tutorial screenshots must capture the new shell, not the old UI.
+
+### Phase R0 — Responsive Shell (this ship, branch `feat/responsive-shell`)
+- [ ] Desktop sidebar — persistent left nav ≥1024px, collapsible 240px ↔ 72px icon rail, Scan on top
+- [ ] Desktop top bar — page title · Ask Porter input (focus-expands 1→3 lines, page-specific pills) · unread badge, theme toggle, avatar menu
+- [ ] iPad/tablet — breakpoint-based: portrait (`md`) = mobile chrome + wider content grids; landscape (≥1024) = desktop shell
+- [ ] Mobile tab bar redesign — floating inset glass bar, `rounded-[22px]` photo-editor idiom, keeps 6 tabs + orange Scan FAB
+- [ ] Persistent Home chip — round glass chip bottom-left on all tab-bar-less pages (mobile/tablet)
+- [ ] Ask Porter row — same component under PageHeader on inventory/listings/orders (mobile/tablet portrait)
+- [ ] Content width system — shared responsive container replaces per-page `max-w-lg`; content region reserves right-dock slot (R3) + pane-capable main area (R1)
+
+### Phase R1 — Desktop Workbench
+- [ ] Master-detail inventory/listings — list pane + edit pane (`inventory/[id]` surface), arrow-key nav, no page swaps
+
+### Phase R2 — Desktop Ingest
+- [ ] Drag-and-drop photo ingest — drop image files → batch queue → vision-identify pipeline → items
+
+### Phase R3 — Porter Everywhere
+- [ ] Porter side dock — collapsible right dock on desktop, context-aware of on-screen item
+- [ ] Porter conversation history UI — list/deep-links/resume over existing `GET /porter/conversations` endpoints
+
+### Phase R4 — Cross-Device
+- [ ] QR phone-camera handoff — desktop Scan → QR → phone captures → item lands live in desktop session
+
+### Deferred / unscheduled
+- [ ] Keyboard shortcuts (`g i`, `/`, `n`)
+- [ ] Hover row-actions + dense table views
+
+---
+
 ## Summary
 
 | Phase | Open items | Est |

@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   devices: [] as { deviceId: string; label: string }[],
   activeDeviceId: null as string | null,
   selectDevice: vi.fn(),
+  minZoom: 1,
 }));
 
 vi.mock("@/hooks/use-camera", () => ({
@@ -23,6 +24,7 @@ vi.mock("@/hooks/use-camera", () => ({
     switchCamera: vi.fn(),
     zoom: h.zoom,
     maxZoom: 3,
+    minZoom: h.minZoom,
     zoomMode: h.zoomMode,
     setZoom: h.setZoom,
     devices: h.devices,
@@ -97,6 +99,41 @@ describe("CameraCapture — zoom", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /zoom 2×/i }));
     expect(h.setZoom).toHaveBeenCalledWith(2);
+  });
+
+  it("offers the 0.5× ultra-wide chip only when the hardware zoom floor allows it", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    // Digital / single-lens: no 0.5× chip.
+    const { unmount } = render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: /zoom 0.5×/i })).not.toBeInTheDocument();
+    unmount();
+
+    // Multi-lens iPhone (caps.zoom.min = 0.5): chip appears and sets 0.5.
+    h.minZoom = 0.5;
+    try {
+      render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+      fireEvent.click(screen.getByRole("button", { name: /zoom 0.5×/i }));
+      expect(h.setZoom).toHaveBeenCalledWith(0.5);
+    } finally {
+      h.minZoom = 1;
+    }
+  });
+
+  it("shows the macOS camera-menu hint when a Continuity iPhone is active without hardware zoom", () => {
+    h.devices = [
+      { deviceId: "mac-cam", label: "FaceTime HD Camera" },
+      { deviceId: "iphone-cam", label: "Stephen's iPhone Camera" },
+    ] as never;
+    h.activeDeviceId = "iphone-cam";
+    h.zoomMode = "digital";
+    try {
+      render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+      expect(screen.getByText(/mac.*camera menu|camera menu.*mac/i)).toBeInTheDocument();
+    } finally {
+      h.devices = [] as never;
+      h.activeDeviceId = null;
+      h.zoomMode = "native";
+    }
   });
 
   it("digital mode scales the viewfinder video by the zoom factor; native mode does not", () => {

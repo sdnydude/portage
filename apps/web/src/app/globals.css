@@ -276,6 +276,34 @@ select {
 @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 .animate-rise { opacity: 0; animation: rise 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
 
+/* Tutorial overlay animations (TutorialPlayer / onboarding carousel) */
+@keyframes tutorial-pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(45, 90, 39, 0.55); }
+  50% { box-shadow: 0 0 0 10px rgba(45, 90, 39, 0); }
+}
+
+@keyframes tutorial-tap-ripple {
+  0% { transform: scale(0.5); opacity: 0.85; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* Includes the callout's translateX(-50%) centering — an animation transform
+   REPLACES the inline transform while filling, it does not compose with it. */
+@keyframes tutorial-callout-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes tutorial-swipe-x {
+  0% { transform: translateX(-10px); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateX(18px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-overlay { animation: none !important; }
+}
+
 .animate-check-draw {
   stroke-dasharray: 48;
   stroke-dashoffset: 48;
@@ -310,6 +338,16 @@ select {
     background: var(--surface) !important;
     opacity: 0.98;
   }
+}
+
+/* Long-press drag tiles: iOS Safari's image save/copy callout and text
+   selection fire on the same long-press that arms photo drag — the callout
+   wins and the drag never starts. Applied to every use-photo-drag surface. */
+.photo-drag-tile,
+.photo-drag-tile img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* WCAG: reduced motion */
@@ -381,6 +419,30 @@ select {
   backdrop-filter: blur(12px) saturate(160%);
   -webkit-backdrop-filter: blur(12px) saturate(160%);
   background: var(--glass-control);
+}
+
+/* Responsive content container — replaces scattered per-page max-w-lg.
+   Phone: max-w-lg · tablet portrait: max-w-2xl · desktop: fluid to max-w-5xl. */
+.content-container {
+  width: 100%;
+  margin-inline: auto;
+  max-width: 32rem; /* max-w-lg */
+}
+@media (min-width: 768px) {
+  .content-container { max-width: 42rem; } /* max-w-2xl */
+}
+@media (min-width: 1024px) {
+  .content-container { max-width: 64rem; } /* max-w-5xl */
+}
+
+/* Clears the floating compact tab bar (48px bar + 8px lift + safe area)
+   on non-tab routes below lg; desktop has no bar. */
+/* Mobile-only: unlayered rules beat Tailwind's layered py-*, so a lg reset
+   to 0 would also erase each page's own desktop padding — scope instead. */
+@media (max-width: 1023.98px) {
+  .compact-bar-clearance {
+    padding-bottom: calc(4rem + var(--safe-area-bottom));
+  }
 }
 
 /* Scrollbar hiding for horizontal scroll areas */

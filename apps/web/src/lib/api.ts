@@ -62,6 +62,12 @@ export async function exchangeSession(): Promise<string> {
   return data.token;
 }
 
+// Surfaced when a request dies at the network layer (offline, OR a Cloudflare
+// Access session expiry: the fetch gets 302'd to the CF login page and CORS
+// kills it — the browser only reports "Failed to fetch").
+const NETWORK_ERROR_MESSAGE =
+  "Couldn't reach Portage — check your connection, or reload the page to sign back in.";
+
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, token, headers: customHeaders, ...rest } = options;
 
@@ -74,11 +80,37 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...rest,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...rest,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // Network-level failure. If the CF cookie is still good, one session
+    // re-exchange + retry recovers a mid-action expiry transparently;
+    // otherwise fail with something more actionable than "Failed to fetch".
+    try {
+      if (!_exchangePromise) {
+        _exchangePromise = exchangeSession().finally(() => { _exchangePromise = null; });
+      }
+      const newToken = await _exchangePromise;
+      const retryResponse = await fetch(`${API_BASE}${path}`, {
+        ...rest,
+        headers: { ...headers, Authorization: `Bearer ${newToken}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!retryResponse.ok) {
+        const data = await retryResponse.json().catch(() => ({ error: "Unknown error", code: "UNKNOWN" }));
+        throw new ApiError(retryResponse.status, data.code, data.error, data.details);
+      }
+      return retryResponse.json() as Promise<T>;
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(0, "NETWORK", NETWORK_ERROR_MESSAGE);
+    }
+  }
 
   if (response.status === 401 && token && path !== "/auth/session") {
     let newToken: string;
@@ -129,7 +161,31 @@ export async function apiUpload<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: form });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: form });
+  } catch {
+    // Same network-level recovery as api() — see NETWORK_ERROR_MESSAGE.
+    try {
+      if (!_exchangePromise) {
+        _exchangePromise = exchangeSession().finally(() => { _exchangePromise = null; });
+      }
+      const newToken = await _exchangePromise;
+      const retryResponse = await fetch(`${API_BASE}${path}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${newToken}` },
+        body: form,
+      });
+      if (!retryResponse.ok) {
+        const data = await retryResponse.json().catch(() => ({ error: "Unknown error", code: "UNKNOWN" }));
+        throw new ApiError(retryResponse.status, data.code, data.error, data.details);
+      }
+      return retryResponse.json() as Promise<T>;
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(0, "NETWORK", NETWORK_ERROR_MESSAGE);
+    }
+  }
 
   if (response.status === 401 && token) {
     let newToken: string;

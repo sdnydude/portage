@@ -54,11 +54,11 @@ test("item detail: gallery strip opens editor overlay, close returns, strip surv
   await expect(page.getByText("Enhance")).toBeVisible();
   await expect(page.getByText("BG Remove")).toBeVisible();
   await expect(page.getByText("Rotate")).toBeVisible();
-  await expect(page.getByText("Crop")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Crop" })).toBeVisible();
   await page.screenshot({ path: path.join(SHOT_DIR, "pg-2-editor-overlay.png") });
 
   // Crop opens the pan/zoom tool: stationary 1:1 window, movable image.
-  await page.getByText("Crop").click();
+  await page.getByRole("button", { name: "Crop" }).click();
   await expect(page.getByText(/drag to position/i)).toBeVisible();
   await expect(page.getByTestId("crop-window")).toBeVisible();
   await page.screenshot({ path: path.join(SHOT_DIR, "pg-2b-crop-panzoom.png") });
@@ -99,7 +99,7 @@ test("listing creation: hybrid compact mode hosts the gallery strip + editor ove
     await expect(page.getByText(/Edit photo 1 of \d+/)).toBeVisible();
     // Listing flows host all 4 tools.
     await expect(page.getByText("Rotate")).toBeVisible();
-    await expect(page.getByText("Crop")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Crop" })).toBeVisible();
     await page.screenshot({ path: path.join(SHOT_DIR, "pg-6-listing-compact-editor.png") });
 
     await page.getByRole("button", { name: "Close editor" }).click();

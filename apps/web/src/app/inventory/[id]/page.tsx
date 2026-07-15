@@ -16,7 +16,9 @@ import { CropTool } from "@/components/listing-flow/crop-tool";
 import { ExposureTool } from "@/components/capture/exposure-tool";
 import { useComps } from "@/hooks/use-comps";
 import { api, apiUpload } from "@/lib/api";
-import type { CompListing } from "@portage/shared";
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+import type { CompListing, ItemPhoto } from "@portage/shared";
+import { movePhoto, removePhotoAt } from "@/lib/photos";
 import { formatCondition } from "@/lib/format";
 import { resolvePublishPriceWithSource } from "@/lib/price";
 
@@ -54,10 +56,83 @@ function ItemDetailContent() {
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(params.id);
   const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
 
+  // Optimistic photo order: live drag moves update pendingPhotos instantly;
+  // ONE coalesced PATCH commits on release (adversarial-review fix — a PATCH
+  // per drop meant a full eBay revise per gesture plus a stale-state race).
+  const [pendingPhotos, setPendingPhotos] = useState<ItemPhoto[] | null>(null);
+  const pendingPhotosRef = useRef<ItemPhoto[] | null>(null);
+  // Always-fresh photo array for async callbacks (photo tools resolve their
+  // write target against this at response time, not their stale closure).
+  const photosRef = useRef<ItemPhoto[]>([]);
+  useEffect(() => {
+    photosRef.current = pendingPhotos ?? item?.photos ?? [];
+  }, [pendingPhotos, item]);
+
+  // Photo tools capture a target photo, await a network round trip, then
+  // write back. Resolve the write slot by stable key at WRITE time against
+  // photosRef (index fallback for keyless GetItem-imported photos) so a
+  // concurrent order change can't land the edit on the wrong photo.
+  const applyToPhoto = useCallback(
+    (target: { key?: string }, fallbackIndex: number, patch: Partial<ItemPhoto>): ItemPhoto[] | null => {
+      const base = photosRef.current;
+      const idx = target.key ? base.findIndex((p) => p.key === target.key) : fallbackIndex;
+      if (idx < 0 || !base[idx]) return null;
+      return base.map((p, i) => (i === idx ? { ...p, ...patch } : p));
+    },
+    [],
+  );
+
+  const handlePhotoReorder = useCallback((from: number, to: number) => {
+    const next = movePhoto(photosRef.current, from, to);
+    pendingPhotosRef.current = next;
+    // Synchronous ref update too: pointermove bursts can outrun the commit
+    // cycle, and the next onMove must see this move's result.
+    photosRef.current = next;
+    setPendingPhotos(next);
+  }, []);
+
+  // Fresh listings for the last-photo delete guard (handler is declared
+  // before the useListings destructure below).
+  const listingsRef = useRef<{ status: string }[]>([]);
+
+  const handlePhotoDelete = useCallback(async (index: number) => {
+    // eBay's Revise omits PictureDetails entirely for an empty photo list —
+    // the old pictures silently stay live while the app shows none. Block the
+    // divergence at the source.
+    if (photosRef.current.length <= 1 && listingsRef.current.some((l) => l.status === "active")) {
+      setUploadError("Can't remove the last photo while a listing is live — add a replacement photo first.");
+      return;
+    }
+    try {
+      const saved = (await updateItem({ photos: removePhotoAt(photosRef.current, index) })) as { syncWarnings?: string[] } | null;
+      if (saved?.syncWarnings?.length) setUploadError(saved.syncWarnings.join(" · "));
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Failed to delete photo");
+    }
+  }, [updateItem]);
+
+  const handlePhotoReorderEnd = useCallback(async () => {
+    const next = pendingPhotosRef.current;
+    if (!next) return;
+    pendingPhotosRef.current = null;
+    try {
+      const saved = (await updateItem({ photos: next })) as { syncWarnings?: string[] } | null;
+      if (saved?.syncWarnings?.length) setUploadError(saved.syncWarnings.join(" · "));
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Failed to save photo order");
+    } finally {
+      // Fall back to the server-confirmed order (or revert on failure).
+      setPendingPhotos(null);
+    }
+  }, [updateItem]);
+
   // Marketplace Listings hub (listing-hub Task 2): this page is becoming the
   // single canonical detail page; each listing renders as a ListingCard.
   const { listings: itemListings, isLoading: listingsLoading, error: listingsError, refetch: refetchListings } =
     useListings({ itemId: params.id });
+  useEffect(() => {
+    listingsRef.current = itemListings;
+  }, [itemListings]);
   const searchParams = useSearchParams();
   const focusListingId = searchParams.get("listing");
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -158,18 +233,29 @@ function ItemDetailContent() {
   const handleSaveEditedPhoto = useCallback(
     async (newUrl: string, newKey?: string) => {
       if (!item) return;
-      const itemPhotos = item.photos ?? [];
-      if (!itemPhotos[photoIndex]) return;
-      const updatedPhotos = itemPhotos.map((p, i) =>
-        i === photoIndex
-          ? { ...p, url: newUrl, ...(newKey ? { key: newKey } : {}) }
-          : p
-      );
-      await updateItem({ photos: updatedPhotos });
-      resetEnhance();
-      resetBgRemoval();
+      const target = (item.photos ?? [])[photoIndex];
+      if (!target) return;
+      const updatedPhotos = applyToPhoto(target, photoIndex, {
+        url: newUrl,
+        ...(newKey ? { key: newKey } : {}),
+      });
+      if (!updatedPhotos) {
+        setUploadError("Photo changed while editing — please retry.");
+        return;
+      }
+      try {
+        await updateItem({ photos: updatedPhotos });
+      } catch (err) {
+        // Fire-and-forget caller (enhance/bg accept) — without this catch a
+        // failed save is an unhandled rejection with zero user feedback.
+        setUploadError(err instanceof Error ? err.message : "Failed to save edited photo");
+        return;
+      } finally {
+        resetEnhance();
+        resetBgRemoval();
+      }
     },
-    [item, photoIndex, updateItem, resetEnhance, resetBgRemoval],
+    [item, photoIndex, applyToPhoto, updateItem, resetEnhance, resetBgRemoval],
   );
 
   // Rotate persists immediately (same UX as scan-flow): the server writes a
@@ -186,11 +272,13 @@ function ItemDetailContent() {
         body: { imageUrl: photo.url, degrees: 90 },
         token,
       });
-      const updatedPhotos = itemPhotos.map((p, i) =>
-        i === photoIndex
-          ? { ...p, url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height }
-          : p
-      );
+      const updatedPhotos = applyToPhoto(photo, photoIndex, {
+        url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height,
+      });
+      if (!updatedPhotos) {
+        setUploadError("Photo changed while editing — please retry.");
+        return;
+      }
       await updateItem({ photos: updatedPhotos });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Rotation failed");
@@ -211,11 +299,13 @@ function ItemDetailContent() {
           body: { imageUrl: photo.url, crop },
           token,
         });
-        const updatedPhotos = itemPhotos.map((p, i) =>
-          i === photoIndex
-            ? { ...p, url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height }
-            : p
-        );
+        const updatedPhotos = applyToPhoto(photo, photoIndex, {
+          url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height,
+        });
+        if (!updatedPhotos) {
+          setUploadError("Photo changed while editing — please retry.");
+          return;
+        }
         await updateItem({ photos: updatedPhotos });
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : "Crop failed");
@@ -223,7 +313,7 @@ function ItemDetailContent() {
         setShowCrop(false);
       }
     },
-    [token, item, photoIndex, updateItem],
+    [token, item, photoIndex, applyToPhoto, updateItem],
   );
 
   const handleExposureApply = useCallback(
@@ -238,11 +328,13 @@ function ItemDetailContent() {
           body: { imageUrl: photo.url, ev },
           token,
         });
-        const updatedPhotos = itemPhotos.map((p, i) =>
-          i === photoIndex
-            ? { ...p, url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height }
-            : p
-        );
+        const updatedPhotos = applyToPhoto(photo, photoIndex, {
+          url: data.image.url, key: data.image.key, width: data.image.width, height: data.image.height,
+        });
+        if (!updatedPhotos) {
+          setUploadError("Photo changed while editing — please retry.");
+          return;
+        }
         await updateItem({ photos: updatedPhotos });
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : "Exposure adjustment failed");
@@ -250,7 +342,7 @@ function ItemDetailContent() {
         setShowExposure(false);
       }
     },
-    [token, item, photoIndex, updateItem],
+    [token, item, photoIndex, applyToPhoto, updateItem],
   );
 
   const handleUseCompTitle = useCallback(
@@ -294,7 +386,7 @@ function ItemDetailContent() {
     return (
       <div className="min-h-screen bg-background">
         <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
-          <div className="flex items-center max-w-lg mx-auto">
+          <div className="flex items-center content-container">
             <button onClick={() => router.back()} className="p-1 -ml-1 text-text-secondary">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -303,7 +395,7 @@ function ItemDetailContent() {
             <span className="ml-3 text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">Not Found</span>
           </div>
         </header>
-        <div className="px-4 py-16 text-center max-w-lg mx-auto">
+        <div className="px-4 py-16 text-center content-container">
           <p className="text-text-secondary">{error ?? "Item not found"}</p>
           <button onClick={() => router.push("/inventory")} className="mt-4 text-sm text-forest-green font-medium">
             Back to inventory
@@ -313,7 +405,9 @@ function ItemDetailContent() {
     );
   }
 
-  const photos = item.photos ?? [];
+  // pendingPhotos first: the strip/sheet must render the optimistic order
+  // DURING the drag, not after the PATCH round-trip.
+  const photos = pendingPhotos ?? item.photos ?? [];
   const currentPhoto = photos[photoIndex];
 
   const valueDisplay = item.estimatedValueMin && item.estimatedValueMax
@@ -342,7 +436,7 @@ function ItemDetailContent() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
-        <div className="flex items-center justify-between max-w-lg mx-auto">
+        <div className="flex items-center justify-between content-container">
           <div className="flex items-center">
             <button onClick={() => router.back()} className="p-1 -ml-1 text-text-secondary">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -377,7 +471,7 @@ function ItemDetailContent() {
         </div>
       </header>
 
-      <div className="max-w-lg mx-auto">
+      <div className="content-container">
         {/* Photo gallery strip — tap a thumb to open the editor overlay; the
             always-on hero + inline tools are gone (Stage 2.5 redesign). */}
         <div className="px-4 pt-3 space-y-2">
@@ -388,7 +482,10 @@ function ItemDetailContent() {
               setEditingPhotoIndex(i);
             }}
             onAddPhotos={handleAddPhotos}
-            maxPhotos={12}
+            maxPhotos={MAX_PHOTOS_PER_ITEM}
+            onReorder={isToolProcessing ? undefined : handlePhotoReorder}
+            onReorderEnd={handlePhotoReorderEnd}
+            onDelete={isToolProcessing ? undefined : handlePhotoDelete}
           />
           {/* Buyer-eye share preview (listing-hub Task 5) */}
           <button
@@ -483,7 +580,7 @@ function ItemDetailContent() {
         )}
 
         {/* Item Info */}
-        <div className="px-4 py-4 space-y-4">
+        <div className="px-4 py-4 space-y-4 compact-bar-clearance">
             <>
               {/* Title + Value */}
               <div className="flex items-start justify-between gap-3">

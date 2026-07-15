@@ -50,7 +50,7 @@ export default function MorePage() {
   return (
     <>
       <PageHeader title="Settings" />
-      <div className="px-4 py-4 max-w-lg mx-auto">
+      <div className="px-4 py-4 content-container">
         {/* User info */}
         {user && (
           <div className="mb-6 p-4 rounded-2xl border border-border bg-surface" style={{ boxShadow: "var(--shadow-subtle)" }}>
@@ -140,6 +140,18 @@ export default function MorePage() {
             }
             title="Notifications"
             description="Sale alerts, shipping reminders"
+          />
+
+          <SettingsLink
+            href="/tutorials"
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" />
+                <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" />
+              </svg>
+            }
+            title="Tutorials"
+            description="Learn Portage step by step"
           />
 
           <SettingsLink

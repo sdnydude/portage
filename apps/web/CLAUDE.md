@@ -123,3 +123,4 @@ React Context only — no Zustand/Jotai/Redux. Two providers: `AuthProvider` (ap
 - **Polling HMR:** `WATCHPACK_POLLING=true` required for reliable hot reload over network.
 - **iOS aspect-ratio collapse:** Never use `aspect-ratio` (Tailwind `aspect-square`) inside flex + overflow-hidden containers — iOS WebKit collapses to 0px. Use `paddingBottom: "100%"` percentage trick instead (see `BeforeAfterSlider`).
 - **Docker no hot-reload:** Production containers don't reflect code changes without `docker compose up -d --build portage-app`.
+- **Tutorial screenshots rot:** `/tutorials` pages render PNGs from `public/tutorials/**` captured by `npm run capture:tutorials` (needs the app running; not in CI). After any visible UI change to home, inventory, listings, orders, settings, porter, or messages screens, re-run the capture and commit the updated PNGs — overlay coords live in `src/lib/tutorials/*` next to each topic's capture manifest.
