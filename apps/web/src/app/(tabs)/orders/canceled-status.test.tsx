@@ -5,6 +5,9 @@ import OrdersPage from "./page";
 vi.mock("@/hooks/use-auth", () => ({
   useAuth: () => ({ isAuthenticated: true, token: "t" }),
 }));
+vi.mock("@/hooks/use-messages", () => ({
+  useUnreadCount: () => ({ count: 0 }),
+}));
 const ordersMock = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-orders", () => ({ useOrders: ordersMock }));
 
