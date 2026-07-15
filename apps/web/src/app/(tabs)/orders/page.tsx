@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useOrders, type Order } from "@/hooks/use-orders";
 import { useAuth } from "@/hooks/use-auth";
 import { PageHeader } from "@/components/layout/page-header";
+import { AskPorterBar } from "@/components/porter/ask-porter-bar";
 
 function primaryPhotoUrl(order: Order): string | null {
   const photos = order.itemPhotos;
@@ -82,7 +83,7 @@ export default function OrdersPage() {
   if (!isAuthenticated) {
     return (
       <>
-        <PageHeader title="Orders" />
+        <PageHeader title="Orders" showAvatar />
         <div className="px-4 py-6 max-w-lg mx-auto">
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-text-secondary text-sm">Log in to view your orders</p>
@@ -99,6 +100,7 @@ export default function OrdersPage() {
     <>
       <PageHeader
         title="Orders"
+        showAvatar
         action={
           <button
             onClick={() => syncOrders()}
@@ -113,6 +115,9 @@ export default function OrdersPage() {
           </button>
         }
       />
+      <div className="lg:hidden px-4 pt-3 max-w-lg mx-auto w-full">
+        <AskPorterBar />
+      </div>
       <div className="px-4 py-4 max-w-lg mx-auto">
         {syncError && (
           <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-sm text-red-700 dark:text-red-300 mb-4">

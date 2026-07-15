@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { PageHeader } from "@/components/layout/page-header";
+import { AskPorterBar } from "@/components/porter/ask-porter-bar";
 import { SearchBar } from "@/components/inventory/search-bar";
 import { ViewControls } from "@/components/inventory/view-controls";
 import { ItemCard } from "@/components/inventory/item-card";
@@ -191,7 +192,7 @@ export default function InventoryPage() {
   if (!isAuthenticated) {
     return (
       <>
-        <PageHeader title="Inventory" subtitle="Your items" />
+        <PageHeader title="Inventory" subtitle="Your items" showAvatar />
         <div className="px-4 py-6 max-w-lg mx-auto">
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-16 h-16 rounded-2xl bg-forest-green-50 flex items-center justify-center mb-4">
@@ -216,6 +217,7 @@ export default function InventoryPage() {
       <PageHeader
         title="Inventory"
         subtitle={total > 0 ? `${total} item${total !== 1 ? "s" : ""}` : undefined}
+        showAvatar
         action={
           items.length > 0 ? (
             <div className="flex items-center gap-2">
@@ -234,6 +236,9 @@ export default function InventoryPage() {
           ) : undefined
         }
       />
+      <div className="lg:hidden px-4 pt-3 max-w-lg mx-auto w-full">
+        <AskPorterBar />
+      </div>
       <div className="px-4 py-3 max-w-lg mx-auto space-y-3">
         <SearchBar value={search} onChange={setSearch} />
         <ViewControls

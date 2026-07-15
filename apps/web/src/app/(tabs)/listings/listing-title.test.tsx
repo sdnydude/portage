@@ -8,6 +8,10 @@ vi.mock("@/hooks/use-auth", () => ({
 vi.mock("@/hooks/use-messages", () => ({
   useUnreadCount: () => ({ count: 0 }),
 }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/listings",
+  useRouter: () => ({ push: vi.fn() }),
+}));
 const listingsMock = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-listings", () => ({
   useListings: listingsMock,
