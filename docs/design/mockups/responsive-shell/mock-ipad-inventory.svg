@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="1180" viewBox="0 0 820 1180" font-family="Helvetica, Arial, sans-serif">
+  <!-- iPad portrait 820x1180 — Inventory: mobile chrome + wider content (3-col), Ask Porter row -->
+  <rect width="820" height="1180" fill="#F5F2EB"/>
+
+  <!-- PageHeader (sticky) -->
+  <rect width="820" height="64" fill="#F5F2EB" fill-opacity="0.95"/>
+  <line x1="0" y1="64" x2="820" y2="64" stroke="#D6D3CE"/>
+  <text x="74" y="40" font-size="20" font-weight="600" fill="#2D2A26">Inventory</text>
+
+  <!-- Header avatar -->
+  <circle cx="770" cy="32" r="22" fill="#0D7377"/>
+  <text x="770" y="39" font-size="18" font-weight="700" fill="#FFFFFF" text-anchor="middle">S</text>
+  <circle cx="787" cy="15" r="5" fill="#F77E2D"/>
+
+  <!-- Ask Porter row (focus-collapsed) — content-container max-w-2xl centered -->
+  <g transform="translate(74,80)">
+    <rect width="672" height="44" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+    <circle cx="26" cy="22" r="8" fill="none" stroke="#0D7377" stroke-width="2"/>
+    <text x="46" y="27" font-size="14" fill="#A3A3A3">Ask Porter…</text>
+  </g>
+
+  <!-- Search + controls -->
+  <g transform="translate(74,140)">
+    <rect width="560" height="40" rx="14" fill="#FFFFFF" stroke="#D6D3CE"/>
+    <text x="20" y="25" font-size="13" fill="#A3A3A3">Search items…</text>
+    <rect x="576" width="96" height="40" rx="14" fill="#FFFFFF" stroke="#D6D3CE"/>
+    <text x="600" y="25" font-size="13" fill="#4A4742">Filters</text>
+  </g>
+
+  <!-- 3-col grid -->
+  <g>
+    <g transform="translate(74,200)">
+      <rect width="213" height="210" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="211" height="124" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="140" width="140" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="162" width="80" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="180" width="60" height="16" rx="8" fill="#E2F0F0"/>
+    </g>
+    <g transform="translate(303,200)">
+      <rect width="213" height="210" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="211" height="124" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="140" width="120" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="162" width="90" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="180" width="66" height="16" rx="8" fill="#FCEEE2"/>
+    </g>
+    <g transform="translate(532,200)">
+      <rect width="213" height="210" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="211" height="124" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="140" width="150" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="162" width="70" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="180" width="60" height="16" rx="8" fill="#E6F4EE"/>
+    </g>
+
+    <g transform="translate(74,426)">
+      <rect width="213" height="210" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="211" height="124" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="140" width="135" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="162" width="85" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="180" width="60" height="16" rx="8" fill="#E6F4EE"/>
+    </g>
+    <g transform="translate(303,426)">
+      <rect width="213" height="210" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="211" height="124" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="140" width="145" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="162" width="75" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="180" width="60" height="16" rx="8" fill="#E2F0F0"/>
+    </g>
+    <g transform="translate(532,426)">
+      <rect width="213" height="210" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="211" height="124" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="140" width="125" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="162" width="95" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="180" width="66" height="16" rx="8" fill="#FCEEE2"/>
+    </g>
+
+    <g transform="translate(74,652)">
+      <rect width="213" height="210" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="211" height="124" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="140" width="150" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="162" width="78" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="180" width="60" height="16" rx="8" fill="#E2F0F0"/>
+    </g>
+    <g transform="translate(303,652)">
+      <rect width="213" height="210" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="211" height="124" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="140" width="130" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="162" width="88" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="180" width="60" height="16" rx="8" fill="#E6F4EE"/>
+    </g>
+    <g transform="translate(532,652)">
+      <rect width="213" height="210" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="211" height="124" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="140" width="140" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="162" width="72" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="180" width="66" height="16" rx="8" fill="#FCEEE2"/>
+    </g>
+  </g>
+
+  <!-- Content fade above bar -->
+  <rect x="0" y="1040" width="820" height="40" fill="url(#fade)"/>
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5F2EB" stop-opacity="0"/><stop offset="1" stop-color="#F5F2EB"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Floating glass tab bar — stays max-w-lg (512) centered -->
+  <g transform="translate(154,1084)">
+    <rect width="512" height="64" rx="22" fill="#F5F2EB" fill-opacity="0.72" stroke="#FFFFFF" stroke-opacity="0.4"/>
+    <rect width="512" height="64" rx="22" fill="#FFFFFF" fill-opacity="0.25"/>
+    <g font-size="9" text-anchor="middle" fill="#4A4742">
+      <circle cx="46" cy="24" r="8" fill="none" stroke="#2D2A26" stroke-width="2.2"/>
+      <text x="46" y="50" font-weight="700" fill="#2D2A26">Home</text>
+      <rect x="116" y="16" width="16" height="16" rx="3" fill="none" stroke="#4A4742" stroke-width="1.8"/>
+      <text x="124" y="50">Inventory</text>
+      <rect x="192" y="16" width="16" height="16" rx="3" fill="none" stroke="#4A4742" stroke-width="1.8"/>
+      <text x="200" y="50">Listings</text>
+      <circle cx="388" cy="24" r="8" fill="none" stroke="#0D7377" stroke-width="2"/>
+      <text x="388" y="50" fill="#0D7377" font-weight="600">Porter</text>
+      <rect x="458" y="16" width="16" height="14" rx="3" fill="none" stroke="#4A4742" stroke-width="1.8"/>
+      <text x="466" y="50">Orders</text>
+    </g>
+    <!-- Scan FAB breaking top edge -->
+    <circle cx="256" cy="4" r="28" fill="#F77E2D" stroke="#F5F2EB" stroke-width="3"/>
+    <circle cx="256" cy="4" r="10" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="256" y="50" font-size="9" font-weight="700" fill="#C9621B" text-anchor="middle">Scan</text>
+  </g>
+</svg>
