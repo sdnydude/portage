@@ -65,6 +65,25 @@ describe("TabBar", () => {
     expect(nav.className).not.toContain("transition-all");
     vi.unstubAllGlobals();
   });
+
+  it("resets to full state on tab-to-tab navigation while minimized", () => {
+    const { rerender } = render(<TabBar />); // "/home" via beforeEach — a tab route
+    Object.defineProperty(window, "scrollY", { value: 40, configurable: true });
+    fireEvent.scroll(window);
+    expect(screen.queryByText("Home")).not.toBeInTheDocument(); // minimized
+    mockPathname.mockReturnValue("/inventory");
+    rerender(<TabBar />);
+    // "(re-)entering a tab route always starts full" — labels visible again
+    expect(screen.getByText("Home")).toBeInTheDocument();
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+  });
+
+  it("fade gradient bottom tracks the compact bar height", () => {
+    mockPathname.mockReturnValue("/settings/help"); // non-tab route — permanent compact (48px bar)
+    const { container } = render(<TabBar />);
+    const gradient = container.querySelector("div.pointer-events-none") as HTMLElement;
+    expect(gradient.style.bottom).toContain("3.5rem"); // 48px bar + 8px lift; full state is 4.5rem
+  });
 });
 
 describe("TabBar scan warning toast", () => {

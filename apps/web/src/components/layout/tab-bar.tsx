@@ -66,7 +66,10 @@ export function TabBar() {
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [onTabRoute]);
+    // pathname dep: tab-to-tab navigation must re-fire this effect so the bar
+    // resets to full and lastY re-anchors (onTabRoute alone stays true across
+    // all 5 tab routes and would never re-run).
+  }, [onTabRoute, pathname]);
 
   // Compact (icon-only, no labels) is permanent off tab routes (HIG "never
   // fully absent") and transient on tab routes once scrolled past threshold.
@@ -78,11 +81,12 @@ export function TabBar() {
 
   return (
     <>
-      {/* Content fade gradient */}
+      {/* Content fade gradient — tracks the bar's height: 48px compact bar +
+          8px lift = 3.5rem; 64px full bar + 8px = 4.5rem */}
       <div
         className="fixed left-0 right-0 z-40 h-8 pointer-events-none lg:hidden"
         style={{
-          bottom: "calc(4.5rem + var(--safe-area-bottom))",
+          bottom: `calc(${compact ? "3.5rem" : "4.5rem"} + var(--safe-area-bottom))`,
           background: "linear-gradient(to bottom, transparent, var(--background))",
         }}
       />
