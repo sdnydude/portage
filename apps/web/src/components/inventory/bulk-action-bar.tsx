@@ -25,8 +25,10 @@ export function BulkActionBar({
 
   return (
     <div
-      className="fixed bottom-20 left-0 right-0 z-[55] px-4 pb-2"
-      style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+      className="fixed left-0 right-0 z-[55] px-4 pb-2"
+      // Clear the full tab bar (top edge = 0.5rem lift + 4rem height + safe-area)
+      // with an 8px gap; safe-area lives in `bottom` so the gap holds on notch devices.
+      style={{ bottom: "calc(5rem + var(--safe-area-bottom))" }}
     >
       <div className="max-w-lg mx-auto rounded-2xl border border-border bg-surface/95 backdrop-blur-md shadow-lg overflow-hidden">
         {/* Header row */}

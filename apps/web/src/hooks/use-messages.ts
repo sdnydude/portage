@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePathname } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "./use-auth";
 import type { EbayConversation, EbayMessage } from "@portage/shared";
@@ -126,37 +125,6 @@ export function useSync() {
   return { sync, isSyncing, error };
 }
 
-export function useUnreadCount() {
-  const { token } = useAuth();
-  const pathname = usePathname();
-  const [count, setCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [prevPathname, setPrevPathname] = useState(pathname);
-
-  const load = useCallback(async () => {
-    if (!token) return;
-    try {
-      const data = await api<{ count: number }>("/messages/unread-count", { token });
-      setCount(data.count);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        console.error("Unread count error:", err.status, err.message);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (prevPathname.startsWith("/messages") && !pathname.startsWith("/messages")) {
-      load();
-    }
-    setPrevPathname(pathname);
-  }, [pathname, prevPathname, load]);
-
-  return { count, isLoading, refetch: load };
-}
+// Moved to its own module (needs JSX for UnreadCountProvider); re-exported
+// here so existing imports and test mocks keep working.
+export { useUnreadCount } from "./use-unread-count";
