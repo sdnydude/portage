@@ -26,7 +26,7 @@ test("listing optimizer panel renders on the item detail page and survives reloa
   // The optimizer mounts and finishes its research fetch (loading → content).
   await expect(page.getByRole("heading", { name: "Listing Optimizer" })).toBeVisible();
   await expect(page.getByText("Item specifics buyers filter on")).toBeVisible();
-  await expect(page.getByText("Performance")).toBeVisible();
+  await expect(page.getByText("Performance", { exact: true })).toBeVisible();
   await page.screenshot({ path: path.join(SHOT_DIR, "1-optimizer-rendered.png"), fullPage: true });
 
   // Reload → proves the panel re-fetches and renders from the server, not just

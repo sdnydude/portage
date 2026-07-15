@@ -6,7 +6,9 @@ import { useUnreadCount } from "@/hooks/use-messages";
 vi.mock("next/navigation", () => ({ usePathname: () => "/inventory" }));
 vi.mock("@/hooks/use-messages", () => ({ useUnreadCount: vi.fn(() => ({ count: 0 })) }));
 vi.mock("@/hooks/use-auth", () => ({ useAuth: vi.fn(() => ({ user: { email: "s@x.com", role: "user" } })) }));
-vi.mock("@/components/capture/scan-flow", () => ({ ScanFlow: () => null }));
+vi.mock("@/components/capture/scan-flow", () => ({
+  ScanFlow: () => <div data-testid="scan-flow" />,
+}));
 
 describe("Sidebar", () => {
   it("renders 5 main tabs, Messages + Settings secondary items, and Scan", () => {
@@ -32,5 +34,14 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     const messages = screen.getByRole("link", { name: /Messages/ });
     expect(messages.querySelector("span.bg-\\[var\\(--orange\\)\\]")).not.toBeNull();
+  });
+
+  it("mounts ScanFlow outside the sticky nav (sticky traps fixed overlays)", async () => {
+    const user = (await import("@testing-library/user-event")).default.setup();
+    render(<Sidebar />);
+    await user.click(screen.getByRole("button", { name: "Scan item" }));
+    const scanFlow = screen.getByTestId("scan-flow");
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    expect(nav.contains(scanFlow)).toBe(false);
   });
 });

@@ -113,6 +113,7 @@ export function Sidebar() {
   }, []);
 
   return (
+    <>
     <nav
       aria-label="Primary"
       data-collapsed={collapsed ? "1" : "0"}
@@ -226,7 +227,11 @@ export function Sidebar() {
         </button>
       </div>
 
-      {showScan && <ScanFlow onClose={() => setShowScan(false)} />}
     </nav>
+    {/* Outside the nav: position:sticky always creates a stacking context,
+        which would trap ScanFlow's fixed z-[60] overlay beneath the z-40
+        TopBar/PageHeader (same pattern as TabBar's fragment-sibling mount). */}
+    {showScan && <ScanFlow onClose={() => setShowScan(false)} />}
+    </>
   );
 }
