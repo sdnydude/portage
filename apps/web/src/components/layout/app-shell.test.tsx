@@ -33,10 +33,10 @@ describe("AppShell", () => {
     expect(screen.getByTestId("tab-bar")).toBeInTheDocument();
   });
 
-  it("does not mount the tab bar on tab routes (layout owns it until unification)", () => {
+  it("mounts the tab bar on tab routes too (unified ownership — AppShell owns TabBar on every non-admin route)", () => {
     mockPathname.mockReturnValue("/inventory");
     render(<AppShell><div /></AppShell>);
-    expect(screen.queryByTestId("tab-bar")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tab-bar")).toBeInTheDocument();
   });
 
   it("renders shell-main and the reserved dock slot on app routes", () => {

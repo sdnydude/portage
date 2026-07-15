@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { isTabRoute } from "@/lib/navigation";
 import { TabBar } from "./tab-bar";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
@@ -12,9 +11,8 @@ import { TopBar } from "./top-bar";
  * visibility, so SSR/hydration never flickers. Admin keeps its own layout.
  * The dock-slot aside is the reserved Phase R3 Porter-dock mount point;
  * shell-main is the pane-capable Phase R1 region.
- * TabBar mounting: non-tab routes here (compact bar — HIG "never fully
- * absent"); tab routes keep the (tabs)/layout mount until Task 8 unifies
- * ownership in AppShell for all non-admin routes.
+ * TabBar mounting: unified in AppShell (Task 8) for every non-admin route —
+ * TabBar decides full vs. compact state internally via `isTabRoute`.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
@@ -37,11 +35,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <aside data-testid="dock-slot" hidden aria-hidden="true" />
         </div>
       </div>
-      {!isTabRoute(pathname) && (
-        <div className="lg:hidden">
-          <TabBar />
-        </div>
-      )}
+      <div className="lg:hidden">
+        <TabBar />
+      </div>
     </div>
   );
 }
