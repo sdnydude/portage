@@ -11,8 +11,9 @@ export const setupTopic: TutorialTopic = {
       body: "Head to Settings → Marketplace Accounts and connect eBay and Reverb. Porter lists to every marketplace you connect — one flow, no re-typing.",
       screenshot: "/tutorials/setup/connect-marketplaces.png",
       overlays: [
-        { type: "highlight", x: 10, y: 28, w: 80, h: 14 },
-        { type: "callout", x: 50, y: 16, text: "Tap Connect on each marketplace", delay: 400 },
+        // Verified against the captured PNG: both marketplace cards sit at 8–29%.
+        { type: "highlight", x: 4, y: 8, w: 92, h: 21 },
+        { type: "callout", x: 50, y: 33, text: "Tap Connect on each marketplace", delay: 400 },
       ],
     },
     {

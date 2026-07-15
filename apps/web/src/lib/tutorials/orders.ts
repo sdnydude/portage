@@ -10,7 +10,8 @@ export const ordersTopic: TutorialTopic = {
       title: "Sales from every marketplace",
       body: "When something sells, it lands here — buyer, price, and date, synced automatically from eBay and Reverb.",
       screenshot: "/tutorials/orders/orders-tab.png",
-      overlays: [{ type: "highlight", x: 6, y: 20, w: 88, h: 30 }],
+      // Verified: demo account renders the empty state; ring its icon+copy block.
+      overlays: [{ type: "highlight", x: 6, y: 25, w: 88, h: 20 }],
     },
     {
       id: "order-detail",

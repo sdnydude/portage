@@ -75,7 +75,7 @@ export default function TutorialsHubPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-lg space-y-2 px-4 py-6">
+      <div className="mx-auto max-w-lg space-y-2 px-4 py-6 compact-bar-clearance">
         {TUTORIAL_TOPICS.map((topic) => (
           <Link
             key={topic.slug}

@@ -23,7 +23,7 @@ export function TutorialPlayer({ topic }: TutorialPlayerProps) {
   }, []);
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-6">
+    <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-6 compact-bar-clearance">
       <DeviceFrame
         screenshot={step.screenshot}
         overlays={step.overlays}

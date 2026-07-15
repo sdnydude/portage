@@ -27,6 +27,8 @@ apps/web/playwright-report/
 !website/static/img/verification/**
 # Keep the docs screenshot-appendix gallery
 !website/static/img/screenshots/**
+# Keep tutorial screenshot assets (rendered by /tutorials, baked into the image)
+!apps/web/public/tutorials/**
 .env.backup-*
 .superpowers/
 apps/web/e2e/.auth/

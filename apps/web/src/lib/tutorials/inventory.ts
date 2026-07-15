@@ -17,7 +17,8 @@ export const inventoryTopic: TutorialTopic = {
       title: "Find anything fast",
       body: "Search by name, filter by status, sort by value or date. The Unlisted badge shows what's sitting idle — your next listing candidates.",
       screenshot: "/tutorials/inventory/search.png",
-      overlays: [{ type: "tap", x: 50, y: 14 }],
+      // Verified: search bar sits at ~18–22% (Ask Porter bar is above it).
+      overlays: [{ type: "tap", x: 50, y: 20 }],
     },
     {
       id: "bulk",
