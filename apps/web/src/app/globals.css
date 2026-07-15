@@ -393,6 +393,30 @@ select {
   background: var(--glass-control);
 }
 
+/* Responsive content container — replaces scattered per-page max-w-lg.
+   Phone: max-w-lg · tablet portrait: max-w-2xl · desktop: fluid to max-w-5xl. */
+.content-container {
+  width: 100%;
+  margin-inline: auto;
+  max-width: 32rem; /* max-w-lg */
+}
+@media (min-width: 768px) {
+  .content-container { max-width: 42rem; } /* max-w-2xl */
+}
+@media (min-width: 1024px) {
+  .content-container { max-width: 64rem; } /* max-w-5xl */
+}
+
+/* Clears the floating compact tab bar (48px bar + 8px lift + safe area)
+   on non-tab routes below lg; desktop has no bar. */
+/* Mobile-only: unlayered rules beat Tailwind's layered py-*, so a lg reset
+   to 0 would also erase each page's own desktop padding — scope instead. */
+@media (max-width: 1023.98px) {
+  .compact-bar-clearance {
+    padding-bottom: calc(4rem + var(--safe-area-bottom));
+  }
+}
+
 /* Scrollbar hiding for horizontal scroll areas */
 .scrollbar-hide {
   -ms-overflow-style: none;

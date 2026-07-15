@@ -4,6 +4,11 @@ import { render, screen } from "@testing-library/react";
 const useOrdersMock = vi.fn();
 vi.mock("@/hooks/use-orders", () => ({ useOrders: () => useOrdersMock() }));
 vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true }) }));
+vi.mock("@/hooks/use-messages", () => ({ useUnreadCount: () => ({ count: 0 }) }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/orders",
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 import OrdersPage from "./page";
 

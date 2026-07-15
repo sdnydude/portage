@@ -386,7 +386,7 @@ function ItemDetailContent() {
     return (
       <div className="min-h-screen bg-background">
         <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
-          <div className="flex items-center max-w-lg mx-auto">
+          <div className="flex items-center content-container">
             <button onClick={() => router.back()} className="p-1 -ml-1 text-text-secondary">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -395,7 +395,7 @@ function ItemDetailContent() {
             <span className="ml-3 text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">Not Found</span>
           </div>
         </header>
-        <div className="px-4 py-16 text-center max-w-lg mx-auto">
+        <div className="px-4 py-16 text-center content-container">
           <p className="text-text-secondary">{error ?? "Item not found"}</p>
           <button onClick={() => router.push("/inventory")} className="mt-4 text-sm text-forest-green font-medium">
             Back to inventory
@@ -436,7 +436,7 @@ function ItemDetailContent() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
-        <div className="flex items-center justify-between max-w-lg mx-auto">
+        <div className="flex items-center justify-between content-container">
           <div className="flex items-center">
             <button onClick={() => router.back()} className="p-1 -ml-1 text-text-secondary">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -471,7 +471,7 @@ function ItemDetailContent() {
         </div>
       </header>
 
-      <div className="max-w-lg mx-auto">
+      <div className="content-container">
         {/* Photo gallery strip — tap a thumb to open the editor overlay; the
             always-on hero + inline tools are gone (Stage 2.5 redesign). */}
         <div className="px-4 pt-3 space-y-2">
@@ -580,7 +580,7 @@ function ItemDetailContent() {
         )}
 
         {/* Item Info */}
-        <div className="px-4 py-4 space-y-4">
+        <div className="px-4 py-4 space-y-4 compact-bar-clearance">
             <>
               {/* Title + Value */}
               <div className="flex items-start justify-between gap-3">

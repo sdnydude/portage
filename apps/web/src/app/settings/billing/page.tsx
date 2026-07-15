@@ -131,7 +131,7 @@ export default function BillingPage() {
 
   if (loading) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-8">
+      <div className="content-container px-4 py-8">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-[var(--color-border)] rounded w-48" />
           <div className="h-32 bg-[var(--color-border)] rounded-xl" />
@@ -143,7 +143,7 @@ export default function BillingPage() {
 
   if (!status) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-8">
+      <div className="content-container px-4 py-8">
         <p className="text-red-500">{error || "Unable to load billing information"}</p>
       </div>
     );
@@ -155,7 +155,7 @@ export default function BillingPage() {
   const isPaid = !!status.subscription;
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-8 pb-24">
+    <div className="content-container px-4 py-8 pb-24">
       <h1 className="text-2xl font-bold font-[family-name:var(--font-instrument)] mb-6">
         Billing & Plan
       </h1>

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { PageHeader } from "@/components/layout/page-header";
+import { AskPorterBar } from "@/components/porter/ask-porter-bar";
 import { BulkListingBar } from "@/components/listing/bulk-listing-bar";
 import { useListings } from "@/hooks/use-listings";
 import { useAuth } from "@/hooks/use-auth";
@@ -188,8 +189,8 @@ export default function ListingsPage() {
   if (!isAuthenticated) {
     return (
       <>
-        <PageHeader title="Listings" subtitle="Your marketplace listings" />
-        <div className="px-4 py-6 max-w-lg mx-auto">
+        <PageHeader title="Listings" subtitle="Your marketplace listings" showAvatar />
+        <div className="px-4 py-6 content-container">
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-sm text-text-secondary">Sign in to manage your listings.</p>
           </div>
@@ -203,6 +204,7 @@ export default function ListingsPage() {
       <PageHeader
         title="Listings"
         subtitle={listings.length > 0 ? `${listings.length} listing${listings.length !== 1 ? "s" : ""}` : undefined}
+        showAvatar
         action={
           listings.length > 0 ? (
             <button
@@ -218,7 +220,10 @@ export default function ListingsPage() {
           ) : undefined
         }
       />
-      <div className="px-4 py-3 max-w-lg mx-auto space-y-3">
+      <div className="lg:hidden px-4 pt-3 content-container w-full">
+        <AskPorterBar />
+      </div>
+      <div className="px-4 py-3 content-container space-y-3">
         <div className="flex gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
           {statusFilters.map((f) => (
             <button
@@ -273,7 +278,7 @@ export default function ListingsPage() {
         )}
 
         {!isLoading && !error && listings.length > 0 && (
-          <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-4">
             {listings.map((listing) => (
               <ListingCard
                 key={listing.id}

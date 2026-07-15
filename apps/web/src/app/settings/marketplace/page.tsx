@@ -80,7 +80,7 @@ export default function MarketplacePage() {
   return (
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
-        <div className="flex items-center gap-3 max-w-lg mx-auto">
+        <div className="flex items-center gap-3 content-container">
           <button onClick={() => router.back()} className="p-1 -ml-1" aria-label="Go back">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
@@ -90,7 +90,7 @@ export default function MarketplacePage() {
         </div>
       </header>
 
-      <div className="px-4 py-6 max-w-lg mx-auto space-y-3">
+      <div className="px-4 py-6 content-container space-y-3 compact-bar-clearance">
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 rounded-full border-2 border-forest-green border-t-transparent animate-spin" />

@@ -50,7 +50,7 @@ export default function MorePage() {
   return (
     <>
       <PageHeader title="Settings" />
-      <div className="px-4 py-4 max-w-lg mx-auto">
+      <div className="px-4 py-4 content-container">
         {/* User info */}
         {user && (
           <div className="mb-6 p-4 rounded-2xl border border-border bg-surface" style={{ boxShadow: "var(--shadow-subtle)" }}>
