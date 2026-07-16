@@ -477,19 +477,21 @@ export default function InventoryPage() {
               <span className="text-sm text-text-secondary">
                 {total} item{total !== 1 ? "s" : ""}
               </span>
-              <div className="flex items-center gap-2">
-                <ExportButton />
-                <button
-                  onClick={toggleSelecting}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    isSelecting
-                      ? "bg-forest-green text-white"
-                      : "bg-muted text-text-secondary hover:text-text-primary"
-                  }`}
-                >
-                  {isSelecting ? "Done" : "Select"}
-                </button>
-              </div>
+              {items.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <ExportButton />
+                  <button
+                    onClick={toggleSelecting}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      isSelecting
+                        ? "bg-forest-green text-white"
+                        : "bg-muted text-text-secondary hover:text-text-primary"
+                    }`}
+                  >
+                    {isSelecting ? "Done" : "Select"}
+                  </button>
+                </div>
+              )}
             </div>
             <SearchBar value={search} onChange={setSearch} />
             <ViewControls

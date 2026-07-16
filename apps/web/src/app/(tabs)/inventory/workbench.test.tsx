@@ -128,4 +128,12 @@ describe("Inventory workbench (lg master-detail)", () => {
     const workbench = screen.getByTestId("workbench");
     expect(within(workbench).getByText("Network error")).toBeInTheDocument();
   });
+
+  it("hides the Export and Select controls in the list pane when inventory is empty", () => {
+    useItemsMock.mockReturnValueOnce({ items: [], total: 0, isLoading: false, error: null, refetch: vi.fn() });
+    render(<InventoryPage />);
+    const workbench = screen.getByTestId("workbench");
+    expect(within(workbench).queryByRole("button", { name: /export inventory/i })).not.toBeInTheDocument();
+    expect(within(workbench).queryByRole("button", { name: "Select" })).not.toBeInTheDocument();
+  });
 });
