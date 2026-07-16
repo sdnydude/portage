@@ -348,7 +348,7 @@ Sequencing note: the onboarding-expansion ship (plan `docs/superpowers/plans/202
 - [ ] Content width system — shared responsive container replaces per-page `max-w-lg`; content region reserves right-dock slot (R3) + pane-capable main area (R1)
 
 ### Phase R1 — Desktop Workbench
-- [x] Master-detail inventory/listings — list pane + edit pane (`inventory/[id]` surface), arrow-key nav, no page swaps (2026-07-16, PR pending)
+- [x] Master-detail inventory/listings — list pane + edit pane (`inventory/[id]` surface), arrow-key nav, no page swaps (2026-07-15, PR pending)
 
 ### Phase R2 — Desktop Ingest
 - [ ] Drag-and-drop photo ingest — drop image files → batch queue → vision-identify pipeline → items

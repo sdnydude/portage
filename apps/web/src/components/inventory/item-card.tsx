@@ -17,10 +17,16 @@ export function ItemCard({ item, view, onOpen, selected }: ItemCardProps) {
       ? `~$${item.estimatedValueRecommended}`
       : null;
 
-  const className =
+  // Border color is excluded from the shared base string: Tailwind's
+  // generated-CSS order (not string order) decides which border-color
+  // class wins when two are both present, so the button-mode selected
+  // state computes its own border color below instead of appending
+  // border-transparent after a base that already has border-border.
+  const baseClassName =
     view === "list"
-      ? "flex items-center gap-3 p-3 bg-surface rounded-xl border border-border hover:border-border-focus transition-colors"
-      : "block bg-surface rounded-xl border border-border hover:border-border-focus transition-colors overflow-hidden";
+      ? "flex items-center gap-3 p-3 bg-surface rounded-xl border hover:border-border-focus transition-colors"
+      : "block bg-surface rounded-xl border hover:border-border-focus transition-colors overflow-hidden";
+  const className = `${baseClassName} border-border`;
 
   const content = view === "list" ? (
     <>
@@ -95,7 +101,7 @@ export function ItemCard({ item, view, onOpen, selected }: ItemCardProps) {
         onClick={onOpen}
         data-item-id={item.id}
         aria-current={selected ? "true" : undefined}
-        className={`${className} w-full text-left ${selected ? "ring-2 ring-forest-green border-transparent" : ""}`}
+        className={`${baseClassName} w-full text-left ${selected ? "border-transparent ring-2 ring-forest-green" : "border-border"}`}
       >
         {content}
       </button>

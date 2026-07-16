@@ -398,7 +398,7 @@ export function ItemDetail({
       <div className={`${variant === "pane" ? "min-h-full" : "min-h-screen"} bg-background`}>
         <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
           <div className="flex items-center content-container">
-            <button onClick={() => onBack()} className="p-1 -ml-1 text-text-secondary">
+            <button onClick={() => onBack()} aria-label="Back" className="p-1 -ml-1 text-text-secondary">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M19 12H5M12 19l-7-7 7-7" />
               </svg>
