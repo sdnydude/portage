@@ -9,10 +9,14 @@ import { ItemCard } from "@/components/inventory/item-card";
 import { BulkActionBar } from "@/components/inventory/bulk-action-bar";
 import { ExportActionSheet } from "@/components/inventory/export-action-sheet";
 import { useItems } from "@/hooks/use-items";
+import type { Item } from "@/hooks/use-items";
 import { useAuth } from "@/hooks/use-auth";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { api, ApiError } from "@/lib/api";
 import { useExport } from "@/hooks/use-export";
+import { ItemDetail } from "@/components/inventory/item-detail";
+import { MasterDetail } from "@/components/workbench/master-detail";
+import { useListNav } from "@/hooks/use-list-nav";
 
 function ExportButton() {
   const { exportItems, isExporting } = useExport();
@@ -107,6 +111,75 @@ function ExportButton() {
   );
 }
 
+function ItemsGrid({
+  items,
+  view,
+  isSelecting,
+  selectedIds,
+  onToggle,
+  onOpen,
+  selectedId,
+}: {
+  items: Item[];
+  view: "grid" | "list";
+  isSelecting: boolean;
+  selectedIds: Set<string>;
+  onToggle: (id: string) => void;
+  onOpen?: (id: string) => void;
+  selectedId?: string | null;
+}) {
+  return (
+    <div
+      className={
+        view === "grid"
+          ? "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3"
+          : "flex flex-col gap-2"
+      }
+    >
+      {items.map((item) =>
+        isSelecting ? (
+          <button
+            key={item.id}
+            onClick={() => onToggle(item.id)}
+            className="relative text-left focus:outline-none"
+            aria-pressed={selectedIds.has(item.id)}
+            aria-label={`${selectedIds.has(item.id) ? "Deselect" : "Select"} ${item.title}`}
+          >
+            {/* Checkbox overlay */}
+            <div
+              className={`absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                selectedIds.has(item.id)
+                  ? "bg-forest-green border-forest-green"
+                  : "bg-surface/80 border-border backdrop-blur-sm"
+              }`}
+              aria-hidden="true"
+            >
+              {selectedIds.has(item.id) && (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </div>
+            {/* Ring highlight when selected */}
+            {selectedIds.has(item.id) && (
+              <div className="absolute inset-0 rounded-xl ring-2 ring-forest-green z-10 pointer-events-none" aria-hidden="true" />
+            )}
+            <ItemCard item={item} view={view} />
+          </button>
+        ) : (
+          <ItemCard
+            key={item.id}
+            item={item}
+            view={view}
+            onOpen={onOpen ? () => onOpen(item.id) : undefined}
+            selected={item.id === selectedId}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
 export default function InventoryPage() {
   const { isAuthenticated, token } = useAuth();
   const { exportItems } = useExport();
@@ -125,6 +198,36 @@ export default function InventoryPage() {
 
   const { items, total, isLoading, error, refetch } = useItems({ search, category });
   const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<typeof items[number]>();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("item");
+    if (id) setSelectedId(id);
+  }, []);
+
+  const selectItem = useCallback((id: string) => {
+    setSelectedId(id);
+    window.history.replaceState(null, "", `/inventory?item=${id}`);
+  }, []);
+
+  const clearDetailSelection = useCallback(() => {
+    setSelectedId(null);
+    window.history.replaceState(null, "", "/inventory");
+  }, []);
+
+  const { onKeyDown: onListKeyDown } = useListNav({
+    ids: items.map((i) => i.id),
+    selectedId,
+    onSelect: selectItem,
+  });
+
+  // Keep the selected card visible when arrow-keying.
+  useEffect(() => {
+    if (!selectedId) return;
+    document
+      .querySelector(`[data-item-id="${selectedId}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0 || !token) return;
@@ -214,121 +317,88 @@ export default function InventoryPage() {
 
   return (
     <>
-      <PageHeader
-        title="Inventory"
-        subtitle={total > 0 ? `${total} item${total !== 1 ? "s" : ""}` : undefined}
-        showAvatar
-        action={
-          items.length > 0 ? (
-            <div className="flex items-center gap-2">
-              <ExportButton />
-              <button
-                onClick={toggleSelecting}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  isSelecting
-                    ? "bg-forest-green text-white"
-                    : "bg-muted text-text-secondary hover:text-text-primary"
-                }`}
-              >
-                {isSelecting ? "Done" : "Select"}
-              </button>
-            </div>
-          ) : undefined
-        }
-      />
-      <div className="lg:hidden px-4 pt-3 content-container w-full">
-        <AskPorterBar />
-      </div>
-      <div className="px-4 py-3 content-container space-y-3">
-        <SearchBar value={search} onChange={setSearch} />
-        <ViewControls
-          view={view}
-          onViewChange={setView}
-          total={total}
-          category={category}
-          onCategoryChange={setCategory}
-        />
-
-        {bulkError && (
-          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
-            {bulkError}
-          </div>
-        )}
-
-        {isLoading && (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
-            {error}
-          </div>
-        )}
-
-        {!isLoading && !error && items.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-forest-green-50 flex items-center justify-center mb-4">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-            </div>
-            <h2 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary mb-2">
-              {search || category ? "No matching items" : "No items yet"}
-            </h2>
-            <p className="text-sm text-text-secondary max-w-xs">
-              {search || category
-                ? "Try adjusting your search or filters."
-                : "Tap the camera button to photograph your first item. Porter will identify it automatically."}
-            </p>
-          </div>
-        )}
-
-        {!isLoading && !error && items.length > 0 && (
-          <div
-            className={
-              view === "grid"
-                ? "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3"
-                : "flex flex-col gap-2"
-            }
-          >
-            {items.map((item) =>
-              isSelecting ? (
+      <div className="lg:hidden">
+        <PageHeader
+          title="Inventory"
+          subtitle={total > 0 ? `${total} item${total !== 1 ? "s" : ""}` : undefined}
+          showAvatar
+          action={
+            items.length > 0 ? (
+              <div className="flex items-center gap-2">
+                <ExportButton />
                 <button
-                  key={item.id}
-                  onClick={() => toggle(item.id)}
-                  className="relative text-left focus:outline-none"
-                  aria-pressed={selectedIds.has(item.id)}
-                  aria-label={`${selectedIds.has(item.id) ? "Deselect" : "Select"} ${item.title}`}
+                  onClick={toggleSelecting}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    isSelecting
+                      ? "bg-forest-green text-white"
+                      : "bg-muted text-text-secondary hover:text-text-primary"
+                  }`}
                 >
-                  {/* Checkbox overlay */}
-                  <div
-                    className={`absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                      selectedIds.has(item.id)
-                        ? "bg-forest-green border-forest-green"
-                        : "bg-surface/80 border-border backdrop-blur-sm"
-                    }`}
-                    aria-hidden="true"
-                  >
-                    {selectedIds.has(item.id) && (
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                  </div>
-                  {/* Ring highlight when selected */}
-                  {selectedIds.has(item.id) && (
-                    <div className="absolute inset-0 rounded-xl ring-2 ring-forest-green z-10 pointer-events-none" aria-hidden="true" />
-                  )}
-                  <ItemCard item={item} view={view} />
+                  {isSelecting ? "Done" : "Select"}
                 </button>
-              ) : (
-                <ItemCard key={item.id} item={item} view={view} />
-              )
-            )}
-          </div>
-        )}
+              </div>
+            ) : undefined
+          }
+        />
+        <div className="lg:hidden px-4 pt-3 content-container w-full">
+          <AskPorterBar />
+        </div>
+        <div className="px-4 py-3 content-container space-y-3">
+          <SearchBar value={search} onChange={setSearch} />
+          <ViewControls
+            view={view}
+            onViewChange={setView}
+            total={total}
+            category={category}
+            onCategoryChange={setCategory}
+          />
+
+          {bulkError && (
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
+              {bulkError}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
+              {error}
+            </div>
+          )}
+
+          {!isLoading && !error && items.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-forest-green-50 flex items-center justify-center mb-4">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary mb-2">
+                {search || category ? "No matching items" : "No items yet"}
+              </h2>
+              <p className="text-sm text-text-secondary max-w-xs">
+                {search || category
+                  ? "Try adjusting your search or filters."
+                  : "Tap the camera button to photograph your first item. Porter will identify it automatically."}
+              </p>
+            </div>
+          )}
+
+          {!isLoading && !error && items.length > 0 && (
+            <ItemsGrid
+              items={items}
+              view={view}
+              isSelecting={isSelecting}
+              selectedIds={selectedIds}
+              onToggle={toggle}
+            />
+          )}
+        </div>
       </div>
 
       {/* Bulk action bar — shown above tab bar when in select mode with items selected */}
@@ -393,6 +463,100 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+
+      <MasterDetail
+        listLabel="Inventory list"
+        list={
+          <div
+            className="space-y-3 p-4 outline-none"
+            tabIndex={0}
+            onKeyDown={onListKeyDown}
+            aria-label="Inventory items — use arrow keys to browse"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-text-secondary">
+                {total} item{total !== 1 ? "s" : ""}
+              </span>
+              <div className="flex items-center gap-2">
+                <ExportButton />
+                <button
+                  onClick={toggleSelecting}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    isSelecting
+                      ? "bg-forest-green text-white"
+                      : "bg-muted text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  {isSelecting ? "Done" : "Select"}
+                </button>
+              </div>
+            </div>
+            <SearchBar value={search} onChange={setSearch} />
+            <ViewControls
+              view={view}
+              onViewChange={setView}
+              total={total}
+              category={category}
+              onCategoryChange={setCategory}
+            />
+
+            {isLoading && (
+              <div data-testid="list-pane-loading" className="flex items-center justify-center py-16">
+                <div className="w-8 h-8 border-2 border-forest-green border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+
+            {error && (
+              <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
+                {error}
+              </div>
+            )}
+
+            {!isLoading && !error && items.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <h2 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary mb-2">
+                  {search || category ? "No matching items" : "No items yet"}
+                </h2>
+                <p className="text-sm text-text-secondary max-w-xs">
+                  {search || category
+                    ? "Try adjusting your search or filters."
+                    : "Tap the camera button to photograph your first item. Porter will identify it automatically."}
+                </p>
+              </div>
+            )}
+
+            {!isLoading && !error && items.length > 0 && (
+              <ItemsGrid
+                items={items}
+                view={view}
+                isSelecting={isSelecting}
+                selectedIds={selectedIds}
+                onToggle={toggle}
+                onOpen={selectItem}
+                selectedId={selectedId}
+              />
+            )}
+          </div>
+        }
+        detail={
+          selectedId ? (
+            <ItemDetail
+              key={selectedId}
+              itemId={selectedId}
+              variant="pane"
+              onDeleted={() => {
+                clearDetailSelection();
+                refetch();
+              }}
+              onBack={clearDetailSelection}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-sm text-text-secondary">Select an item to view and edit it</p>
+            </div>
+          )
+        }
+      />
     </>
   );
 }
