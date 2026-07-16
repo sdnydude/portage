@@ -119,6 +119,7 @@ function ItemsGrid({
   onToggle,
   onOpen,
   selectedId,
+  pane,
 }: {
   items: Item[];
   view: "grid" | "list";
@@ -127,12 +128,17 @@ function ItemsGrid({
   onToggle: (id: string) => void;
   onOpen?: (id: string) => void;
   selectedId?: string | null;
+  pane?: boolean;
 }) {
   return (
     <div
       className={
         view === "grid"
-          ? "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3"
+          ? // The 380px workbench pane must not inherit viewport-scoped column
+            // counts — xl:grid-cols-4 in the pane collapses card titles.
+            pane
+            ? "grid grid-cols-2 gap-3"
+            : "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3"
           : "flex flex-col gap-2"
       }
     >
@@ -536,6 +542,7 @@ export default function InventoryPage() {
                 onToggle={toggle}
                 onOpen={selectItem}
                 selectedId={selectedId}
+                pane
               />
             )}
           </div>

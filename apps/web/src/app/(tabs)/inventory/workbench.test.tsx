@@ -136,4 +136,15 @@ describe("Inventory workbench (lg master-detail)", () => {
     expect(within(workbench).queryByRole("button", { name: /export inventory/i })).not.toBeInTheDocument();
     expect(within(workbench).queryByRole("button", { name: "Select" })).not.toBeInTheDocument();
   });
+
+  // The 380px list pane must not inherit the mobile tree's viewport-scoped
+  // column classes — xl:grid-cols-4 in the pane collapses card titles to
+  // zero width (caught live by e2e/workbench.spec.ts).
+  it("keeps the pane grid at two columns instead of viewport-scoped md/xl columns", () => {
+    render(<InventoryPage />);
+    const workbench = screen.getByTestId("workbench");
+    const grid = within(workbench).getByRole("button", { name: /strat/i }).parentElement!;
+    expect(grid.className).toContain("grid-cols-2");
+    expect(grid.className).not.toMatch(/(?:md|xl):grid-cols/);
+  });
 });
