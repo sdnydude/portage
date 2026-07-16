@@ -72,8 +72,14 @@ export function DeviceFrame({ screenshot, overlays, animationKey, alt, compact }
 
   return (
     <div
-      className={`relative mx-auto overflow-hidden rounded-[2rem] border-[6px] bg-black ${compact ? "w-28" : "w-full max-w-[280px]"}`}
-      style={{ borderColor: "#1a1a1a", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}
+      className={`relative mx-auto overflow-hidden bg-black ${
+        compact
+          ? // Bezel scales with the frame: 6px/2rem chrome tuned for the
+            // 280px frame reads as a fat black case at 112px.
+            "w-28 rounded-xl border-[3px]"
+          : "w-full max-w-[280px] rounded-[2rem] border-[6px]"
+      }`}
+      style={{ borderColor: "#1a1a1a", boxShadow: compact ? "0 6px 20px rgba(0,0,0,0.2)" : "0 12px 40px rgba(0,0,0,0.25)" }}
     >
       {/* No fake notch — the captured screenshots carry their own headers
           flush to the top, and a decorative notch occludes that text. */}
@@ -103,7 +109,7 @@ export function DeviceFrame({ screenshot, overlays, animationKey, alt, compact }
               }}
             />
             <div key={animationKey} className="absolute inset-0" aria-hidden="true">
-              {overlays.map((o, i) => (
+              {(compact ? overlays.filter((o) => o.type === "highlight") : overlays).map((o, i) => (
                 <div key={i} data-testid="tutorial-overlay" className="tutorial-overlay" style={overlayStyle(o)}>
                   {o.type === "callout" && o.text && (
                     <span

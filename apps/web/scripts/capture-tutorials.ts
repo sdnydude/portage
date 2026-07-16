@@ -117,9 +117,24 @@ async function run(
   // app's mount-time edge exchange with the session seeded in storage state;
   // every data call below it stays real.
   await installSessionStub(page);
+  // Published-asset hygiene: the beta-report FAB is app chrome, not product —
+  // it must not appear in tutorial/marketing captures (zero-error gate).
+  // Init script (not addStyleTag): survives every goto in the capture loop.
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = '[aria-label="Report a beta issue"] { display: none !important; }';
+      document.head.appendChild(style);
+    });
+  });
 
+  // Optional topic filter: `npm run capture:tutorials -- setup settings`
+  // (mixed-account capture: account-type screens shoot as the demo account
+  // so no personal data lands in published assets).
+  const only = process.argv.slice(2);
   let failures = 0;
   for (const manifest of CAPTURE_MANIFESTS) {
+    if (only.length && !only.includes(manifest.topic)) continue;
     console.log(`\n=== topic: ${manifest.topic} ===`);
     for (const action of manifest.actions) {
       try {

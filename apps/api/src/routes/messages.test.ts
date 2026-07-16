@@ -107,6 +107,22 @@ describe('messages routes', () => {
       expect(res.status).toBe(400);
     });
 
+    it('accepts an itemless conversation key (buyer with empty itemId)', async () => {
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      } as any);
+
+      const res = await request(app)
+        .get('/messages/jamesmo_43%3A')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).not.toBe(400);
+    });
+
     it('returns messages for a conversation', async () => {
       vi.mocked(db.select).mockReturnValueOnce({
         from: vi.fn().mockReturnValue({
