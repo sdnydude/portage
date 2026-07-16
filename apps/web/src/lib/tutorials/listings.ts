@@ -24,7 +24,9 @@ export const listingsTopic: TutorialTopic = {
       title: "Edit from the item hub",
       body: "Tap any listing to open its item page — the single place to edit details, sync changes to the marketplace, or end a listing. Changes publish back with one tap.",
       screenshot: "/tutorials/listings/manage-listing.png",
-      overlays: [{ type: "highlight", x: 6, y: 55, w: 88, h: 35 }],
+      // The real item's description is tall — any ring slices text. Tap the
+      // edit pencil in the header instead: it IS the "edit from the hub" affordance.
+      overlays: [{ type: "tap", x: 87, y: 11 }],
     },
   ],
 };

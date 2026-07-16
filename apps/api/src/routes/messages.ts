@@ -105,7 +105,10 @@ messagesRouter.get('/:conversationKey', async (req, res, next) => {
   }
 });
 
-const conversationKeySchema = z.string().regex(/^[a-zA-Z0-9._-]+:[0-9]+$/, 'Invalid conversation key format');
+// itemId may be empty: general (non-item) buyer messages sync with
+// `itemId: ''` (ebay-trading-client parseMemberMessages), producing keys
+// like "buyer:" — a digits-required regex 400s every such thread.
+const conversationKeySchema = z.string().regex(/^[a-zA-Z0-9._-]+:[0-9]*$/, 'Invalid conversation key format');
 
 const replySchema = z.object({
   body: z.string().min(1).max(2000),
