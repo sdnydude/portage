@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TutorialPlayer } from "./tutorial-player";
 import type { TutorialTopic } from "@/lib/tutorials";
@@ -22,27 +22,38 @@ describe("TutorialPlayer", () => {
     expect(screen.getByRole("img", { name: "Step One" })).toHaveAttribute("src", "/tutorials/demo/one.png");
   });
 
-  it("advances to the next step on Next and renders its overlays", async () => {
+  it("advances with the right chevron arrow and renders the next step's overlays", async () => {
     const user = userEvent.setup();
     render(<TutorialPlayer topic={topic} />);
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next step" }));
     expect(screen.getByRole("heading", { name: "Step Two" })).toBeInTheDocument();
     expect(screen.getAllByTestId("tutorial-overlay")).toHaveLength(1);
   });
 
-  it("goes back with Back, which is hidden on the first step", async () => {
+  it("goes back with the left chevron, which is disabled on the first step", async () => {
     const user = userEvent.setup();
     render(<TutorialPlayer topic={topic} />);
-    expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Next" }));
-    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("button", { name: "Previous step" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Next step" }));
+    await user.click(screen.getByRole("button", { name: "Previous step" }));
     expect(screen.getByRole("heading", { name: "Step One" })).toBeInTheDocument();
   });
 
-  it("hides Next on the last step", async () => {
+  it("disables the right chevron on the last step", async () => {
     const user = userEvent.setup();
     render(<TutorialPlayer topic={topic} />);
-    await user.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next step" }));
+    expect(screen.getByRole("button", { name: "Next step" })).toBeDisabled();
+  });
+
+  it("swipes between steps on touch devices", () => {
+    render(<TutorialPlayer topic={topic} />);
+    const root = screen.getByRole("heading", { name: "Step One" }).closest("div.mx-auto")!;
+    fireEvent.touchStart(root, { touches: [{ clientX: 300 }] });
+    fireEvent.touchEnd(root, { changedTouches: [{ clientX: 180 }] });
+    expect(screen.getByRole("heading", { name: "Step Two" })).toBeInTheDocument();
+    fireEvent.touchStart(root, { touches: [{ clientX: 100 }] });
+    fireEvent.touchEnd(root, { changedTouches: [{ clientX: 220 }] });
+    expect(screen.getByRole("heading", { name: "Step One" })).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { TutorialTopic } from "@/lib/tutorials";
 import { DeviceFrame } from "./device-frame";
 
@@ -10,6 +10,7 @@ interface TutorialPlayerProps {
 
 export function TutorialPlayer({ topic }: TutorialPlayerProps) {
   const [stepIndex, setStepIndex] = useState(0);
+  const touchStartX = useRef<number | null>(null);
   const step = topic.steps[stepIndex];
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === topic.steps.length - 1;
@@ -22,17 +23,49 @@ export function TutorialPlayer({ topic }: TutorialPlayerProps) {
     setStepIndex((i) => Math.max(i - 1, 0));
   }, []);
 
+  const chevronClass =
+    "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-text-secondary transition-colors hover:text-text-primary hover:bg-muted disabled:opacity-30 disabled:pointer-events-none";
+
   return (
-    <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-4 compact-bar-clearance">
-      {/* Sized so a full step (frame + text + dots + nav) fits a 390×844
-          viewport without scrolling — the frame is capped, not w-full. */}
-      <div className="w-full max-w-[210px]">
-        <DeviceFrame
-          screenshot={step.screenshot}
-          overlays={step.overlays}
-          animationKey={step.id}
-          alt={step.title}
-        />
+    <div
+      className="mx-auto flex max-w-lg flex-col items-center px-4 py-4 compact-bar-clearance"
+      // Carousel idiom: swipe on touch devices, chevrons on desktop.
+      onTouchStart={(e) => {
+        touchStartX.current = e.touches[0].clientX;
+      }}
+      onTouchEnd={(e) => {
+        if (touchStartX.current == null) return;
+        const dx = e.changedTouches[0].clientX - touchStartX.current;
+        touchStartX.current = null;
+        if (dx <= -48) goNext();
+        else if (dx >= 48) goPrev();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight") goNext();
+        if (e.key === "ArrowLeft") goPrev();
+      }}
+    >
+      {/* Chevrons flank the frame; frame capped so a full step (frame +
+          text + dots) fits a 390×844 viewport without scrolling. */}
+      <div className="flex w-full items-center justify-center gap-3">
+        <button onClick={goPrev} aria-label="Previous step" disabled={isFirst} className={chevronClass}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <div className="w-full max-w-[210px]">
+          <DeviceFrame
+            screenshot={step.screenshot}
+            overlays={step.overlays}
+            animationKey={step.id}
+            alt={step.title}
+          />
+        </div>
+        <button onClick={goNext} aria-label="Next step" disabled={isLast} className={chevronClass}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
       </div>
 
       <div className="mt-4 w-full text-center">
@@ -66,25 +99,6 @@ export function TutorialPlayer({ topic }: TutorialPlayerProps) {
         ))}
       </div>
 
-      <div className="mt-4 flex w-full items-center gap-3">
-        {!isFirst && (
-          <button
-            onClick={goPrev}
-            className="flex-1 rounded-2xl border border-border py-3 text-sm font-semibold text-text-secondary transition-colors hover:bg-muted"
-          >
-            Back
-          </button>
-        )}
-        {!isLast && (
-          <button
-            onClick={goNext}
-            className="flex-1 rounded-2xl py-3 text-sm font-semibold text-white transition-all active:scale-95"
-            style={{ background: "var(--forest-green)" }}
-          >
-            Next
-          </button>
-        )}
-      </div>
     </div>
   );
 }

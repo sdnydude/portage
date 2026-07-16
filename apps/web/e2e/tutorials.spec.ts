@@ -24,7 +24,7 @@ test.describe("tutorial hub", () => {
     await expect(page.getByTestId("tutorial-overlay").first()).toBeVisible();
     await page.screenshot({ path: path.join(SHOT_DIR, "tutorials-topic-playing.png") });
 
-    await page.getByRole("button", { name: "Next" }).click();
+    await page.getByRole("button", { name: "Next step" }).click();
     await expect(page.getByRole("heading", { name: "Set your seller defaults" })).toBeVisible();
 
     // Reload mid-topic: the route is real (not client-only state) — the topic
