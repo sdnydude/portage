@@ -1,0 +1,519 @@
+<title>Portage Palette Candidates — Ledger · Selvedge · Bench</title>
+<style>
+  :root { color-scheme: light dark; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px;
+    font-family: "Plus Jakarta Sans", "Instrument Sans", system-ui, sans-serif; }
+  .wrap h1 { font-size: 28px; margin: 0 0 4px; }
+  .wrap > p.lede { margin: 0 0 36px; opacity: .75; font-size: 14px; max-width: 720px; }
+  .pal { margin-bottom: 56px; }
+  .pal-head { margin-bottom: 14px; }
+  .pal-head h2 { font-size: 22px; margin: 0; }
+  .pal-head p { margin: 4px 0 0; font-size: 14px; opacity: .75; max-width: 680px; }
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .duo { grid-template-columns: 1fr; } }
+  .panel { border-radius: 14px; padding: 20px; border: 1px solid var(--bd);
+    background: var(--g); color: var(--t1); }
+  .panel h3 { font-size: 12px; letter-spacing: .04em; margin: 0 0 12px; opacity: .6;
+    font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .chip { border-radius: 8px; padding: 10px 10px 8px; min-width: 88px; font-size: 11px;
+    line-height: 1.35; border: 1px solid rgba(128,128,128,.18); }
+  .chip b { display: block; font-size: 11px; }
+  .chip code { font-size: 10px; opacity: .8; font-family: "JetBrains Mono", monospace; }
+  .textsample { background: var(--s); border: 1px solid var(--bd); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 16px; }
+  .textsample .h { font-weight: 700; font-size: 17px; margin: 0 0 2px; }
+  .textsample .b { font-size: 13.5px; margin: 0; color: var(--t1); }
+  .textsample .m { font-size: 12px; margin: 6px 0 0; color: var(--t2); }
+  .formrow { display: grid; gap: 10px; margin-bottom: 16px; }
+  .field label { display: block; font-size: 11.5px; font-weight: 600; color: var(--t2);
+    margin-bottom: 4px; }
+  .field .input { background: var(--s); border: 1px solid var(--bd); border-radius: 9px;
+    padding: 9px 12px; font-size: 13.5px; color: var(--ph); }
+  .field .input.focus { outline: 2px solid var(--focus); outline-offset: 1px; color: var(--t1); }
+  .field .input.err { border-color: var(--err); color: var(--t1); }
+  .field .msg { font-size: 11.5px; margin-top: 4px; }
+  .field .msg.err { color: var(--err); }
+  .field .msg.ok { color: var(--ok); }
+  .pillrow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .pill { border-radius: 999px; padding: 4px 11px; font-size: 11.5px; font-weight: 600; }
+  .card { background: var(--s); border: 1px solid var(--bd); border-radius: 14px;
+    overflow: hidden; max-width: 340px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+  .photos { display: grid; grid-template-columns: 2fr 1fr; gap: 2px; height: 130px; }
+  .photos .ph1 { background: linear-gradient(135deg, #9a6a3f 0%, #7b4f2a 55%, #5f3c20 100%); }
+  .photos .col { display: grid; grid-template-rows: 1fr 1fr; gap: 2px; }
+  .photos .ph2 { background: linear-gradient(160deg, #232323, #0d0d0d); }
+  .photos .ph3 { background: #ffffff; border-left: 1px solid var(--bd); }
+  .card-body { padding: 14px 16px 16px; }
+  .card-title { font-size: 15.5px; font-weight: 700; margin: 0; color: var(--t1); }
+  .card-meta { font-size: 12px; color: var(--t2); margin: 3px 0 10px; }
+  .card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tag { background: var(--mut); color: var(--t2); border-radius: 999px; padding: 3px 9px;
+    font-size: 11px; font-weight: 600; }
+  .tag.ai { background: var(--aiw); color: var(--ai); }
+  .tag.tert { background: var(--tertw); color: var(--tert); }
+  .card-foot { display: flex; align-items: center; justify-content: space-between; }
+  .price { font-size: 16px; font-weight: 700; color: var(--tert); }
+  .cta { background: var(--act); color: #fff; border-radius: 10px; padding: 9px 16px;
+    font-size: 13px; font-weight: 700; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px;
+    font-weight: 600; border-radius: 7px; padding: 4px 9px; margin-top: 12px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .caveat { font-size: 12.5px; opacity: .7; border-top: 1px solid rgba(128,128,128,.3);
+    padding-top: 16px; max-width: 760px; }
+</style>
+
+<div class="wrap">
+  <h1>Portage Palette Candidates</h1>
+  <p class="lede">Three complete systems built as anti-clichés against the AI-design tells table
+  (research/ai-design-cliches.md). Each shown in its own light and dark ramp with token swatches,
+  form states, and a mock ListingCard over three simulated photo types: warm wood, black
+  electronics, white stock crop. All ratios computed; body text is AA+ on every background token.</p>
+
+  <!-- ============================ LEDGER ============================ -->
+  <section class="pal">
+    <div class="pal-head">
+      <h2>1 · Ledger</h2>
+      <p>The leather-bound sales ledger — oxblood hide, iron-gall ink, brass hallmark.
+      Rose-plaster neutrals (not cream). Action: oxblood #8A2E3C · AI: iron-gall #33566E · Tertiary: brass #7E6118.</p>
+    </div>
+    <div class="duo">
+
+      <div class="panel" style="--g:#F7F4F3; --s:#FFFFFF; --mut:#EDE7E6; --bd:#DAD2D1;
+        --t1:#292325; --t2:#564E51; --ph:#8E8489; --act:#8A2E3C; --actw:#F6E6E9;
+        --ai:#33566E; --aiw:#E6EDF3; --tert:#7E6118; --tertw:#F4EDDA; --focus:#33566E;
+        --ok:#21754A; --okw:#E3F1E9; --warn:#8A5A00; --err:#B3271E; --errw:#F9E7E5;">
+        <h3>LIGHT</h3>
+        <div class="chips">
+          <div class="chip" style="background:#F7F4F3;color:#292325"><b>ground</b><code>#F7F4F3</code></div>
+          <div class="chip" style="background:#FFFFFF;color:#292325"><b>surface</b><code>#FFFFFF</code></div>
+          <div class="chip" style="background:#EDE7E6;color:#292325"><b>muted</b><code>#EDE7E6</code></div>
+          <div class="chip" style="background:#8A2E3C;color:#fff"><b>action 8.3:1</b><code>#8A2E3C</code></div>
+          <div class="chip" style="background:#33566E;color:#fff"><b>AI 7.8:1</b><code>#33566E</code></div>
+          <div class="chip" style="background:#7E6118;color:#fff"><b>brass 5.8:1</b><code>#7E6118</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">Fender Stratocaster</p>
+          <p class="b">Primary body text on surface — 15.4:1. Sunburst finish, rosewood board, minor fret wear.</p>
+          <p class="m">Secondary meta text — 8.1:1. Added 3 days ago · Scanned by Porter</p>
+        </div>
+        <div class="formrow">
+          <div class="field"><label>Title</label><div class="input">Give your item a name…</div></div>
+          <div class="field"><label>Price (focused)</label><div class="input focus">125.00</div>
+            <div class="msg ok">Priced within comps range — 4.9:1 on wash</div></div>
+          <div class="field"><label>Quantity (error)</label><div class="input err">0</div>
+            <div class="msg err">Quantity must be at least 1 — 6.0:1 on ground</div></div>
+        </div>
+        <div class="pillrow">
+          <span class="pill" style="background:#F6E6E9;color:#8A2E3C">Selected 6.9:1</span>
+          <span class="pill" style="background:#E6EDF3;color:#33566E">Porter suggests 6.6:1</span>
+          <span class="pill" style="background:#F4EDDA;color:#7E6118">Hallmark 5.0:1</span>
+          <span class="pill" style="background:#E3F1E9;color:#21754A">Published 4.9:1</span>
+          <span class="pill" style="background:#F9E7E5;color:#B3271E">Failed 5.5:1</span>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag tert">Provenance</span></div>
+            <div class="card-foot"><span class="price">$140 – $185</span><span class="cta">List it</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="--g:#1B1618; --s:#241E20; --mut:#2C2528; --bd:#40383B;
+        --t1:#F1ECED; --t2:#C0B7BA; --ph:#918A8D; --act:#A64453;
+        --ai:#8FB6D2; --aiw:rgba(143,182,210,.14); --tert:#D6B356; --tertw:rgba(214,179,86,.14);
+        --focus:#8FB6D2; --ok:#6FBF8F; --okw:rgba(111,191,143,.14);
+        --err:#E8887F; --errw:rgba(232,136,127,.14);">
+        <h3>DARK</h3>
+        <div class="chips">
+          <div class="chip" style="background:#1B1618;color:#F1ECED"><b>ground</b><code>#1B1618</code></div>
+          <div class="chip" style="background:#241E20;color:#F1ECED"><b>surface</b><code>#241E20</code></div>
+          <div class="chip" style="background:#2C2528;color:#F1ECED"><b>elevated</b><code>#2C2528</code></div>
+          <div class="chip" style="background:#E08B97;color:#1B1618"><b>action 7.1:1</b><code>#E08B97</code></div>
+          <div class="chip" style="background:#8FB6D2;color:#1B1618"><b>AI 7.6:1</b><code>#8FB6D2</code></div>
+          <div class="chip" style="background:#D6B356;color:#1B1618"><b>brass 8.2:1</b><code>#D6B356</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">Fender Stratocaster</p>
+          <p class="b">Primary text on dark surface — 14.0:1. Warm rose-black, not OLED void.</p>
+          <p class="m">Secondary — 8.4:1. Added 3 days ago · Scanned by Porter</p>
+        </div>
+        <div class="formrow">
+          <div class="field"><label>Price (focused)</label><div class="input focus" style="color:#F1ECED">125.00</div>
+            <div class="msg ok">Within comps — 7.4:1</div></div>
+          <div class="field"><label>Quantity (error)</label><div class="input err" style="color:#F1ECED">0</div>
+            <div class="msg err">Must be at least 1 — 6.4:1</div></div>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag tert">Provenance</span></div>
+            <div class="card-foot"><span class="price">$140 – $185</span><span class="cta">List it</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ SELVEDGE ============================ -->
+  <section class="pal">
+    <div class="pal-head">
+      <h2>2 · Selvedge</h2>
+      <p>Vintage denim, the selvedge edge, gold thread. Indigo-dye depth, never indigo-500.
+      Action: denim #35577C · AI: gold thread #8A6712 · Tertiary: juniper #3E6B50.</p>
+    </div>
+    <div class="duo">
+
+      <div class="panel" style="--g:#F5F6F8; --s:#FFFFFF; --mut:#E9EBEF; --bd:#D3D7DE;
+        --t1:#21262E; --t2:#4C545F; --ph:#848D99; --act:#35577C; --actw:#E8EDF4;
+        --ai:#8A6712; --aiw:#F6EFD9; --tert:#3E6B50; --tertw:#E5F0E9; --focus:#35577C;
+        --ok:#257A46; --okw:#E2F1E8; --warn:#925C00; --err:#B42B23; --errw:#F9E7E6;">
+        <h3>LIGHT</h3>
+        <div class="chips">
+          <div class="chip" style="background:#F5F6F8;color:#21262E"><b>ground</b><code>#F5F6F8</code></div>
+          <div class="chip" style="background:#FFFFFF;color:#21262E"><b>surface</b><code>#FFFFFF</code></div>
+          <div class="chip" style="background:#E9EBEF;color:#21262E"><b>muted</b><code>#E9EBEF</code></div>
+          <div class="chip" style="background:#35577C;color:#fff"><b>action 7.5:1</b><code>#35577C</code></div>
+          <div class="chip" style="background:#8A6712;color:#fff"><b>AI 5.2:1</b><code>#8A6712</code></div>
+          <div class="chip" style="background:#3E6B50;color:#fff"><b>juniper 6.1:1</b><code>#3E6B50</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">Levi's 501 Big E</p>
+          <p class="b">Primary body text on surface — 15.2:1. 1968 redline selvedge, honeycomb fades intact.</p>
+          <p class="m">Secondary meta — 7.7:1. Added yesterday · Comps found on eBay</p>
+        </div>
+        <div class="formrow">
+          <div class="field"><label>Title</label><div class="input">Give your item a name…</div></div>
+          <div class="field"><label>Price (focused)</label><div class="input focus">220.00</div>
+            <div class="msg ok">Priced within comps range — 4.6:1 on wash</div></div>
+          <div class="field"><label>Quantity (error)</label><div class="input err">0</div>
+            <div class="msg err">Quantity must be at least 1 — 5.9:1 on ground</div></div>
+        </div>
+        <div class="pillrow">
+          <span class="pill" style="background:#E8EDF4;color:#35577C">Selected 6.4:1</span>
+          <span class="pill" style="background:#F6EFD9;color:#8A6712">Porter suggests 4.5:1</span>
+          <span class="pill" style="background:#E5F0E9;color:#3E6B50">Good cond. 5.3:1</span>
+          <span class="pill" style="background:#E2F1E8;color:#257A46">Published 4.6:1</span>
+          <span class="pill" style="background:#F9E7E6;color:#B42B23">Failed 5.3:1</span>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag tert">Good</span></div>
+            <div class="card-foot"><span class="price" style="color:#35577C">$140 – $185</span><span class="cta">List it</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="--g:#14171C; --s:#1B1F26; --mut:#232830; --bd:#39404B;
+        --t1:#EDEFF3; --t2:#B9BFC9; --ph:#8A919C; --act:#4C6F96;
+        --ai:#D5AF4B; --aiw:rgba(213,175,75,.14); --tert:#82B296; --tertw:rgba(130,178,150,.14);
+        --focus:#8FB0D4; --ok:#66BE8B; --okw:rgba(102,190,139,.14);
+        --err:#E98B82; --errw:rgba(233,139,130,.14);">
+        <h3>DARK</h3>
+        <div class="chips">
+          <div class="chip" style="background:#14171C;color:#EDEFF3"><b>ground</b><code>#14171C</code></div>
+          <div class="chip" style="background:#1B1F26;color:#EDEFF3"><b>surface</b><code>#1B1F26</code></div>
+          <div class="chip" style="background:#232830;color:#EDEFF3"><b>elevated</b><code>#232830</code></div>
+          <div class="chip" style="background:#8FB0D4;color:#14171C"><b>action 8.0:1</b><code>#8FB0D4</code></div>
+          <div class="chip" style="background:#D5AF4B;color:#14171C"><b>AI 7.9:1</b><code>#D5AF4B</code></div>
+          <div class="chip" style="background:#82B296;color:#14171C"><b>juniper 6.9:1</b><code>#82B296</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">Levi's 501 Big E</p>
+          <p class="b">Primary text on dark surface — 14.4:1. Denim-black, faint blue depth.</p>
+          <p class="m">Secondary — 8.9:1. Added yesterday · Comps found on eBay</p>
+        </div>
+        <div class="formrow">
+          <div class="field"><label>Price (focused)</label><div class="input focus" style="color:#EDEFF3">220.00</div>
+            <div class="msg ok">Within comps — 7.3:1</div></div>
+          <div class="field"><label>Quantity (error)</label><div class="input err" style="color:#EDEFF3">0</div>
+            <div class="msg err">Must be at least 1 — 6.7:1</div></div>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag tert">Good</span></div>
+            <div class="card-foot"><span class="price" style="color:#8FB0D4">$140 – $185</span><span class="cta">List it</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ SELVEDGE · RIVET (v2) ============================ -->
+  <section class="pal">
+    <div class="pal-head">
+      <h2>2R · Selvedge · Rivet — chosen direction</h2>
+      <p>Selvedge with the DHG orange kept as the copper rivet. Blaze #FF5500 stays the literal CTA —
+      with <em>ink</em> text (4.74:1 AA), not the cliché white-on-orange that fails at 3.21. Denim moves to
+      links + Porter; gold thread stays the provenance accent; juniper retires.</p>
+    </div>
+    <div class="duo">
+
+      <div class="panel" style="--g:#F5F6F8; --s:#FFFFFF; --mut:#E9EBEF; --bd:#D3D7DE;
+        --t1:#21262E; --t2:#4C545F; --ph:#848D99; --act:#FF5500;
+        --ai:#35577C; --aiw:#E8EDF4; --tert:#8A6712; --tertw:#F6EFD9; --focus:#35577C;
+        --ok:#257A46; --okw:#E2F1E8; --err:#B42B23; --errw:#F9E7E6;">
+        <h3>LIGHT</h3>
+        <div class="chips">
+          <div class="chip" style="background:#F5F6F8;color:#21262E"><b>ground</b><code>#F5F6F8</code></div>
+          <div class="chip" style="background:#FF5500;color:#21262E"><b>blaze + ink 4.7:1</b><code>#FF5500</code></div>
+          <div class="chip" style="background:#B34400;color:#fff"><b>rivet-deep 5.6:1</b><code>#B34400</code></div>
+          <div class="chip" style="background:#FDEBDD;color:#B34400"><b>rivet-soft 4.8:1</b><code>#FDEBDD</code></div>
+          <div class="chip" style="background:#35577C;color:#fff"><b>denim 7.5:1</b><code>#35577C</code></div>
+          <div class="chip" style="background:#8A6712;color:#fff"><b>gold 5.2:1</b><code>#8A6712</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">Levi's 501 Big E</p>
+          <p class="b">Body on surface — 15.2:1. Orange lives in the rivets: CTAs, price pops, sold moments.</p>
+          <p class="m">Links and Porter wear denim — <span style="color:#35577C;font-weight:600">View on eBay ↗</span> · <span style="color:#B34400;font-weight:600">$220 rivet-deep emphasis</span></p>
+        </div>
+        <div class="pillrow">
+          <span class="pill" style="background:#FF5500;color:#21262E">List it — blaze CTA</span>
+          <span class="pill" style="background:#FDEBDD;color:#B34400">Promo wash</span>
+          <span class="pill" style="background:#E8EDF4;color:#35577C">Porter suggests</span>
+          <span class="pill" style="background:#F6EFD9;color:#8A6712">Provenance</span>
+          <span class="pill" style="background:#E2F1E8;color:#257A46">Published</span>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag tert">Provenance</span></div>
+            <div class="card-foot"><span class="price" style="color:#B34400">$140 – $185</span><span class="cta" style="background:#FF5500;color:#21262E">List it</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="--g:#14171C; --s:#1B1F26; --mut:#232830; --bd:#39404B;
+        --t1:#EDEFF3; --t2:#B9BFC9; --ph:#8A919C; --act:#FF7A38;
+        --ai:#8FB0D4; --aiw:rgba(143,176,212,.14); --tert:#D5AF4B; --tertw:rgba(213,175,75,.14);
+        --focus:#8FB0D4; --ok:#66BE8B; --okw:rgba(102,190,139,.14);
+        --err:#E98B82; --errw:rgba(233,139,130,.14);">
+        <h3>DARK</h3>
+        <div class="chips">
+          <div class="chip" style="background:#14171C;color:#EDEFF3"><b>ground</b><code>#14171C</code></div>
+          <div class="chip" style="background:#FF7A38;color:#14171C"><b>blaze-bright 6.9:1</b><code>#FF7A38</code></div>
+          <div class="chip" style="background:#FF5500;color:#14171C"><b>blaze accent 5.6:1</b><code>#FF5500</code></div>
+          <div class="chip" style="background:#8FB0D4;color:#14171C"><b>denim 8.0:1</b><code>#8FB0D4</code></div>
+          <div class="chip" style="background:#D5AF4B;color:#14171C"><b>gold 7.9:1</b><code>#D5AF4B</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">Levi's 501 Big E</p>
+          <p class="b">Denim-black ground; blaze glows like a rivet catching light — 5.6:1 as accent text.</p>
+          <p class="m">Secondary — 8.9:1 · <span style="color:#FF7A38;font-weight:700">$220</span> price pop in blaze-bright</p>
+        </div>
+        <div class="pillrow">
+          <span class="pill" style="background:#FF7A38;color:#14171C">List it</span>
+          <span class="pill" style="background:rgba(255,122,56,.16);color:#FF9A66">Promo</span>
+          <span class="pill" style="background:rgba(143,176,212,.14);color:#8FB0D4">Porter suggests</span>
+          <span class="pill" style="background:rgba(213,175,75,.14);color:#D5AF4B">Provenance</span>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag tert">Provenance</span></div>
+            <div class="card-foot"><span class="price" style="color:#FF7A38">$140 – $185</span><span class="cta" style="background:#FF7A38;color:#14171C">List it</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ BENCH ============================ -->
+  <section class="pal">
+    <div class="pal-head">
+      <h2>3 · Bench</h2>
+      <p>The workbench — waxed-canvas olive, tool steel, walnut handle. Flint (green-gray) neutrals,
+      the museum-wall standard. Action: olive #57641B · AI: steel #4A5E6B · Tertiary: walnut #74522E.</p>
+    </div>
+    <div class="duo">
+
+      <div class="panel" style="--g:#F4F5F0; --s:#FFFFFF; --mut:#E8EAE1; --bd:#D2D5C9;
+        --t1:#24271E; --t2:#4E5346; --ph:#878D7C; --act:#57641B; --actw:#EEF1DD;
+        --ai:#4A5E6B; --aiw:#E7EDF1; --tert:#74522E; --tertw:#F3ECE2; --focus:#4A5E6B;
+        --ok:#1F7A4C; --okw:#E2F1E9; --warn:#8F5B00; --err:#B0301F; --errw:#F8E7E4;">
+        <h3>LIGHT</h3>
+        <div class="chips">
+          <div class="chip" style="background:#F4F5F0;color:#24271E"><b>ground</b><code>#F4F5F0</code></div>
+          <div class="chip" style="background:#FFFFFF;color:#24271E"><b>surface</b><code>#FFFFFF</code></div>
+          <div class="chip" style="background:#E8EAE1;color:#24271E"><b>muted</b><code>#E8EAE1</code></div>
+          <div class="chip" style="background:#57641B;color:#fff"><b>action 6.5:1</b><code>#57641B</code></div>
+          <div class="chip" style="background:#4A5E6B;color:#fff"><b>AI 6.8:1</b><code>#4A5E6B</code></div>
+          <div class="chip" style="background:#74522E;color:#fff"><b>walnut 7.0:1</b><code>#74522E</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">Stanley No. 4 Plane</p>
+          <p class="b">Primary body text on surface — 15.2:1. Type 11, corrugated sole, original tote.</p>
+          <p class="m">Secondary meta — 7.9:1. Added this morning · 6 comps found</p>
+        </div>
+        <div class="formrow">
+          <div class="field"><label>Title</label><div class="input">Give your item a name…</div></div>
+          <div class="field"><label>Price (focused)</label><div class="input focus">85.00</div>
+            <div class="msg ok">Priced within comps range — 4.6:1 on wash</div></div>
+          <div class="field"><label>Quantity (error)</label><div class="input err">0</div>
+            <div class="msg err">Quantity must be at least 1 — 5.8:1 on ground</div></div>
+        </div>
+        <div class="pillrow">
+          <span class="pill" style="background:#EEF1DD;color:#57641B">Selected 5.6:1</span>
+          <span class="pill" style="background:#E7EDF1;color:#4A5E6B">Porter suggests 5.7:1</span>
+          <span class="pill" style="background:#F3ECE2;color:#74522E">Walnut 6.0:1</span>
+          <span class="pill" style="background:#E2F1E9;color:#1F7A4C">Published 4.6:1</span>
+          <span class="pill" style="background:#F8E7E4;color:#B0301F">Failed 5.3:1</span>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag tert">Walnut trim</span></div>
+            <div class="card-foot"><span class="price">$140 – $185</span><span class="cta">List it</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="--g:#161812; --s:#1D2018; --mut:#252921; --bd:#3B4034;
+        --t1:#EEF0E9; --t2:#BBC0B1; --ph:#8C917F; --act:#6F7C28;
+        --ai:#8FAEC4; --aiw:rgba(143,174,196,.14); --tert:#C79A66; --tertw:rgba(199,154,102,.14);
+        --focus:#8FAEC4; --ok:#63BE8D; --okw:rgba(99,190,141,.14);
+        --err:#E78D7C; --errw:rgba(231,141,124,.14);">
+        <h3>DARK</h3>
+        <div class="chips">
+          <div class="chip" style="background:#161812;color:#EEF0E9"><b>ground</b><code>#161812</code></div>
+          <div class="chip" style="background:#1D2018;color:#EEF0E9"><b>surface</b><code>#1D2018</code></div>
+          <div class="chip" style="background:#252921;color:#EEF0E9"><b>elevated</b><code>#252921</code></div>
+          <div class="chip" style="background:#A9B84D;color:#161812"><b>action 8.2:1</b><code>#A9B84D</code></div>
+          <div class="chip" style="background:#8FAEC4;color:#161812"><b>AI 7.1:1</b><code>#8FAEC4</code></div>
+          <div class="chip" style="background:#C79A66;color:#161812"><b>walnut 6.5:1</b><code>#C79A66</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">Stanley No. 4 Plane</p>
+          <p class="b">Primary text on dark surface — 14.4:1. Olive-black, like an oiled bench top.</p>
+          <p class="m">Secondary — 8.9:1. Added this morning · 6 comps found</p>
+        </div>
+        <div class="formrow">
+          <div class="field"><label>Price (focused)</label><div class="input focus" style="color:#EEF0E9">85.00</div>
+            <div class="msg ok">Within comps — 7.3:1</div></div>
+          <div class="field"><label>Quantity (error)</label><div class="input err" style="color:#EEF0E9">0</div>
+            <div class="msg err">Must be at least 1 — 6.7:1</div></div>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag tert">Walnut trim</span></div>
+            <div class="card-foot"><span class="price" style="color:#C79A66">$140 – $185</span><span class="cta">List it</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ SWELL (v3 brief: beach-founder energy) ============================ -->
+  <section class="pal">
+    <div class="pal-head">
+      <h2>4 · Swell — beach-founder brief</h2>
+      <p>Day at the beach, night ocean. Daylight-white ground with driftwood neutrals (no cream cast);
+      surf-flag accents: blaze #FF5500 CTA with ink text, Pacific cobalt #1B6FB8 for links + Porter,
+      zinc-sunshine #F2B705 for celebration pops. Fun without losing trust — the yellow never touches forms.</p>
+    </div>
+    <div class="duo">
+
+      <div class="panel" style="--g:#FAF9F6; --s:#FFFFFF; --mut:#EFEDE7; --bd:#DBD8D0;
+        --t1:#26241F; --t2:#55524B; --ph:#86827A; --act:#FF5500;
+        --ai:#1B6FB8; --aiw:#E5F0FA; --tert:#F2B705; --tertw:#FBF2D2; --focus:#1B6FB8;
+        --ok:#257A46; --okw:#E2F1E8; --err:#C2331F; --errw:#FAE7E3;">
+        <h3>LIGHT · beach day</h3>
+        <div class="chips">
+          <div class="chip" style="background:#FAF9F6;color:#26241F"><b>ground</b><code>#FAF9F6</code></div>
+          <div class="chip" style="background:#FFFFFF;color:#26241F"><b>surface</b><code>#FFFFFF</code></div>
+          <div class="chip" style="background:#FF5500;color:#26241F"><b>blaze + ink 4.8:1</b><code>#FF5500</code></div>
+          <div class="chip" style="background:#1B6FB8;color:#fff"><b>cobalt 5.2:1</b><code>#1B6FB8</code></div>
+          <div class="chip" style="background:#F2B705;color:#26241F"><b>sunshine 8.5:1</b><code>#F2B705</code></div>
+          <div class="chip" style="background:#EFEDE7;color:#26241F"><b>driftwood</b><code>#EFEDE7</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">DJI Mini 4 Pro</p>
+          <p class="b">Body on ground — 14.7:1. Flown twice, all props + ND filters, box included.</p>
+          <p class="m">Links wear cobalt — <span style="color:#155A96;font-weight:600">View on eBay ↗ (6.8:1)</span> · Porter chips in <span style="color:#1B6FB8;font-weight:600">Pacific blue</span></p>
+        </div>
+        <div class="formrow">
+          <div class="field"><label>Price (focused — cobalt ring)</label><div class="input focus">459.00</div>
+            <div class="msg ok">Priced within comps — 5.1:1</div></div>
+          <div class="field"><label>Quantity (error)</label><div class="input err">0</div>
+            <div class="msg err">Quantity must be at least 1 — 5.3:1</div></div>
+        </div>
+        <div class="pillrow">
+          <span class="pill" style="background:#FF5500;color:#26241F">List it</span>
+          <span class="pill" style="background:#E5F0FA;color:#155A96">Porter suggests</span>
+          <span class="pill" style="background:#FBF2D2;color:#8A6A00">First sale! 4.5:1</span>
+          <span class="pill" style="background:#E2F1E8;color:#257A46">Published</span>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag tert" style="background:#FBF2D2;color:#8A6A00">Streak ×3</span></div>
+            <div class="card-foot"><span class="price" style="color:#155A96">$140 – $185</span><span class="cta" style="background:#FF5500;color:#26241F">List it</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="--g:#0F141A; --s:#161C24; --mut:#1D242E; --bd:#303947;
+        --t1:#EEF0F2; --t2:#B9C0C9; --ph:#87909C; --act:#FF7A38;
+        --ai:#66A9E0; --aiw:rgba(102,169,224,.14); --tert:#F2B705; --tertw:rgba(242,183,5,.14);
+        --focus:#66A9E0; --ok:#63BE8D; --okw:rgba(99,190,141,.14);
+        --err:#E98B82; --errw:rgba(233,139,130,.14);">
+        <h3>DARK · night ocean</h3>
+        <div class="chips">
+          <div class="chip" style="background:#0F141A;color:#EEF0F2"><b>ground</b><code>#0F141A</code></div>
+          <div class="chip" style="background:#161C24;color:#EEF0F2"><b>surface</b><code>#161C24</code></div>
+          <div class="chip" style="background:#FF7A38;color:#0F141A"><b>blaze-bright 7.1:1</b><code>#FF7A38</code></div>
+          <div class="chip" style="background:#66A9E0;color:#0F141A"><b>cobalt 7.3:1</b><code>#66A9E0</code></div>
+          <div class="chip" style="background:#F2B705;color:#0F141A"><b>sunshine 10.2:1</b><code>#F2B705</code></div>
+        </div>
+        <div class="textsample">
+          <p class="h">DJI Mini 4 Pro</p>
+          <p class="b">Text on night ground — 16.2:1. Bonfire orange + moonlit cobalt on deep water.</p>
+          <p class="m">Secondary — 9.1:1 · <span style="color:#F2B705;font-weight:700">Streak ×3</span> celebration in sunshine</p>
+        </div>
+        <div class="pillrow">
+          <span class="pill" style="background:#FF7A38;color:#0F141A">List it</span>
+          <span class="pill" style="background:rgba(102,169,224,.14);color:#66A9E0">Porter suggests</span>
+          <span class="pill" style="background:rgba(242,183,5,.14);color:#F2B705">First sale!</span>
+        </div>
+        <div class="card">
+          <div class="photos"><div class="ph1"></div><div class="col"><div class="ph2"></div><div class="ph3"></div></div></div>
+          <div class="card-body">
+            <p class="card-title">Vintage Leather Duffel</p>
+            <p class="card-meta">Bags · Good condition · eBay + Reverb</p>
+            <div class="card-tags"><span class="tag">leather</span><span class="tag ai">AI scanned</span><span class="tag" style="background:rgba(242,183,5,.14);color:#F2B705">Streak ×3</span></div>
+            <div class="card-foot"><span class="price" style="color:#66A9E0">$140 – $185</span><span class="cta" style="background:#FF7A38;color:#0F141A">List it</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="caveat"><strong>Verification notes.</strong> Every ratio shown was computed from WCAG 2.1
+  relative luminance (script in session scratchpad; full tables in
+  research/portage-palette-candidates.md). Photo tiles simulate the three image-proof cases: warm
+  wood/leather (left), black electronics (top right), white stock crop (bottom right). None of the
+  three systems uses purple/violet, gradients, cream/stone neutrals, teal, or any row of
+  research/ai-design-cliches.md. Recommended pick if forced to one: <strong>Ledger</strong>.</p>
+</div>
