@@ -10,7 +10,7 @@ export default function TabsLayout({
       {/* lg:min-h-0 — inside shell-main the shell already owns min-h-dvh;
           a nested min-h-dvh under the 64px TopBar overflows by that height. */}
       <div className="flex flex-col min-h-dvh lg:min-h-0">
-        <main className="flex-1 pb-24">
+        <main className="flex-1 pb-24 lg:pb-0">
           {children}
         </main>
         {/* TabBar now mounts once in AppShell for ALL non-admin routes

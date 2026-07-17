@@ -350,8 +350,8 @@ Sequencing note (resolved): the onboarding-expansion ship (plan `docs/superpower
 - [x] Ask Porter row — same component under PageHeader on inventory/listings/orders (mobile/tablet portrait)
 - [x] Content width system — shared responsive container replaces per-page `max-w-lg`; content region reserves right-dock slot (R3) + pane-capable main area (R1)
 
-### Phase R1 — Desktop Workbench — IN FLIGHT (PR #237, branch `feat/ui-refactor`, unmerged)
-- [ ] Master-detail inventory/listings — list pane + edit pane (`inventory/[id]` surface), arrow-key nav, no page swaps
+### Phase R1 — Desktop Workbench
+- [x] Master-detail inventory/listings — list pane + edit pane (`inventory/[id]` surface), arrow-key nav, no page swaps (PR #237, 2026-07-17)
 
 ### Phase R2 — Desktop Ingest
 - [ ] Drag-and-drop photo ingest — drop image files → batch queue → vision-identify pipeline → items
