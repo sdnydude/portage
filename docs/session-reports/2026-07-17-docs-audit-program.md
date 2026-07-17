@@ -42,3 +42,20 @@ Execution: 001–003 sequential, 004 parallel. Three completed in-session:
 - G9 waits on PR #237 merge; graphify --wiki export would revert wiki/index.md pointer
 - Review + commit the 79-file working tree; decide fate of commit aebf33c
 - `graphify update .` + registry docs re-ingest after docs land on main
+
+---
+
+## Addendum — Landing (same day, second sitting)
+
+Plan-mode landing plan approved and executed end-to-end: Phase 0 adversarial tree review (six slices, 105/107 paths) found **39 further defects — 12 HIGH**, including 8 more README false claims beyond the known intro paragraph and a phantom BgRemovalPanel component in the style guide; all fixed and dispositioned in `docs/audits/2026-07-tree-review-findings.md`. Q-verdict cleanup folded in: canonical 5-tab wording, ledger recount (truth = 48/49 — the historic 52-task denominator never existed on the ledger; #53 was double-numbered), fresh suite stamps (686/686 API, 467/467 web), 90 unlinked proofs archived out of deploy, 117 dupes deleted, session_reports documented truthfully as captured-but-not-searchable (endpoint rejects the source — registry gap filed).
+
+**Landed as PR #238** (8 commits in 5 reviewable slices), merged `--no-ff` → `0835590` on 7 green checks. Deploy verified live: 13 pages 200 including the whole new Infrastructure section, ingest 1058 chunks/109 files zero errors, registry 1206 chunks, KB search returns the new Trade-First reference, ThemedImage light/dark swap proven with screenshots.
+
+Three gotchas worth remembering: (1) the global `*.png` gitignore silently un-tracked the 90 archived PNGs mid-move — the "move" was a delete until a negation line was added; (2) origin/main was 3 merges ahead of the session-start snapshot — one TODO.md conflict, resolved keeping the credential removal AND the incoming DHG Assets section; (3) deploy-docs `cp -r` never deletes removed images, so archived files stayed live until a manual `rsync --delete` + container restart — permanent workflow fix filed as a deferred CI PR.
+
+### Added learnings
+- Global-pattern gitignores make file MOVES lossy: `git add` of the new location silently no-ops; always `git ls-files` the destination after archiving assets.
+- CI copy steps without `--delete` semantics turn every deletion into a forever-deployed ghost — mirror, don't accumulate.
+
+### Still open (registered)
+Ship-log revival + SOP/hooks; Q8 ingress + :8018 landing (await go); code PR (porter phantom tool, @imgly, EASYPOST key); deploy-docs rsync fix; 4-tab nav decision (design review delivered, Stephen deciding).
