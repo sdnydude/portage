@@ -23,4 +23,19 @@ describe("ConfirmSheet", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("exposes the sheet panel as a modal dialog containing the confirm button", () => {
+    render(
+      <ConfirmSheet
+        title="Delete Item"
+        body="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toContainElement(screen.getByRole("button", { name: "Delete" }));
+  });
 });
