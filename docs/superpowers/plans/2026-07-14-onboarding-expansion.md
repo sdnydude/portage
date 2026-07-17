@@ -1,5 +1,7 @@
 # Onboarding Expansion — Tutorial Hub + Screenshot Show-and-Tell Implementation Plan
 
+> **EXECUTED 2026-07-15** — shipped and merged as PR #231 (feat: onboarding expansion — tutorial hub + screenshot show-and-tell).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Re-viewable 8-topic tutorial hub with real app screenshots + in-app animated overlays, a scripted Playwright capture pipeline, and a screenshot-upgraded first-run carousel.
