@@ -14,7 +14,6 @@
     "capture:tutorials": "tsx scripts/capture-tutorials.ts"
   },
   "dependencies": {
-    "@imgly/background-removal": "^1.7.0",
     "html-to-image": "^1.11.13",
     "next": "^16.2.10",
     "react": "^19.2.7",
