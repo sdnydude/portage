@@ -9,10 +9,11 @@ import { isTabRoute } from "@/lib/navigation";
 // Scroll delta (px) before the bar reacts — avoids jitter on small bounces.
 const SCROLL_MINIMIZE_THRESHOLD = 24;
 
+// 4 tabs, balanced 2 | Scan | 2 — Listings left the bar 2026-07-17; the
+// /listings route stays reachable from Home modules and inventory links.
 const tabs = [
   { name: "Home", href: "/home", icon: HomeIcon, position: "left" as const },
   { name: "Inventory", href: "/inventory", icon: InventoryIcon, position: "left" as const },
-  { name: "Listings", href: "/listings", icon: ListingsIcon, position: "left" as const },
   { name: "Porter", href: "/porter", icon: PorterIcon, position: "right" as const },
   { name: "Orders", href: "/orders", icon: OrdersIcon, position: "right" as const },
 ] as const;
@@ -235,24 +236,6 @@ function InventoryIcon({ active }: { active: boolean }) {
       strokeLinejoin="round"
     >
       <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-    </svg>
-  );
-}
-
-function ListingsIcon({ active }: { active: boolean }) {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={active ? 2.5 : 2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z" />
-      <circle cx="7" cy="7" r="1.3" fill="currentColor" />
     </svg>
   );
 }

@@ -20,10 +20,12 @@ beforeEach(() => {
 });
 
 describe("TabBar", () => {
-  it("renders exactly 5 tabs — More is not in the bar", () => {
+  it("renders exactly 4 tabs — Listings and More are not in the bar", () => {
     render(<TabBar />);
-    for (const name of ["Home", "Inventory", "Listings", "Porter", "Orders"])
+    for (const name of ["Home", "Inventory", "Porter", "Orders"])
       expect(screen.getByRole("link", { name: new RegExp(name) })).toBeInTheDocument();
+    expect(screen.getAllByRole("link")).toHaveLength(4);
+    expect(screen.queryByRole("link", { name: /Listings/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /More/ })).not.toBeInTheDocument();
   });
 
