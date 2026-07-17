@@ -44,6 +44,18 @@ describe("useListNav", () => {
     expect(onSelect).toHaveBeenCalledWith("a");
   });
 
+  it("ignores navigation keys typed inside a text input", () => {
+    const onSelect = vi.fn();
+    const { result } = renderHook(() =>
+      useListNav({ ids: ["a", "b", "c"], selectedId: "b", onSelect }),
+    );
+    const input = document.createElement("input");
+    const e = { key: "Home", preventDefault: vi.fn(), target: input } as unknown as React.KeyboardEvent;
+    result.current.onKeyDown(e);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
   it("ignores non-navigation keys", () => {
     const onSelect = vi.fn();
     const { result } = renderHook(() =>

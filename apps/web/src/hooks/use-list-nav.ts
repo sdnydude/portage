@@ -13,6 +13,15 @@ export function useListNav({ ids, selectedId, onSelect }: UseListNavOptions) {
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (ids.length === 0) return;
+      // Text-editing surfaces own their nav keys (Home/End/arrows move the caret).
+      const t = e.target;
+      if (
+        t instanceof HTMLInputElement ||
+        t instanceof HTMLTextAreaElement ||
+        t instanceof HTMLSelectElement ||
+        (t instanceof HTMLElement && t.isContentEditable)
+      )
+        return;
       const idx = selectedId ? ids.indexOf(selectedId) : -1;
       let next: number;
       switch (e.key) {
