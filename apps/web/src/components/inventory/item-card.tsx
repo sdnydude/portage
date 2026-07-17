@@ -7,9 +7,12 @@ interface ItemCardProps {
   view: "grid" | "list";
   onOpen?: () => void;
   selected?: boolean;
+  /** false renders a plain non-interactive card — no Link, no button — for
+   *  use inside another interactive control (e.g. the select-mode toggle). */
+  interactive?: boolean;
 }
 
-export function ItemCard({ item, view, onOpen, selected }: ItemCardProps) {
+export function ItemCard({ item, view, onOpen, selected, interactive = true }: ItemCardProps) {
   const primaryPhoto = item.photos.find((p) => p.isPrimary) ?? item.photos[0];
   const valueDisplay = item.estimatedValueMin && item.estimatedValueMax
     ? `$${item.estimatedValueMin}–$${item.estimatedValueMax}`
@@ -93,6 +96,14 @@ export function ItemCard({ item, view, onOpen, selected }: ItemCardProps) {
       </div>
     </>
   );
+
+  if (!interactive) {
+    return (
+      <div data-item-id={item.id} className={className}>
+        {content}
+      </div>
+    );
+  }
 
   if (onOpen) {
     return (

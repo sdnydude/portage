@@ -37,6 +37,15 @@ describe("ItemCard — Unlisted chip", () => {
   });
 });
 
+describe("ItemCard — non-interactive mode", () => {
+  it("renders the card content with no link and no button when interactive is false", () => {
+    render(<ItemCard item={baseItem} view="grid" interactive={false} />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByText(baseItem.title)).toBeInTheDocument();
+  });
+});
+
 describe("ItemCard — workbench button mode", () => {
   it("renders as a button and fires onOpen when provided (workbench mode)", () => {
     const onOpen = vi.fn();

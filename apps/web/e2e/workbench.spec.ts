@@ -205,14 +205,11 @@ test.describe("desktop workbench", () => {
     await shot(page, "f-listings-focus.png");
   });
 
-  // FIXME: genuinely fails — the click toggles selection AND then the nested
-  // link-mode ItemCard (rendered inside the select-toggle button without an
-  // onOpen) completes a client-side navigation to /inventory/<id>, swapping
-  // the whole workbench out. Known pre-existing nested-Link defect, replicated
-  // into the desktop pane by R1 — registry deferred item 334daef2 ("Workbench
-  // select-mode: card body click navigates away (nested Link in toggle
-  // button)", high priority). Un-fixme when that item is fixed; do not delete.
-  test.fixme("g. select-mode card-BODY click toggles selection without navigating away", async ({ page }) => {
+  // Registry deferred item 334daef2 ("Workbench select-mode: card body click
+  // navigates away (nested Link in toggle button)") — FIXED: select mode now
+  // renders a non-interactive ItemCard (interactive={false}) inside the
+  // toggle, so no <a> exists to navigate. This scenario pins that fix.
+  test("g. select-mode card-BODY click toggles selection without navigating away", async ({ page }) => {
     await page.goto("/inventory");
     const workbench = page.getByTestId("workbench");
     const listPane = workbench.getByRole("region", { name: "Inventory list" });
@@ -220,9 +217,10 @@ test.describe("desktop workbench", () => {
     await listPane.getByRole("button", { name: "Select", exact: true }).click();
     await expect(listPane.getByRole("button", { name: "Done", exact: true })).toBeVisible();
 
-    // Card BODY, not the checkbox: in select mode the pane nests a link-mode
-    // ItemCard inside the toggle button (known pre-existing nested-Link risk).
-    await listPane.locator(`a[href="/inventory/${bravoId}"]`).click();
+    // The fix removes the nested link entirely — assert that first, then
+    // click the card BODY (its title), not the checkbox overlay.
+    await expect(listPane.locator(`a[href="/inventory/${bravoId}"]`)).toHaveCount(0);
+    await listPane.getByText(TITLES[1]).click();
 
     // Let the client-side navigation (if any) actually land before asserting —
     // checking immediately passes spuriously because the toggle fires first

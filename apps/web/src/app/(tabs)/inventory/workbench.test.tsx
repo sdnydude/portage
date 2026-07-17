@@ -137,6 +137,17 @@ describe("Inventory workbench (lg master-detail)", () => {
     expect(within(workbench).queryByRole("button", { name: "Select" })).not.toBeInTheDocument();
   });
 
+  // Select mode must not nest a link-mode ItemCard inside the selection
+  // toggle button — the nested Link completes a navigation to /inventory/<id>
+  // after the toggle fires, swapping the workbench out (registry 334daef2).
+  it("renders select-mode cards with no nested link inside the toggle button", () => {
+    render(<InventoryPage />);
+    const workbench = screen.getByTestId("workbench");
+    fireEvent.click(within(workbench).getByRole("button", { name: "Select" }));
+    expect(within(workbench).getByRole("button", { name: /select strat/i })).toBeInTheDocument();
+    expect(within(workbench).queryByRole("link")).not.toBeInTheDocument();
+  });
+
   // The 380px list pane must not inherit the mobile tree's viewport-scoped
   // column classes — xl:grid-cols-4 in the pane collapses card titles to
   // zero width (caught live by e2e/workbench.spec.ts).

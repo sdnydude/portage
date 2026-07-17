@@ -170,7 +170,10 @@ function ItemsGrid({
             {selectedIds.has(item.id) && (
               <div className="absolute inset-0 rounded-xl ring-2 ring-forest-green z-10 pointer-events-none" aria-hidden="true" />
             )}
-            <ItemCard item={item} view={view} />
+            {/* Non-interactive card: a link-mode ItemCard here nests a Link
+                inside the toggle button and navigates after the toggle fires
+                (registry 334daef2). */}
+            <ItemCard item={item} view={view} interactive={false} />
           </button>
         ) : (
           <ItemCard
