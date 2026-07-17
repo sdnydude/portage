@@ -25,7 +25,9 @@ export const inventoryTopic: TutorialTopic = {
       title: "Bulk actions",
       body: "Select multiple items to archive, activate, delete, or export as an eBay-ready CSV in one move.",
       screenshot: "/tutorials/inventory/bulk.png",
-      overlays: [{ type: "callout", x: 50, y: 65, text: "Select → bulk bar", delay: 300 }],
+      // Real account fills the grid — a floating callout occludes product
+      // photos. Tap the actual Select control in the header instead.
+      overlays: [{ type: "tap", x: 62, y: 6 }],
     },
   ],
 };

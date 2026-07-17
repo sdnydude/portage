@@ -424,3 +424,13 @@ Sequencing note (resolved): the onboarding-expansion ship (plan `docs/superpower
 ## Demo Account
 
 Demo credentials live in Doppler (never committed).
+
+## DHG Assets pipeline (own project — Stephen 2026-07-15)
+
+Registry table `dhg_assets` + ingest/search for marketing/collateral assets (registry deferred item, priority high):
+
+- [ ] Table: project, repo path/URL, kind (screenshot|panel|frame|logo|doc), variant (with-copy|without-copy), dimensions, source_commit, tags, caption, pgvector embedding, FTS
+- [ ] Ingest `docs/assets/**` from Portage (extendable to other repos)
+- [ ] Process each asset for searchability: vision-model caption (Gemini per vision strategy) → embedding + FTS, exposed via hybrid KB search
+- [ ] Autopost pipeline (post-assets.sh + rule) so future asset exports auto-ingest — use the autopost-setup agent
+- [ ] Prereq for marketing-grade assets: stage real-looking demo inventory (items + order + conversation), recapture, re-export

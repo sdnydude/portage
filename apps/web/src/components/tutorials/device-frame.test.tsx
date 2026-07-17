@@ -67,4 +67,22 @@ describe("DeviceFrame", () => {
     );
     expect(screen.getByText("Your current plan")).toBeInTheDocument();
   });
+
+  it("in compact mode, drops non-highlight overlays but keeps highlights", () => {
+    render(
+      <DeviceFrame
+        screenshot="/tutorials/setup/billing.png"
+        overlays={[
+          { type: "highlight", x: 10, y: 20, w: 50, h: 10 },
+          { type: "callout", x: 50, y: 30, text: "Your current plan" },
+          { type: "tap", x: 50, y: 90 },
+        ]}
+        animationKey={0}
+        alt="Billing"
+        compact
+      />,
+    );
+    expect(screen.getAllByTestId("tutorial-overlay")).toHaveLength(1);
+    expect(screen.queryByText("Your current plan")).not.toBeInTheDocument();
+  });
 });

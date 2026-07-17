@@ -17,7 +17,7 @@ try {
     for (let step = 1; step <= 3; step++) {
       await p.waitForTimeout(900); // let overlay animations reach steady state
       await p.screenshot({ path: `${OUT}/${slug}-step${step}.png` });
-      const next = p.getByRole("button", { name: "Next", exact: true });
+      const next = p.getByRole("button", { name: "Next step", exact: true });
       if (step < 3 && (await next.count())) await next.click();
     }
     console.log(`rendered ${slug}`);
