@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
 import { useListings } from "@/hooks/use-listings";
 import { ListingCard } from "@/components/listing/listing-card";
+import { ConfirmSheet } from "@/components/ui/confirm-sheet";
 import { useAuth } from "@/hooks/use-auth";
 import { useEnhance } from "@/hooks/use-enhance";
 import { useBgRemoval } from "@/hooks/use-bg-removal";
@@ -398,11 +399,13 @@ export function ItemDetail({
       <div className={`${variant === "pane" ? "min-h-full" : "min-h-screen"} bg-background`}>
         <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
           <div className="flex items-center content-container">
-            <button onClick={() => onBack()} aria-label="Back" className="p-1 -ml-1 text-text-secondary">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-              </svg>
-            </button>
+            {variant === "page" && (
+              <button onClick={() => onBack()} aria-label="Back" className="p-1 -ml-1 text-text-secondary">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
             <span className="ml-3 text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">Not Found</span>
           </div>
         </header>
@@ -838,35 +841,19 @@ export function ItemDetail({
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal — shared ConfirmSheet (dialog role, Escape,
+          focus trap) instead of the raw modal it was extracted from. */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteConfirm(false)} />
-          <div className="relative bg-surface rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-4 mb-0 sm:mb-0 p-6 space-y-4">
-            <h3 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
-              Delete Item
-            </h3>
-            <p className="text-sm text-text-secondary">
-              Are you sure you want to delete &ldquo;{item.title}&rdquo;? This action cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 py-2.5 px-4 rounded-xl border border-border text-sm font-medium text-text-primary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={isDeleting}
-                aria-label="Delete item"
-                className="flex-1 py-2.5 px-4 rounded-xl bg-red-500 text-white text-sm font-medium disabled:opacity-50"
-              >
-                {isDeleting ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmSheet
+          title="Delete Item"
+          body={`Are you sure you want to delete “${item.title}”? This action cannot be undone.`}
+          confirmLabel="Delete"
+          destructive
+          busy={isDeleting}
+          busyLabel="Deleting..."
+          onConfirm={handleDelete}
+          onClose={() => setShowDeleteConfirm(false)}
+        />
       )}
 
       {/* Create Listing Sheet */}

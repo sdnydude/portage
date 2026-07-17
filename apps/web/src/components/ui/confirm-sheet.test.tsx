@@ -24,6 +24,75 @@ describe("ConfirmSheet", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  // F6: dialog-in-name-only — a modal must actually manage focus.
+  it("moves focus into the sheet when it opens", () => {
+    render(
+      <ConfirmSheet
+        title="Delete Item"
+        body="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  });
+
+  it("closes on Escape", () => {
+    const onClose = vi.fn();
+    render(
+      <ConfirmSheet
+        title="Delete Item"
+        body="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("traps Tab: wraps from the last button back to the first", () => {
+    render(
+      <ConfirmSheet
+        title="Delete Item"
+        body="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const confirm = screen.getByRole("button", { name: "Delete" });
+    confirm.focus();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Tab" });
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  });
+
+  it("restores focus to the invoking element on close", () => {
+    const invoker = document.createElement("button");
+    invoker.textContent = "open sheet";
+    document.body.appendChild(invoker);
+    invoker.focus();
+    const { unmount } = render(
+      <ConfirmSheet
+        title="Delete Item"
+        body="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(invoker).not.toHaveFocus();
+    unmount();
+    expect(invoker).toHaveFocus();
+    invoker.remove();
+  });
+
   it("exposes the sheet panel as a modal dialog containing the confirm button", () => {
     render(
       <ConfirmSheet
