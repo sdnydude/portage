@@ -2,6 +2,8 @@
 
 Scraped from developer.ebay.com via Context7 — 2026-05-07
 
+> **Scope note (updated 2026-07):** The REST API tables in this file were scraped 2026-05-07 and describe eBay's APIs **generally** — they are background reference, not a description of Portage's integration. Portage's listing lifecycle now runs on the **Trading API** (Trade-First migration, PR #133, merged 2026-06-30); see "Portage's Current eBay Integration" at the bottom for what the app actually uses.
+
 ---
 
 ## API Structure
@@ -110,7 +112,9 @@ Authorization: Bearer v^1.1...tokenvalue
 
 #### 1. Inventory API (`/sell/inventory/v1`)
 
-Primary API for Portage listing creation. REST-based, modular approach:
+> **No longer Portage's listing path.** The Trade-First migration (PR #133) moved the listing lifecycle to the Trading API and removed Inventory-API offers from the adapter path. Kept as background reference.
+
+REST-based, modular approach:
 
 - **Inventory Item** — Create/manage item records (title, description, images, aspects)
 - **Offer** — Create marketplace-specific offers (price, quantity, policies)
@@ -199,22 +203,26 @@ Product matching:
 
 | Method | Type | Best For |
 |--------|------|----------|
-| **Inventory API** | REST | Single items, modular updates (Portage uses this) |
+| **Trading API** | XML over HTTPS | Single-ItemID listing lifecycle — **Portage uses this** (Trade-First, PR #133) |
+| **Inventory API** | REST | SKU/offer model, modular updates (no longer used by Portage for listings) |
 | **Sell Feed API** | REST + bulk files | Bulk uploads (1000s of items) |
-| **Trading API** | XML/SOAP (legacy) | Legacy integrations |
 
 ---
 
 ## Portage's Current eBay Integration
 
 **Adapter:** `apps/api/src/marketplace/ebay-adapter.ts`
+**Trading API transport:** `apps/api/src/marketplace/ebay-trading-client.ts`
+**Trading XML builders:** `apps/api/src/marketplace/ebay-trading-builders.ts`
 **Auth:** `apps/api/src/routes/marketplace/ebay-auth.ts`
 **Token Manager:** `apps/api/src/marketplace/token-manager.ts`
 
 **Currently implemented:**
 - OAuth2 auth code grant (connect/disconnect/status)
 - Token encryption (AES-256-GCM)
-- Inventory API: create/update/delete items, create offers, publish
+- **Trading API — the listing lifecycle** (Trade-First, PR #133): `AddFixedPriceItem` / `ReviseFixedPriceItem` / `ReviseInventoryStatus` / `EndFixedPriceItem` / `GetItem`, with **inline shipping terms** built into the XML payload (calculated shipping from item weight/dims, no `<SellerProfiles>` — no Business Policies required)
+- Inventory-API offers **removed from the adapter path** — a listing is a single Trading ItemID, no SKU/offer split
+- Insert-first publish idempotency via `listings.idempotency_key`
 - Fulfillment API: get orders
 - Taxonomy API: category lookup
 - Browse API: search for comps

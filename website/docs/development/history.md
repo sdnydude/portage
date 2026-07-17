@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Development History
 
-Portage has been built iteratively through a structured AI-assisted development workflow. This page documents the major milestones, PR history, and evolution of the platform.
+Portage has been built iteratively through a structured AI-assisted development workflow. This page documents the major milestones, PR history, and evolution of the platform. The repo working doc `docs/PORTAGE_HISTORY.md` covers the same era in more detail.
 
 ## Project Timeline
 
@@ -74,6 +74,7 @@ Shipped 25 PRs (#28-52) in a single day:
 | #48 | feat | Bulk operations (select/delete/archive/activate) |
 | #49 | feat | eBay CSV data export (File Exchange format) |
 | #50 | feat | Onboarding flow (5-step carousel) |
+| #51 | fix | Docker healthchecks and environment for all 4 services |
 | #52 | feat | Unified photo flow (multi-photo ScanFlow rewrite) |
 
 ## Test Coverage (as of 2026-05-10)
@@ -135,6 +136,8 @@ Shipped 25 PRs (#28-52) in a single day:
 | Admin & misc | 21 | various |
 
 ## Current Status (as of 2026-07-09)
+
+_This section is a point-in-time snapshot as of 2026-07-09 and is not kept current — the live backlog is maintained in `docs/TODO.md` in the repo._
 
 **50/52 tasks complete**, 1 superseded (carrier APIs), 1 obsolete (Reverb OAuth code-grant — per-user PAT auth ships selling, live-proven). Buyer messaging shipped (eBay inbox sync, conversation threads, reply via Trading API); carrier API integration (EasyPost/Shippo) was superseded 2026-07-01 by redirect-to-eBay for labels, and the stubbed carrier subsystem was deleted in PR #142. Closed 2026-07-09: integration testing (Task 35, PR #184 +43 route tests), tunnel config versioned (PR #182), prod CORS single-origin (PR #189).
 

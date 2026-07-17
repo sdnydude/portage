@@ -1,5 +1,7 @@
 # Portage Admin Panel — Comprehensive Plan
 
+> **IMPLEMENTED — PR #188 (2026-07-09) exceeds this plan.** The auth and seed sections below are superseded: auth is Cloudflare Access (no passwords), and admin promotion is `npx tsx apps/api/src/scripts/promote-admin.ts <email>` (no `admin:seed` command). Marketplace references are also historical: every Etsy mention below (charts, connection tables, feature flags) predates the Etsy park of 2026-07-09 — the live marketplaces are eBay and Reverb.
+
 **Goal:** A full-featured admin panel usable by non-technical team members. No terminal, no SQL, no jargon. Think Shopify admin or Stripe dashboard — everything is point-and-click with clear labels, search, filters, and confirmations.
 
 ---

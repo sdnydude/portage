@@ -25,6 +25,8 @@ Portage uses a custom design system built on **Tailwind v4** with CSS custom pro
 
 The orange and teal scales each have `-bright`, `-dark`, and `-soft` variants (e.g. `--orange-soft`, `--teal-dark`).
 
+Deep Teal is the AI accent by principle: teal marks AI/intelligence surfaces (Porter), never purple — the DHG system deliberately avoids the AI industry's saturated purple (see [Style Guide](/docs/design/style-guide)).
+
 ## Surfaces
 
 | Token | Light | Dark |

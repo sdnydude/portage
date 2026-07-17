@@ -1,14 +1,15 @@
 ---
 id: code-graph
 title: Code Knowledge Graph
+sidebar_position: 5
 ---
 
 # Code Knowledge Graph
 
 A [graphify](https://github.com/dhg) knowledge graph of the Portage codebase —
 nodes for modules, functions, docs, and concepts; edges for structural
-relationships (imports, calls) plus LLM-inferred semantic links. 2,536 nodes /
-3,819 edges across 328 communities as of 2026-07-10.
+relationships (imports, calls) plus LLM-inferred semantic links. 4,875 nodes /
+6,775 edges across 712 communities as of 2026-07-17.
 
 ## Dashboard
 
@@ -18,7 +19,7 @@ relationships (imports, calls) plus LLM-inferred semantic links. 2,536 nodes /
 | Interactive graph | [http://10.0.0.251:8018/](http://10.0.0.251:8018/) (`graph.html`) |
 | Written report (communities, god nodes, stats) | [GRAPH_REPORT.md](http://10.0.0.251:8018/GRAPH_REPORT.md) |
 | Raw graph data | [graph.json](http://10.0.0.251:8018/graph.json) |
-| Wiki (index + 338 articles: one per community + god nodes) | [wiki/index.md](http://10.0.0.251:8018/wiki/index.md) |
+| Wiki (index + 722 articles as of 2026-07-17: one per community + god nodes) | [wiki/index.md](http://10.0.0.251:8018/wiki/index.md) |
 
 Served by the `portage-graph` service (nginx:alpine, port **8018**) defined in
 `docker-compose.yml`, read-only over `graphify-out/`. New graph builds appear

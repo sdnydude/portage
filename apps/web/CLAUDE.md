@@ -6,13 +6,13 @@ Next.js 16 frontend. See root CLAUDE.md for architecture overview.
 
 ```
 src/app/
-├── (tabs)/          # Bottom nav pages (wrapped with TabBar)
+├── (tabs)/          # 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button; More via avatar menu
 │   ├── home/        # Dashboard
 │   ├── inventory/   # Item grid/list
 │   ├── listings/    # Active/sold
 │   ├── orders/      # Sold list (thumbnail/title/date/price; Ship-It → eBay)
 │   ├── porter/      # AI assistant
-│   └── more/        # Settings/profile
+│   └── more/        # Settings hub — reached via avatar menu, not a bottom-nav tab
 ├── admin/           # Separate layout tree (sidebar nav)
 ├── inventory/[id]/  # Item detail + edit + Marketplace Listings section (ListingCard) + /preview PNG-share subroute
 ├── listings/[id]/   # Redirect → /inventory/[itemId]?listing=[id] (hub)
@@ -22,7 +22,7 @@ src/app/
 └── settings/        # 6 settings pages (profile, marketplace, seller-profile, billing, notifications, help)
 ```
 
-The `(tabs)/layout.tsx` wraps children with bottom padding (`pb-20`) and the `TabBar` component. Routes outside `(tabs)/` don't get the tab bar.
+The root `app/layout.tsx` wraps everything in `AppShell` (route-aware responsive shell: desktop sidebar, iPad breakpoints, mobile floating glass `TabBar`). `(tabs)/layout.tsx` only adds bottom padding (`pb-24`) and `PorterProvider` — `TabBar` mounts once inside `AppShell` for all non-admin routes, not per-layout.
 
 ## Component Organization
 
@@ -34,8 +34,8 @@ Directories mirror feature areas, not component types:
 | `listing-flow/` | HybridFlow, ConversationalFlow, SwipeFlow, PhotoCaptureFlow, PhotoEditor, CropTool, PhotoGrid, PricingStrategyPicker |
 | `listing/` | ListingCard, ListingPreviewCard, CompsPricingWidget, CreateListingSheet, BulkListingBar |
 | `inventory/` | ItemCard, SearchBar, ViewControls, BulkActionBar |
-| `layout/` | PageHeader (sticky top), TabBar (bottom nav + scan FAB) |
-| `image/` | BeforeAfterSlider, BgRemovalPanel |
+| `layout/` | AppShell (route-aware responsive shell), Sidebar (desktop/iPad collapsible nav rail), TopBar (desktop header), PageHeader (sticky top, mobile), TabBar (floating glass bottom nav + scan FAB) |
+| `image/` | BeforeAfterSlider |
 | `onboarding/` | OnboardingFlow (5-step first-run carousel) |
 | `celebration/` | SoldCelebration |
 | `auth/` | AuthProvider |
@@ -123,3 +123,4 @@ React Context only — no Zustand/Jotai/Redux. Two providers: `AuthProvider` (ap
 - **Polling HMR:** `WATCHPACK_POLLING=true` required for reliable hot reload over network.
 - **iOS aspect-ratio collapse:** Never use `aspect-ratio` (Tailwind `aspect-square`) inside flex + overflow-hidden containers — iOS WebKit collapses to 0px. Use `paddingBottom: "100%"` percentage trick instead (see `BeforeAfterSlider`).
 - **Docker no hot-reload:** Production containers don't reflect code changes without `docker compose up -d --build portage-app`.
+- **Tutorial screenshots rot:** `/tutorials` pages render PNGs from `public/tutorials/**` captured by `npm run capture:tutorials` (needs the app running; not in CI). After any visible UI change to home, inventory, listings, orders, settings, porter, or messages screens, re-run the capture and commit the updated PNGs — overlay coords live in `src/lib/tutorials/*` next to each topic's capture manifest. After recapturing, verify overlay placement with `node scripts/render-tutorial-steps.mjs [topic ...]` (renders every step via a dev server and screenshots them for visual review).

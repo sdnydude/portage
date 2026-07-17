@@ -15,6 +15,7 @@
     "build:web": "npm run build -w apps/web",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "capture:tutorials": "npm run capture:tutorials -w apps/web",
     "test:api": "npm run test -w apps/api",
     "test:web": "npm run test -w apps/web",
     "test:e2e": "npm run test:e2e -w apps/web",

@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Multi-Agent Team Outcomes Study
 
-_Auto-generated banner: Manual document — Team & Process_
+**Status: COMPLETE** — study closed 2026-07-17; see [Outcome](#outcome).
 
 ## Purpose
 
@@ -111,3 +111,7 @@ After 5 multi-agent /ship runs:
 3. Compare matched-complexity pairs
 4. Write findings summary with recommendations
 5. Decide: adopt multi-agent as default, modify team composition, or revert to single-agent
+
+## Outcome
+
+The instrumentation outlived the experiment. Instead of stopping at the 5-run pilot in the Analysis Plan, the ship-session capture pipeline went to production and has recorded every /ship run since the study started — the registry holds 109 ship sessions for Portage as of 2026-07-17. The formal matched-complexity comparison was never tabulated as a standalone report; the multi-agent pattern (architect dispatches for complex features, per-task subagent implementers and reviewers) became standing practice, as the captured sessions themselves document. Study closed 2026-07-17.

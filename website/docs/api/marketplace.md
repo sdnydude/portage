@@ -74,6 +74,8 @@ DELETE /marketplace/reverb/disconnect   # Remove connection + token
 
 **Auth:** Required
 
+`POST /marketplace/reverb/connect` is rate-limited to **5 attempts per 15-minute window** (`express-rate-limit`); exceeding it returns `429 RATE_LIMITED`.
+
 ## OAuth Flows
 
 ### eBay
@@ -88,7 +90,7 @@ Standard OAuth2 authorization code grant:
 
 ### Etsy (parked)
 
-Etsy support was **removed 2026-07-09** pending Etsy API key approval — the adapter, auth routes, and UI no longer exist (pre-removal code is preserved at git tag `etsy-parked-2026-07`). The `etsy` database enum value remains but is inert; attempting to use Etsy returns `400 MARKETPLACE_UNSUPPORTED`.
+Etsy support was **removed 2026-07-09** pending Etsy API key approval — the adapter, auth routes, and UI no longer exist (pre-removal code is preserved at git tag `etsy-parked-2026-07`). The `etsy` database enum value remains but is inert; attempting to publish to Etsy is rejected at validation, since the request-body `marketplace` enum only accepts `ebay` | `reverb` — you get a `400 VALIDATION_ERROR`. (`400 MARKETPLACE_UNSUPPORTED` exists only on the legacy path for a pre-existing `etsy` listing row, and zero such rows exist.)
 
 ## Token Storage
 
@@ -96,6 +98,6 @@ All marketplace tokens are encrypted at rest:
 
 - **Algorithm:** AES-256-GCM
 - **Key:** `ENCRYPTION_KEY` environment variable (separate from `JWT_SECRET`)
-- **Storage:** `marketplace_accounts` table, encrypted columns for `accessToken` and `refreshToken`
+- **Storage:** `marketplace_accounts` table, in the `accessTokenEncrypted` and `refreshTokenEncrypted` columns
 
 Token refresh is handled automatically by the token manager — access tokens are refreshed 5 minutes before expiry to avoid race conditions. There is no manual refresh endpoint.
