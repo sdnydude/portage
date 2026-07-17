@@ -28,7 +28,16 @@ export default defineConfig({
     { name: "setup", testMatch: /auth\.setup\.ts/ },
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/user.json" },
+      use: {
+        ...devices["Desktop Chrome"],
+        // Desktop Chrome's 1280x720 default lands on the lg (>=1024px) R1
+        // workbench, where the mobile layout every non-workbench spec drives
+        // is lg:hidden and item cards are buttons, not links. Pin the suite
+        // below lg; specs that exercise lg layouts (e2e/workbench.spec.ts)
+        // set their own viewport explicitly via test.use.
+        viewport: { width: 800, height: 900 },
+        storageState: "e2e/.auth/user.json",
+      },
       dependencies: ["setup"],
     },
   ],

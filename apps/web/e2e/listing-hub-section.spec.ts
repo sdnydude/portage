@@ -138,7 +138,7 @@ test("card actions: price edit persists and delete removes the card", async ({ p
 
     // Delete the draft through the card's confirm sheet → card leaves the DOM.
     await page.locator(`#listing-${s.listingId}`).getByRole("button", { name: "Delete Listing" }).click();
-    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
     await expect(page.locator(`#listing-${s.listingId}`)).toHaveCount(0, { timeout: 10_000 });
     await page.screenshot({ path: path.join(SHOT, "4-deleted.png"), fullPage: true });
   } finally {

@@ -104,7 +104,7 @@ test("fresh scan: confirm creates the item, prepare renders the preview card; in
 
     await test.step("inventory shows the created item with the Unlisted chip", async () => {
       await page.goto("/inventory");
-      await expect(page.getByText(CANDIDATE.name)).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("link", { name: CANDIDATE.name })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText("Unlisted").first()).toBeVisible();
       await page.screenshot({ path: path.join(SHOT, "3-inventory-unlisted.png"), fullPage: true });
     });
