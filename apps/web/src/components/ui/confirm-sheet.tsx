@@ -11,6 +11,8 @@ interface ConfirmSheetProps {
   /** Disables the confirm button and swaps in this label while busy. */
   busyLabel?: string;
   busy?: boolean;
+  /** Failure feedback rendered inside the sheet (keeps the modal open). */
+  error?: string | null;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -19,7 +21,7 @@ interface ConfirmSheetProps {
  * Shared confirm bottom-sheet — extracted from the modal markup triplicated
  * across the listing/item detail pages (archive, delete, item-delete).
  */
-export function ConfirmSheet({ title, body, confirmLabel, destructive = false, busyLabel, busy = false, onConfirm, onClose }: ConfirmSheetProps) {
+export function ConfirmSheet({ title, body, confirmLabel, destructive = false, busyLabel, busy = false, error = null, onConfirm, onClose }: ConfirmSheetProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -70,6 +72,11 @@ export function ConfirmSheet({ title, body, confirmLabel, destructive = false, b
           {title}
         </h3>
         <p className="text-sm text-text-secondary">{body}</p>
+        {error && (
+          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
+            {error}
+          </div>
+        )}
         <div className="flex gap-3">
           <button
             ref={cancelRef}

@@ -59,6 +59,7 @@ export function ItemDetail({
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCrop, setShowCrop] = useState(false);
   const [showExposure, setShowExposure] = useState(false);
@@ -108,14 +109,27 @@ export function ItemDetail({
   // Fresh listings for the last-photo delete guard (handler is declared
   // before the useListings destructure below).
   const listingsRef = useRef<{ status: string }[]>([]);
+  // Fetch state for the same guard: [] from a loading/errored fetch must not
+  // read as "no active listing" (fail closed, not open).
+  const listingsFetchRef = useRef<{ loading: boolean; error: string | null }>({
+    loading: true,
+    error: null,
+  });
 
   const handlePhotoDelete = useCallback(async (index: number) => {
     // eBay's Revise omits PictureDetails entirely for an empty photo list —
     // the old pictures silently stay live while the app shows none. Block the
     // divergence at the source.
-    if (photosRef.current.length <= 1 && listingsRef.current.some((l) => l.status === "active")) {
-      setUploadError("Can't remove the last photo while a listing is live — add a replacement photo first.");
-      return;
+    if (photosRef.current.length <= 1) {
+      const { loading, error } = listingsFetchRef.current;
+      if (loading || error) {
+        setUploadError("Can't verify listing status — retry loading listings before removing the last photo.");
+        return;
+      }
+      if (listingsRef.current.some((l) => l.status === "active")) {
+        setUploadError("Can't remove the last photo while a listing is live — add a replacement photo first.");
+        return;
+      }
     }
     try {
       const saved = (await updateItem({ photos: removePhotoAt(photosRef.current, index) })) as { syncWarnings?: string[] } | null;
@@ -146,7 +160,8 @@ export function ItemDetail({
     useListings({ itemId });
   useEffect(() => {
     listingsRef.current = itemListings;
-  }, [itemListings]);
+    listingsFetchRef.current = { loading: listingsLoading, error: listingsError };
+  }, [itemListings, listingsLoading, listingsError]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   // One-shot: without the ref, every refetchListings() toggles listingsLoading
@@ -204,6 +219,9 @@ export function ItemDetail({
       try {
         const newPhotos = [];
         let failCount = 0;
+        // First failure's message rides along in the summary so systemic
+        // causes (auth, size limit, rembg outage) are distinguishable.
+        let firstFailure: string | null = null;
         for (const file of files) {
           const formData = new FormData();
           formData.append("image", file);
@@ -218,8 +236,9 @@ export function ItemDetail({
               height: data.image.height,
               isPrimary: false,
             });
-          } catch {
+          } catch (err) {
             failCount++;
+            if (!firstFailure) firstFailure = err instanceof Error ? err.message : String(err);
           }
         }
 
@@ -229,9 +248,9 @@ export function ItemDetail({
         }
 
         if (failCount > 0 && newPhotos.length === 0) {
-          setUploadError("All photos failed to upload. Please try again.");
+          setUploadError(`All photos failed to upload — ${firstFailure}`);
         } else if (failCount > 0) {
-          setUploadError(`${failCount} photo(s) failed to upload and were skipped.`);
+          setUploadError(`${failCount} photo(s) failed to upload and were skipped — ${firstFailure}`);
         }
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : "Failed to save photos");
@@ -432,12 +451,14 @@ export function ItemDetail({
 
   const handleDelete = async () => {
     setIsDeleting(true);
+    setDeleteError(null);
     try {
       await deleteItem();
       onDeleted();
-    } catch {
+    } catch (err) {
+      // Keep the sheet open — closing silently reads as success.
       setIsDeleting(false);
-      setShowDeleteConfirm(false);
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete item");
     }
   };
 
@@ -700,9 +721,19 @@ export function ItemDetail({
           {/* Marketplace Listings hub — HIGH placement (advisor review): live-listing
               state is first-screen adjacent, above the optimizer. Hidden when the
               item has no listings (the primary CTA below covers that case). */}
-          {itemListings.length > 0 && (
+          {(itemListings.length > 0 || listingsError) && (
             <section className="mt-4">
               <h2 className="text-sm font-semibold text-text-primary mb-2">Marketplace Listings</h2>
+              {/* A failed fetch must not silently hide listing state (the
+                  last-photo guard and the List CTA both depend on it). */}
+              {listingsError && (
+                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 space-y-2 mb-2">
+                  <p className="text-sm text-red-700 dark:text-red-300">{listingsError}</p>
+                  <button onClick={refetchListings} className="text-xs font-medium text-red-600 dark:text-red-400">
+                    Try Again
+                  </button>
+                </div>
+              )}
               <div className="flex flex-col gap-2">
                 {visibleListings.map(renderListingCard)}
                 {archivedListings.length > 0 && (
@@ -851,8 +882,12 @@ export function ItemDetail({
           destructive
           busy={isDeleting}
           busyLabel="Deleting..."
+          error={deleteError}
           onConfirm={handleDelete}
-          onClose={() => setShowDeleteConfirm(false)}
+          onClose={() => {
+            setDeleteError(null);
+            setShowDeleteConfirm(false);
+          }}
         />
       )}
 

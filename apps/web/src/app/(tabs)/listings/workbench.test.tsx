@@ -97,6 +97,18 @@ describe("Listings workbench (lg master-detail)", () => {
     ).toHaveTextContent("i2:l2");
   });
 
+  // F8: an unknown/deleted/filtered-out ?listing= id used to render the
+  // generic "Select a listing" hint — a silent miss (fix3 F8).
+  it("shows a not-found state for an unknown ?listing= deep link", () => {
+    window.history.replaceState(null, "", "/listings?listing=nope");
+    render(<ListingsPage />);
+    const workbench = screen.getByTestId("workbench");
+    expect(within(workbench).getByText(/listing not found/i)).toBeInTheDocument();
+    fireEvent.click(within(workbench).getByRole("button", { name: /clear selection/i }));
+    expect(within(workbench).getByText(/select a listing/i)).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+  });
+
   it("updates the URL via history.replaceState when a listing is selected", () => {
     render(<ListingsPage />);
     const workbench = screen.getByTestId("workbench");

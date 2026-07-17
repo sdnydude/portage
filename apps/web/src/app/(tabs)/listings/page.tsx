@@ -448,6 +448,20 @@ export default function ListingsPage() {
               }}
               onBack={clearDetailSelection}
             />
+          ) : selectedListingId && !isLoading && !error ? (
+            // Deep link to an unknown/deleted/filtered-out id — say so
+            // instead of the generic hint (silent miss).
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+              <p className="text-sm text-text-secondary">
+                Listing not found — it may have been deleted or filtered out.
+              </p>
+              <button
+                onClick={clearDetailSelection}
+                className="text-sm font-medium text-forest-green"
+              >
+                Clear selection
+              </button>
+            </div>
           ) : (
             <div className="flex h-full items-center justify-center">
               <p className="text-sm text-text-secondary">Select a listing to view and edit it</p>
