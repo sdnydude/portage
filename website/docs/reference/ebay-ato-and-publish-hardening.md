@@ -6,6 +6,11 @@ sidebar_position: 1
 
 # eBay Account Security (ATO) & Publish Hardening
 
+:::warning Partially superseded — Trade-First migration
+The publish-path sections below ("SKU / offer churn", the offer-related hardening rows, and the publish error-code table) describe the pre-migration **Inventory API** path, superseded by the Trade-First migration (PR #133, merged 2026-06-30) — for current publish behavior see [eBay Trade-First Publishing](/docs/reference/ebay-trade-first) (adapter context: [Marketplace Adapters](/docs/architecture/marketplace-adapters)).
+The **ATO threat model**, the **serialized-SKU pattern**, and the **`User-Agent` hardening** remain current.
+:::
+
 Reference for eBay's **Account-Takeover (ATO) protection** as it affects API publishing
 from Portage, the signals we control, and the hardening shipped in PR #118. Written
 2026-06-19 from primary eBay sources and live verification — claims we could **not**
@@ -101,9 +106,10 @@ an unidentified client reads as a script.
 
 ## Sources
 
-Primary eBay + Cloudflare research is archived on the server at
-`docs/eba-ad cloudfllare-dev-docs/20260617-ebay-docs/` (eBay Request Headers, Key
-Management API spec, Finding Categories, Account API; Cloudflare ATO / tunnel docs). The
-ATO-cause refutations above were checked against the eBay **Key Management API** OpenAPI
-spec and the **Request Headers** developer doc, not the AI-generated research summaries in
-that folder (one of which incorrectly assumed outbound traffic traverses the tunnel).
+Primary eBay + Cloudflare research (eBay Request Headers, Key Management API spec,
+Finding Categories, Account API; Cloudflare ATO / tunnel docs) was collected 2026-06-17
+into a local research folder that was removed from the repo in the 2026-07 docs refresh —
+the originals remain on eBay's and Cloudflare's developer sites. The ATO-cause refutations
+above were checked against the eBay **Key Management API** OpenAPI spec and the
+**Request Headers** developer doc directly, not the AI-generated research summaries that
+accompanied them (one of which incorrectly assumed outbound traffic traverses the tunnel).

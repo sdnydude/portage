@@ -4,9 +4,16 @@ title: Authentication
 sidebar_position: 2
 ---
 
+import ThemedImage from '@theme/ThemedImage';
+
 # Authentication
 
 Portage uses **Cloudflare Access** as its identity provider — there are no passwords, no registration endpoint, and no refresh tokens. Cloudflare authenticates the user at the edge (against an admin-managed allowlist), and the API exchanges the resulting identity assertion for a short-lived internal JWT. Three auth levels exist: public, authenticated, and admin.
+
+<ThemedImage
+  alt="Cloudflare Access authentication flow"
+  sources={{light: '/portage/img/auth-cf-access-flow.svg', dark: '/portage/img/auth-cf-access-flow-dark.svg'}}
+/>
 
 ## Endpoints
 
@@ -32,7 +39,12 @@ Verifies the `Cf-Access-Jwt-Assertion` header injected by Cloudflare Access agai
     "subscriptionTier": "free",
     "role": "user",
     "onboardingCompleted": true,
-    "trialEndsAt": "2026-07-16T00:00:00Z"
+    "trialEndsAt": "2026-07-16T00:00:00Z",
+    "aiScansThisMonth": 3,
+    "aiListingsThisMonth": 1,
+    "aiListingCredits": 0,
+    "bgRemovalsThisMonth": 0,
+    "createdAt": "2026-05-01T..."
   }
 }
 ```
@@ -103,7 +115,29 @@ GET /users/me/marketplace-accounts
 
 **Auth:** Required
 
-Returns the user's connected marketplace accounts (id, marketplace, marketplaceUserId, tokenExpiresAt).
+Returns the user's connected marketplace accounts wrapped in an `accounts` key — `{ "accounts": [ { id, marketplace, marketplaceUserId, tokenExpiresAt, createdAt } ] }`.
+
+### Get Preferences
+
+```
+GET /users/me/preferences
+```
+
+**Auth:** Required
+
+**Response** `200`:
+
+```json
+{
+  "listingInterface": "hybrid",
+  "listingForkPref": "ask",
+  "listingForkCount": 2,
+  "listingCompactMode": false,
+  "disclaimerSuppressed": false
+}
+```
+
+`disclaimerSuppressed` is computed — `true` only while the publish-terms suppression window is open and its stored version matches the current disclaimer version.
 
 ### Update Preferences
 
@@ -113,14 +147,17 @@ PATCH /users/me/preferences
 
 **Auth:** Required
 
-**Body:**
+**Body** (at least one field required):
 
 ```json
 {
-  "listingFlowPreference": "hybrid",
-  "compactMode": false
+  "listingInterface": "hybrid",
+  "listingForkPref": "ask",
+  "listingCompactMode": false
 }
 ```
+
+`listingInterface` is one of `conversational` | `swipe` | `hybrid`; `listingForkPref` is one of `ask` | `list` | `inventory`. Returns the updated preference fields (including the read-only `listingForkCount`).
 
 ## Token Lifecycle
 

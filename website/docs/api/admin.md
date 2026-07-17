@@ -43,8 +43,10 @@ POST   /admin/users                    # Create a user ahead of first login (add
 GET    /admin/users/:id                # Get user details
 PATCH  /admin/users/:id                # Update user (role, tier, displayName, trial, credits, limit overrides, archive/enable)
 DELETE /admin/users/:id                # Delete user account
-POST   /admin/users/:id/reset-usage    # Reset monthly usage counters
+POST   /admin/users/:id/reset-usage    # Reset monthly AI scan + background-removal counters
 ```
+
+`POST /admin/users/:id/reset-usage` zeroes `aiScansThisMonth` and `bgRemovalsThisMonth` and stamps the reset date. It does not touch the daily Porter exchange count or AI listing credits.
 
 `PATCH /admin/users/:id` accepts `role` (`user`|`admin`), `subscriptionTier` (`free`|`pro`|`beta-tester`), `displayName`, `trialEndsAt`, `aiListingCredits`, per-meter `limitOverrides` (aiScansPerMonth, aiListingsPerMonth, bgRemovalsPerMonth, porterExchangesPerDay, marketplaces — number overrides tier, `null` = unlimited), and `disabled` (archiving also removes the user's Cloudflare Access allowlist entry, so sessions die at the edge). Admins cannot modify their own account.
 
@@ -118,6 +120,8 @@ GET    /admin/settings           # Get system settings
 PATCH  /admin/settings/:key      # Update a single setting by key
 ```
 
+The PATCH key is checked against a server-side allowlist that currently contains only `maintenance_mode` — any other key is rejected with `400 INVALID_KEY`.
+
 ### Metrics
 
 ```
@@ -135,7 +139,7 @@ The admin panel uses a sidebar navigation layout:
 - **Inventory** — Cross-user inventory view
 - **Listings** — Cross-user listing management
 - **Orders** — Cross-user order view
-- **Porter** — AI assistant config
+- **Porter** — Usage stats + conversation browser (read-only; there is no Porter config endpoint)
 - **Marketplace** — Connection management
 - **Observability** — System metrics
 - **Settings** — System-level config

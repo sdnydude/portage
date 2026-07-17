@@ -1,6 +1,7 @@
 ---
 title: "Appendix: Development Screenshots"
 sidebar_label: "Appendix: Screenshots"
+sidebar_position: 1
 description: "Historical UI screenshots captured during Portage development, April–June 2026, grouped by capture date."
 ---
 
