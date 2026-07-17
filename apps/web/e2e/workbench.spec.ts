@@ -16,7 +16,7 @@ async function shot(page: import("@playwright/test").Page, name: string) {
     .waitForFunction(() => Array.from(document.images).every((i) => i.complete), undefined, {
       timeout: 4000,
     })
-    .catch(() => {});
+    .catch((e) => console.warn("[workbench.spec] best-effort image-settle wait:", String(e)));
   await page.screenshot({ path: path.join(SHOT, name), fullPage: true });
 }
 
@@ -38,11 +38,16 @@ let charlieId: string;
 let listingId: string;
 
 async function deleteSentinelItems() {
+  // Playwright's APIResponse doesn't throw on 4xx/5xx — without these
+  // assertions an expired token silently leaks sentinel items into the
+  // prod-mode DB (fix3 F4).
   const res = await api.get(`${API_BASE}/items?limit=100`, { headers: authHeaders });
+  expect(res.ok(), `sentinel cleanup: GET /items failed: ${res.status()}`).toBeTruthy();
   const body = await res.json();
   for (const item of body.items ?? []) {
     if (typeof item.title === "string" && item.title.startsWith(SENTINEL)) {
-      await api.delete(`${API_BASE}/items/${item.id}`, { headers: authHeaders });
+      const del = await api.delete(`${API_BASE}/items/${item.id}`, { headers: authHeaders });
+      expect(del.ok(), `sentinel cleanup: DELETE /items/${item.id} failed: ${del.status()}`).toBeTruthy();
     }
   }
 }
@@ -97,6 +102,12 @@ test.describe("desktop workbench", () => {
     await expect(workbench).toBeVisible();
     await expect(workbench.getByRole("region", { name: "Inventory list" })).toBeVisible();
     await expect(workbench.getByText(TITLES[2])).toBeVisible();
+    // Behavioral pin against title collapse (the xl:grid-cols-4 pane
+    // regression): the rendered title box must have real width, not just a
+    // grid class string (fix3 F15a).
+    const titleBox = await workbench.getByText(TITLES[2]).boundingBox();
+    expect(titleBox, "card title has no layout box").toBeTruthy();
+    expect(titleBox!.width).toBeGreaterThan(0);
     await expect(workbench.getByText("Select an item to view and edit it")).toBeVisible();
     await shot(page, "a-inventory-workbench.png");
   });
@@ -225,7 +236,9 @@ test.describe("desktop workbench", () => {
     // Let the client-side navigation (if any) actually land before asserting —
     // checking immediately passes spuriously because the toggle fires first
     // and the Link navigation completes a beat later.
-    await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+    await page
+      .waitForLoadState("networkidle", { timeout: 3000 })
+      .catch((e) => console.warn("[workbench.spec] best-effort networkidle wait:", String(e)));
     await expect(page).toHaveURL(/\/inventory(\?.*)?$/);
     await expect(workbench).toBeVisible();
     // ...and the click actually toggled the card's selection, it wasn't inert.
@@ -233,6 +246,29 @@ test.describe("desktop workbench", () => {
       listPane.getByRole("button", { name: `Deselect ${TITLES[1]}` }),
     ).toHaveAttribute("aria-pressed", "true");
     await shot(page, "g-select-mode-body-click.png");
+  });
+});
+
+// The lg band (1024-1439) runs the workbench with narrower panes than the
+// 1440 desktop project — previously untested (fix3 F15c).
+test.describe("lg band", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test.beforeEach(async ({ page }) => {
+    await installSessionStub(page);
+  });
+
+  test("a2. /inventory workbench layout smoke at 1280x800", async ({ page }) => {
+    await page.goto("/inventory");
+    const workbench = page.getByTestId("workbench");
+    await expect(workbench).toBeVisible();
+    await expect(workbench.getByRole("region", { name: "Inventory list" })).toBeVisible();
+    await expect(workbench.getByText(TITLES[2])).toBeVisible();
+    const titleBox = await workbench.getByText(TITLES[2]).boundingBox();
+    expect(titleBox, "card title has no layout box").toBeTruthy();
+    expect(titleBox!.width).toBeGreaterThan(0);
+    await expect(workbench.getByText("Select an item to view and edit it")).toBeVisible();
+    await shot(page, "a2-inventory-workbench-1280.png");
   });
 });
 

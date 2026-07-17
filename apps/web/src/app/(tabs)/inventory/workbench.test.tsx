@@ -185,6 +185,17 @@ describe("Inventory workbench (lg master-detail)", () => {
     confirmSpy.mockRestore();
   });
 
+  // F15b: nested-Link regression guard for the MOBILE tree — select mode must
+  // render zero links anywhere (both trees share ItemsGrid; a link-mode card
+  // inside the toggle navigates after the toggle fires, registry 334daef2).
+  it("renders no links anywhere in select mode, mobile tree included", () => {
+    render(<InventoryPage />);
+    fireEvent.click(
+      within(screen.getByTestId("workbench")).getByRole("button", { name: "Select" }),
+    );
+    expect(screen.queryAllByRole("link")).toEqual([]);
+  });
+
   // The 380px list pane must not inherit the mobile tree's viewport-scoped
   // column classes — xl:grid-cols-4 in the pane collapses card titles to
   // zero width (caught live by e2e/workbench.spec.ts).
