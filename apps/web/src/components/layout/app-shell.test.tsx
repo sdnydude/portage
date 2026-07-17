@@ -19,12 +19,12 @@ vi.mock("@/components/layout/top-bar", () => ({
 }));
 
 describe("AppShell", () => {
-  it("passes the admin tree through with no shell chrome", () => {
+  it("mounts the shell on admin routes too — no admin carve-out", () => {
     mockPathname.mockReturnValue("/admin/users");
     render(<AppShell><div data-testid="page" /></AppShell>);
-    expect(screen.getByTestId("page")).toBeInTheDocument();
-    expect(screen.queryByTestId("shell-main")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("tab-bar")).not.toBeInTheDocument();
+    expect(screen.getByTestId("shell-main")).toContainElement(screen.getByTestId("page"));
+    expect(screen.getByTestId("tab-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar")).toBeInTheDocument();
   });
 
   it("renders the tab bar on non-tab routes (compact-state mounting)", () => {
@@ -37,6 +37,15 @@ describe("AppShell", () => {
     mockPathname.mockReturnValue("/inventory");
     render(<AppShell><div /></AppShell>);
     expect(screen.getByTestId("tab-bar")).toBeInTheDocument();
+  });
+
+  it("makes the TopBar wrapper sticky — the bar's own sticky is a no-op inside a wrapper exactly its height", () => {
+    mockPathname.mockReturnValue("/inventory");
+    render(<AppShell><div /></AppShell>);
+    const wrapper = screen.getByTestId("top-bar").parentElement as HTMLElement;
+    expect(wrapper.className).toContain("sticky");
+    expect(wrapper.className).toContain("top-0");
+    expect(wrapper.className).toContain("z-40");
   });
 
   it("renders shell-main and the reserved dock slot on app routes", () => {
