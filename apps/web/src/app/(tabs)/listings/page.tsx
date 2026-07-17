@@ -184,6 +184,9 @@ export default function ListingsPage() {
         body: { ids: Array.from(selectedIds) },
         token,
       });
+      // Clear a deleted pane selection — the pane self-heals visually after
+      // refetch, but the stale ?listing= deep link would 404 on reload.
+      if (selectedListingId && selectedIds.has(selectedListingId)) clearDetailSelection();
       clearSelection();
       await refetch();
     } catch (err) {
@@ -191,7 +194,7 @@ export default function ListingsPage() {
     } finally {
       setBulkLoading(false);
     }
-  }, [selectedIds, token, clearSelection, refetch]);
+  }, [selectedIds, token, selectedListingId, clearDetailSelection, clearSelection, refetch]);
 
   const handleBulkArchive = useCallback(async () => {
     if (selectedIds.size === 0 || !token) return;

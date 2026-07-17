@@ -230,11 +230,14 @@ export default function InventoryPage() {
     onSelect: selectItem,
   });
 
-  // Keep the selected card visible when arrow-keying.
+  // Keep the selected card visible when arrow-keying. Scoped to the list
+  // pane: in select mode both trees render [data-item-id], and an unscoped
+  // document query hits the hidden mobile copy (scrollIntoView no-op).
+  const listPaneRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!selectedId) return;
-    document
-      .querySelector(`[data-item-id="${selectedId}"]`)
+    listPaneRef.current
+      ?.querySelector(`[data-item-id="${selectedId}"]`)
       ?.scrollIntoView({ block: "nearest" });
   }, [selectedId]);
 
@@ -251,6 +254,9 @@ export default function InventoryPage() {
         body: { ids: Array.from(selectedIds) },
         token,
       });
+      // The detail pane must not keep rendering a deleted item's stale cache
+      // (edits would PATCH a deleted row).
+      if (selectedId && selectedIds.has(selectedId)) clearDetailSelection();
       clearSelection();
       await refetch();
     } catch (err) {
@@ -258,7 +264,7 @@ export default function InventoryPage() {
     } finally {
       setBulkLoading(false);
     }
-  }, [selectedIds, token, clearSelection, refetch]);
+  }, [selectedIds, token, selectedId, clearDetailSelection, clearSelection, refetch]);
 
   const handleBulkExport = useCallback(() => {
     if (selectedIds.size === 0) return;
@@ -477,6 +483,7 @@ export default function InventoryPage() {
         listLabel="Inventory list"
         list={
           <div
+            ref={listPaneRef}
             className="space-y-3 p-4 outline-none"
             tabIndex={0}
             onKeyDown={onListKeyDown}

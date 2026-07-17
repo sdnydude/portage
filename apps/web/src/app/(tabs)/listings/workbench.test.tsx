@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import ListingsPage from "./page";
 
 const h = vi.hoisted(() => ({
@@ -137,6 +137,24 @@ describe("Listings workbench (lg master-detail)", () => {
     render(<ListingsPage />);
     const workbench = screen.getByTestId("workbench");
     expect(within(workbench).getByText("Network error")).toBeInTheDocument();
+  });
+
+  // Mirror of the inventory F2 fix: bulk-deleting the listing open in the
+  // pane must clear the selection and strip ?listing= from the URL.
+  it("clears the detail pane and URL when bulk delete removes the selected listing", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ListingsPage />);
+    const workbench = screen.getByTestId("workbench");
+    fireEvent.click(within(workbench).getByRole("button", { name: /strat/i }));
+    expect(within(workbench).getByTestId("item-detail-stub")).toHaveTextContent("i1:l1");
+    fireEvent.click(within(workbench).getByRole("button", { name: "Select" }));
+    fireEvent.click(within(workbench).getByRole("button", { name: /select listing for \$100/i }));
+    fireEvent.click(screen.getByRole("button", { name: /delete 1 listing/i }));
+    await waitFor(() =>
+      expect(within(workbench).getByText(/select a listing/i)).toBeInTheDocument(),
+    );
+    expect(window.location.search).toBe("");
+    confirmSpy.mockRestore();
   });
 
   it("hides the Select control in the list pane when there are no listings", () => {

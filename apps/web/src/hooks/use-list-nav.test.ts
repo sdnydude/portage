@@ -34,14 +34,36 @@ describe("useListNav", () => {
   });
 
   it("jumps to first and last with Home and End", () => {
+    vi.useFakeTimers();
     const onSelect = vi.fn();
     const { result } = renderHook(() =>
       useListNav({ ids: ["a", "b", "c"], selectedId: "b", onSelect }),
     );
     result.current.onKeyDown(keyEvent("End"));
     expect(onSelect).toHaveBeenCalledWith("c");
+    // Presses inside the debounce window accumulate — settle the burst first.
+    vi.advanceTimersByTime(200);
     result.current.onKeyDown(keyEvent("Home"));
     expect(onSelect).toHaveBeenCalledWith("a");
+    vi.useRealTimers();
+  });
+
+  // Arrow-hold fetch storm (fix3 F10): key repeats remount the detail pane
+  // (~2 fetches per press). A burst commits once at the leading edge (single
+  // presses stay instant) and once trailing when the hold settles.
+  it("commits a rapid arrow burst at the leading edge and once trailing", () => {
+    vi.useFakeTimers();
+    const onSelect = vi.fn();
+    const { result } = renderHook(() =>
+      useListNav({ ids: ["a", "b", "c", "d", "e"], selectedId: "a", onSelect }),
+    );
+    result.current.onKeyDown(keyEvent("ArrowDown"));
+    result.current.onKeyDown(keyEvent("ArrowDown"));
+    result.current.onKeyDown(keyEvent("ArrowDown"));
+    expect(onSelect.mock.calls).toEqual([["b"]]);
+    vi.advanceTimersByTime(200);
+    expect(onSelect.mock.calls).toEqual([["b"], ["d"]]);
+    vi.useRealTimers();
   });
 
   it("ignores navigation keys typed inside a text input", () => {

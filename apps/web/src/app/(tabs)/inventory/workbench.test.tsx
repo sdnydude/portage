@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import InventoryPage from "./page";
 
 const h = vi.hoisted(() => ({
@@ -31,6 +31,10 @@ vi.mock("@/hooks/use-items", () => ({
 }));
 vi.mock("@/hooks/use-export", () => ({
   useExport: () => ({ exportItems: vi.fn(), isExporting: false }),
+}));
+vi.mock("@/lib/api", () => ({
+  api: vi.fn().mockResolvedValue({}),
+  ApiError: class extends Error {},
 }));
 vi.mock("@/components/porter/ask-porter-bar", () => ({
   AskPorterBar: () => <div data-testid="ask-porter-stub" />,
@@ -146,6 +150,39 @@ describe("Inventory workbench (lg master-detail)", () => {
     fireEvent.click(within(workbench).getByRole("button", { name: "Select" }));
     expect(within(workbench).getByRole("button", { name: /select strat/i })).toBeInTheDocument();
     expect(within(workbench).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  // In select mode both trees render [data-item-id] (non-interactive cards),
+  // and an unscoped document.querySelector hits the hidden mobile copy —
+  // scrollIntoView no-ops (fix3 F9). The scrolled node must be the pane copy.
+  it("scrolls the pane copy of the selected card, not the hidden mobile copy", () => {
+    const spy = Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
+    render(<InventoryPage />);
+    const workbench = screen.getByTestId("workbench");
+    fireEvent.click(within(workbench).getByRole("button", { name: "Select" }));
+    fireEvent.keyDown(within(workbench).getByLabelText(/arrow keys/i), { key: "ArrowDown" });
+    expect(spy).toHaveBeenCalled();
+    const target = spy.mock.contexts.at(-1) as Node;
+    expect(workbench.contains(target)).toBe(true);
+  });
+
+  // Bulk-deleting the item that is open in the detail pane must clear the
+  // selection — otherwise the pane keeps rendering the deleted item's stale
+  // cache and edits PATCH a deleted row (fix3 F2).
+  it("clears the detail pane and URL when bulk delete removes the selected item", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<InventoryPage />);
+    const workbench = screen.getByTestId("workbench");
+    fireEvent.click(within(workbench).getByRole("button", { name: /strat/i }));
+    expect(within(workbench).getByTestId("item-detail-stub")).toHaveTextContent("i1");
+    fireEvent.click(within(workbench).getByRole("button", { name: "Select" }));
+    fireEvent.click(within(workbench).getByRole("button", { name: /select strat/i }));
+    fireEvent.click(screen.getByRole("button", { name: /delete 1 item/i }));
+    await waitFor(() =>
+      expect(within(workbench).getByText(/select an item/i)).toBeInTheDocument(),
+    );
+    expect(window.location.search).toBe("");
+    confirmSpy.mockRestore();
   });
 
   // The 380px list pane must not inherit the mobile tree's viewport-scoped
