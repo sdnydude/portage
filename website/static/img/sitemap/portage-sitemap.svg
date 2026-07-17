@@ -2,7 +2,7 @@
 <defs><marker id="arr-nav" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2D5A27"/></marker><marker id="arr-overlay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1A7A6D"/></marker><marker id="arr-tab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b3ada0"/></marker><marker id="arr-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c07a24"/></marker></defs>
 <rect width="2480" height="2060" fill="#F4F2ED"/>
 <text x="60" y="62" font-size="30" font-weight="800" fill="#1e2225">Portage — App Sitemap</text>
-<text x="60" y="88" font-size="13.5" fill="#8a8f94">Every shipped route (35 pages) + full-screen panels/overlays · generated from apps/web/src/app</text>
+<text x="60" y="88" font-size="13.5" fill="#8a8f94">Every shipped route (38 pages) + full-screen panels/overlays · generated from apps/web/src/app</text>
 <line x1="1650" y1="46" x2="1692" y2="46" stroke="#2D5A27" stroke-width="2.5"/>
 <text x="1700" y="50" font-size="11.5" fill="#1e2225">navigation</text>
 <line x1="1650" y1="63" x2="1692" y2="63" stroke="#1A7A6D" stroke-width="2.5" stroke-dasharray="5 4"/>
@@ -316,6 +316,23 @@
 <text x="105.0" y="168" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Create Listing Flow</text>
 <text x="105.0" y="183" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/list · hybrid | convo | swipe</text>
 </g>
+<g transform="translate(1460,520)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="62" height="52" rx="5" fill="#e8e5de"/>
+<rect x="82" y="34" width="76" height="6" rx="3" fill="#c9c4b8"/>
+<rect x="82" y="46" width="53" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="82" y="56" width="44" height="10" rx="5" fill="#e3eeec"/>
+<rect x="12" y="88" width="146" height="9" rx="4" fill="#e8f2e6"/>
+<rect x="12" y="86" width="146" height="14" rx="7" fill="#2D5A27" opacity="0.85"/>
+<rect x="91.0" y="20" width="73" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="128" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">buyer view</text>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Share Preview</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/inventory/[id]/preview</text>
+</g>
+<path d="M 875 520 L 875 507 Q 875 495 887 495 L 1533 495 Q 1545 495 1545 507 L 1545 520" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="1210" y="489" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="700">share preview</text>
 <path d="M 875 420 C 875 470.0, 805 470.0, 805 520" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
 <path d="M 805 675 C 805 722.5, 805 722.5, 805 770" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
 <text x="811" y="726" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="600">edit</text>
@@ -448,6 +465,40 @@
 <path d="M 2215 852 C 2215 867.0, 2215 867.0, 2215 882" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
 <path d="M 2020 290 C 2075.0 290, 2075.0 1032, 2130 1032" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
 <path d="M 2215 1064 C 2215 1089.0, 2215 1089.0, 2215 1114" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
+<rect x="40" y="1180" width="560" height="240" rx="16" fill="none" stroke="#8a8f94" stroke-width="1.2" stroke-dasharray="8 6" opacity="0.55"/>
+<text x="56" y="1204" font-size="14" font-weight="800" fill="#8a8f94" letter-spacing="2">TUTORIALS</text>
+<g transform="translate(90,1230)">
+<rect width="200" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="62" y="32" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="112" y="32" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="12" y="72" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="62" y="72" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="112" y="72" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="134.0" y="20" width="60" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="164" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">8 topics</text>
+<text x="100.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Tutorial Hub</text>
+<text x="100.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/tutorials</text>
+</g>
+<g transform="translate(340,1230)">
+<rect width="200" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="62" height="52" rx="5" fill="#e8e5de"/>
+<rect x="82" y="34" width="106" height="6" rx="3" fill="#c9c4b8"/>
+<rect x="82" y="46" width="74" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="82" y="56" width="44" height="10" rx="5" fill="#e3eeec"/>
+<rect x="12" y="88" width="176" height="9" rx="4" fill="#e8f2e6"/>
+<rect x="12" y="86" width="176" height="14" rx="7" fill="#2D5A27" opacity="0.85"/>
+<text x="100.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Tutorial Topic</text>
+<text x="100.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/tutorials/[topic]</text>
+</g>
+<path d="M 290 1290 C 315.0 1290, 315.0 1290, 340 1290" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
+<text x="315" y="1284" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="600">topic</text>
+<path d="M 615 366 L 615 1138 Q 615 1150 603 1150 L 202 1150 Q 190 1150 190 1162 L 190 1230" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="402" y="1144" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="700">tutorials</text>
 <rect x="660" y="1380" width="1780" height="560" rx="16" fill="none" stroke="#8a8f94" stroke-width="1.2" stroke-dasharray="8 6" opacity="0.55"/>
 <text x="676" y="1404" font-size="14" font-weight="800" fill="#8a8f94" letter-spacing="2">ADMIN (requires role=admin · sidebar layout)</text>
 <g transform="translate(720,1450)">

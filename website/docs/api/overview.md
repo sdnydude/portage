@@ -6,14 +6,16 @@ sidebar_position: 1
 
 # API Overview
 
-The Portage API is an **Express 5** REST API running on port 8016. All endpoints return JSON and require HTTPS.
+The Portage API is an **Express 5** REST API running on port 8016. Endpoints return JSON and require HTTPS — the exceptions are the export endpoints, which stream file downloads: `GET /items/export?format=ebay_csv` returns CSV (`text/csv`) and the photo export returns a ZIP archive (`application/zip`).
 
 ## Base URL
 
 ```
-https://localhost:8016        # Local development
+https://10.0.0.251:8016       # Local development (LAN server IP)
 https://portage-api.digitalharmonyai.com  # Production
 ```
+
+The web app itself never calls the production hostname directly: the browser talks same-origin to `/backend/*`, which Next.js rewrites to the API container (so the Cloudflare Access cookie and `Cf-Access-Jwt-Assertion` header ride along with no CORS) — `portage-api.digitalharmonyai.com` is the Cloudflare-tunnel hostname for direct/external API access.
 
 ## Authentication
 
@@ -65,10 +67,22 @@ All responses follow a consistent shape:
 | [Porter](/docs/api/porter) | `/porter` | AI assistant chat |
 | [Billing](/docs/api/billing) | `/billing` | Stripe subscriptions, credits, usage |
 | [Admin](/docs/api/admin) | `/admin` | System administration |
+| [Health](/docs/api/platform#health) | `/health` | Liveness check only (no auth, no DB check — returns `{ status: "ok", timestamp }` unconditionally) |
+| [Usage](/docs/api/platform#usage) | `/usage` | Current-period usage counters |
+| [Dashboard](/docs/api/platform#dashboard) | `/dashboard` | Home-screen stats and activity |
+| [Users](/docs/api/authentication) | `/users/me` | Profile fields on the current user |
+| [Preferences](/docs/api/authentication) | `/users/me/preferences` | Listing-interface UI preferences |
+| [Seller Profile](/docs/api/seller-profile) | `/seller-profile` | Shipping/policy defaults for publishing |
+| [Messages](/docs/api/messages) | `/messages` | eBay buyer conversations and replies |
+| [Disclaimer](/docs/api/platform#disclaimer) | `/disclaimer` | Publish-terms acceptance records |
+| [FAQs](/docs/api/platform#faqs) | `/faqs` | In-app FAQ content |
+| [Survey](/docs/api/platform#survey) | `/survey` | Design survey responses (public, no auth) |
+| [Beta](/docs/api/platform#beta) | `/beta` | Beta feedback reports |
+| Metrics | `/metrics` | Prometheus metrics (bearer `METRICS_SECRET`) |
 
 ## Rate Limiting
 
-Free-tier users have monthly limits on AI scans, AI listing preparation, and background removals, plus a daily limit on Porter exchanges. Pro and beta-tester tiers are unlimited. See [Billing](/docs/api/billing) for enforcement details.
+Free-tier users have monthly limits on AI scans, AI listing preparation, and background removals, plus a daily limit on Porter exchanges. Pro removes the scan and background-removal caps but keeps **75 AI listings/month** and **500 Porter exchanges/day**; the beta-tester tier is unlimited across the board. See [Billing](/docs/api/billing) for enforcement details.
 
 ## Error Handling
 

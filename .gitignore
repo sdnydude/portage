@@ -25,6 +25,7 @@ apps/web/test-results/
 apps/web/playwright-report/
 # Keep committed e2e proof screenshots (override global *.png above)
 !website/static/img/verification/**
+!docs/verification-archive/**
 # Keep the docs screenshot-appendix gallery
 !website/static/img/screenshots/**
 # Keep tutorial screenshot assets (rendered by /tutorials, baked into the image)

@@ -8,6 +8,8 @@ sidebar_position: 3
 
 The listing flow is Portage's core feature — creating marketplace listings through one of three interfaces that all share a common state machine.
 
+This is a differentiator, not just a UI choice: Conversational, Swipe, and Hybrid are three skins over **one** state machine — each flow component calls the same `useListingFlow` hook, so switching interfaces never changes behavior. Drafts auto-persist as you work (debounced saves via `useDrafts`), so an interrupted listing survives a closed tab or a dead battery, and every publish attempt carries a scoped idempotency key that the API enforces with a unique `(userId, idempotencyKey)` constraint — retries and replays can never double-list an item (see [eBay Trade-First Publishing](/docs/reference/ebay-trade-first)).
+
 ## Three Interfaces
 
 Users choose their preferred listing experience in settings. All three share the same `useListingFlow` hook and publish path.
@@ -48,7 +50,7 @@ idle → recognizing → recognition → confirmed → details → pricing → p
 | `startFromPhoto(photos)` | Begin flow with captured photos |
 | `startFromItem(itemId)` | Begin flow from an existing inventory item |
 | `resumeDraft(draftId)` | Continue a saved draft |
-| `confirmRecognition(candidate)` | Accept an AI identification |
+| `confirmRecognition(index)` | Accept an AI identification candidate by index |
 | `fetchComps(query)` | Load eBay comparable sales |
 | `applyPricingStrategy(strategy)` | Set pricing from comp data |
 | `addPhotos(files)` | Add more photos to the listing |

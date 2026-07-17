@@ -1,19 +1,21 @@
 ---
 id: deployment
 title: Deployment
-sidebar_position: 1
+sidebar_position: 5
 ---
 
 # Deployment
 
-Portage runs on a dedicated Ubuntu server with Docker Compose. Production traffic routes through Cloudflare Tunnel.
+*Last verified: 2026-07-17*
+
+Portage runs on a dedicated Ubuntu server with Docker Compose. Production traffic routes through Cloudflare Tunnel. Per-service operational detail lives in the new [Infrastructure](/docs/infrastructure/overview) section.
 
 ## Infrastructure
 
 | Component | Details |
 |-----------|---------|
 | Server | g700data1 (10.0.0.251), Ubuntu 24.04, 64GB RAM |
-| Containers | Docker Compose (4 services: db, api, app, rembg) |
+| Containers | Docker Compose (5 services: db, api, app, graph, rembg) |
 | CDN/Proxy | Cloudflare Tunnel |
 | Image Storage | Cloudflare R2 |
 | Secrets | Doppler |
@@ -26,9 +28,21 @@ Portage runs on a dedicated Ubuntu server with Docker Compose. Production traffi
 | `portage-db` | 5436 (loopback-only) | postgres:15-alpine |
 | `portage-api` | 8016 (HTTPS) | Built from `apps/api/Dockerfile` (compiled `dist`, `NODE_ENV=production`) |
 | `portage-app` | 3002 (host) → 3000 (container) | Built from `apps/web/Dockerfile` (Next.js standalone) |
+| `portage-graph` | 8018 (host) → 80 (container) | nginx:alpine serving the `graphify-out/` code knowledge graph (read-only bind mount; new builds appear without a restart) |
 | `portage-rembg` | 7000 | danielgatis/rembg (background removal) |
 
-The docs site (`dhg-docs`, nginx on port 8017) runs separately from this compose stack.
+The docs site (`dhg-docs`, nginx on port 8017) runs separately from this compose stack — it is built and deployed by the CI workflow `.github/workflows/deploy-docs.yml` on pushes to `website/**`.
+
+### Absolute /docs/ link convention
+
+Pages under `website/docs/` deliberately use **absolute** `/docs/...` links and `/img/...` asset paths. The deploy workflow rewrites them at build time when copying into the shared docs-site:
+
+```bash
+find "$DOCS_SITE/projects/portage" -name "*.md" -exec sed -i 's|](/docs/|](/portage/|g' {} \;
+find "$DOCS_SITE/projects/portage" -name "*.md" -exec sed -i 's|](/img/|](/portage/img/|g' {} \;
+```
+
+So `/docs/...` becomes `/portage/...` and `/img/...` becomes `/portage/img/...` on the deployed site. These links only resolve after deployment — they will 404 in a bare local Docusaurus run of this repo. That is expected; authors must keep writing the absolute `/docs/` and `/img/` forms so the rewrite catches them.
 
 **Both application containers are image-baked** — code changes do not hot-reload. The default deploy ritual for any code change is:
 
@@ -92,13 +106,7 @@ There are no migration files — the Drizzle schema file (`apps/api/src/db/schem
 
 ## Secrets Management
 
-All secrets are managed through [Doppler](https://doppler.com). The `SessionStart` hook automatically syncs secrets to `.env` at the beginning of each development session:
-
-```bash
-doppler secrets download --no-file --format env > .env
-```
-
-Never commit `.env` files or hardcode secrets in source code.
+All secrets are managed through [Doppler](https://doppler.com) — the `SessionStart` hook syncs them to `.env` automatically each session. Never commit `.env` files or hardcode secrets. Full guide: [Doppler — Secrets Management](http://10.0.0.251:8017/infrastructure/doppler/) on the DHG docs site.
 
 ## Build Process
 
@@ -118,7 +126,7 @@ npm run build -w packages/shared
 
 ## Health Checks
 
-Docker health checks are configured for all four services:
+Docker health checks are configured for four of the five services (`portage-graph` is a static nginx file server with no health check). See [Monitoring → Health Endpoints](/docs/monitoring#health-endpoints) for the endpoints these probes hit.
 
 | Service | Health Check |
 |---------|-------------|
