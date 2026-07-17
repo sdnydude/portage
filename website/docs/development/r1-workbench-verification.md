@@ -13,34 +13,36 @@ restore), reload-asserted persistence, screenshots as byproducts of the spec.
 
 ## Spec
 
-`apps/web/e2e/workbench.spec.ts` — 8 scenarios, desktop viewport 1440×900
-(plus a 390×844 mobile-regression check). The suite seeds its own fixtures
-through the API (3 items + 1 draft eBay listing, sentinel-titled
-`E2E Workbench *`) and deletes them afterwards, so it does not depend on
-account state.
+`apps/web/e2e/workbench.spec.ts` — 10 scenarios: desktop viewport 1440×900,
+an lg-band check at 1280×800, and a 390×844 mobile-regression check. The
+suite seeds its own fixtures through the API (3 items + 1 draft eBay listing,
+sentinel-titled `E2E Workbench *`) and deletes them afterwards — the cleanup
+asserts every response, so a token expiry fails the run loudly instead of
+leaking sentinels.
 
 | # | Scenario | Proof |
 |---|----------|-------|
-| a | `/inventory` renders the workbench: list pane + "Select an item" empty hint | list pane, hint visible |
+| a | `/inventory` renders the workbench: list pane + "Select an item" empty hint; card title has **nonzero rendered width** (behavioral pin against the pane-grid title collapse) | list pane, hint visible |
+| a2 | Same layout smoke at 1280×800 — the previously untested lg band | lg band intact |
 | b | Card click → detail pane shows the item; URL becomes `/inventory?item=<id>` via `history.replaceState`; a window sentinel proves **no navigation** | pane follows click |
 | c | `ArrowDown` on the focused list pane moves `aria-current` to the next card; detail pane + URL follow | keyboard nav |
 | d | Title edit → `PATCH /items/:id` observed → `page.reload()` re-asserts → original title **restored** and re-asserted | durable persistence |
 | e | Cold `page.goto('/inventory?item=<id>')` deep link hydrates the pane | deep link |
 | f | `/listings` card click → item detail pane with the listing's own card scrolled into view (`focusListingId` path) | listing focus |
-| g | Select-mode card-**body** click must toggle selection without navigating away — **`test.fixme`, genuinely fails** (see below) | nested-Link guard |
+| g | Select-mode card-**body** click toggles selection without navigating away — **passing**; pins the nested-Link fix shipped in this PR (see below) | nested-Link guard |
 | h | 390×844: workbench hidden, cards remain links to `/inventory/<id>` | mobile intact |
 
-## Results (2026-07-15)
+## Results (2026-07-17)
 
 ```bash
-E2E_API_URL=http://127.0.0.1:8027 E2E_BASE_URL=http://127.0.0.1:3005 \
-  npm run test:e2e -w apps/web -- workbench.spec.ts
-# 8 passed, 1 skipped (fixme g)  ← fresh `next build` of feat/ui-refactor (standalone, :3005)
-
-E2E_API_URL=http://127.0.0.1:8027 npm run test:e2e -w apps/web -- workbench.spec.ts
-# scenario a additionally fails on the :3002 container only because the image
-# predates the pane-grid fix below — green after the next
-# `docker compose up -d --build portage-app`
+# LAN origin on purpose: a 127.0.0.1 origin is a secure context, the PWA
+# service worker registers and swallows page.route mocks.
+E2E_BASE_URL=http://10.0.0.251:3005 E2E_API_URL=https://127.0.0.1:8027 \
+  npx playwright test
+# 36 passed, 11 skipped (env-gated live-publish/photo-tools/porter-stream
+# specs), 0 failed — fresh `next build` of feat/ui-refactor (standalone, :3005)
+# workbench.spec.ts: 10/10 including the un-fixme'd scenario g and the new
+# lg-band a2
 ```
 
 Auth used the dev-mode API recipe (session exchange on a local
@@ -57,21 +59,20 @@ to zero width (invisible). Fixed by a `pane` prop pinning the pane grid to two
 columns (`apps/web/src/app/(tabs)/inventory/page.tsx`), red-first unit test in
 `workbench.test.tsx`. Web unit suite after fix: **483/483**.
 
-## Known defect confirmed live (scenario g — `test.fixme`)
+## Defect resolved in this PR (scenario g)
 
 The registry-deferred *"select-mode card body click navigates away (nested
-Link in toggle button)"* risk (deferred item `334daef2`, high priority)
-**reproduces**: in workbench select mode a card-body click toggles the
-selection and then the nested link-mode `ItemCard` completes a client-side
-navigation to `/inventory/<id>`, swapping the whole workbench out. Notably, a
-naive assertion right after the click passes — the toggle fires first and the
-navigation lands a beat later — so the spec settles on `networkidle` before
-asserting. The scenario is committed as `test.fixme` with the failing
-assertions intact; un-fixme it when the deferred item is fixed.
+Link in toggle button)"* defect (deferred item `334daef2`, high priority)
+reproduced live during Gate 2 and is **fixed on this branch**: select mode now
+renders a non-interactive `ItemCard` (`interactive={false}`) inside the toggle
+button, so no `<a>` exists to navigate. Scenario g was un-fixme'd and pins the
+fix; a unit guard also asserts zero links in select mode across both trees
+(mobile included).
 
-| Evidence — post-click state (should still be the workbench) |
-|--------------------------------------------------------------|
-| ![navigated away](/img/verification/r1-workbench/g-select-mode-navigates-away-defect.png) |
+Testing trap worth keeping: a naive assertion right after the card-body click
+**passes even when the bug is present** — the toggle fires first and the
+client-side Link navigation lands a beat later. Any "does NOT navigate"
+assertion must settle (`networkidle` or equivalent) before asserting.
 
 ## Proof screenshots
 
