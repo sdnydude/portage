@@ -180,12 +180,12 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-Original roadmap essentially complete — a 2026-07-17 recount found the docs/TODO.md ledger lists 49 numbered task lines (task #53 reused twice; #22, #26, #28–#31 never on the ledger): 48 complete, 1 superseded (carrier APIs); the old 50/52-vs-51/52 figures used a 52-task denominator the ledger doesn't support. Integration testing, tunnel-config versioning, and Reverb OAuth resolution closed 2026-07-09. A separate Responsive UI Program (R0-R4, approved 2026-07-15) was added after this count and isn't folded into it — R0 shipped (PR #229), R1 desktop workbench in flight (PR #237, unmerged). See `docs/TODO.md` for the live backlog and in-flight branches.
+Original roadmap essentially complete — a 2026-07-17 recount found the docs/TODO.md ledger lists 49 numbered task lines (task #53 reused twice; #22, #26, #28–#31 never on the ledger): 48 complete, 1 superseded (carrier APIs); the old 50/52-vs-51/52 figures used a 52-task denominator the ledger doesn't support. Integration testing, tunnel-config versioning, and Reverb OAuth resolution closed 2026-07-09. A separate Responsive UI Program (R0-R4, approved 2026-07-15) was added after this count and isn't folded into it — R0 shipped (PR #229), R1 desktop workbench shipped (PR #237, merged 2026-07-17, 15-finding adversarial fix round). See `docs/TODO.md` for the live backlog and in-flight branches.
 
 **Done:** see docs/TODO.md and website/docs/ship-log/ for the full change
 history. Highlights: eBay Trade-First lifecycle (PR #133), CF Access auth
 (PRs #168-172), Reverb publish live-proven (PRs #173-177), listing-hub merge
-(PRs #207-213), responsive shell R0 (PR #229). Test suite: 687 API / 469 web as of 2026-07-17.
+(PRs #207-213), responsive shell R0 (PR #229). Test suite: 687 API / 526 web as of 2026-07-18.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
