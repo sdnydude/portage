@@ -61,7 +61,7 @@ From `infra/cloudflared/config-portage.yml`:
 | `portage-api.digitalharmonyai.com` | `https://localhost:8016` | Express API (portage-api), `noTLSVerify: true` — self-signed origin cert |
 | `dhgdocs.digitalharmonyai.com` | `http://localhost:8017` | Docs site (dhg-docs nginx) |
 | `docs.digitalharmonyai.com` | `http://localhost:8017` | Docs site (same origin as above) |
-| `rehearsal.digitalharmonyai.com` | `http://localhost:3004` | Routes to localhost:3004; not part of the Portage compose stack (under review) |
+| `rehearsal.digitalharmonyai.com` | `http://localhost:3004` | Placeholder ingress reserved for DHG Studios (Stephen, 2026-07-17); nothing listens on :3004 yet by design |
 | *(catch-all)* | `http_status:404` | Must remain the last rule |
 
 ## Cloudflare Access

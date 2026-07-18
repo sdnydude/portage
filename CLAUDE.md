@@ -185,7 +185,7 @@ Original roadmap essentially complete — a 2026-07-17 recount found the docs/TO
 **Done:** see docs/TODO.md and website/docs/ship-log/ for the full change
 history. Highlights: eBay Trade-First lifecycle (PR #133), CF Access auth
 (PRs #168-172), Reverb publish live-proven (PRs #173-177), listing-hub merge
-(PRs #207-213), responsive shell R0 (PR #229). Test suite: 686 API / 467 web as of 2026-07-17.
+(PRs #207-213), responsive shell R0 (PR #229). Test suite: 687 API / 469 web as of 2026-07-17.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
