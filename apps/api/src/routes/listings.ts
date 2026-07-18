@@ -75,7 +75,7 @@ function mpnFromAspects(specific: Record<string, unknown> | undefined): string |
  * Trading API needs OriginatingPostalCode for inline calculated shipping; there are
  * no Business-Policy IDs to resolve anymore (the account is opted out of them).
  */
-async function applyShipFromOrigin(
+export async function applyShipFromOrigin(
   userId: string,
   specific: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown> | undefined> {
@@ -199,6 +199,7 @@ const updateListingSchema = z.object({
 const listQuerySchema = z.object({
   status: z.enum(['draft', 'active', 'sold', 'archived']).optional(),
   marketplace: z.enum(['ebay', 'reverb']).optional(),
+  itemId: z.string().uuid().optional(),
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).default(0),
 });
@@ -282,6 +283,7 @@ listingsRouter.get('/', async (req, res, next) => {
     const conditions = [eq(listings.userId, userId)];
     if (query.status) conditions.push(eq(listings.status, query.status));
     if (query.marketplace) conditions.push(eq(listings.marketplace, query.marketplace));
+    if (query.itemId) conditions.push(eq(listings.itemId, query.itemId));
 
     const [results, countResult] = await Promise.all([
       // Full listing row + the item's title so the listings page can show WHAT

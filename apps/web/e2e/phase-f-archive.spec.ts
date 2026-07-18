@@ -16,7 +16,10 @@ test("archive an active listing -> ends it on eBay", async ({ page }) => {
   test.setTimeout(90_000);
   await login(page);
 
+  // /listings/[id] is a resolver-redirect since listing-hub Task 4 — landing
+  // here proves the redirect AND the hub's card actions in one pass.
   await page.goto(`/listings/${LISTING_ID}`);
+  await page.waitForURL(`**/inventory/**?listing=${LISTING_ID}`, { timeout: 30_000 });
   await page.screenshot({ path: path.join(SHOT, "1-before-active.png"), fullPage: true });
 
   await page.getByRole("button", { name: "Archive Listing" }).click();

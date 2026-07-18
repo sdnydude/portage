@@ -571,12 +571,22 @@ export class EbayAdapter implements MarketplaceAdapter {
     // rejection, retry the revise once without it rather than failing the whole edit.
     let bestOfferDowngraded = false;
     const BEST_OFFER_DOWNGRADE_WARNING = 'Updated without Best Offer auto-accept — eBay rejected it for this listing.';
+
+    // Zero-photo item: eBay's Revise treats an omitted PictureDetails as
+    // "keep the existing pictures". Refusing outright would starve every
+    // other field (price, title) of sync for such items — proceed, keep
+    // eBay's pictures, and surface the divergence as a warning instead.
+    const photosEmpty = tradingInput.pictureUrls.length === 0;
+    const EMPTY_PHOTOS_WARNING = 'Item has no photos — the eBay listing keeps its existing pictures until you add one.';
     const callRevise = (withBestOffer: boolean): Promise<Record<string, unknown>> =>
       callTradingApi(
         'ReviseFixedPriceItem',
         buildReviseFixedPriceItemXml(
           marketplaceListingId,
-          withBestOffer ? tradingInput : { ...tradingInput, bestOfferAutoAcceptPrice: undefined },
+          {
+            ...(withBestOffer ? tradingInput : { ...tradingInput, bestOfferAutoAcceptPrice: undefined }),
+            ...(photosEmpty ? { allowEmptyPictures: true } : {}),
+          },
           token,
         ),
         token,
@@ -595,11 +605,15 @@ export class EbayAdapter implements MarketplaceAdapter {
     }
 
     logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay listing revised via ReviseFixedPriceItem');
+    const warnings = [
+      ...(bestOfferDowngraded ? [BEST_OFFER_DOWNGRADE_WARNING] : []),
+      ...(photosEmpty ? [EMPTY_PHOTOS_WARNING] : []),
+    ];
     return {
       marketplaceListingId,
       marketplaceUrl,
       status: 'active',
-      ...(bestOfferDowngraded ? { warning: BEST_OFFER_DOWNGRADE_WARNING } : {}),
+      ...(warnings.length > 0 ? { warning: warnings.join(' ') } : {}),
     };
   }
 

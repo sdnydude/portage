@@ -1,4 +1,3 @@
-import { TabBar } from "@/components/layout/tab-bar";
 import { PorterProvider } from "@/hooks/use-porter-context";
 
 export default function TabsLayout({
@@ -8,12 +7,14 @@ export default function TabsLayout({
 }>) {
   return (
     <PorterProvider>
-      <div className="flex flex-col min-h-dvh">
-        <main className="flex-1 pb-20">
+      {/* lg:min-h-0 — inside shell-main the shell already owns min-h-dvh;
+          a nested min-h-dvh under the 64px TopBar overflows by that height. */}
+      <div className="flex flex-col min-h-dvh lg:min-h-0">
+        <main className="flex-1 pb-24 lg:pb-0">
           {children}
         </main>
-        {/* TabBar includes scan flow modal — no separate scan route needed */}
-        <TabBar />
+        {/* TabBar now mounts once in AppShell for ALL non-admin routes
+            (unified ownership, Task 8) — no longer owned by this layout. */}
       </div>
     </PorterProvider>
   );

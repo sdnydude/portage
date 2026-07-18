@@ -209,14 +209,13 @@ SETTINGS = [("Profile","/settings/profile"),("Marketplace","/settings/marketplac
 def build_landscape(admin_collapsed=False):
     d = Draw()
     W = 2480
-    H = 1480 if admin_collapsed else 1900
+    H = 1480 if admin_collapsed else 2060
     variant = " · admin collapsed" if admin_collapsed else ""
     d.header("Portage — App Sitemap",
-             f"Every shipped route (34 pages) + full-screen panels/overlays · generated from apps/web/src/app{variant}", 1650)
+             f"Every shipped route (38 pages) + full-screen panels/overlays · generated from apps/web/src/app{variant}", 1650)
 
     d.cluster(40, 120, 420, 250, "AUTH & LEGAL")
-    d.card(70, 155, "Login", "/login", "form", w=150, h=110)
-    d.card(260, 155, "Register", "/register", "form", w=150, h=110)
+    d.card(70, 155, "Cloudflare Access", "edge IdP · no passwords", "form", w=340, h=110, accent="#c07a24", badge="CF gate")
     d.card(70, 305, "Privacy", "/legal/privacy", "rows", w=150, h=46)
     d.card(260, 305, "Terms", "/legal/terms", "rows", w=150, h=46)
 
@@ -227,8 +226,7 @@ def build_landscape(admin_collapsed=False):
         d.card(x, TABY, t, route, kind, w=170, h=120)
     d.fab(1290, 270, 322)
 
-    d.wire([(145,155),(145,108),(500,108),(500,250),(560,250)], "nav", "sign in", label_at=1)
-    d.link(410, 195, 560, 235, "nav")
+    d.wire([(240,155),(240,108),(500,108),(500,250),(560,250)], "nav", "authenticated", label_at=1)
 
     d.cluster(40, 470, 560, 640, "CAPTURE (overlays)", TEAL)
     d.card(90, 520, "ScanFlow", "overlay z-60", "detail", accent=TEAL, badge="AI scan")
@@ -253,6 +251,8 @@ def build_landscape(admin_collapsed=False):
     d.card(1240, DY, "Order Detail", "/orders/[id]", "detail")
     d.card(1240, DY+250, "eBay item page", "external · Ship-It", "rows", accent="#c07a24", w=170, h=80)
     d.card(980, DY+250, "Create Listing Flow", "/list · hybrid | convo | swipe", "chat", w=210, h=150, badge="preview+comps")
+    d.card(1460, DY, "Share Preview", "/inventory/[id]/preview", "detail", h=110, badge="buyer view")
+    d.wire([(875,DY),(875,DY-25),(1545,DY-25),(1545,DY)], "nav", "share preview", label_at=1)
 
     d.vlink(875, 420, 805, DY, "nav")
     d.vlink(805, DY+155, 805, DY+250, "nav", "edit")
@@ -273,44 +273,50 @@ def build_landscape(admin_collapsed=False):
     d.card(SX, 160+6*118+16, "OAuth callback", "/settings/marketplace/callback", "rows", w=170, h=46)
     d.card(SX, 160+6*118+122, "Messages", "/messages", "rows", w=170, h=76)
     d.card(SX, 160+6*118+248, "Thread", "/messages/[key]", "chat", w=170, h=90)
+    d.card(SX, 160+6*118+384, "Beta Report", "/beta/report · via Beta badge", "form", w=170, h=76, badge="beta")
     for i in range(6):
         d.link(2020, 270, SX, 198+i*118, "nav", None, bend=0.6)
     d.vlink(SX+85, 852, SX+85, 882, "nav")
     d.link(2020, 290, SX, 1032, "nav")
     d.vlink(SX+85, 1064, SX+85, 1114, "nav")
 
+    d.cluster(40, 1180, 560, 240, "TUTORIALS")
+    d.card(90, 1230, "Tutorial Hub", "/tutorials", "grid", w=200, h=110, badge="8 topics")
+    d.card(340, 1230, "Tutorial Topic", "/tutorials/[topic]", "detail", w=200, h=110)
+    d.link(290, 1290, 340, 1290, "nav", "topic")
+    d.wire([(615,366),(615,1150),(190,1150),(190,1230)], "nav", "tutorials", label_at=1)
+
     if admin_collapsed:
         d.cluster(660, 1220, 640, 220, "ADMIN (collapsed)")
-        d.card(720, 1270, "Admin Panel", "/admin · 10 pages: users, inventory, listings, orders, marketplace, porter, observability, audit, settings", "dash", w=260, h=110, badge="role gate")
+        d.card(720, 1270, "Admin Panel", "/admin · 11 pages: users (+detail), inventory, listings, orders, marketplace, porter, observability, audit, settings", "dash", w=260, h=110, badge="role gate")
         d.wire([(1935,378),(1935,1255),(1050,1255),(1050,1325),(980,1325)], "nav", None)
         d.parts.append(f'<text x="1120" y="1243" font-size="10" fill="{GREEN}" font-weight="700">More → Admin (role gate)</text>')
     else:
-        d.cluster(660, 1220, 1780, 560, "ADMIN (requires role=admin · sidebar layout)")
-        d.card(720, 1290, "Admin Home", "/admin", "dash", badge="admin")
+        d.cluster(660, 1380, 1780, 560, "ADMIN (requires role=admin · sidebar layout)")
+        d.card(720, 1450, "Admin Home", "/admin", "dash", badge="admin")
         for i,(t,route,kind) in enumerate(ADMIN_CHILDREN):
             col = i % 5; row = i // 5
-            x = 990 + col*280; y = 1290 + row*250
+            x = 990 + col*280; y = 1450 + row*250
             d.card(x, y, t, route, kind, w=170, h=110)
             if row == 0:
-                d.wire([(805,1290),(805,1268),(x+85,1268),(x+85,y)], "nav", None)
+                d.wire([(805,1450),(805,1428),(x+85,1428),(x+85,y)], "nav", None)
             else:
-                d.wire([(805,1400),(805,1495),(x+85,1495),(x+85,y)], "nav", None)
-        d.link(1160, 1345, 1270, 1345, "nav", None, bend=0.5)
-        d.wire([(1935,378),(1935,1255),(805,1255),(805,1290)], "nav", None)
-        d.parts.append(f'<text x="1080" y="1218" font-size="10" fill="{GREEN}" font-weight="700">More → Admin (role gate)</text>')
+                d.wire([(805,1560),(805,1655),(x+85,1655),(x+85,y)], "nav", None)
+        d.link(1160, 1505, 1270, 1505, "nav", None, bend=0.5)
+        d.wire([(1935,378),(1935,1415),(805,1415),(805,1450)], "nav", None)
+        d.parts.append(f'<text x="1080" y="1378" font-size="10" fill="{GREEN}" font-weight="700">More → Admin (role gate)</text>')
 
     return d.svg(W, H), d
 
 
 def build_vertical():
     d = Draw()
-    W, H = 1240, 2900
-    d.header("Portage — App Sitemap", "Vertical · 34 routes + overlays · generated from apps/web/src/app", 880)
+    W, H = 1240, 3080
+    d.header("Portage — App Sitemap", "Vertical · 38 routes + overlays · generated from apps/web/src/app", 880)
 
     # AUTH
     d.cluster(40, 110, 1160, 230, "AUTH & LEGAL")
-    d.card(80, 150, "Login", "/login", "form", w=150, h=110)
-    d.card(290, 150, "Register", "/register", "form", w=150, h=110)
+    d.card(80, 150, "Cloudflare Access", "edge IdP · no passwords", "form", w=360, h=110, accent="#c07a24", badge="CF gate")
     d.card(900, 150, "Privacy", "/legal/privacy", "rows", w=150, h=46)
     d.card(900, 232, "Terms", "/legal/terms", "rows", w=150, h=46)
 
@@ -322,8 +328,7 @@ def build_vertical():
         d.card(x, 440, t, route, kind, w=150, h=110)
     d.fab(632, 495, 560)
 
-    d.vlink(155, 260, 145, 440, "nav", "sign in")
-    d.vlink(365, 260, 200, 440, "nav")
+    d.vlink(260, 260, 145, 440, "nav", "authenticated")
 
     # CAPTURE
     d.cluster(40, 720, 1160, 300, "CAPTURE (overlays)", TEAL)
@@ -351,6 +356,8 @@ def build_vertical():
     d.card(610, 1390, "eBay item page", "external · Ship-It", "rows", accent="#c07a24", w=170, h=80)
     d.card(870, 1130, "Messages", "/messages", "rows", w=150, h=76)
     d.card(870, 1290, "Thread", "/messages/[key]", "chat", w=150, h=90)
+    d.card(870, 1440, "Share Preview", "/inventory/[id]/preview", "detail", w=150, h=76, badge="buyer view")
+    d.wire([(175,1130),(175,1064),(1210,1064),(1210,1428),(945,1428),(945,1440)], "nav", "share preview", label_at=1, dy=-4)
 
     d.wire([(325,588),(325,652),(265,652),(265,1048),(175,1048),(175,1130)], "nav")  # Inventory → Item Detail
     d.wire([(505,588),(505,646),(478,646),(478,1042),(415,1042),(415,1130)], "nav")  # Listings → Listing Detail
@@ -361,8 +368,8 @@ def build_vertical():
     d.wire([(335,1285),(335,1330),(30,1330),(30,700),(492,700),(492,858),(510,858)], "overlay", None)  # listing detail → editor via left margin
     d.parts.append(f'<text x="70" y="1322" font-size="10" fill="{TEAL}" font-weight="700">edit photo</text>')
     d.wire([(445,1370),(445,1350),(540,1350),(540,1050),(560,1050),(560,905)], "overlay", "capture / hero tap", label_at=3, dy=-4)
-    d.wire([(540,1485),(580,1485),(580,1520),(1220,1520),(1220,630),(465,630),(465,588)], "nav", None)  # publish → Listings via right margin
-    d.parts.append(f'<text x="820" y="1512" font-size="10" fill="{GREEN}" font-weight="700">publish → Listings</text>')
+    d.wire([(540,1485),(580,1485),(580,1568),(1220,1568),(1220,630),(465,630),(465,588)], "nav", None)  # publish → Listings via right margin
+    d.parts.append(f'<text x="620" y="1584" font-size="10" fill="{GREEN}" font-weight="700">publish → Listings</text>')
 
     # SETTINGS
     d.cluster(40, 1620, 1160, 330, "SETTINGS & COMMS")
@@ -370,25 +377,33 @@ def build_vertical():
         col = i % 3; row = i // 3
         d.card(90 + col*260, 1670 + row*130, t, route, "form", w=200, h=76, badge=("GTC toggle" if t=="Seller Profile" else None))
     d.card(890, 1670, "OAuth callback", "/settings/marketplace/callback", "rows", w=200, h=46)
+    d.card(890, 1800, "Beta Report", "/beta/report · via Beta badge", "form", w=200, h=76, badge="beta")
     d.wire([(1135,588),(1135,1640),(1010,1640),(1010,1670)], "nav", None)   # More → settings column
     d.parts.append(f'<text x="1140" y="1100" font-size="10" fill="{GREEN}" font-weight="700" transform="rotate(90 1140 1100)">More → Settings · Messages · Admin</text>')
     d.wire([(450,1670),(450,1654),(990,1654),(990,1670)], "nav", "OAuth", label_at=1, dy=-3)
     d.vlink(945, 1206, 945, 1290, "nav")           # Messages → Thread
     d.wire([(1135,900),(1135,1180),(1020,1180),(1020,1168)], "nav", None)  # More → Messages
 
+    # TUTORIALS
+    d.cluster(40, 2010, 1160, 180, "TUTORIALS")
+    d.card(610, 2060, "Tutorial Hub", "/tutorials", "grid", w=200, h=76, badge="8 topics")
+    d.card(870, 2060, "Tutorial Topic", "/tutorials/[topic]", "detail", w=200, h=76)
+    d.link(810, 2098, 870, 2098, "nav", "topic")
+    d.wire([(710,1912),(710,2060)], "nav", "Help → tutorials", label_at=0, dy=14)
+
     # ADMIN
-    d.cluster(40, 2010, 1160, 810, "ADMIN (requires role=admin · sidebar layout)")
-    d.card(90, 2060, "Admin Home", "/admin", "dash", badge="admin")
+    d.cluster(40, 2190, 1160, 810, "ADMIN (requires role=admin · sidebar layout)")
+    d.card(90, 2240, "Admin Home", "/admin", "dash", badge="admin")
     for i,(t,route,kind) in enumerate(ADMIN_CHILDREN):
         col = i % 5; row = i // 5
-        x = 90 + col*225; y = 2310 + row*250
+        x = 90 + col*225; y = 2490 + row*250
         d.card(x, y, t, route, kind, w=170, h=110)
         if row == 0:
-            d.wire([(175,2180),(175,2280),(x+85,2280),(x+85,y)], "nav", None)
+            d.wire([(175,2360),(175,2460),(x+85,2460),(x+85,y)], "nav", None)
         else:
-            d.wire([(120,2180),(120,2240),(60,2240),(60,2530),(x+85,2530),(x+85,y)], "nav", None)
-    d.wire([(1185,588),(1185,615),(1232,615),(1232,2035),(260,2035),(260,2060)], "nav", None)    # More → Admin along right margin
-    d.parts.append(f'<text x="420" y="2050" font-size="10" fill="{GREEN}" font-weight="700">More → Admin (role gate)</text>')
+            d.wire([(120,2360),(120,2420),(60,2420),(60,2710),(x+85,2710),(x+85,y)], "nav", None)
+    d.wire([(1185,588),(1185,615),(1232,615),(1232,2215),(260,2215),(260,2240)], "nav", None)    # More → Admin along right margin
+    d.parts.append(f'<text x="420" y="2230" font-size="10" fill="{GREEN}" font-weight="700">More → Admin (role gate)</text>')
 
     return d.svg(W, H), d
 

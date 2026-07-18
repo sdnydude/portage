@@ -86,6 +86,22 @@ services:
     networks:
       - portage-network
 
+  # Code knowledge graph dashboard — serves the graphify-out/ artifacts
+  # (regenerate with `/graphify /path --update`; the bind mount picks up new
+  # builds with no restart). Dashboard: http://10.0.0.251:8018/ (graph.html).
+  portage-graph:
+    image: nginx:alpine
+    container_name: portage-graph
+    restart: unless-stopped
+    ports:
+      - "8018:80"
+    volumes:
+      - ./graphify-out:/usr/share/nginx/html:ro
+      - ./infra/portal:/srv/portal:ro
+      - ./infra/graphify-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - portage-network
+
   portage-rembg:
     image: danielgatis/rembg:latest
     container_name: portage-rembg

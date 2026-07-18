@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import ListingsPage from "./page";
 
 vi.mock("@/hooks/use-auth", () => ({
   useAuth: () => ({ isAuthenticated: true, token: "t" }),
+}));
+vi.mock("@/hooks/use-messages", () => ({
+  useUnreadCount: () => ({ count: 0 }),
+}));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/listings",
+  useRouter: () => ({ push: vi.fn() }),
 }));
 const listingsMock = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-listings", () => ({
@@ -30,7 +37,15 @@ beforeEach(() => {
 describe("ListingsPage — item title on each row", () => {
   it("shows WHAT the listing is, not just price/status", () => {
     render(<ListingsPage />);
-    expect(screen.getByText("Sony WH-1000XM4")).toBeInTheDocument();
+    // Scoped to the mobile row (a <Link>) — the R1 desktop workbench renders
+    // the same title again in its own pane (lg:hidden / lg:flex are CSS-only,
+    // both trees are always in the DOM), so an unscoped query now matches twice.
+    expect(within(screen.getByRole("link")).getByText("Sony WH-1000XM4")).toBeInTheDocument();
+  });
+
+  it("row links to the item hub deep link (listing-hub Task 4)", () => {
+    render(<ListingsPage />);
+    expect(screen.getByRole("link")).toHaveAttribute("href", "/inventory/i1?listing=L1");
   });
 
   it("falls back to 'Untitled item' when the joined title is missing", () => {
@@ -45,6 +60,7 @@ describe("ListingsPage — item title on each row", () => {
       isLoading: false, error: null, refetch: vi.fn(),
     });
     render(<ListingsPage />);
-    expect(screen.getByText("Untitled item")).toBeInTheDocument();
+    // Scoped to the mobile row for the same reason as the test above.
+    expect(within(screen.getByRole("link")).getByText("Untitled item")).toBeInTheDocument();
   });
 });

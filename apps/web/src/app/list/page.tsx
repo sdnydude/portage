@@ -22,12 +22,22 @@ function ListContent() {
 
   switch (preference) {
     case 'conversational':
-      return <ConversationalFlow itemId={itemId} />;
+      return (
+        <div className="compact-bar-clearance">
+          <ConversationalFlow itemId={itemId} />
+        </div>
+      );
     case 'swipe':
+      // SwipeFlow is a fixed-position (z-[60]) full-screen overlay — it
+      // escapes normal document flow, so no clearance wrapper is needed.
       return <SwipeFlow itemId={itemId} />;
     case 'hybrid':
     default:
-      return <HybridFlow itemId={itemId} />;
+      return (
+        <div className="compact-bar-clearance">
+          <HybridFlow itemId={itemId} />
+        </div>
+      );
   }
 }
 

@@ -21,14 +21,14 @@ test("voice UI is gone from inventory, home, and porter pages", async ({ page })
 
   // Home ask card: used to swap in a hold-to-talk mic when the input was empty.
   await page.goto("/home");
-  await expect(page.getByPlaceholder("Ask Porter…")).toBeVisible();
+  await expect(page.locator("main").getByPlaceholder("Ask Porter…")).toBeVisible();
   await expect(page.getByRole("button", { name: /hold to talk/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
   await page.screenshot({ path: path.join(SHOT_DIR, "voice-gone-home.png"), fullPage: false });
 
   // Porter tab: input row used to carry a VoiceButton next to send.
   await page.goto("/porter");
-  await expect(page.getByPlaceholder("Ask Porter…")).toBeVisible();
+  await expect(page.locator("main").getByPlaceholder("Ask Porter…")).toBeVisible();
   await expect(page.getByRole("button", { name: "Voice input" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /talk/i })).toHaveCount(0);
   await expect(page.locator("audio")).toHaveCount(0);
@@ -39,7 +39,7 @@ test("Porter text chat streams a live assistant reply without TTS", async ({ pag
   test.setTimeout(120_000);
 
   await page.goto("/porter");
-  const input = page.getByPlaceholder("Ask Porter…");
+  const input = page.locator("main").getByPlaceholder("Ask Porter…");
   await expect(input).toBeVisible();
 
   // Live text exchange — the reply must stream back and render. The user

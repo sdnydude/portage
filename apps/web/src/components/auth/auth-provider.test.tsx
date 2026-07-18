@@ -36,6 +36,37 @@ describe("AuthProvider (Cloudflare Access)", () => {
     vi.restoreAllMocks();
   });
 
+  it("shows the loading spinner (not a logged-out state) while the cold-load exchange is in flight", async () => {
+    // Live 2026-07-10: with no cached token, isReady flipped true before the
+    // exchange resolved, so /home flashed the logged-out "Welcome to Portage"
+    // hero at every cold load. With nothing cached, children must not render
+    // until the exchange settles.
+    let resolveExchange!: (v: unknown) => void;
+    const fetchMock = vi.fn().mockReturnValue(new Promise((res) => { resolveExchange = res; }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { useAuth } = await import("@/hooks/use-auth");
+    function WhoAmI() {
+      const { user, isAuthenticated } = useAuth();
+      return <div>{isAuthenticated ? `hi ${user?.email}` : "anon"}</div>;
+    }
+
+    const { queryByText, findByText } = render(
+      <AuthProvider>
+        <WhoAmI />
+      </AuthProvider>,
+    );
+
+    // Exchange pending, no cache: neither authed nor anon content may render.
+    expect(queryByText("anon")).toBeNull();
+    expect(queryByText(/hi /)).toBeNull();
+
+    await act(async () => {
+      resolveExchange(sessionResponse());
+    });
+    expect(await findByText("hi e@x.com")).toBeDefined();
+  });
+
   it("exchanges the CF session on mount and exposes the user", async () => {
     const fetchMock = vi.fn().mockResolvedValue(sessionResponse());
     vi.stubGlobal("fetch", fetchMock);

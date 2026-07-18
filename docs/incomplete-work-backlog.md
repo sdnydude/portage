@@ -1,5 +1,7 @@
 # Portage — Incomplete-Work Backlog (live execution queue)
 
+> **SUPERSEDED by `docs/TODO.md` Phases 5–7.** Kept as a historical record; do not execute from this file.
+
 Lettered phases continuing the AI-specifics plan (A–D shipped this session).
 Each phase is a vertical slice: **not done until wired end-to-end and proven
 running in the app.** Source of truth for "what's left to reach beta/v1."

@@ -183,7 +183,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       </header>
 
-      <div className="px-4 pb-8 max-w-lg mx-auto">
+      <div className="px-4 pb-8 max-w-lg mx-auto compact-bar-clearance">
         {/* Item card */}
         <section className="py-5">
           <div className="rounded-2xl border border-border bg-surface p-4" style={{ boxShadow: "var(--shadow-subtle)" }}>

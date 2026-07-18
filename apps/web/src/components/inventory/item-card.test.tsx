@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { ItemCard } from "./item-card";
 import type { Item } from "@/hooks/use-items";
 
@@ -34,5 +34,29 @@ describe("ItemCard — Unlisted chip", () => {
 
     rerender(<ItemCard item={listed} view="grid" />);
     expect(screen.queryByText("Unlisted")).not.toBeInTheDocument();
+  });
+});
+
+describe("ItemCard — non-interactive mode", () => {
+  it("renders the card content with no link and no button when interactive is false", () => {
+    render(<ItemCard item={baseItem} view="grid" interactive={false} />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByText(baseItem.title)).toBeInTheDocument();
+  });
+});
+
+describe("ItemCard — workbench button mode", () => {
+  it("renders as a button and fires onOpen when provided (workbench mode)", () => {
+    const onOpen = vi.fn();
+    render(<ItemCard item={baseItem} view="list" onOpen={onOpen} />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button"));
+    expect(onOpen).toHaveBeenCalled();
+  });
+
+  it("marks the selected card with aria-current", () => {
+    render(<ItemCard item={baseItem} view="list" onOpen={vi.fn()} selected />);
+    expect(screen.getByRole("button")).toHaveAttribute("aria-current", "true");
   });
 });

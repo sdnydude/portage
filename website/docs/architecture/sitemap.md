@@ -6,7 +6,7 @@ sidebar_position: 5
 
 # App Sitemap
 
-Visual map of every shipped route (34 pages) plus the full-screen panels and
+Visual map of every shipped route (38 pages) plus the full-screen panels and
 overlays, with typed connectors:
 
 - **solid green** — route navigation
@@ -32,7 +32,7 @@ python3 website/scripts/gen_sitemaps.py   # exits non-zero on any wire/card coll
 
 ## Landscape, admin collapsed
 
-The 10 admin pages summarized as a single card — the day-to-day product view.
+The 11 admin pages summarized as a single card — the day-to-day product view.
 
 [Open full size](/portage/img/sitemap/portage-sitemap-admin-collapsed.svg)
 

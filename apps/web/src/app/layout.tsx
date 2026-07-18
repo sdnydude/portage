@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Instrument_Sans, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { AppShell } from "@/components/layout/app-shell";
 import { BetaCta } from "@/components/beta/beta-cta";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 
@@ -65,7 +66,7 @@ export default function RootLayout({
           }}
         />
         <AuthProvider>
-          {children}
+          <AppShell>{children}</AppShell>
           <BetaCta />
         </AuthProvider>
         <ServiceWorkerRegistration />

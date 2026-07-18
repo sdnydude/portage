@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="Helvetica, Arial, sans-serif">
+  <!-- Desktop 1440x900 — Inventory, sidebar EXPANDED -->
+  <rect width="1440" height="900" fill="#F5F2EB"/>
+
+  <!-- Sidebar 240px -->
+  <rect width="240" height="900" fill="#FFFFFF"/>
+  <line x1="240" y1="0" x2="240" y2="900" stroke="#D6D3CE"/>
+  <text x="24" y="40" font-size="20" font-weight="700" fill="#2D2A26">Portage</text>
+
+  <!-- Scan button -->
+  <rect x="16" y="64" width="208" height="44" rx="16" fill="#F77E2D"/>
+  <circle cx="98" cy="86" r="8" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="114" y="91" font-size="14" font-weight="600" fill="#FFFFFF">Scan</text>
+
+  <!-- Nav items -->
+  <g font-size="14">
+    <rect x="16" y="128" width="208" height="40" rx="12" fill="none"/>
+    <circle cx="36" cy="148" r="8" fill="none" stroke="#4A4742" stroke-width="1.8"/>
+    <text x="56" y="153" fill="#4A4742">Home</text>
+
+    <rect x="16" y="172" width="208" height="40" rx="12" fill="#EFEBE1"/>
+    <rect x="28" y="184" width="16" height="16" rx="3" fill="none" stroke="#2D2A26" stroke-width="2"/>
+    <text x="56" y="197" fill="#2D2A26" font-weight="700">Inventory</text>
+
+    <rect x="28" y="228" width="16" height="16" rx="3" fill="none" stroke="#4A4742" stroke-width="1.8"/>
+    <text x="56" y="241" fill="#4A4742">Listings</text>
+
+    <circle cx="36" cy="280" r="8" fill="none" stroke="#0D7377" stroke-width="2"/>
+    <text x="56" y="285" fill="#0D7377" font-weight="600">Porter</text>
+
+    <rect x="28" y="316" width="16" height="14" rx="3" fill="none" stroke="#4A4742" stroke-width="1.8"/>
+    <text x="56" y="329" fill="#4A4742">Orders</text>
+
+    <line x1="24" y1="404" x2="216" y2="404" stroke="#D6D3CE"/>
+
+    <rect x="28" y="420" width="16" height="14" rx="4" fill="none" stroke="#4A4742" stroke-width="1.8"/>
+    <path d="M33 434 l-2 6 l6 -4" fill="none" stroke="#4A4742" stroke-width="1.6" stroke-linejoin="round"/>
+    <circle cx="44" cy="419" r="3" fill="#F77E2D"/>
+    <text x="56" y="433" fill="#4A4742">Messages</text>
+
+    <circle cx="36" cy="464" r="8" fill="none" stroke="#4A4742" stroke-width="1.8"/>
+    <line x1="36" y1="452" x2="36" y2="454" stroke="#4A4742" stroke-width="1.8"/>
+    <line x1="36" y1="474" x2="36" y2="476" stroke="#4A4742" stroke-width="1.8"/>
+    <line x1="24" y1="464" x2="26" y2="464" stroke="#4A4742" stroke-width="1.8"/>
+    <line x1="46" y1="464" x2="48" y2="464" stroke="#4A4742" stroke-width="1.8"/>
+    <text x="56" y="469" fill="#4A4742">Settings</text>
+  </g>
+
+  <!-- Collapse toggle -->
+  <path d="M116 862 l-8 8 8 8" fill="none" stroke="#A3A3A3" stroke-width="2"/>
+
+  <!-- Top bar -->
+  <rect x="240" y="0" width="1200" height="64" fill="#F5F2EB" fill-opacity="0.95"/>
+  <line x1="240" y1="64" x2="1440" y2="64" stroke="#D6D3CE"/>
+  <text x="272" y="39" font-size="18" font-weight="600" fill="#2D2A26">Inventory</text>
+
+  <!-- Ask Porter input (collapsed) -->
+  <rect x="560" y="14" width="560" height="36" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+  <circle cx="584" cy="32" r="7" fill="none" stroke="#0D7377" stroke-width="2"/>
+  <text x="600" y="37" font-size="13" fill="#A3A3A3">Ask Porter…</text>
+
+  <!-- Right: messages, theme, avatar -->
+  <rect x="1268" y="18" width="28" height="28" rx="9" fill="none" stroke="#4A4742" stroke-width="1.6"/>
+  <circle cx="1293" cy="22" r="4" fill="#F77E2D"/>
+  <circle cx="1330" cy="32" r="13" fill="none" stroke="#4A4742" stroke-width="1.6"/>
+  <circle cx="1386" cy="32" r="16" fill="#0D7377"/>
+  <text x="1381" y="37" font-size="14" font-weight="700" fill="#FFFFFF">S</text>
+
+  <!-- Content: search row -->
+  <rect x="352" y="92" width="820" height="40" rx="14" fill="#FFFFFF" stroke="#D6D3CE"/>
+  <text x="372" y="117" font-size="13" fill="#A3A3A3">Search items…</text>
+  <rect x="1184" y="92" width="96" height="40" rx="14" fill="#FFFFFF" stroke="#D6D3CE"/>
+  <text x="1204" y="117" font-size="13" fill="#4A4742">Filters</text>
+
+  <!-- 4-col item grid (content-container ~max-w-5xl centered in 1200) -->
+  <g>
+    <!-- row 1 -->
+    <g transform="translate(352,152)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="150" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="80" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="60" height="16" rx="8" fill="#E2F0F0"/>
+    </g>
+    <g transform="translate(588,152)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="130" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="90" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="70" height="16" rx="8" fill="#FCEEE2"/>
+    </g>
+    <g transform="translate(824,152)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="160" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="70" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="60" height="16" rx="8" fill="#E2F0F0"/>
+    </g>
+    <g transform="translate(1060,152)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="140" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="85" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="65" height="16" rx="8" fill="#E6F4EE"/>
+    </g>
+    <!-- row 2 -->
+    <g transform="translate(352,388)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="145" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="75" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="60" height="16" rx="8" fill="#FCEEE2"/>
+    </g>
+    <g transform="translate(588,388)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="155" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="95" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="60" height="16" rx="8" fill="#E2F0F0"/>
+    </g>
+    <g transform="translate(824,388)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="125" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="88" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="70" height="16" rx="8" fill="#E6F4EE"/>
+    </g>
+    <g transform="translate(1060,388)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="150" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="80" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="60" height="16" rx="8" fill="#FCEEE2"/>
+    </g>
+    <!-- row 3 partial -->
+    <g transform="translate(352,624)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="140" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="82" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="60" height="16" rx="8" fill="#E2F0F0"/>
+    </g>
+    <g transform="translate(588,624)">
+      <rect width="220" height="220" rx="16" fill="#FFFFFF" stroke="#D6D3CE"/>
+      <rect x="1" y="1" width="218" height="130" rx="15" fill="#EFEBE1"/>
+      <rect x="14" y="146" width="150" height="12" rx="4" fill="#2D2A26" fill-opacity="0.8"/>
+      <rect x="14" y="168" width="76" height="10" rx="4" fill="#A3A3A3"/>
+      <rect x="14" y="188" width="60" height="16" rx="8" fill="#E6F4EE"/>
+    </g>
+  </g>
+
+  <!-- Reserved dock slot annotation -->
+  <rect x="1408" y="72" width="24" height="820" rx="6" fill="#0D7377" fill-opacity="0.06" stroke="#0D7377" stroke-opacity="0.25" stroke-dasharray="4 4"/>
+  <text x="1424" y="480" font-size="10" fill="#0D7377" fill-opacity="0.6" transform="rotate(90 1424 480)">Porter dock slot (Phase R3 — empty in R0)</text>
+</svg>

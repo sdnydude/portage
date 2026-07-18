@@ -9,8 +9,9 @@ interface CameraCaptureProps {
 }
 
 export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
-  const { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera } = useCamera();
+  const { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera, zoom, maxZoom, minZoom, zoomMode, setZoom, devices, activeDeviceId, selectDevice } = useCamera();
   const [isCapturing, setIsCapturing] = useState(false);
+  const [showDevicePicker, setShowDevicePicker] = useState(false);
   const [shotCount, setShotCount] = useState(0);
   const [flash, setFlash] = useState(false);
   // Shutter-flash timer must be cancelled on unmount — a stray setTimeout
@@ -36,6 +37,43 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
     return () => ro.disconnect();
   }, []);
   const guideSide = Math.min(viewport.width, viewport.height);
+
+  // Pinch-to-zoom: two active pointers scale zoom by the ratio of the current
+  // finger distance to the distance when the second finger landed.
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
+
+  const pointerDistance = () => {
+    const [a, b] = [...pointersRef.current.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointersRef.current.size === 2) {
+        pinchStartRef.current = { distance: pointerDistance(), zoom };
+      }
+    },
+    [zoom],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!pointersRef.current.has(e.pointerId)) return;
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pinch = pinchStartRef.current;
+      if (pointersRef.current.size === 2 && pinch && pinch.distance > 0) {
+        setZoom(pinch.zoom * (pointerDistance() / pinch.distance));
+      }
+    },
+    [setZoom],
+  );
+
+  const handlePointerEnd = useCallback((e: React.PointerEvent) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size < 2) pinchStartRef.current = null;
+  }, []);
 
   useEffect(() => {
     start();
@@ -79,13 +117,25 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   return (
     <div className="fixed inset-0 z-[70] bg-black flex flex-col">
       {/* Viewfinder */}
-      <div ref={viewfinderRef} className="flex-1 relative overflow-hidden">
+      <div
+        ref={viewfinderRef}
+        data-testid="viewfinder"
+        className="flex-1 relative overflow-hidden"
+        style={{ touchAction: "none" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+      >
         <video
           ref={handleVideoRef}
           autoPlay
           playsInline
           muted
           className="absolute inset-0 w-full h-full object-cover"
+          // Digital zoom preview: scale the video so the viewfinder shows the
+          // region capture() will crop. Native zoom arrives already zoomed.
+          style={zoomMode === "digital" && zoom > 1 ? { transform: `scale(${zoom})` } : undefined}
         />
         <canvas ref={canvasRef} className="hidden" />
 
@@ -123,6 +173,34 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
 
         {flash && <div className="absolute inset-0 bg-white/70 pointer-events-none" aria-hidden />}
 
+        {/* Zoom chips */}
+        <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
+          {[0.5, 1, 2, 3]
+            .filter((level) => level >= minZoom && level <= maxZoom)
+            .map((level) => (
+              <button
+                key={level}
+                onClick={() => setZoom(level)}
+                aria-label={`Zoom ${level}×`}
+                className={`min-w-10 h-10 px-2 rounded-full backdrop-blur-sm text-sm font-semibold transition-colors ${
+                  (level < 1 ? zoom < 1 : Math.round(zoom) === level) ? "bg-white text-black" : "bg-black/40 text-white"
+                }`}
+              >
+                {level}×
+              </button>
+            ))}
+        </div>
+
+        {/* Continuity Camera can't expose zoom to browsers (WebKit gates it
+            to iOS) — the only 0.5×/zoom control is the macOS menu-bar camera
+            panel, so point the user there instead of silently offering less. */}
+        {zoomMode === "digital" &&
+          devices.some((d) => d.deviceId === activeDeviceId && /iphone/i.test(d.label)) && (
+          <p className="absolute bottom-16 left-0 right-0 text-center text-[11px] text-white/70 px-6">
+            iPhone zoom &amp; 0.5× via the Mac camera menu (menu bar → green camera → Video, Center Stage off)
+          </p>
+        )}
+
         {error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6">
             <div className="text-center">
@@ -152,6 +230,40 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
             <path d="M21 3l-7 7M3 21l7-7" />
           </svg>
         </button>
+
+        {/* Device picker — only when the browser sees several cameras (desktop
+            with a Continuity Camera iPhone, external webcams). Mobile's two
+            facings stay on the switch button. */}
+        {devices.length > 1 && (
+          <button
+            onClick={() => setShowDevicePicker((v) => !v)}
+            aria-label="Choose camera"
+            className="absolute top-4 right-16 w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 7l-7 5 7 5V7z" />
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+            </svg>
+          </button>
+        )}
+        {showDevicePicker && (
+          <div className="absolute top-16 right-4 z-10 rounded-2xl bg-black/70 backdrop-blur-md p-2 flex flex-col gap-1 max-w-[80vw]">
+            {devices.map((d, i) => (
+              <button
+                key={d.deviceId}
+                onClick={() => {
+                  setShowDevicePicker(false);
+                  selectDevice(d.deviceId);
+                }}
+                className={`px-4 py-2 rounded-xl text-left text-sm truncate ${
+                  d.deviceId === activeDeviceId ? "bg-white text-black" : "text-white"
+                }`}
+              >
+                {d.label || `Camera ${i + 1}`}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Controls */}

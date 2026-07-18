@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api, ApiError, API_BASE } from "@/lib/api";
+import { api, apiUpload, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 
 const AREAS = [
@@ -58,13 +58,7 @@ function ReportForm() {
       if (screenshot) {
         const form = new FormData();
         form.append("image", screenshot);
-        const res = await fetch(`${API_BASE}/images`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: form,
-        });
-        if (!res.ok) throw new Error("Screenshot upload failed");
-        const data = await res.json();
+        const data = await apiUpload<{ image?: { url?: string } }>("/images", form, { token: token ?? undefined });
         screenshotUrl = data.image?.url;
       }
 

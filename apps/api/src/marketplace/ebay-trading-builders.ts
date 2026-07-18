@@ -1,3 +1,4 @@
+import { AppError } from '../middleware/error.js';
 /**
  * Trading API XML builders for the listing lifecycle (Trade-First refactor, Option B).
  * Pure functions: typed input → request XML. Terms INLINE (Decision 5):
@@ -20,6 +21,9 @@ export interface TradingListingInput {
   description: string;
   sku?: string;
   pictureUrls: string[];
+  /** Set ONLY by the adapter after surfacing the keep-old-pictures warning —
+   *  lets a zero-photo item still sync its other fields via Revise. */
+  allowEmptyPictures?: boolean;
   aspects: Record<string, string[]>;
   shipping: {
     originPostalCode: string;
@@ -35,8 +39,26 @@ export interface TradingListingInput {
   listingDuration?: string;
 }
 
+// eBay Trading hard limits on PictureURL (PictureDetailsType): max 24 URLs
+// per listing and a 3975-character budget across ALL URL values. Throwing
+// here beats letting eBay reject the whole Add/Revise with an opaque XML
+// error mid-publish.
+export function validatePictureUrls(urls: string[]): void {
+  // AppError(400), not plain Error: the create/publish routes hand unknown
+  // errors to the generic 500 handler, which would bury these actionable
+  // messages under "Internal server error".
+  if (urls.length > 24) {
+    throw new AppError(400, 'EBAY_PICTURE_LIMIT', `eBay allows at most 24 photos per listing (got ${urls.length}) — remove ${urls.length - 24}.`);
+  }
+  const totalChars = urls.reduce((n, u) => n + u.length, 0);
+  if (totalChars > 3975) {
+    throw new AppError(400, 'EBAY_PICTURE_LIMIT', `Combined photo URL length ${totalChars} exceeds eBay's 3975-character PictureURL budget — remove or shorten photos.`);
+  }
+}
+
 function pictureDetails(urls: string[]): string {
   if (urls.length === 0) return '';
+  validatePictureUrls(urls);
   // PictureSource=Vendor tells eBay these are self-hosted (Cloudflare R2) URLs, not
   // EPS references — without it eBay treats them as EPS and rejects them.
   return `<PictureDetails><PictureSource>Vendor</PictureSource>${urls.map(u => `<PictureURL>${escapeXml(u)}</PictureURL>`).join('')}</PictureDetails>`;
@@ -282,6 +304,14 @@ export function buildVerifyAddFixedPriceItemXml(input: TradingListingInput, toke
 }
 
 export function buildReviseFixedPriceItemXml(itemId: string, input: TradingListingInput, token: string): string {
+  // An empty PictureURL list makes pictureDetails() emit nothing, and eBay's
+  // omitted-field Revise semantics silently KEEP the old pictures live while
+  // the app shows none. The adapter opts in explicitly (allowEmptyPictures)
+  // when it has surfaced that divergence as a user-facing warning — any other
+  // empty-photos revise fails loud instead of diverging silently.
+  if (input.pictureUrls.length === 0 && !input.allowEmptyPictures) {
+    throw new AppError(400, 'EBAY_PICTURE_LIMIT', 'Refusing to revise an eBay listing with zero photos — eBay would silently keep the old pictures. Add a photo first.');
+  }
   return (
     `${XML_DECL}\n<ReviseFixedPriceItemRequest xmlns="${NS}">` +
     `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +

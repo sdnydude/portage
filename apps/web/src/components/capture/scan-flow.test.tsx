@@ -84,9 +84,11 @@ vi.mock("@/hooks/use-scan-aspects", () => ({
 }));
 
 const apiMock = vi.fn();
+const apiUploadMock = vi.fn();
 vi.mock("@/lib/api", () => ({
   API_BASE: "http://test-api",
   api: (...args: unknown[]) => apiMock(...args),
+  apiUpload: (...args: unknown[]) => apiUploadMock(...args),
 }));
 
 const CANDIDATE = {
@@ -130,6 +132,10 @@ async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: 
 describe("ScanFlow review wiring", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Photo uploads go through apiUpload (401-aware multipart wrapper).
+    apiUploadMock.mockResolvedValue({
+      image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 },
+    });
     scanAspectsState.aspects = {};
     scanAspectsState.missingRequired = [];
     scanAspectsState.aspectsBlockPublish = false;
@@ -204,6 +210,85 @@ describe("ScanFlow review wiring", () => {
     // <button> — React 19 hydration rejects nested interactive elements.
     expect(container.querySelectorAll("button button")).toHaveLength(0);
     expect(screen.getByLabelText("Remove photo 1")).toBeInTheDocument();
+  });
+
+  it("capture stage advertises the 24-photo cap (MAX_PHOTOS_PER_ITEM)", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+    apiMock.mockImplementation(async () => ({}));
+    render(<ScanFlow onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Choose from Gallery"));
+    await screen.findByText(/Scan 1 Photo with Porter/);
+    expect(screen.getByText("1/24")).toBeInTheDocument();
+  });
+
+  it("capture stage still offers gallery add after the first photo (beta report 6337abaf)", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+    apiMock.mockImplementation(async () => ({}));
+    render(<ScanFlow onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Choose from Gallery"));
+    await screen.findByText(/Scan 1 Photo with Porter/);
+    // Both add paths present: camera re-shot AND gallery pick.
+    expect(screen.getByLabelText("Take another photo")).toBeInTheDocument();
+    expect(screen.getByLabelText("Add from gallery")).toBeInTheDocument();
+  });
+
+  it("capture-stage strip supports long-press drag reorder before the AI scan", async () => {
+    apiUploadMock
+      .mockResolvedValueOnce({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } })
+      .mockResolvedValueOnce({ image: { url: "http://img/2.jpg", key: "k2", width: 100, height: 100 } });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } }),
+    }) as unknown as typeof fetch;
+    apiMock.mockImplementation(async () => ({}));
+
+    render(<ScanFlow onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Choose from Gallery"));
+    await screen.findByText(/Scan 1 Photo with Porter/);
+    fireEvent.click(screen.getByLabelText("Take another photo"));
+    await act(async () => {
+      camHolder.props!.onCapture(new File(["y"], "y.jpg", { type: "image/jpeg" }));
+    });
+    act(() => camHolder.props!.onClose());
+    await screen.findByText(/Scan 2 Photos with Porter/);
+
+    // Strip thumbs are the buttons hosting the Remove-✕ controls (the big
+    // selected-photo preview shares the same alt pattern — don't match it).
+    const thumbs = () =>
+      screen
+        .getAllByLabelText(/^Remove photo \d$/)
+        .map((x) => x.closest("button")!.querySelector("img") as HTMLImageElement);
+    expect(thumbs()[0].src).toContain("img/1.jpg");
+
+    vi.useFakeTimers();
+    try {
+      const tile1 = thumbs()[0].closest("button")!;
+      fireEvent.pointerDown(tile1, { clientX: 10, clientY: 10 });
+      act(() => vi.advanceTimersByTime(500));
+      document.elementFromPoint = vi.fn().mockReturnValue(thumbs()[1].closest("button")!);
+      fireEvent.pointerMove(tile1, { clientX: 100, clientY: 10 });
+      fireEvent.pointerUp(tile1);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(thumbs()[0].src).toContain("img/2.jpg");
+  });
+
+  it("review strip supports reorder + delete via the manage sheet", async () => {
+    await renderInReview();
+    expect(screen.getByText(/photos · 1/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /manage photos/i }));
+    fireEvent.click(screen.getByRole("button", { name: /delete photo 1/i }));
+    // Deleting the only photo empties the gallery — the review strip (and the
+    // sheet inside it) unmounts entirely.
+    expect(screen.queryByText(/photos · 1/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^done$/i })).not.toBeInTheDocument();
   });
 
   it("editor overlay is the full PhotoEditPanel: title + all 4 tools", async () => {

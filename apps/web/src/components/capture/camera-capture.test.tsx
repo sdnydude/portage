@@ -3,6 +3,13 @@ import { render, screen } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({
   capture: vi.fn(),
+  setZoom: vi.fn(),
+  zoom: 1,
+  zoomMode: "digital" as "native" | "digital" | null,
+  devices: [] as { deviceId: string; label: string }[],
+  activeDeviceId: null as string | null,
+  selectDevice: vi.fn(),
+  minZoom: 1,
 }));
 
 vi.mock("@/hooks/use-camera", () => ({
@@ -15,6 +22,14 @@ vi.mock("@/hooks/use-camera", () => ({
     stop: vi.fn(),
     capture: h.capture,
     switchCamera: vi.fn(),
+    zoom: h.zoom,
+    maxZoom: 3,
+    minZoom: h.minZoom,
+    zoomMode: h.zoomMode,
+    setZoom: h.setZoom,
+    devices: h.devices,
+    activeDeviceId: h.activeDeviceId,
+    selectDevice: h.selectDevice,
   }),
 }));
 
@@ -23,6 +38,12 @@ import { CameraCapture } from "./camera-capture";
 beforeEach(() => {
   h.capture.mockReset();
   h.capture.mockResolvedValue(new Blob(["jpg"], { type: "image/jpeg" }));
+  h.setZoom.mockReset();
+  h.zoom = 1;
+  h.zoomMode = "digital";
+  h.selectDevice.mockReset();
+  h.devices = [];
+  h.activeDeviceId = null;
 });
 
 describe("CameraCapture — 1:1 guide discipline", () => {
@@ -68,5 +89,91 @@ describe("CameraCapture — 1:1 guide discipline", () => {
     expect(h.capture).toHaveBeenCalledWith({ width: 390, height: 700 });
 
     rectSpy.mockRestore();
+  });
+});
+
+describe("CameraCapture — zoom", () => {
+  it("renders zoom chips and tapping 2× sets zoom to 2", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /zoom 2×/i }));
+    expect(h.setZoom).toHaveBeenCalledWith(2);
+  });
+
+  it("offers the 0.5× ultra-wide chip only when the hardware zoom floor allows it", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    // Digital / single-lens: no 0.5× chip.
+    const { unmount } = render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: /zoom 0.5×/i })).not.toBeInTheDocument();
+    unmount();
+
+    // Multi-lens iPhone (caps.zoom.min = 0.5): chip appears and sets 0.5.
+    h.minZoom = 0.5;
+    try {
+      render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+      fireEvent.click(screen.getByRole("button", { name: /zoom 0.5×/i }));
+      expect(h.setZoom).toHaveBeenCalledWith(0.5);
+    } finally {
+      h.minZoom = 1;
+    }
+  });
+
+  it("shows the macOS camera-menu hint when a Continuity iPhone is active without hardware zoom", () => {
+    h.devices = [
+      { deviceId: "mac-cam", label: "FaceTime HD Camera" },
+      { deviceId: "iphone-cam", label: "Stephen's iPhone Camera" },
+    ] as never;
+    h.activeDeviceId = "iphone-cam";
+    h.zoomMode = "digital";
+    try {
+      render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+      expect(screen.getByText(/mac.*camera menu|camera menu.*mac/i)).toBeInTheDocument();
+    } finally {
+      h.devices = [] as never;
+      h.activeDeviceId = null;
+      h.zoomMode = "native";
+    }
+  });
+
+  it("digital mode scales the viewfinder video by the zoom factor; native mode does not", () => {
+    h.zoom = 2;
+    h.zoomMode = "digital";
+    const { container, unmount } = render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+    expect((container.querySelector("video") as HTMLVideoElement).style.transform).toBe("scale(2)");
+    unmount();
+
+    h.zoomMode = "native";
+    const { container: c2 } = render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+    expect((c2.querySelector("video") as HTMLVideoElement).style.transform).toBe("");
+  });
+
+  it("device picker: hidden with one camera, lists cameras and pins the tapped one with several", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const { unmount } = render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: /choose camera/i })).not.toBeInTheDocument();
+    unmount();
+
+    h.devices = [
+      { deviceId: "builtin", label: "FaceTime HD Camera" },
+      { deviceId: "iphone", label: "iPhone Camera" },
+    ];
+    render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /choose camera/i }));
+    fireEvent.click(screen.getByRole("button", { name: "iPhone Camera" }));
+    expect(h.selectDevice).toHaveBeenCalledWith("iphone");
+  });
+
+  it("pinching outward on the viewfinder zooms in proportionally", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(<CameraCapture onCapture={() => {}} onClose={() => {}} />);
+    const viewfinder = screen.getByTestId("viewfinder");
+
+    // Two fingers 100px apart, spreading to 200px → 2× the starting zoom (1).
+    fireEvent.pointerDown(viewfinder, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(viewfinder, { pointerId: 2, clientX: 200, clientY: 100 });
+    fireEvent.pointerMove(viewfinder, { pointerId: 2, clientX: 300, clientY: 100 });
+
+    expect(h.setZoom).toHaveBeenCalledWith(2);
   });
 });

@@ -7,6 +7,7 @@ const SHOT_DIR = path.join(process.cwd(), "test-results", "proof");
 // /orders/sync is mocked at the network boundary so the assertion is
 // deterministic and independent of whether the live eBay account has orders.
 
+
 test.describe("orders sync", () => {
   test("Sync button surfaces a marketplace error as a banner", async ({ page }) => {
     // Session injected via storageState (auth.setup.ts) — already logged in.
@@ -57,6 +58,12 @@ test.describe("orders sync", () => {
 });
 
 test.describe("login triggers orders sync", () => {
+  // Env-bound: the mount-time session exchange needs a dev-bypass API behind
+  // the app itself — impossible against the prod-baked container (PR #189),
+  // so an ungated local run reports a red that can never pass. CI ephemeral
+  // stacks (or a dev-mode :3002) opt in with E2E_ORDERS_SYNC=1.
+  test.skip(!process.env.E2E_ORDERS_SYNC, "gated: set E2E_ORDERS_SYNC=1 (needs dev-bypass API behind the app)");
+
   // Start logged OUT so the real login() callback runs (storageState bypasses it).
   test.use({ storageState: { cookies: [], origins: [] } });
 

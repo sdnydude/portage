@@ -65,7 +65,7 @@
   <rect x="38" y="98" width="140" height="27" rx="10" fill="url(#aTradingHead)"/>
   <rect x="38" y="117" width="140" height="8" fill="#0A5A5D"/>
   <text x="108" y="116" text-anchor="middle" fill="#FFFFFF" font-weight="600" font-size="10.5" letter-spacing=".1">Scan</text>
-  <text x="48" y="138" class="sub mono" fill="#1FA5A9">Claude Vision / Gemini</text>
+  <text x="48" y="138" class="sub mono" fill="#1FA5A9">Vision chain (Gemini / Claude)</text>
   <text x="48" y="152" class="sub">→ item draft</text>
   <text x="48" y="166" class="sub">title · condition</text>
   <text x="48" y="180" class="sub">brand · photos</text>

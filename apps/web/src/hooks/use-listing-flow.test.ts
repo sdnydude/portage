@@ -2,9 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 const apiMock = vi.fn();
+const apiUploadMock = vi.fn();
 const debouncedSaveMock = vi.fn();
 vi.mock("@/lib/api", () => ({
   api: (...args: unknown[]) => apiMock(...args),
+  apiUpload: (...args: unknown[]) => apiUploadMock(...args),
   ApiError: class ApiError extends Error {},
   API_BASE: "http://test",
 }));
@@ -72,6 +74,48 @@ describe("useListingFlow.updatePhoto", () => {
     debouncedSaveMock.mockClear();
     act(() => result.current.updatePhoto(0, { url: "https://example.com/1-rot.jpg" }));
     expect(debouncedSaveMock).toHaveBeenCalled();
+  });
+});
+
+describe("useListingFlow.publish — stale empty flow photos", () => {
+  it("publishes when the flow's photo array is stale-empty but the server item has photos", async () => {
+    // Live 2026-07-10: flow was seeded (startFromItem) before the item-page
+    // photo uploads persisted, so flow photos stayed [] while items.photos
+    // filled up. The listings route publishes from items.photos (DB), so the
+    // client guard must re-check the server before refusing with
+    // "At least one photo is required".
+    let itemGets = 0;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/items/i1" && opts?.method === "PATCH") return {};
+      if (path === "/items/i1") {
+        itemGets++;
+        return {
+          id: "i1", title: "ASUS Laptop", description: "d", category: "electronics", condition: "good",
+          brand: "", model: "", features: [], quantity: 1,
+          // Seed-time GET: photos not persisted yet. Publish-time GET: they are.
+          photos: itemGets === 1 ? [] : [{ url: "https://example.com/p.jpg", key: "k1" }],
+          estimatedValueRecommended: 500, price: 650,
+          weightOz: 80, lengthIn: null, widthIn: null, heightIn: null,
+          ebayPackageType: null, weightEstimated: false,
+        };
+      }
+      if (path === "/listings") return { id: "L1", status: "active" };
+      throw new Error("unavailable: " + path);
+    });
+
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => {
+      await result.current.startFromItem("i1");
+    });
+    expect(result.current.state.photos).toEqual([]);
+
+    let res: { success: boolean; error?: string } = { success: false };
+    await act(async () => {
+      res = await result.current.publish();
+    });
+
+    expect(res.error).toBeUndefined();
+    expect(res.success).toBe(true);
   });
 });
 
@@ -356,26 +400,22 @@ describe("useListingFlow.confirmRecognition — same-tick ensureItemCreated", ()
   it("ensureItemCreated fired in the confirm click handler POSTs the candidate's fields (stateRef must be eagerly synced)", async () => {
     apiMock.mockClear();
     apiMock.mockResolvedValue({ id: "item-3" });
-    // startFromPhoto uses raw fetch: first for the blob, then POST /scan.
-    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
-      if (String(url).includes("/scan")) {
-        return {
-          ok: true,
-          json: async () => ({
-            identification: {},
-            detailed: {
-              candidates: [{
-                name: "Tascam DR-05", description: "rec", category: "electronics",
-                condition: "good", brand: "Tascam", model: "DR-05", features: [], confidence: 0.9,
-              }],
-              reasoning: [],
-            },
-            image: null,
-          }),
-        };
-      }
-      return { ok: true, blob: async () => new Blob(["x"]) };
-    }));
+    // startFromPhoto fetches the photo blob via raw fetch, then POSTs the
+    // scan through apiUpload (the 401-aware multipart wrapper).
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => (
+      { ok: true, blob: async () => new Blob(["x"]) }
+    )));
+    apiUploadMock.mockResolvedValue({
+      identification: {},
+      detailed: {
+        candidates: [{
+          name: "Tascam DR-05", description: "rec", category: "electronics",
+          condition: "good", brand: "Tascam", model: "DR-05", features: [], confidence: 0.9,
+        }],
+        reasoning: [],
+      },
+      image: null,
+    });
 
     const { result } = renderHook(() => useListingFlow());
     await act(async () => {
@@ -393,5 +433,196 @@ describe("useListingFlow.confirmRecognition — same-tick ensureItemCreated", ()
     expect(posts).toHaveLength(1);
     expect((posts[0][1] as { body: { title: string } }).body.title).toBe("Tascam DR-05");
     vi.unstubAllGlobals();
+  });
+});
+
+describe("useListingFlow.reorderPhotos — photo drag-reorder (F1)", () => {
+  it("moves a photo, renormalizes isPrimary, and autosaves the draft", () => {
+    debouncedSaveMock.mockClear();
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.addPhotos([
+        { url: "https://example.com/1.jpg", key: "k1", isPrimary: true },
+        { url: "https://example.com/2.jpg", key: "k2" },
+        { url: "https://example.com/3.jpg", key: "k3" },
+      ]);
+    });
+    act(() => {
+      result.current.reorderPhotos(2, 0);
+    });
+    expect(result.current.state.photos.map((p) => p.key)).toEqual(["k3", "k1", "k2"]);
+    expect(result.current.state.photos.map((p) => p.isPrimary)).toEqual([true, false, false]);
+    expect(debouncedSaveMock).toHaveBeenCalled();
+  });
+});
+
+describe("useListingFlow.removePhoto — delete photo (F1 amendment)", () => {
+  it("removes the photo, renormalizes isPrimary, autosaves, and PATCHes the item when one exists", async () => {
+    debouncedSaveMock.mockClear();
+    apiMock.mockResolvedValue({ id: "item-9" });
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.addPhotos([
+        { url: "https://example.com/1.jpg", key: "k1", isPrimary: true },
+        { url: "https://example.com/2.jpg", key: "k2" },
+      ]);
+    });
+    apiMock.mockClear();
+    await act(async () => {
+      await result.current.removePhoto(0);
+    });
+    expect(result.current.state.photos).toEqual([
+      { url: "https://example.com/2.jpg", key: "k2", isPrimary: true },
+    ]);
+    expect(debouncedSaveMock).toHaveBeenCalled();
+    // No item yet — no PATCH.
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("useListingFlow.removePhoto — rapid double-tap", () => {
+  it("two removals before a re-render delete two DIFFERENT photos AND the item PATCHes reflect both (eager stateRef sync)", async () => {
+    apiMock.mockResolvedValue({
+      id: "i1", title: "X", description: "", category: "", condition: "good",
+      brand: "", model: "", features: [], quantity: 1,
+      photos: [
+        { url: "https://example.com/1.jpg", key: "k1" },
+        { url: "https://example.com/2.jpg", key: "k2" },
+        { url: "https://example.com/3.jpg", key: "k3" },
+      ],
+      estimatedValueRecommended: 50, price: 100,
+      weightOz: null, lengthIn: null, widthIn: null, heightIn: null,
+      ebayPackageType: null, weightEstimated: false,
+    });
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => {
+      await result.current.startFromItem("i1");
+    });
+    apiMock.mockClear();
+    apiMock.mockResolvedValue({});
+    await act(async () => {
+      // Same tick — no re-render between the two calls.
+      const p1 = result.current.removePhoto(0);
+      const p2 = result.current.removePhoto(0);
+      await Promise.all([p1, p2]);
+    });
+    expect(result.current.state.photos.map((p) => p.key)).toEqual(["k3"]);
+    const patches = apiMock.mock.calls.filter(([p]) => p === "/items/i1");
+    expect(patches).toHaveLength(2);
+    const lastBody = (patches[1][1] as { body: { photos: Array<{ key: string }> } }).body.photos.map((p) => p.key);
+    expect(lastBody).toEqual(["k3"]);
+  });
+});
+
+describe("useListingFlow.commitPhotoOrder — persist order to the item row", () => {
+  it("PATCHes items.photos after a drag ends when the flow has an item; no-op without one", async () => {
+    apiMock.mockResolvedValue({
+      id: "i1", title: "X", description: "", category: "", condition: "good",
+      brand: "", model: "", features: [], quantity: 1,
+      photos: [
+        { url: "https://example.com/1.jpg", key: "k1", isPrimary: true },
+        { url: "https://example.com/2.jpg", key: "k2" },
+      ],
+      estimatedValueRecommended: 50, price: 100,
+      weightOz: null, lengthIn: null, widthIn: null, heightIn: null,
+      ebayPackageType: null, weightEstimated: false,
+    });
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => {
+      await result.current.startFromItem("i1");
+    });
+    act(() => {
+      result.current.reorderPhotos(1, 0);
+    });
+    apiMock.mockClear();
+    apiMock.mockResolvedValue({});
+    await act(async () => {
+      await result.current.commitPhotoOrder();
+    });
+    expect(apiMock).toHaveBeenCalledWith("/items/i1", expect.objectContaining({
+      method: "PATCH",
+      body: {
+        photos: [
+          { url: "https://example.com/2.jpg", key: "k2", isPrimary: true },
+          { url: "https://example.com/1.jpg", key: "k1", isPrimary: false },
+        ],
+      },
+    }));
+  });
+});
+
+describe("useListingFlow.commitPhotoOrder — no-op without an item", () => {
+  it("skips the PATCH entirely before the item row exists", async () => {
+    apiMock.mockClear();
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.addPhotos([{ url: "https://example.com/1.jpg", key: "k1" }]);
+    });
+    apiMock.mockClear();
+    await act(async () => {
+      await result.current.commitPhotoOrder();
+    });
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("useListingFlow.commitPhotoOrder — syncWarnings surfaced", () => {
+  it("a marketplace sync warning from the PATCH lands in the flow error state", async () => {
+    apiMock.mockResolvedValue({
+      id: "i1", title: "X", description: "", category: "", condition: "good",
+      brand: "", model: "", features: [], quantity: 1,
+      photos: [
+        { url: "https://example.com/1.jpg", key: "k1", isPrimary: true },
+        { url: "https://example.com/2.jpg", key: "k2" },
+      ],
+      estimatedValueRecommended: 50, price: 100,
+      weightOz: null, lengthIn: null, widthIn: null, heightIn: null,
+      ebayPackageType: null, weightEstimated: false,
+    });
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => {
+      await result.current.startFromItem("i1");
+    });
+    act(() => {
+      result.current.reorderPhotos(1, 0);
+    });
+    apiMock.mockClear();
+    apiMock.mockResolvedValue({ syncWarnings: ["ebay: listing 307 was not updated — revise failed"] });
+    await act(async () => {
+      await result.current.commitPhotoOrder();
+    });
+    expect(result.current.error).toMatch(/was not updated/);
+  });
+});
+
+describe("useListingFlow.publish — photo order backstop", () => {
+  it("the publish-time item PATCH carries the flow's photos in order (publish reads items.photos)", async () => {
+    apiMock.mockClear();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/items" && opts?.method === "POST") return { id: "item-8" };
+      if (path === "/listings" && opts?.method === "POST") return { id: "l1", status: "active" };
+      return {};
+    });
+    const { result } = renderHook(() => useListingFlow());
+    act(() => {
+      result.current.setField("title", "Widget");
+      result.current.setField("price", 25);
+      result.current.addPhotos([
+        { url: "https://example.com/1.jpg", key: "k1" },
+        { url: "https://example.com/2.jpg", key: "k2" },
+      ]);
+    });
+    act(() => {
+      result.current.reorderPhotos(1, 0);
+    });
+    await act(async () => {
+      await result.current.publish();
+    });
+    const patches = apiMock.mock.calls.filter(([p, o]) => p === "/items/item-8" && (o as { method?: string })?.method === "PATCH");
+    expect(patches).toHaveLength(1);
+    expect((patches[0][1] as { body: { photos: unknown } }).body.photos).toEqual([
+      { url: "https://example.com/2.jpg", key: "k2", isPrimary: true },
+      { url: "https://example.com/1.jpg", key: "k1", isPrimary: false },
+    ]);
   });
 });

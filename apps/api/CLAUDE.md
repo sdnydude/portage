@@ -19,7 +19,7 @@ Express 5 backend. See root CLAUDE.md for architecture overview.
 // All routes export a named Router constant
 export const itemsRouter = Router();
 
-// Mounted in index.ts
+// Mounted in src/app.ts (createApp); src/index.ts is only the HTTPS bootstrap
 app.use('/items', itemsRouter);
 app.use('/marketplace/ebay', ebayAuthRouter);
 ```
@@ -105,4 +105,4 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 
 ## Testing
 
-Vitest. Run `npm test` (once) or `npm run test:watch`. 605 tests across 61 files covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, and FAQs.
+Vitest. Run `npm test` (once) or `npm run test:watch`. 687 tests across 66 files covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, and FAQs.

@@ -30,18 +30,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Instant paint from cache while the exchange happens in the background.
+    // Without a cache there is nothing correct to paint — "not authenticated
+    // yet" and "not authenticated" are different states, and flipping isReady
+    // early made /home flash the logged-out hero on every cold load
+    // (2026-07-10). Cache miss ⇒ stay on the spinner until the exchange
+    // settles (see .finally below).
     const savedToken = localStorage.getItem(TOKEN_KEY);
     const savedUser = localStorage.getItem(USER_KEY);
+    let hasCache = false;
     if (savedToken && savedUser) {
       try {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
+        hasCache = true;
       } catch {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
       }
     }
-    setIsReady(true);
+    if (hasCache) setIsReady(true);
 
     setOnSessionExchanged((newToken, newUser) => {
       if (!newToken) {
@@ -70,6 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {
         // Definitive rejections already cleared state + fired SESSION_LOST via
         // exchangeSession; transient failures keep the cached session.
+      })
+      .finally(() => {
+        // Cache-miss cold loads waited on the spinner for this outcome.
+        setIsReady(true);
       });
 
     // Central auth-loss handler: api.ts fires this only on definitive auth

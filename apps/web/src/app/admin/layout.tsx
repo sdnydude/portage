@@ -87,7 +87,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       <div className="flex-1 flex flex-col min-h-screen">
-        <header className="sticky top-0 z-20 bg-surface/80 backdrop-blur-sm border-b border-border px-4 lg:px-6 py-3 flex items-center justify-between">
+        {/* AppShell mounts on /admin since 2026-07-17: on lg+ the shell TopBar
+            (sticky top-0 z-40 h-16) sits above, so this header sticks below it;
+            top-0 stays for mobile where the TopBar is hidden. */}
+        <header className="sticky top-0 lg:top-16 z-20 bg-surface/80 backdrop-blur-sm border-b border-border px-4 lg:px-6 py-3 flex items-center justify-between">
           <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 -ml-2 text-text-secondary">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M4 6h16M4 12h16M4 18h16" />
@@ -105,7 +108,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </header>
 
-        <main className="flex-1 p-4 lg:p-6">
+        {/* pb-24: clearance for the floating mobile TabBar (lg:hidden), same
+            as (tabs)/layout.tsx; lg:pb-6 restores desktop padding. */}
+        <main className="flex-1 p-4 pb-24 lg:p-6">
           {children}
         </main>
       </div>

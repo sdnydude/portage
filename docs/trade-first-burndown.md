@@ -1,14 +1,17 @@
 # Portage — eBay Trade-First Refactor: Burndown
 
+> **EPIC COMPLETE 2026-07-02 — archived record.** No open work remains in this document; the final item (2.5, Save & List live) was verified fixed 2026-07-02 (commit `e22ca89`).
+
 **Updated:** 2026-07-01 (Phase 4 housekeeping)
 **Branch:** merged to `main` (feat/phase-f-publish-unification landed via PR #133)
-**Status:** Epic 1 (Trade-First) **COMPLETE + LIVE-PROVEN** (commit `6dc63fe`, PR #133). Full lifecycle ran live on eBay `sdnydude@me.com`: publish→`AddFixedPriceItem` (ItemID 307034773471), price edit→`ReviseFixedPriceItem`, archive→`EndFixedPriceItem`. Epic 1 housekeeping (1.17/1.19/1.20) closed 2026-07-01 (Phase 4). Remaining open: 2.5 (Save & List live) — tracked as TODO Phase 5.
+**Status:** Epic 1 (Trade-First) **COMPLETE + LIVE-PROVEN** (commit `6dc63fe`, PR #133). Full lifecycle ran live on eBay `sdnydude@me.com`: publish→`AddFixedPriceItem` (ItemID 307034773471), price edit→`ReviseFixedPriceItem`, archive→`EndFixedPriceItem`. Epic 1 housekeeping (1.17/1.19/1.20) closed 2026-07-01 (Phase 4). Nothing remains open here — 2.5 (Save & List live) moved to `docs/TODO.md` Phase 5.
 
-This is the canonical execution queue. **The next session's FIRST action is an independent
-adversarial review** that must: (1) verify each task below is real and correctly stated,
-(2) verify the ORDER is correct (dependencies sound), and (3) verify WHY each is necessary
-(challenge any task that isn't). Treat the order/rationale columns as claims to be falsified,
-not accepted.
+This was the canonical execution queue while the epic was in flight. Its standing rule —
+each session opened with an independent adversarial review that (1) verified each task was
+real and correctly stated, (2) verified the order/dependencies were sound, and (3)
+challenged any task that wasn't necessary — was retired when the epic closed (COMPLETE
+banner above; Phase 4 housekeeping closed 2026-07-01 per `docs/TODO.md`). Nothing below is
+actionable; the tables are a historical record.
 
 **Legend:** ✅ done · 🔄 in progress · ⬜ not started · 🚫 deferred/dropped · 🔑 needs Stephen
 

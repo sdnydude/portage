@@ -1,5 +1,7 @@
 "use client";
 
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { formatPrice, formatCondition } from "@/lib/format";
@@ -292,6 +294,9 @@ function deriveMessages(
     onConfirmShipping: () => void;
     onAddPhoto: () => void;
     onEditPhoto: (index: number) => void;
+    onReorderPhotos: (from: number, to: number) => void;
+    onReorderEnd: () => void;
+    onDeletePhoto: (index: number) => void;
   }
 ): FlowMessage[] {
   const msgs: FlowMessage[] = [];
@@ -566,7 +571,10 @@ function deriveMessages(
               <PhotoGalleryStrip
                 photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
                 onEditPhoto={handlers.onEditPhoto}
-                maxPhotos={12}
+                onReorder={handlers.onReorderPhotos}
+                onReorderEnd={handlers.onReorderEnd}
+                onDelete={handlers.onDeletePhoto}
+                maxPhotos={MAX_PHOTOS_PER_ITEM}
               />
             </div>
           )}
@@ -781,6 +789,9 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         // Blob (still-uploading) photos render without an edit affordance in
         // the strip, so this only fires for editable photos.
         onEditPhoto: photoEdit.openEditor,
+        onReorderPhotos: flow.reorderPhotos,
+        onReorderEnd: flow.commitPhotoOrder,
+        onDeletePhoto: flow.removePhoto,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state, effectiveLastStep]
@@ -811,6 +822,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         <div className="flex-1 overflow-auto">
           <PublishSuccess
             listingId={state.listingId}
+            itemId={state.inventoryItemId}
             warning={state.publishWarning ?? undefined}
             marketplace={state.marketplace}
             title={state.title}

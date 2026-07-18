@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useOnboarding } from "@/hooks/use-onboarding";
@@ -9,6 +10,7 @@ import { StreamingMessage } from "@/components/porter/streaming-message";
 import { ActionPills } from "@/components/porter/action-pills";
 import { FullChat } from "@/components/porter/full-chat";
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
+import { LoggedOutHero } from "@/components/auth/logged-out-hero";
 import { CompsSearchSheet } from "@/components/comps-search-sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
 import Link from "next/link";
@@ -68,6 +70,7 @@ const STATUS_BADGE: Record<string, { bg: string; label: string }> = {
 };
 
 export default function HomePage() {
+  const router = useRouter();
   const { isAuthenticated } = useAuth();
   const { data, isLoading, error } = useDashboard();
   const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
@@ -99,26 +102,7 @@ export default function HomePage() {
   };
 
   if (!isAuthenticated) {
-    return (
-      <div className="px-4 py-6 max-w-lg mx-auto">
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-20 h-20 rounded-3xl bg-forest-green-50 flex items-center justify-center mb-6">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-          </div>
-          <h1 className="font-[family-name:var(--font-instrument)] font-bold text-text-primary mb-2 text-2xl">
-            Welcome to Portage
-          </h1>
-          <p className="text-text-secondary mb-6 max-w-xs text-sm">
-            AI-powered inventory and marketplace selling. Scan, list, and sell your items in seconds.
-          </p>
-          <Link href="/" className="px-8 py-3 rounded-full bg-forest-green text-white font-semibold text-sm">
-            Get Started
-          </Link>
-        </div>
-      </div>
-    );
+    return <LoggedOutHero />;
   }
 
   if (isLoading) {
@@ -131,7 +115,7 @@ export default function HomePage() {
 
   if (error) {
     return (
-      <div className="px-4 py-6 max-w-2xl mx-auto">
+      <div className="px-4 py-6 content-container">
         <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
           {error}
         </div>
@@ -147,13 +131,13 @@ export default function HomePage() {
       : data.recentListings.filter((l) => l.status === listingFilter);
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pb-8">
+    <div className="content-container px-4 pb-8">
 
       {/* ─── Porter hero ─── */}
       <div
-        className="animate-rise relative -mx-4 px-4 pb-7 rounded-b-[32px] overflow-hidden"
+        className="animate-rise relative -mx-4 px-4 pb-5 rounded-b-[32px] overflow-hidden"
         style={{
-          paddingTop: "max(env(safe-area-inset-top), 18px)",
+          paddingTop: "max(env(safe-area-inset-top), 14px)",
           background:
             "radial-gradient(125% 95% at 80% -12%, rgba(63,192,196,0.38), transparent 58%), radial-gradient(80% 65% at 8% 6%, rgba(17,154,160,0.16), transparent 60%), linear-gradient(162deg, var(--hero-top) 0%, var(--hero-bottom) 100%)",
           boxShadow: "0 20px 44px -30px rgba(6,18,20,0.85)",
@@ -166,8 +150,9 @@ export default function HomePage() {
           style={{ background: "conic-gradient(from 200deg, rgba(63,192,196,0.6), rgba(17,154,160,0.4), rgba(110,210,215,0.5), rgba(63,192,196,0.6))" }}
         />
 
-        {/* Header row: greeting + actions */}
-        <div className="relative flex items-center gap-3 mb-5">
+        {/* Header row: greeting + actions — density-tuned so the value band
+            and eBay Price Check land above the fold on 390×844 */}
+        <div className="relative flex items-center gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <p className="flex items-center gap-1.5 font-[family-name:var(--font-jetbrains)] text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--on-forest-mute)]">
               <span
@@ -177,7 +162,7 @@ export default function HomePage() {
               />
               {getGreeting()}
             </p>
-            <p className="font-[family-name:var(--font-instrument)] italic font-medium text-[32px] leading-[1.1] -tracking-[0.01em] text-[var(--orange-bright)] mt-0.5">
+            <p className="font-[family-name:var(--font-instrument)] italic font-medium text-2xl leading-[1.1] -tracking-[0.01em] text-[var(--orange-bright)] mt-0.5">
               {data.displayName}
             </p>
           </div>
@@ -212,11 +197,11 @@ export default function HomePage() {
         {!isEngaged ? (
           /* Idle Porter card — prominent circular orb + PORTER·READY label + prompt */
           <div
-            className="glass-control relative flex items-start gap-3 rounded-2xl p-4 mb-4"
+            className="glass-control relative flex items-start gap-3 rounded-2xl p-3 mb-3"
             style={{ border: "1px solid rgba(255,255,255,0.14)" }}
           >
             <div
-              className="relative flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center"
+              className="relative flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
               style={{ background: "radial-gradient(circle at 35% 28%, var(--teal-bright), var(--orb-core))" }}
             >
               <span className="porter-orb-ring absolute inset-0 rounded-full" style={{ border: "1.5px solid var(--teal-bright)" }} />
@@ -403,7 +388,7 @@ export default function HomePage() {
               {filteredListings.map((listing) => (
                 <Link
                   key={listing.id}
-                  href={`/listings/${listing.id}`}
+                  href={`/inventory/${listing.itemId}?listing=${listing.id}`}
                   className="rounded-xl bg-[var(--surface)] border border-[var(--border)] overflow-hidden block"
                   style={{ boxShadow: "var(--shadow-subtle)" }}
                 >
@@ -474,6 +459,13 @@ export default function HomePage() {
           onComplete={completeOnboarding}
           onSkip={completeOnboarding}
           isCompleting={isCompleting}
+          onExploreTutorials={() => {
+            // Navigate even if completion fails — the carousel will simply
+            // reappear on the next home visit rather than trapping the user.
+            void completeOnboarding()
+              .catch(() => {})
+              .then(() => router.push("/tutorials"));
+          }}
         />
       )}
 

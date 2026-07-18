@@ -1,18 +1,20 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { api, ApiError, API_BASE } from "@/lib/api";
+import { api, apiUpload, ApiError } from "@/lib/api";
 import { useAuth } from "./use-auth";
 import { useDrafts } from "./use-drafts";
 import type {
   ListingFlowState,
   CompResult,
   RecognitionResult,
+  RecognitionCandidate,
   PricingStrategy,
   EbayPreparedFields,
   PreparedListingData,
 } from "@portage/shared";
 import type { AspectRequirement } from "@/components/listing/aspect-fill-sheet";
+import { movePhoto, removePhotoAt, normalizePhotoOrder } from "@/lib/photos";
 import { resolvePublishPrice } from "@/lib/price";
 import { scopedPublishIdempotencyKey } from "@/lib/publish-idempotency";
 
@@ -158,20 +160,17 @@ export function useListingFlow() {
         formData.append('image', blob, 'photo.jpg');
       }
 
-      const result = await fetch(`${API_BASE}/scan?detail=full`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      if (!result.ok) throw new Error('Scan failed');
-      const data = await result.json();
+      const data = await apiUpload<{
+        detailed?: RecognitionResult;
+        identification?: Omit<RecognitionCandidate, 'confidence'>;
+        image?: { url: string; key: string; width: number; height: number };
+      }>('/scan?detail=full', formData, { token: token ?? undefined });
 
       const detailed = data.detailed as RecognitionResult | undefined;
       const candidates = detailed?.candidates ?? [{
         ...data.identification,
         confidence: 0.8,
-      }];
+      } as RecognitionCandidate];
       const reasoning = detailed?.reasoning ?? [];
 
       setState(prev => {
@@ -355,6 +354,61 @@ export function useListingFlow() {
     });
   }, [triggerAutoSave]);
 
+  // Drag-reorder (F1): live moves splice flow state; drafts persist the order
+  // via autosave. Marketplace/item persistence happens at commitPhotoOrder.
+  const reorderPhotos = useCallback((from: number, to: number) => {
+    setState(prev => {
+      const next = { ...prev, photos: movePhoto(prev.photos, from, to) };
+      triggerAutoSave(next);
+      return next;
+    });
+  }, [triggerAutoSave]);
+
+  // Commit point for a finished drag (strip onReorderEnd): one PATCH lands
+  // the whole reordered array on the item row when it exists. Publish reads
+  // items.photos, so without this the marketplace would get the old order.
+  const commitPhotoOrder = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.inventoryItemId || !token || s.photos.length === 0) return;
+    try {
+      const saved = await api<{ syncWarnings?: string[] }>(`/items/${s.inventoryItemId}`, {
+        method: 'PATCH',
+        body: { photos: normalizePhotoOrder(s.photos) },
+        token,
+      });
+      // A reorder that saved locally but never reached the marketplace must
+      // not read as success — same contract as the inventory page.
+      if (saved?.syncWarnings?.length) setError(saved.syncWarnings.join(' · '));
+    } catch {
+      // Draft still holds the order; the publish-time PATCH is the backstop.
+    }
+  }, [token]);
+
+  // Delete a photo. Flow state + draft update immediately; when the item row
+  // already exists the new array PATCHes through so publish (which reads
+  // items.photos, not flow state) can never resurrect a deleted photo.
+  const removePhoto = useCallback(async (index: number) => {
+    // Eager stateRef sync (same trick as confirmRecognition): a second call
+    // in the same tick must compute from THIS removal's result, or its PATCH
+    // body resurrects the photo the first call just deleted.
+    const base = stateRef.current;
+    const next = removePhotoAt(base.photos, index);
+    if (next === base.photos) return; // out-of-range no-op
+    const nextState = { ...base, photos: next };
+    stateRef.current = nextState;
+    setState(nextState);
+    triggerAutoSave(nextState);
+    const itemId = nextState.inventoryItemId;
+    if (itemId && token) {
+      try {
+        const saved = await api<{ syncWarnings?: string[] }>(`/items/${itemId}`, { method: 'PATCH', body: { photos: next }, token });
+        if (saved?.syncWarnings?.length) setError(saved.syncWarnings.join(' · '));
+      } catch {
+        // Draft still holds the new order; the publish-time PATCH is the backstop.
+      }
+    }
+  }, [token, triggerAutoSave]);
+
   // Photo-edit tools (rotate/crop/enhance/bg-remove) persist their result here.
   // Throws on a vanished index (photo deleted mid-edit) so usePhotoEdit's
   // catch surfaces it as a tool error instead of silently dropping the result.
@@ -428,7 +482,22 @@ export function useListingFlow() {
     const s = stateRef.current;
     if (!s.title) return { success: false, error: 'Title is required' };
     if (!s.price) return { success: false, error: 'Price is required' };
-    if (s.photos.length === 0) return { success: false, error: 'At least one photo is required' };
+    if (s.photos.length === 0) {
+      // Flow state can be stale: photos added on the item page after this
+      // flow was seeded never reach s.photos (live 2026-07-10). The listings
+      // route publishes from items.photos (the DB row), so the server item is
+      // the authority — only refuse when IT has no photos either.
+      let serverHasPhotos = false;
+      if (s.inventoryItemId) {
+        try {
+          const item = await api<{ photos?: unknown[] }>(`/items/${s.inventoryItemId}`, { token });
+          serverHasPhotos = (item.photos?.length ?? 0) > 0;
+        } catch {
+          // Unreachable item — fall through to the photo guard error.
+        }
+      }
+      if (!serverHasPhotos) return { success: false, error: 'At least one photo is required' };
+    }
 
     setState(prev => ({ ...prev, publishStatus: 'publishing' }));
 
@@ -467,6 +536,9 @@ export function useListingFlow() {
         method: 'PATCH',
         body: {
           quantity: s.quantity,
+          // Photo-order backstop: publish reads items.photos, and drafts are
+          // the only place a flow reorder/delete is guaranteed to have landed.
+          ...(s.photos.length > 0 && { photos: normalizePhotoOrder(s.photos) }),
           ...(weightOz != null && {
             weightOz,
             // route schema is positive().optional() — send undefined, never null.
@@ -628,6 +700,9 @@ export function useListingFlow() {
     applyPricingStrategy,
     addPhotos,
     updatePhoto,
+    reorderPhotos,
+    removePhoto,
+    commitPhotoOrder,
     ensureItemCreated,
     publish,
     cancel,

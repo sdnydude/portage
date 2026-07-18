@@ -6,7 +6,7 @@ sidebar_position: 9
 
 # Porter
 
-Porter is Portage's AI assistant, accessible from the Porter tab. It uses Claude Sonnet in a tool_use loop to help users manage their inventory and create listings.
+Porter is Portage's AI assistant, accessible from the Porter tab. It uses Claude Sonnet in a tool_use loop to help users manage their inventory and create listings. Porter is not a generic chatbot — it has function-calling access to the user's real inventory via three tools (`search_inventory`, `get_inventory_stats`, `suggest_listing`); the client side is documented in [Porter Frontend](/docs/frontend/porter).
 
 ## Endpoints
 
@@ -46,13 +46,7 @@ Same body as `/porter/stream`; returns the complete response in one JSON payload
 ```json
 {
   "conversationId": "uuid",
-  "response": "Your most valuable item is the Fender Stratocaster American Professional II, valued at $1,200-$1,600 with a median of $1,400.",
-  "toolCalls": [
-    {
-      "tool": "get_inventory_stats",
-      "result": { "totalItems": 42, "totalValueMedian": 15600 }
-    }
-  ]
+  "message": "Your most valuable item is the Fender Stratocaster American Professional II, valued at $1,200-$1,600 with a recommended price of $1,400."
 }
 ```
 
@@ -82,19 +76,19 @@ Porter has access to three tools via Claude's tool_use API:
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `search_inventory` | Search user's items by keyword | `query: string` |
+| `search_inventory` | Search user's items by keyword, category, or condition | `query?: string`, `category?: string`, `condition?: string` |
 | `get_inventory_stats` | Get portfolio summary | — |
-| `suggest_listing` | Generate listing for an item | `itemId: string` |
+| `suggest_listing` | Generate listing for an item | `itemId: string`, `marketplace: "ebay" \| "reverb"` |
 
 The tool_use loop allows Porter to call multiple tools in sequence to answer complex questions like "List my top 5 most valuable items and suggest eBay listings for each."
 
 ## Conversation Storage
 
-Conversations persist in the `conversations` table as a JSONB message array in `blocks: ContentBlock[]` format, allowing users to reference past interactions. The Porter tab shows the current conversation with a "New Chat" button to start fresh.
+Conversations persist in the `conversations` table as a JSONB message array. The two write paths use different message formats: `/porter/stream` (the primary endpoint) persists messages in the `blocks: ContentBlock[]` format, while `/porter/message` (the non-streaming fallback) still writes legacy `{ role, content }` messages. Reads normalize both — a legacy message is presented as a single text block — so a conversation can safely contain a mix. The Porter tab shows the current conversation with a "New Chat" button to start fresh.
 
 ## Limits
 
-Porter exchanges are billing-gated per day (`porterExchangesPerDay` by effective tier; unlimited for Pro and beta-tester). Exceeding the limit returns `429 LIMIT_REACHED`.
+Porter exchanges are billing-gated per day (`porterExchangesPerDay` by effective tier: 5/day free, 500/day Pro, unlimited for beta-tester). Exceeding the limit returns `429 PORTER_LIMIT_REACHED`.
 
 ## Suggested Prompts
 

@@ -1,7 +1,7 @@
 ---
 id: environment-variables
 title: Environment Variables
-sidebar_position: 2
+sidebar_position: 4
 ---
 
 # Environment Variables
@@ -94,12 +94,22 @@ The vision and chat pipelines use configurable provider chains (comma-separated,
 
 ## Optional Variables
 
-### Frontend
+### Runtime
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NEXT_PUBLIC_API_URL` | API base URL override for the frontend | `/backend` (same-origin rewrite) |
-| `WATCHPACK_POLLING` | Enable polling for HMR over network (dev only) | `true` |
+| `NODE_ENV` | `development`, `production`, or `test` — in production, startup fails unless `CF_ACCESS_AUD` is set | `development` |
+| `API_PORT` | Express API listen port | `8016` |
+| `WEB_PORT` | Web app port — **informational (.env.example convention only)**: no code reads it; `docker-compose.yml` hard-codes the mapping `3002:3000` and manual dev passes `--port 3002` | `3002` |
+
+### Frontend
+
+These are consumed by Next.js / the dev tooling, **not** by the API's `env.ts` Zod schema:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NEXT_PUBLIC_API_URL` | API base URL override for the frontend (`apps/web/src/lib/api.ts`) | `/backend` (same-origin rewrite) |
+| `WATCHPACK_POLLING` | Enable polling for HMR over network (dev only, set by the `dev` script) | `true` |
 
 ### Notifications & Ops
 
@@ -107,13 +117,13 @@ The vision and chat pipelines use configurable provider chains (comma-separated,
 |----------|-------------|
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_EMAIL` | Web Push (VAPID) credentials |
 | `RESEND_API_KEY` / `RESEND_FROM` | Beta invite emails via Resend (`RESEND_FROM` must be on a verified Resend domain) |
-| `REGISTRY_URL` | DHG Registry endpoint for in-app beta reports (default `http://10.0.0.251:8011`) |
+| `REGISTRY_URL` | DHG Registry endpoint for in-app beta reports (default `http://10.0.0.251:8011`) — raw `process.env` read in `apps/api/src/routes/beta.ts`, not part of the `env.ts` Zod schema |
 | `APP_URL` | Public app URL used in emails and links |
 | `METRICS_SECRET` | If set, `GET /metrics` requires `Authorization: Bearer <secret>` |
 
 ## Doppler Setup
 
-Portage uses Doppler for secrets management across environments:
+Quickstart:
 
 ```bash
 # Install Doppler CLI
@@ -129,7 +139,7 @@ doppler setup --project portage
 doppler secrets download --no-file --format env > .env
 ```
 
-The `SessionStart` hook runs this automatically at the beginning of each Claude Code session.
+The `SessionStart` hook runs the download automatically at the beginning of each Claude Code session. Full guide: [Doppler — Secrets Management](http://10.0.0.251:8017/infrastructure/doppler/) on the DHG docs site.
 
 ## Security Notes
 
