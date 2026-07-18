@@ -4,10 +4,12 @@
 // HIG alignment (docs/research/2026-07-15-apple-hig-ios26-shell-alignment.md):
 // the mobile bar holds 5 tabs max; More/settings is reached via the PageHeader
 // avatar on mobile and the sidebar secondary section on lg+.
+// Listings dropped from the bar 2026-07-17 (4 tabs + center Scan) — the
+// /listings ROUTE stays fully functional, reached from Home modules and
+// inventory links.
 export const BAR_TABS = [
   "/home",
   "/inventory",
-  "/listings",
   "/porter",
   "/orders",
 ] as const;
