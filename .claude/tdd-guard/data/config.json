@@ -1,15 +1,1 @@
-{
-  "guardEnabled": true,
-  "ignorePatterns": [
-    "*.md",
-    "*.txt",
-    "*.log",
-    "*.json",
-    "*.yml",
-    "*.yaml",
-    "*.xml",
-    "*.html",
-    "*.css",
-    "**/apps/web/**"
-  ]
-}
+{"guardEnabled":true}

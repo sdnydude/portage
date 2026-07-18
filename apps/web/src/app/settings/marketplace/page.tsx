@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 
 interface MarketplaceAccount {
   id: string;
-  marketplace: "ebay" | "etsy" | "reverb";
+  marketplace: "ebay" | "reverb";
   marketplaceUserId: string | null;
   tokenExpiresAt: string;
   createdAt: string;
@@ -15,7 +15,6 @@ interface MarketplaceAccount {
 
 const MARKETPLACE_INFO: Record<string, { name: string; color: string; connectPath: string | null }> = {
   ebay: { name: "eBay", color: "#e53238", connectPath: "/marketplace/ebay/connect" },
-  etsy: { name: "Etsy", color: "#f1641e", connectPath: "/marketplace/etsy/connect" },
   reverb: { name: "Reverb", color: "#4a90d9", connectPath: null },
 };
 
@@ -81,7 +80,7 @@ export default function MarketplacePage() {
   return (
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
-        <div className="flex items-center gap-3 max-w-lg mx-auto">
+        <div className="flex items-center gap-3 content-container">
           <button onClick={() => router.back()} className="p-1 -ml-1" aria-label="Go back">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
@@ -91,7 +90,7 @@ export default function MarketplacePage() {
         </div>
       </header>
 
-      <div className="px-4 py-6 max-w-lg mx-auto space-y-3">
+      <div className="px-4 py-6 content-container space-y-3 compact-bar-clearance">
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 rounded-full border-2 border-forest-green border-t-transparent animate-spin" />
@@ -101,7 +100,7 @@ export default function MarketplacePage() {
             {error}
           </div>
         ) : (
-          (["ebay", "etsy", "reverb"] as const).map((marketplace) => {
+          (["ebay", "reverb"] as const).map((marketplace) => {
             const info = MARKETPLACE_INFO[marketplace];
             const account = getAccount(marketplace);
             const expired = account ? isExpired(account) : false;
@@ -163,6 +162,15 @@ export default function MarketplacePage() {
                   <p className="text-[11px] text-text-placeholder mt-2">
                     Connected {new Date(account.createdAt).toLocaleDateString()}
                   </p>
+                )}
+
+                {marketplace === "ebay" && account && (
+                  <a
+                    href="/settings/seller-profile"
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-forest-green hover:underline"
+                  >
+                    Finish eBay setup — ship-from &amp; selling policies →
+                  </a>
                 )}
 
                 {marketplace === "reverb" && !account && showReverbInput && (

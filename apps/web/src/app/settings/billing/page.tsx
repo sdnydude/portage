@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 
 interface BillingStatus {
-  effectiveTier: "free" | "pro";
+  effectiveTier: "free" | "pro" | "beta-tester";
   trial: { active: boolean; endsAt: string } | null;
   subscription: { id: string; plan: "monthly" | "annual" } | null;
   usage: {
@@ -131,7 +131,7 @@ export default function BillingPage() {
 
   if (loading) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-8">
+      <div className="content-container px-4 py-8">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-[var(--color-border)] rounded w-48" />
           <div className="h-32 bg-[var(--color-border)] rounded-xl" />
@@ -143,18 +143,19 @@ export default function BillingPage() {
 
   if (!status) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-8">
+      <div className="content-container px-4 py-8">
         <p className="text-red-500">{error || "Unable to load billing information"}</p>
       </div>
     );
   }
 
-  const isPro = status.effectiveTier === "pro";
-  const isTrialing = status.trial?.active === true;
+  const isBetaTester = status.effectiveTier === "beta-tester";
+  const isPro = status.effectiveTier === "pro" || isBetaTester;
+  const isTrialing = !isBetaTester && status.trial?.active === true;
   const isPaid = !!status.subscription;
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-8 pb-24">
+    <div className="content-container px-4 py-8 pb-24">
       <h1 className="text-2xl font-bold font-[family-name:var(--font-instrument)] mb-6">
         Billing & Plan
       </h1>
@@ -172,7 +173,7 @@ export default function BillingPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold">
-              {isPaid ? "Pro" : isTrialing ? "Pro (Trial)" : "Free"}
+              {isBetaTester ? "Beta Tester" : isPaid ? "Pro" : isTrialing ? "Pro (Trial)" : "Free"}
             </h2>
             {isPaid && status.subscription && (
               <p className="text-sm text-[var(--color-text-secondary)]">
@@ -191,8 +192,8 @@ export default function BillingPage() {
           </span>
         </div>
 
-        {/* Upgrade CTA for free/trial users */}
-        {!isPaid && (
+        {/* Upgrade CTA for free/trial users — never shown to beta testers */}
+        {!isPaid && !isBetaTester && (
           <div className="space-y-2">
             <button
               onClick={() => handleCheckout("monthly")}

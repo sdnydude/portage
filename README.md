@@ -6,21 +6,21 @@ AI-powered personal effects inventory and multi-marketplace seller app.
 ![Node](https://img.shields.io/badge/node-20-green)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
 
-Portage helps you catalog what you own, get AI-powered valuations, and sell across eBay and Etsy from a single mobile-first interface. Point your camera at an item, let Claude Vision identify it, then list it on multiple marketplaces with one tap.
+Portage helps you catalog what you own, get AI-powered valuations, and sell across eBay and Reverb from a single responsive, mobile-first interface. Point your camera at an item, let AI vision identify it (Gemini 2.5 primary, Claude fallback), then prepare AI-generated listings and publish to each marketplace with an explicit confirm.
 
 ## Features
 
-- **AI Item Scanning** — Claude Vision identifies items, estimates value, extracts metadata
-- **Photo Pipeline** — Camera capture, R2 cloud storage, auto-enhance, background removal (WASM), crop, rotate, before/after preview
-- **Multi-Marketplace** — eBay, Etsy, and Reverb adapters with OAuth2/token auth, listing CRUD, order sync
+- **AI Item Scanning** — AI vision provider chain (Gemini 2.5 primary, Claude fallback in prod) identifies items, estimates value, extracts metadata
+- **Photo Pipeline** — Camera capture, R2 cloud storage, auto-enhance, background removal (server-side portage-rembg), crop, rotate, before/after preview
+- **Multi-Marketplace** — eBay and Reverb adapters with OAuth2/PAT auth, listing CRUD, order sync
 - **Listing Flow** — Three UX modes (Hybrid, Conversational, Swipe) with AI-generated titles, descriptions, and pricing from comps
 - **Porter AI Assistant** — Conversational AI that searches your inventory and suggests listings
 - **Billing** — Stripe subscriptions (Free/Pro tiers), credit packs, usage-gated AI tools
 - **Bulk Operations** — Multi-select, bulk delete/archive/activate, eBay Seller Hub CSV export
 - **Admin Panel** — Dashboard, user management, settings, audit log, Prometheus observability
-- **Mobile-First PWA** — 5-tab navigation, designed for phone-in-hand workflows
+- **Responsive PWA** — mobile-first, designed for phone-in-hand workflows with a desktop sidebar layout; 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button; More via avatar menu
 
-See the full [Features Reference](https://10.0.0.251:8017/docs/features) for detailed capabilities, unique differentiators, and competitive advantages.
+See the full [Features Reference](http://10.0.0.251:8017/portage/features/) (LAN-only docs site) for detailed capabilities, unique differentiators, and competitive advantages. New to the project? Start with [ONBOARDING.md](./ONBOARDING.md).
 
 ## Tech Stack
 
@@ -30,12 +30,12 @@ See the full [Features Reference](https://10.0.0.251:8017/docs/features) for det
 | API | Express 5, TypeScript, pino |
 | Frontend | Next.js 16, React 19, Tailwind v4 |
 | Database | PostgreSQL 15, Drizzle ORM |
-| Auth | JWT + refresh tokens, bcrypt |
+| Auth | Cloudflare Access (IdP, no passwords, JWKS-verified) + short-lived internal JWT (15 min) |
 | Images | Cloudflare R2, Sharp |
-| AI | Claude Sonnet (vision + tool_use) |
-| BG Removal | @imgly/background-removal (WASM) |
+| AI | Vision: provider chain (Gemini 2.5 primary, Claude fallback); Porter assistant: Claude Sonnet (tool_use + SSE streaming) |
+| BG Removal | portage-rembg container (server-side, `POST /images/remove-bg`) |
 | Billing | Stripe (subscriptions, webhooks, credits) |
-| Marketplaces | eBay (REST), Etsy (REST + PKCE), Reverb (PAT) |
+| Marketplaces | eBay (Trading API, Trade-First), Reverb (PAT) |
 | Encryption | AES-256-GCM (marketplace tokens) |
 | Docs | Docusaurus 3.10, nginx, GitHub Actions CI/CD |
 
@@ -84,7 +84,7 @@ portage/
 │   │   ├── src/
 │   │   │   ├── db/           # Drizzle schema + connection
 │   │   │   ├── lib/          # JWT, crypto, storage, vision
-│   │   │   ├── marketplace/  # eBay + Etsy adapters
+│   │   │   ├── marketplace/  # eBay + Reverb adapters
 │   │   │   ├── middleware/    # Auth, error handling
 │   │   │   ├── routes/       # All API routes
 │   │   │   └── scripts/      # Admin promotion
@@ -101,7 +101,7 @@ portage/
 ├── website/          # Docusaurus docs site (deployed via CI)
 ├── docs/             # TODO roadmap, admin plan
 ├── docker-compose.yml
-└── docker-compose.override.yml  # Dev volume mounts
+└── docker-compose.dev.yml  # Opt-in hot-reload dev overlay (never auto-loaded)
 ```
 
 ## Scripts
@@ -118,13 +118,8 @@ npm run db:studio     # Open Drizzle Studio
 
 ## Demo Account
 
-After starting the app, a demo account is available:
-
-```
-Email: demo@portage.app
-Password: demo1234demo1234
-```
+Demo credentials live in Doppler (never committed).
 
 ## Design
 
-Forest green (#2D5A27) primary, mobile-first with Instrument Sans display font, Plus Jakarta Sans body, JetBrains Mono for code. Five-tab bottom navigation: Inventory, Listings, Porter, Orders, More.
+Forest green (#2D5A27) primary, mobile-first with Instrument Sans display font, Plus Jakarta Sans body, JetBrains Mono for code. Bottom navigation: 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button; More via avatar menu.

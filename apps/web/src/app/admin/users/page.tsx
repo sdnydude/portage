@@ -11,7 +11,7 @@ interface AdminUser {
   email: string;
   displayName: string | null;
   role: "user" | "admin";
-  subscriptionTier: "free" | "pro";
+  subscriptionTier: "free" | "pro" | "beta-tester";
   aiScansThisMonth: number;
   bgRemovalsThisMonth: number;
   disabledAt: string | null;
@@ -57,7 +57,7 @@ export default function AdminUsersPage() {
 
   const { data, isLoading, refetch } = useAdminApi<UsersResponse>(`/users${query}`, [search, roleFilter, tierFilter, statusFilter, page]);
 
-  const handleAction = async (userId: string, action: string, body: Record<string, unknown>) => {
+  const handleAction = async (userId: string, action: string, body?: Record<string, unknown>) => {
     if (!token) return;
     const confirmMsg = action === "delete"
       ? "Permanently delete this user and all their data? This cannot be undone."
@@ -78,11 +78,46 @@ export default function AdminUsersPage() {
 
   const totalPages = data ? Math.ceil(data.total / data.limit) : 0;
 
+  // Add-user modal: creates the row + CF allowlist entry (+ optional invite).
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({ email: "", displayName: "", tier: "beta-tester", role: "user", invite: true });
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const handleAddUser = async () => {
+    if (!token || !addForm.email.trim()) return;
+    setAddBusy(true);
+    setAddError(null);
+    try {
+      await api("/admin/users", {
+        method: "POST",
+        body: {
+          email: addForm.email.trim(),
+          ...(addForm.displayName.trim() ? { displayName: addForm.displayName.trim() } : {}),
+          subscriptionTier: addForm.tier,
+          role: addForm.role,
+          invite: addForm.invite,
+        },
+        token,
+      });
+      setShowAdd(false);
+      setAddForm({ email: "", displayName: "", tier: "beta-tester", role: "user", invite: true });
+      refetch();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Failed to create user");
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4 max-w-6xl">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-text-primary font-[family-name:var(--font-instrument)]">Users</h1>
-        {data && <div className="text-sm text-text-secondary">{data.total} total</div>}
+        <div className="flex items-center gap-3">
+          {data && <div className="text-sm text-text-secondary">{data.total} total</div>}
+          <button onClick={() => setShowAdd(true)} className="px-3 py-1.5 text-sm rounded-lg bg-forest-green text-white hover:opacity-90">Add user</button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -102,6 +137,7 @@ export default function AdminUsersPage() {
           <option value="">All Plans</option>
           <option value="free">Free</option>
           <option value="pro">Pro</option>
+          <option value="beta-tester">Beta Tester</option>
         </select>
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} className="px-3 py-1.5 bg-muted rounded-lg text-sm text-text-primary border border-transparent">
           <option value="">All Status</option>
@@ -139,7 +175,7 @@ export default function AdminUsersPage() {
                   {user.displayName && <div className="text-xs text-text-placeholder">{user.displayName}</div>}
                 </td>
                 <td className="px-4 py-2.5"><Badge color={user.role === "admin" ? "blue" : "gray"}>{user.role}</Badge></td>
-                <td className="px-4 py-2.5"><Badge color={user.subscriptionTier === "pro" ? "green" : "gray"}>{user.subscriptionTier}</Badge></td>
+                <td className="px-4 py-2.5"><Badge color={user.subscriptionTier === "pro" ? "green" : user.subscriptionTier === "beta-tester" ? "blue" : "gray"}>{user.subscriptionTier}</Badge></td>
                 <td className="px-4 py-2.5 text-right text-text-primary">{user.itemCount}</td>
                 <td className="px-4 py-2.5 text-right text-text-primary">{user.activeListingCount}</td>
                 <td className="px-4 py-2.5 text-right text-text-primary">${user.totalRevenue.toLocaleString()}</td>
@@ -158,10 +194,11 @@ export default function AdminUsersPage() {
                       <button onClick={() => handleAction(user.id, "downgrade", { subscriptionTier: "free" })} className="text-xs px-2 py-1 rounded bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400">Free</button>
                     )}
                     {user.disabledAt ? (
-                      <button onClick={() => handleAction(user.id, "enable", { disabled: false })} className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400">Enable</button>
+                      <button onClick={() => handleAction(user.id, "enable", { disabled: false })} className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400">Unarchive</button>
                     ) : (
-                      <button onClick={() => handleAction(user.id, "disable", { disabled: true, disabledReason: prompt("Reason for disabling?") || "" })} className="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400">Disable</button>
+                      <button onClick={() => handleAction(user.id, "disable", { disabled: true, disabledReason: prompt("Reason for archiving?") || "" })} className="text-xs px-2 py-1 rounded bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400">Archive</button>
                     )}
+                    <button onClick={() => handleAction(user.id, "delete")} className="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -179,6 +216,50 @@ export default function AdminUsersPage() {
           <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 text-sm rounded-lg bg-muted text-text-secondary disabled:opacity-30">Previous</button>
           <span className="text-sm text-text-secondary">Page {page} of {totalPages}</span>
           <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1 text-sm rounded-lg bg-muted text-text-secondary disabled:opacity-30">Next</button>
+        </div>
+      )}
+
+      {showAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => !addBusy && setShowAdd(false)} />
+          <div className="relative bg-surface rounded-2xl border border-border p-5 w-full max-w-sm space-y-3">
+            <h2 className="text-sm font-semibold text-text-primary">Add user</h2>
+            <p className="text-xs text-text-secondary">Creates the account and adds the email to the Cloudflare Access allowlist — that entry is what lets them log in.</p>
+            {addError && <div className="text-xs text-red-600">{addError}</div>}
+            <label className="block text-sm">
+              <span className="text-text-secondary block mb-1">Email</span>
+              <input type="email" value={addForm.email} onChange={e => setAddForm({ ...addForm, email: e.target.value })} className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-surface" />
+            </label>
+            <label className="block text-sm">
+              <span className="text-text-secondary block mb-1">Name (optional)</span>
+              <input value={addForm.displayName} onChange={e => setAddForm({ ...addForm, displayName: e.target.value })} className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-surface" />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="text-text-secondary block mb-1">Plan</span>
+                <select value={addForm.tier} onChange={e => setAddForm({ ...addForm, tier: e.target.value })} className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-surface">
+                  <option value="free">free</option>
+                  <option value="pro">pro</option>
+                  <option value="beta-tester">beta-tester</option>
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-text-secondary block mb-1">Role</span>
+                <select value={addForm.role} onChange={e => setAddForm({ ...addForm, role: e.target.value })} className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-surface">
+                  <option value="user">user</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={addForm.invite} onChange={e => setAddForm({ ...addForm, invite: e.target.checked })} className="rounded" />
+              <span>Send invite email</span>
+            </label>
+            <div className="flex gap-2 pt-1">
+              <button disabled={addBusy || !addForm.email.trim()} onClick={handleAddUser} className="px-3 py-1.5 text-sm rounded-lg bg-forest-green text-white disabled:opacity-50">{addBusy ? "Creating…" : "Create user"}</button>
+              <button disabled={addBusy} onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm rounded-lg bg-muted text-text-secondary">Cancel</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

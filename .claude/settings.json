@@ -66,6 +66,11 @@
             "type": "command",
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/check-ports.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/enforce-frontend-e2e.sh",
+            "timeout": 120
           }
         ]
       },
@@ -76,6 +81,104 @@
             "type": "command",
             "command": "bash ~/DHG/dhg-memreg/hooks/enforce-ship.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/guard-schema-push.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event PreToolUse",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event PostToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event UserPromptSubmit",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event SubagentStart",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event SubagentStop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint check --event Notification",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/swebber64/DHG/portage/.claude/hooks/capture-guarantee.py 2>/dev/null || true",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "_agentlint": "v2",
+            "command": "/home/swebber64/.local/bin/agentlint report",
+            "timeout": 30
           }
         ]
       }

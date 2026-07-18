@@ -6,29 +6,23 @@ Next.js 16 frontend. See root CLAUDE.md for architecture overview.
 
 ```
 src/app/
-├── (tabs)/          # Bottom nav pages (wrapped with TabBar)
+├── (tabs)/          # 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button; More via avatar menu
 │   ├── home/        # Dashboard
 │   ├── inventory/   # Item grid/list
 │   ├── listings/    # Active/sold
-│   ├── orders/      # Fulfillment
+│   ├── orders/      # Sold list (thumbnail/title/date/price; Ship-It → eBay)
 │   ├── porter/      # AI assistant
-│   └── more/        # Settings/profile
+│   └── more/        # Settings hub — reached via avatar menu, not a bottom-nav tab
 ├── admin/           # Separate layout tree (sidebar nav)
-├── inventory/[id]/  # Item detail + edit
-├── listings/[id]/   # Listing detail
-├── list/            # Create listing entry
-├── inventory/[id]/  # Item detail + edit
-├── listings/[id]/   # Listing detail
+├── inventory/[id]/  # Item detail + edit + Marketplace Listings section (ListingCard) + /preview PNG-share subroute
+├── listings/[id]/   # Redirect → /inventory/[itemId]?listing=[id] (hub)
 ├── list/            # Create listing entry
 ├── orders/[id]/     # Order detail
-├── orders/[id]/ship/# Ship order flow
 ├── messages/        # eBay buyer messaging (conversations list + thread view)
-├── settings/        # 8 settings pages (profile, marketplace, seller-profile, shipping, billing, notifications, help, admin)
-├── login/           # Auth
-└── register/        # Auth
+└── settings/        # 6 settings pages (profile, marketplace, seller-profile, billing, notifications, help)
 ```
 
-The `(tabs)/layout.tsx` wraps children with bottom padding (`pb-20`) and the `TabBar` component. Routes outside `(tabs)/` don't get the tab bar.
+The root `app/layout.tsx` wraps everything in `AppShell` (route-aware responsive shell: desktop sidebar, iPad breakpoints, mobile floating glass `TabBar`). `(tabs)/layout.tsx` only adds bottom padding (`pb-24`) and `PorterProvider` — `TabBar` mounts once inside `AppShell` for all non-admin routes, not per-layout.
 
 ## Component Organization
 
@@ -38,10 +32,10 @@ Directories mirror feature areas, not component types:
 |-----------|----------|
 | `capture/` | ScanFlow, ScanFab, CameraCapture, CaptureSheet, ImagePicker |
 | `listing-flow/` | HybridFlow, ConversationalFlow, SwipeFlow, PhotoCaptureFlow, PhotoEditor, CropTool, PhotoGrid, PricingStrategyPicker |
-| `listing/` | ListingPreviewCard, CompsPricingWidget, CreateListingSheet, BulkListingBar |
+| `listing/` | ListingCard, ListingPreviewCard, CompsPricingWidget, CreateListingSheet, BulkListingBar |
 | `inventory/` | ItemCard, SearchBar, ViewControls, BulkActionBar |
-| `layout/` | PageHeader (sticky top), TabBar (bottom nav + scan FAB) |
-| `image/` | BeforeAfterSlider, BgRemovalPanel |
+| `layout/` | AppShell (route-aware responsive shell), Sidebar (desktop/iPad collapsible nav rail), TopBar (desktop header), PageHeader (sticky top, mobile), TabBar (floating glass bottom nav + scan FAB) |
+| `image/` | BeforeAfterSlider |
 | `onboarding/` | OnboardingFlow (5-step first-run carousel) |
 | `celebration/` | SoldCelebration |
 | `auth/` | AuthProvider |
@@ -66,7 +60,7 @@ const data = await api<MyType>('/path', {
 
 ## Auth
 
-localStorage-based (`portage_token`, `portage_refresh`, `portage_user`). Automatic token refresh on 401 via `api()` — refreshes access token, retries the request, and syncs React state through `setOnTokenRefreshed` callback. No route guards in layout — pages check auth ad-hoc via `useAuth()`.
+Cloudflare Access is the identity/session layer — no password, no refresh token. localStorage caches `portage_token` + `portage_user`. On 401, `api()` calls `exchangeSession()` (`GET /auth/session`, re-verifies the CF Access assertion) for a fresh internal token, retries the request, and syncs React state through the `setOnSessionExchanged` callback. No route guards in layout — pages check auth ad-hoc via `useAuth()`. Logout redirects to the CF Access logout endpoint.
 
 ## Hook Contract
 
@@ -80,9 +74,7 @@ All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. K
 | `useComps` | Comparable listings for pricing |
 | `usePrepareListing` | AI field generation |
 | `useDrafts` | Draft persistence |
-| `useShipping` | Presets, rates, label purchase |
-| `useShippingProvider` | Carrier config and connection test |
-| `useBgRemoval` | @imgly background removal (in-browser) |
+| `useBgRemoval` | Background removal via API (`POST /images/remove-bg`, server-side rembg) |
 | `useEnhance` | AI photo enhancement (server-side Sharp) |
 | `useConversations` | eBay message conversation list |
 | `useConversationMessages` | Messages in a single thread |
@@ -121,7 +113,7 @@ Glass morphism has `@supports` fallback for browsers without `backdrop-filter`.
 
 ## State Management
 
-React Context only — no Zustand/Jotai/Redux. `AuthContext` is the only provider. All other state lives in hooks or component-local `useState`.
+React Context only — no Zustand/Jotai/Redux. Two providers: `AuthProvider` (app-wide, in app/layout.tsx) and `PorterProvider` (src/hooks/use-porter-context.tsx, Porter feature scope). All other state lives in hooks or component-local `useState`.
 
 ## Gotchas
 
@@ -131,3 +123,4 @@ React Context only — no Zustand/Jotai/Redux. `AuthContext` is the only provide
 - **Polling HMR:** `WATCHPACK_POLLING=true` required for reliable hot reload over network.
 - **iOS aspect-ratio collapse:** Never use `aspect-ratio` (Tailwind `aspect-square`) inside flex + overflow-hidden containers — iOS WebKit collapses to 0px. Use `paddingBottom: "100%"` percentage trick instead (see `BeforeAfterSlider`).
 - **Docker no hot-reload:** Production containers don't reflect code changes without `docker compose up -d --build portage-app`.
+- **Tutorial screenshots rot:** `/tutorials` pages render PNGs from `public/tutorials/**` captured by `npm run capture:tutorials` (needs the app running; not in CI). After any visible UI change to home, inventory, listings, orders, settings, porter, or messages screens, re-run the capture and commit the updated PNGs — overlay coords live in `src/lib/tutorials/*` next to each topic's capture manifest. After recapturing, verify overlay placement with `node scripts/render-tutorial-steps.mjs [topic ...]` (renders every step via a dev server and screenshots them for visual review).

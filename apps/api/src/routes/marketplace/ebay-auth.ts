@@ -8,8 +8,12 @@ import { env } from '../../lib/env.js';
 import { encrypt } from '../../lib/crypto.js';
 import { db } from '../../db/index.js';
 import { marketplaceAccounts } from '../../db/schema.js';
+import { EbayAdapter } from '../../marketplace/ebay-adapter.js';
 import { eq, and } from 'drizzle-orm';
 import { checkMarketplaceLimit } from '../../lib/billing-utils.js';
+import { getEbayUserFlowCredentials } from '../../marketplace/ebay-credentials.js';
+import { ebayTaxonomyCalls } from '../../lib/metrics.js';
+import { EBAY_USER_AGENT } from '../../marketplace/ebay-constants.js';
 
 const logger = createLogger('ebay-auth');
 
@@ -26,6 +30,43 @@ export const ebayAuthRouter = Router();
 
 ebayAuthRouter.use(requireAuth);
 
+// The category's required item specifics (aspects) + allowed values, so the
+// listing flow can collect them up front instead of failing at publish.
+ebayAuthRouter.get('/category-aspects/:categoryId', async (req, res, next) => {
+  try {
+    const aspects = await EbayAdapter.getRequiredAspects(req.params.categoryId);
+    res.json({ aspects });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Suggested leaf category for a free-text query, bundled with the category's
+// valid condition IDs so the scan-review flow gets both in one round trip.
+const suggestionQuerySchema = z.object({ q: z.string().min(1).max(200) });
+
+ebayAuthRouter.get('/category-suggestion', async (req, res, next) => {
+  try {
+    const { q } = suggestionQuerySchema.parse(req.query);
+    ebayTaxonomyCalls.inc({ operation: 'category_suggestion' });
+    const suggestion = await EbayAdapter.getCategorySuggestion(q);
+    if (!suggestion) {
+      res.json({ suggestion: null });
+      return;
+    }
+    // A conditions failure must not sink the suggestion we already have —
+    // the client treats an empty list as "constrain nothing".
+    const conditionIds = await EbayAdapter.getValidConditions(suggestion.categoryId)
+      .catch((err) => {
+        logger.warn({ err, categoryId: suggestion.categoryId }, 'getValidConditions failed; returning empty conditionIds');
+        return [] as string[];
+      });
+    res.json({ suggestion: { ...suggestion, conditionIds } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 function ebayBaseUrl(): string {
   return env().EBAY_SANDBOX
     ? 'https://api.sandbox.ebay.com'
@@ -41,7 +82,8 @@ function ebayAuthUrl(): string {
 ebayAuthRouter.get('/connect', async (req, res, next) => {
   try {
   const config = env();
-  if (!config.EBAY_CLIENT_ID || !config.EBAY_REDIRECT_URI) {
+  const { clientId } = getEbayUserFlowCredentials(config);
+  if (!clientId || !config.EBAY_REDIRECT_URI) {
     throw new AppError(503, 'EBAY_NOT_CONFIGURED', 'eBay integration is not configured');
   }
 
@@ -59,14 +101,21 @@ ebayAuthRouter.get('/connect', async (req, res, next) => {
     'https://api.ebay.com/oauth/api_scope/sell.marketing',
     'https://api.ebay.com/oauth/api_scope/sell.account',
     'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+    // Read-only Analytics for the listing-optimizer traffic report (impressions/CTR/
+    // conversion). Added 2026-06 — accounts connected before this must reconnect to
+    // re-consent; without it getTrafficReport 403s and research returns traffic:null.
+    'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly',
     'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly',
   ].join(' ');
 
   const authUrl = new URL(`${ebayAuthUrl()}/oauth2/authorize`);
-  authUrl.searchParams.set('client_id', config.EBAY_CLIENT_ID);
+  authUrl.searchParams.set('client_id', clientId);
   authUrl.searchParams.set('redirect_uri', config.EBAY_REDIRECT_URI);
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', scopes);
+  // Force the eBay sign-in screen even when an eBay session cookie exists, so a
+  // user who disconnects can reconnect under a DIFFERENT eBay account.
+  authUrl.searchParams.set('prompt', 'login');
   const state = randomBytes(16).toString('hex');
   stateStore.set(state, { userId: req.user!.sub, expiresAt: Date.now() + 10 * 60_000 });
 
@@ -86,7 +135,8 @@ const callbackSchema = z.object({
 ebayAuthRouter.post('/callback', async (req, res, next) => {
   try {
     const config = env();
-    if (!config.EBAY_CLIENT_ID || !config.EBAY_CLIENT_SECRET || !config.EBAY_REDIRECT_URI) {
+    const { clientId, clientSecret } = getEbayUserFlowCredentials(config);
+    if (!clientId || !clientSecret || !config.EBAY_REDIRECT_URI) {
       throw new AppError(503, 'EBAY_NOT_CONFIGURED', 'eBay integration is not configured');
     }
 
@@ -99,13 +149,14 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
       throw new AppError(400, 'CSRF_MISMATCH', 'Invalid or expired OAuth state parameter');
     }
 
-    const credentials = Buffer.from(`${config.EBAY_CLIENT_ID}:${config.EBAY_CLIENT_SECRET}`).toString('base64');
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
     const tokenResponse = await fetch(`${ebayBaseUrl()}/identity/v1/oauth2/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${credentials}`,
+        'User-Agent': EBAY_USER_AGENT,
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
@@ -128,6 +179,26 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
 
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 
+    // Fetch the eBay user's immutable userId for display. Non-fatal: the
+    // connection still succeeds if the Identity API is unavailable.
+    const identityHost = config.EBAY_SANDBOX
+      ? 'https://apiz.sandbox.ebay.com'
+      : 'https://apiz.ebay.com';
+    let marketplaceUserId: string | null = null;
+    try {
+      const identityResponse = await fetch(`${identityHost}/commerce/identity/v1/user/`, {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+      });
+      if (identityResponse.ok) {
+        const identity = await identityResponse.json() as { userId?: string };
+        marketplaceUserId = identity.userId ?? null;
+      } else {
+        logger.warn({ status: identityResponse.status }, 'eBay Identity API non-OK; marketplaceUserId left null');
+      }
+    } catch (identityErr) {
+      logger.warn({ err: identityErr }, 'eBay Identity fetch failed; marketplaceUserId left null');
+    }
+
     const existing = await db.select({ id: marketplaceAccounts.id })
       .from(marketplaceAccounts)
       .where(and(
@@ -142,6 +213,7 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
           accessTokenEncrypted: encrypt(tokenData.access_token),
           refreshTokenEncrypted: encrypt(tokenData.refresh_token),
           tokenExpiresAt: expiresAt,
+          marketplaceUserId,
           updatedAt: new Date(),
         })
         .where(eq(marketplaceAccounts.id, existing[0].id));
@@ -153,6 +225,7 @@ ebayAuthRouter.post('/callback', async (req, res, next) => {
         accessTokenEncrypted: encrypt(tokenData.access_token),
         refreshTokenEncrypted: encrypt(tokenData.refresh_token),
         tokenExpiresAt: expiresAt,
+        marketplaceUserId,
       });
     }
 

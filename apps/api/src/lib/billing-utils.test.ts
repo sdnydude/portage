@@ -14,7 +14,7 @@ describe('billing constants', () => {
     const { PRO_TIER_LIMITS } = await import('@portage/shared');
     expect(PRO_TIER_LIMITS.aiListingsPerMonth).toBe(75);
     expect(PRO_TIER_LIMITS.bgRemovalsPerMonth).toBeNull();
-    expect(PRO_TIER_LIMITS.porterExchangesPerDay).toBe(15);
+    expect(PRO_TIER_LIMITS.porterExchangesPerDay).toBe(500);
     expect(PRO_TIER_LIMITS.marketplaces).toBeNull();
   });
 
@@ -48,5 +48,25 @@ describe('computeEffectiveTier', () => {
     const { computeEffectiveTier } = await import('./billing-utils.js');
     expect(computeEffectiveTier('free', null)).toBe('free');
     expect(computeEffectiveTier('free', undefined)).toBe('free');
+  });
+
+  it('returns beta-tester for the private beta-tester tier regardless of trial', async () => {
+    const { computeEffectiveTier } = await import('./billing-utils.js');
+    expect(computeEffectiveTier('beta-tester', null)).toBe('beta-tester');
+    expect(computeEffectiveTier('beta-tester', new Date('2020-01-01'))).toBe('beta-tester');
+  });
+});
+
+describe('limitsForTier', () => {
+  it('maps each tier to its limit set — beta-tester is unlimited across the board', async () => {
+    const { limitsForTier, FREE_TIER_LIMITS, PRO_TIER_LIMITS, BETA_TESTER_TIER_LIMITS } = await import('@portage/shared');
+    expect(limitsForTier('free')).toBe(FREE_TIER_LIMITS);
+    expect(limitsForTier('pro')).toBe(PRO_TIER_LIMITS);
+    expect(limitsForTier('beta-tester')).toBe(BETA_TESTER_TIER_LIMITS);
+    expect(BETA_TESTER_TIER_LIMITS.aiScansPerMonth).toBeNull();
+    expect(BETA_TESTER_TIER_LIMITS.aiListingsPerMonth).toBeNull();
+    expect(BETA_TESTER_TIER_LIMITS.bgRemovalsPerMonth).toBeNull();
+    expect(BETA_TESTER_TIER_LIMITS.porterExchangesPerDay).toBeNull();
+    expect(BETA_TESTER_TIER_LIMITS.marketplaces).toBeNull();
   });
 });

@@ -1,11 +1,14 @@
 "use client";
 
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useCamera } from "@/hooks/use-camera";
 import { useAuth } from "@/hooks/use-auth";
-import { API_BASE } from "@/lib/api";
+import { apiUpload } from "@/lib/api";
 import { PhotoGrid } from "./photo-grid";
-import { PhotoEditor } from "./photo-editor";
+import { CameraCapture } from "../capture/camera-capture";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +28,7 @@ export interface PhotoCaptureFlowProps {
   maxPhotos?: number;
 }
 
-type Mode = "grid" | "choose" | "camera" | "editor";
+type Mode = "grid" | "choose" | "camera";
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -52,15 +55,6 @@ function ChevronLeftIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}
-
-function SwitchCameraIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 3h5v5M8 21H3v-5" />
-      <path d="M21 3l-7 7M3 21l7-7" />
     </svg>
   );
 }
@@ -213,101 +207,6 @@ function ChooseMode({ onTakePhoto, onFileSelected, onBack }: ChooseModeProps) {
   );
 }
 
-// ─── Camera Mode ──────────────────────────────────────────────────────────────
-
-interface CameraModeProps {
-  onCaptured: (blob: Blob) => void;
-  onBack: () => void;
-}
-
-function CameraMode({ onCaptured, onBack }: CameraModeProps) {
-  const { videoRef, canvasRef, isReady, error, start, stop, capture, switchCamera } = useCamera();
-  const [isCapturing, setIsCapturing] = useState(false);
-
-  useEffect(() => {
-    start();
-    return () => { stop(); };
-  }, [start, stop]);
-
-  const handleVideoRef = useCallback(
-    (el: HTMLVideoElement | null) => {
-      videoRef.current = el;
-    },
-    [videoRef],
-  );
-
-  const handleCapture = useCallback(async () => {
-    if (isCapturing || !isReady) return;
-    setIsCapturing(true);
-    const blob = await capture();
-    if (blob) {
-      stop();
-      onCaptured(blob);
-    }
-    setIsCapturing(false);
-  }, [capture, stop, onCaptured, isCapturing, isReady]);
-
-  const handleBack = useCallback(() => {
-    stop();
-    onBack();
-  }, [stop, onBack]);
-
-  return (
-    <div className="fixed inset-0 z-[70] bg-black flex flex-col">
-      <div className="flex-1 relative overflow-hidden">
-        <video
-          ref={handleVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-        <canvas ref={canvasRef} className="hidden" />
-
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6">
-            <div className="text-center">
-              <p className="text-white text-lg mb-2">Camera unavailable</p>
-              <p className="text-white/60 text-sm">{error}</p>
-            </div>
-          </div>
-        )}
-
-        <button
-          onClick={handleBack}
-          className="absolute top-4 left-4 w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
-          style={{ top: "calc(1rem + var(--safe-area-top, 0px))" }}
-        >
-          <ChevronLeftIcon />
-        </button>
-
-        <button
-          onClick={switchCamera}
-          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
-          style={{ top: "calc(1rem + var(--safe-area-top, 0px))" }}
-        >
-          <SwitchCameraIcon />
-        </button>
-      </div>
-
-      <div
-        className="bg-black px-6 py-8 flex items-center justify-center"
-        style={{ paddingBottom: "calc(2rem + var(--safe-area-bottom, 0px))" }}
-      >
-        <button
-          onClick={handleCapture}
-          disabled={!isReady || isCapturing}
-          className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center disabled:opacity-40 transition-opacity active:scale-95"
-        >
-          <div
-            className={`w-16 h-16 rounded-full transition-colors ${isCapturing ? "bg-red-500" : "bg-white"}`}
-          />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Orchestrator ────────────────────────────────────────────────────────
 
 export function PhotoCaptureFlow({
@@ -315,12 +214,11 @@ export function PhotoCaptureFlow({
   onCancel,
   initialPhotos = [],
   minPhotos = 4,
-  maxPhotos = 12,
+  maxPhotos = MAX_PHOTOS_PER_ITEM,
 }: PhotoCaptureFlowProps) {
   const { token } = useAuth();
   const [photos, setPhotos] = useState<CapturedPhoto[]>(initialPhotos);
   const [mode, setMode] = useState<Mode>("grid");
-  const [editIndex, setEditIndex] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -352,21 +250,10 @@ export function PhotoCaptureFlow({
         const filename = `photo-${Date.now()}.jpg`;
         formData.append("image", blob, filename);
 
-        const res = await fetch(`${API_BASE}/images`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token ?? ""}` },
-          body: formData,
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({ error: "Upload failed" }));
-          throw new Error(errData.error ?? "Upload failed");
-        }
-
-        const data = (await res.json()) as {
+        const data = await apiUpload<{
           image: { key: string; url: string; width?: number; height?: number };
           thumbnail: { key: string; url: string };
-        };
+        }>("/images", formData, { token: token ?? undefined });
 
         return {
           key: data.image.key,
@@ -394,10 +281,17 @@ export function PhotoCaptureFlow({
     setMode("choose");
   }, [photos.length, maxPhotos]);
 
+  // Edits persist into the local capture list; the shared overlay hosts the
+  // tools. The pre-edit thumbnail is dropped so the grid falls back to the
+  // edited full image instead of a stale thumb.
+  const photoEdit = usePhotoEdit(photos, (index, patch) => {
+    setPhotos((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch, thumbnailUrl: undefined } : p)));
+  });
+
   const handleEdit = useCallback((index: number) => {
-    setEditIndex(index);
-    setMode("editor");
-  }, []);
+    photoEdit.openEditor(index);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photoEdit.openEditor]);
 
   const handleDelete = useCallback((index: number) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
@@ -437,42 +331,28 @@ export function PhotoCaptureFlow({
 
   // ─── Camera handler ────────────────────────────────────────────────────────
 
+  // Multi-shot: the shared CameraCapture keeps ONE stream for the whole
+  // session (per-shot teardown made iOS/macOS Safari re-prompt for camera
+  // permission on every added photo). Shots upload behind the viewfinder;
+  // Done/✕ closes the camera once and returns to the grid.
   const handleCameraCaptured = useCallback(
-    async (blob: Blob) => {
-      const photo = await uploadBlob(blob);
+    async (file: File) => {
+      if (photos.length >= maxPhotos) return;
+      const photo = await uploadBlob(file);
       if (photo) {
         setPhotos((prev) => [...prev, photo]);
-        setMode("grid");
       }
     },
-    [uploadBlob],
+    [uploadBlob, photos.length, maxPhotos],
   );
-
-  // ─── Editor handlers ───────────────────────────────────────────────────────
-
-  const handleEditorSave = useCallback(
-    (updated: CapturedPhoto) => {
-      if (editIndex !== null) {
-        setPhotos((prev) => prev.map((p, i) => (i === editIndex ? updated : p)));
-      }
-      setEditIndex(null);
-      setMode("grid");
-    },
-    [editIndex],
-  );
-
-  const handleEditorCancel = useCallback(() => {
-    setEditIndex(null);
-    setMode("grid");
-  }, []);
 
   // ─── Render: Camera ────────────────────────────────────────────────────────
 
   if (mode === "camera") {
     return (
-      <CameraMode
-        onCaptured={handleCameraCaptured}
-        onBack={() => setMode("choose")}
+      <CameraCapture
+        onCapture={handleCameraCaptured}
+        onClose={() => setMode("grid")}
       />
     );
   }
@@ -489,25 +369,19 @@ export function PhotoCaptureFlow({
     );
   }
 
-  // ─── Render: Editor ────────────────────────────────────────────────────────
-
-  if (mode === "editor" && editIndex !== null && photos[editIndex]) {
-    return (
-      <PhotoEditor
-        photo={photos[editIndex]}
-        onSave={handleEditorSave}
-        onCancel={handleEditorCancel}
-      />
-    );
-  }
-
-  // ─── Render: Grid (default) ────────────────────────────────────────────────
+  // ─── Render: Grid (default) — the editor overlay mounts above it ──────────
 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col"
       style={{ background: "var(--flow-bg, #F5F3EF)" }}
     >
+      <PhotoEditOverlay
+        photoEdit={photoEdit}
+        photoCount={photos.length}
+        alt={photoEdit.editingIndex !== null ? `Photo ${photoEdit.editingIndex + 1}` : "Photo"}
+      />
+
       {/* Header */}
       <div
         className="flex items-center px-4 pt-4 pb-3"

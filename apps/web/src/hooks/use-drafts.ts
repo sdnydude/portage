@@ -11,6 +11,11 @@ export function useDrafts() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Monotonic save generation: a failed save's backoff retry must abort once
+  // a newer save has been issued, or the stale snapshot can land AFTER the
+  // newer one and silently roll the draft back (worse with drag-reorder
+  // bursts, where autosaves fire in quick succession).
+  const saveGenRef = useRef(0);
 
   const fetchDrafts = useCallback(async () => {
     if (!token) return;
@@ -39,12 +44,14 @@ export function useDrafts() {
     meta: {
       draftId?: string;
       itemId?: string | null;
-      marketplace: 'ebay' | 'etsy' | 'reverb';
+      marketplace: 'ebay' | 'reverb';
       lastStepCompleted?: string;
     }
   ): Promise<ListingDraft | null> => {
     if (!token) return null;
+    const gen = ++saveGenRef.current;
     for (let attempt = 0; attempt < 3; attempt++) {
+      if (gen !== saveGenRef.current) return null; // superseded by a newer save
       try {
         return await api<ListingDraft>('/drafts', {
           method: 'POST',

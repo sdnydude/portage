@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import express from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import Stripe from 'stripe';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
@@ -8,8 +8,8 @@ import { users, stripeEvents } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { createLogger } from '../lib/logger.js';
-import { computeEffectiveTier } from '../lib/billing-utils.js';
-import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
+import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
+import { limitsForTier } from '@portage/shared';
 
 const logger = createLogger('billing');
 
@@ -25,12 +25,19 @@ function getStripe(): Stripe {
   return _stripe;
 }
 
+// Rate-limit key: authenticated callers key on their user id; anonymous callers key on a
+// normalized IP subnet. ipKeyGenerator collapses an IPv6 address to its subnet so a client
+// holding a /64 block can't rotate addresses to bypass the limit (avoids ERR_ERL_KEY_GEN_IPV6).
+export function billingRateLimitKey(req: Request): string {
+  return req.user?.sub ?? (req.ip ? ipKeyGenerator(req.ip) : 'unknown');
+}
+
 const billingLimiter = rateLimit({
   windowMs: 60 * 60_000,
   limit: process.env.NODE_ENV === 'test' ? 100 : 10,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.sub ?? req.ip ?? 'unknown',
+  keyGenerator: billingRateLimitKey,
   message: { error: 'Too many billing requests, please try again later', code: 'RATE_LIMITED' },
 });
 
@@ -242,12 +249,13 @@ billingRouter.get('/status', requireAuth, async (req: Request, res: Response, ne
       aiListingsThisMonth: users.aiListingsThisMonth,
       aiListingCredits: users.aiListingCredits,
       bgRemovalsThisMonth: users.bgRemovalsThisMonth,
+      limitOverrides: users.limitOverrides,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
 
     const effectiveTier = computeEffectiveTier(user.subscriptionTier, user.trialEndsAt);
-    const isPro = effectiveTier === 'pro';
+    const limits = effectiveLimits(effectiveTier, user.limitOverrides);
 
     const priceMonthly = process.env.STRIPE_PRICE_MONTHLY;
     const priceAnnual = process.env.STRIPE_PRICE_ANNUAL;
@@ -273,18 +281,18 @@ billingRouter.get('/status', requireAuth, async (req: Request, res: Response, ne
       usage: {
         aiListings: {
           used: user.aiListingsThisMonth,
-          limit: isPro ? PRO_TIER_LIMITS.aiListingsPerMonth : FREE_TIER_LIMITS.aiListingsPerMonth,
+          limit: limits.aiListingsPerMonth,
           credits: user.aiListingCredits,
         },
         bgRemovals: {
           used: user.bgRemovalsThisMonth,
-          limit: isPro ? PRO_TIER_LIMITS.bgRemovalsPerMonth : FREE_TIER_LIMITS.bgRemovalsPerMonth,
+          limit: limits.bgRemovalsPerMonth,
         },
         porterExchanges: {
-          limit: isPro ? PRO_TIER_LIMITS.porterExchangesPerDay : FREE_TIER_LIMITS.porterExchangesPerDay,
+          limit: limits.porterExchangesPerDay,
         },
         marketplaces: {
-          limit: isPro ? PRO_TIER_LIMITS.marketplaces : FREE_TIER_LIMITS.marketplaces,
+          limit: limits.marketplaces,
         },
       },
     });

@@ -4,12 +4,15 @@ import { z } from 'zod';
 import { createLogger } from '../lib/logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { identifyItem, identifyItemDetailed, identifyItemsMulti, fetchPhotosAsBase64 } from '../lib/vision.js';
+import { prefillCandidateAspects } from '../lib/aspect-prefill.js';
 import { processImage } from '../lib/image.js';
 import { uploadImage } from '../lib/storage.js';
 import { AppError } from '../middleware/error.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq, sql } from 'drizzle-orm';
+import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
+import { limitsForTier } from '@portage/shared';
 
 const logger = createLogger('scan');
 
@@ -35,8 +38,10 @@ scanRouter.use(requireAuth);
 async function checkScanLimit(userId: string): Promise<void> {
   const [user] = await db.select({
     subscriptionTier: users.subscriptionTier,
+    trialEndsAt: users.trialEndsAt,
     aiScansThisMonth: users.aiScansThisMonth,
     scanCountResetAt: users.scanCountResetAt,
+    limitOverrides: users.limitOverrides,
   })
     .from(users)
     .where(eq(users.id, userId))
@@ -55,6 +60,14 @@ async function checkScanLimit(userId: string): Promise<void> {
     user.aiScansThisMonth = 0;
   }
 
+  // Server-side enforcement: every scan/refine is a paid vision call. Pro and
+  // beta-tester are unlimited (null); free is capped per month.
+  const tier = computeEffectiveTier(user.subscriptionTier, user.trialEndsAt);
+  const limit = effectiveLimits(tier, user.limitOverrides).aiScansPerMonth;
+  if (limit !== null && user.aiScansThisMonth >= limit) {
+    throw new AppError(429, 'LIMIT_REACHED',
+      `Monthly AI scan limit reached (${limit}). Upgrade to Pro for unlimited scans.`);
+  }
 }
 
 
@@ -87,6 +100,9 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
 
     if (detail === 'full') {
       detailedResult = await identifyItemDetailed(imageBase64, 'image/jpeg');
+      // Best-effort: pre-fill required eBay specifics on the top candidate so the
+      // scan review screen already shows them. Never throws; non-fatal on failure.
+      detailedResult.candidates = await prefillCandidateAspects(detailedResult.candidates, imageBase64);
       identification = detailedResult.candidates[0];
     } else {
       identification = await identifyItem(imageBase64, 'image/jpeg');
@@ -172,6 +188,11 @@ scanRouter.post('/refine', async (req, res, next) => {
     }
 
     const detailedResult = await identifyItemsMulti(images);
+    // Same Phase-A prefill as POST /scan?detail=full — the refine (multi-photo)
+    // path must also fill the top candidate's required eBay specifics, or the
+    // scan review shows an empty aspect list. Best-effort, never throws; threads
+    // the first image so generateListingFields takes the vision (JSON) path.
+    detailedResult.candidates = await prefillCandidateAspects(detailedResult.candidates, images[0]?.base64);
     const identification = detailedResult.candidates[0];
 
     await incrementScanCount(userId);

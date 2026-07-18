@@ -27,12 +27,10 @@ GET /drafts
       "id": "uuid",
       "itemId": "uuid",
       "marketplace": "ebay",
-      "data": {
-        "title": "Fender Stratocaster...",
-        "description": "...",
-        "price": 1400,
-        "step": "pricing"
-      },
+      "title": "Fender Stratocaster...",
+      "price": 1400,
+      "lastStepCompleted": "pricing",
+      "flowState": { "...": "full listing flow state" },
       "updatedAt": "2026-05-10T..."
     }
   ]
@@ -55,20 +53,19 @@ POST /drafts
 
 **Auth:** Required
 
-Creates or updates a draft. If a draft already exists for the same item + marketplace combination, it updates rather than creating a duplicate.
+Creates or updates a draft. Pass `id` to update a known draft; otherwise, if a draft already exists for the same item + marketplace combination, it updates rather than creating a duplicate.
 
 **Body:**
 
 ```json
 {
+  "id": "uuid (optional)",
   "itemId": "uuid",
   "marketplace": "ebay",
-  "data": {
-    "title": "...",
-    "description": "...",
-    "price": 1400,
-    "step": "pricing"
-  }
+  "title": "...",
+  "price": 1400,
+  "lastStepCompleted": "pricing",
+  "flowState": { "...": "full listing flow state" }
 }
 ```
 
@@ -79,6 +76,22 @@ DELETE /drafts/:id
 ```
 
 **Auth:** Required
+
+### Clean Up Stale Drafts
+
+```
+DELETE /drafts
+```
+
+**Auth:** Required
+
+Deletes the user's stale drafts — those not updated in the last 30 days. Recent drafts are untouched.
+
+**Response** `200`:
+
+```json
+{ "cleaned": true }
+```
 
 ## Auto-Save Behavior
 

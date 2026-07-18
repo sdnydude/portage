@@ -1,0 +1,65 @@
+# Ephemeral, isolated stack for deterministic e2e in CI. Separate project
+# (portage-e2e), separate ports (5998/8998/3998), throwaway DB. NEVER touches
+# the live stack (5436/8016/3002). Torn down with `down -v` after each run.
+name: portage-e2e
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: portage
+      POSTGRES_PASSWORD: portage
+      POSTGRES_DB: portage
+    ports:
+      - "127.0.0.1:5998:5432"   # localhost-only: used by the runner for db:push
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portage"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: development        # dev ⇒ HTTP (no certs) + dev CORS allowlist
+      API_PORT: "8998"
+      DATABASE_URL: postgresql://portage:portage@db:5432/portage
+      JWT_SECRET: e2e-jwt-secret-must-be-at-least-32-characters
+      ENCRYPTION_KEY: test-encryption-key-must-be-at-least-sixty-four-characters-long-here
+      EXTRA_CORS_ORIGINS: http://10.0.0.251:3998
+      # No CF edge in the ephemeral stack: GET /auth/session authenticates as
+      # this identity via the development-only bypass (auto-provisions the row).
+      CF_ACCESS_DEV_EMAIL: e2e@portage.app
+    ports:
+      - "8998:8998"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8998/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-e2e}
+        NEXT_PUBLIC_API_URL: http://10.0.0.251:8998
+    environment:
+      NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "3998:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 3s
+      timeout: 5s
+      retries: 30

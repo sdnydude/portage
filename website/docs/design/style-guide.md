@@ -1,9 +1,11 @@
 ---
-title: DHG Style Guide
+title: DHG Design System v1
 sidebar_position: 1
 ---
 
 # DHG Design System v1
+
+*Scope note: this guide is the DHG-wide design reference, canonically hosted in the Portage docs — other DHG projects link here rather than maintaining their own copies.*
 
 The canonical color, typography, and component reference for all Digital Harmony Group products. Every design artifact — UI, SVG diagrams, documentation, marketing — references these tokens.
 
@@ -126,28 +128,32 @@ The canonical color, typography, and component reference for all Digital Harmony
 
 ### Portage Extended Palette
 
-Portage extends the DHG base with a forest green ramp and glass morphism system:
+Portage adopted the DHG palette on 2026-06-09 (orange primary CTA, teal AI accent, graphite ink on warm stone). The original forest green ramp remains in `globals.css` as **legacy tokens** — kept until the per-screen migration off forest-green completes:
 
 | Token | Hex | Usage |
 |-------|-----|-------|
-| Forest Green | `#2D5A27` | Portage primary brand |
-| Forest Green Light | `#3D7A35` | Hover state |
-| Forest Green Dark | `#1E3D1A` | Pressed state |
-| Forest Green 50 | `#F0F7EF` | Tinted background |
-| Forest Green 100 | `#D4E8D1` | Light card fill |
+| Forest Green (legacy) | `#2D5A27` | Pre-2026-06-09 brand, migrating to DHG accents |
+| Forest Green Light (legacy) | `#3D7A35` | Hover state |
+| Forest Green Dark (legacy) | `#1E3D1A` | Pressed state |
+| Forest Green 50 (legacy) | `#F0F7EF` | Tinted background |
+| Forest Green 100 (legacy) | `#D4E8D1` | Light card fill |
 | Accent Warm | `#D4A574` | Premium / leather accent |
 | Accent Info | `#3B82F6` | Informational, links |
 
 ### Dark Mode
 
+Dark theme is applied via a `.dark` class on `<html>` (theme-init script defaults to the OS preference, honoring a stored override):
+
 | Token | Light | Dark | Notes |
 |-------|-------|------|-------|
-| Background | `#F8F7F4` | `#0F1210` | Warm tones preserved |
-| Surface | `#FFFFFF` | `#1A1F1A` | Green-tinted dark |
-| Surface Elevated | `#FFFFFF` | `#242B24` | Subtle lift |
-| Border | `#E8E5DE` | `#2D332D` | Matched warmth |
-| Primary Text | `#1A1A1A` | `#F0EDE8` | Warm white, not pure |
-| Forest Green | `#2D5A27` | `#4CAF50` | Brighter for dark bg |
+| Background | `#F5F2EB` | `#14130F` | Warm tones preserved |
+| Surface | `#FFFFFF` | `#1A1713` | Warm dark |
+| Surface Elevated | `#FFFFFF` | `#221E1A` | Subtle lift |
+| Border | `#D6D3CE` | `#332F2A` | Matched warmth |
+| Primary Text | `#2D2A26` | `#F0EDE8` | Warm white, not pure |
+| Orange | `#F77E2D` | `#FF9A52` | Brighter for dark bg |
+| Teal | `#0D7377` | `#19A5AB` | Brighter for dark bg |
+| Forest Green (legacy) | `#2D5A27` | `#4CAF50` | Brighter for dark bg |
 
 ---
 
@@ -155,42 +161,38 @@ Portage extends the DHG base with a forest green ramp and glass morphism system:
 
 ### CSS Custom Properties
 
+In Portage's `apps/web/src/app/globals.css` the DHG accents are defined **unprefixed** (`--graphite`, `--teal`, `--orange`, …), each with `-bright` / `-dark` / `-soft` ramp variants:
+
 ```css
 :root {
-  /* DHG Core Brand */
-  --dhg-graphite: #2D2A26;
-  --dhg-graphite-secondary: #4A4742;
-  --dhg-orange: #F77E2D;
-  --dhg-blaze: #FF5500;
-  --dhg-teal: #0D7377;
-  --dhg-charcoal: #3A3836;
-
-  /* Surfaces */
-  --dhg-warm-stone: #F5F2EB;
-  --dhg-off-white: #F7F5F2;
-  --dhg-card: #FFFFFF;
-  --dhg-shell: #E8E5E0;
-  --dhg-border: #D6D3CE;
-
-  /* Semantic States */
-  --dhg-success: #0F9D58;
-  --dhg-warning: #FFB800;
-  --dhg-error: #D93025;
-
-  /* Portage Extended */
-  --background: #F8F7F4;
-  --foreground: #1A1A1A;
+  /* Neutrals — DHG Warm Stone + Graphite */
+  --background: #F5F2EB;
+  --foreground: #2D2A26;
   --surface: #FFFFFF;
   --surface-elevated: #FFFFFF;
-  --muted: #F5F3EF;
-  --border: #E8E5DE;
+  --muted: #EFEBE1;
+  --border: #D6D3CE;
   --border-focus: #2D5A27;
 
-  --text-primary: #1A1A1A;
-  --text-secondary: #6B6B6B;
+  --text-primary: #2D2A26;
+  --text-secondary: #4A4742;
   --text-placeholder: #A3A3A3;
   --text-inverse: #FFFFFF;
 
+  /* DHG accents */
+  --warm-stone: #F5F2EB;
+  --graphite: #2D2A26;
+  --charcoal: #3A3836;
+  --teal: #0D7377;          /* AI / intelligence accent */
+  --teal-bright: #119AA0;
+  --teal-dark: #0A4A47;
+  --teal-soft: #E2F0F0;
+  --orange: #F77E2D;        /* primary CTA */
+  --orange-bright: #FF9A52;
+  --orange-dark: #C9621B;
+  --orange-soft: #FCEEE2;
+
+  /* Legacy brand — kept until per-screen migration off forest-green */
   --forest-green: #2D5A27;
   --forest-green-light: #3D7A35;
   --forest-green-dark: #1E3D1A;
@@ -200,7 +202,7 @@ Portage extends the DHG base with a forest green ramp and glass morphism system:
   --accent-warm: #D4A574;
   --accent-error: #DC3545;
   --accent-warning: #F59E0B;
-  --accent-success: #2D5A27;
+  --accent-success: #0F9D58;
   --accent-info: #3B82F6;
 }
 ```
@@ -209,22 +211,21 @@ Portage extends the DHG base with a forest green ramp and glass morphism system:
 
 ```css
 @theme inline {
-  --color-dhg-graphite: var(--dhg-graphite);
-  --color-dhg-graphite-secondary: var(--dhg-graphite-secondary);
-  --color-dhg-orange: var(--dhg-orange);
-  --color-dhg-blaze: var(--dhg-blaze);
-  --color-dhg-teal: var(--dhg-teal);
-  --color-dhg-charcoal: var(--dhg-charcoal);
+  /* Primary CTA color */
+  --color-primary: var(--orange);
 
-  --color-dhg-warm-stone: var(--dhg-warm-stone);
-  --color-dhg-off-white: var(--dhg-off-white);
-  --color-dhg-card: var(--dhg-card);
-  --color-dhg-shell: var(--dhg-shell);
-  --color-dhg-border: var(--dhg-border);
-
-  --color-dhg-success: var(--dhg-success);
-  --color-dhg-warning: var(--dhg-warning);
-  --color-dhg-error: var(--dhg-error);
+  /* DHG accents → Tailwind utilities (bg-teal, text-orange, bg-graphite, …) */
+  --color-warm-stone: var(--warm-stone);
+  --color-graphite: var(--graphite);
+  --color-charcoal: var(--charcoal);
+  --color-teal: var(--teal);
+  --color-teal-bright: var(--teal-bright);
+  --color-teal-dark: var(--teal-dark);
+  --color-teal-soft: var(--teal-soft);
+  --color-orange: var(--orange);
+  --color-orange-bright: var(--orange-bright);
+  --color-orange-dark: var(--orange-dark);
+  --color-orange-soft: var(--orange-soft);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -260,13 +261,12 @@ Portage extends the DHG base with a forest green ramp and glass morphism system:
 ### Usage in Components
 
 ```tsx
-// DHG core tokens
-<button className="bg-dhg-orange text-white">Primary CTA</button>
-<span className="text-dhg-teal">AI-powered</span>
-<div className="bg-dhg-warm-stone border-dhg-border">Panel</div>
+// DHG accent tokens (unprefixed in Portage)
+<button className="bg-orange text-graphite">Primary CTA</button>
+<span className="text-teal">AI-powered</span>
+<div className="bg-warm-stone border-border">Panel</div>
 
-// Portage tokens
-<h1 className="text-forest-green font-display">Portage</h1>
+// Semantic tokens
 <div className="bg-surface border border-border">Card</div>
 <p className="text-text-secondary">Helper text</p>
 ```
@@ -378,7 +378,7 @@ Portage extends the DHG base with a forest green ramp and glass morphism system:
     AI Action
   </div>
   <div style={{padding: '12px 24px', backgroundColor: '#2D5A27', borderRadius: '12px', color: '#FFFFFF', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: '15px', fontWeight: 600, cursor: 'pointer', textAlign: 'center'}}>
-    Portage Primary
+    Portage Legacy Green
   </div>
   <div style={{padding: '12px 24px', backgroundColor: 'transparent', borderRadius: '12px', color: '#2D2A26', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: '15px', fontWeight: 600, cursor: 'pointer', textAlign: 'center', border: '1.5px solid #D6D3CE'}}>
     Secondary
@@ -560,8 +560,7 @@ All main content constrained to `max-w-lg` (32rem / 512px) centered with `mx-aut
 |-------|---------|---------|
 | Content | `auto` | Normal page content |
 | Sticky headers | `z-40` | PageHeader |
-| FAB | `z-40` | ScanFab button |
-| Tab bar | `z-50` | Bottom navigation |
+| Tab bar | `z-50` | Bottom navigation (includes the center Scan button) |
 | Overlays | `z-[60]` | ScanFlow, modals |
 
 ---
@@ -600,31 +599,25 @@ Styling: `sticky top-0`, `bg-background/95` with `backdrop-blur-md`, bottom bord
 
 #### TabBar
 
-Bottom navigation with 4 tabs split around a center ScanFab. Uses glass morphism (`glass-regular`) with safe area padding.
+Bottom navigation with 5 tabs (Home, Inventory, Listings, Porter, Orders) split around a center Scan button. Uses glass morphism with safe area padding. More is not a tab — Settings (`/more`) is reached via the PageHeader avatar on mobile and the sidebar secondary section on `lg+`.
 
-| Tab | Icon | Position |
-|-----|------|----------|
-| Home | House | Left |
-| Inventory | Grid | Left |
-| Orders | Truck | Right |
-| More | Ellipsis | Right |
+| Tab | Position |
+|-----|----------|
+| Home | Left |
+| Inventory | Left |
+| Listings | Left |
+| Porter | Right (tinted `--teal` as the AI accent) |
+| Orders | Right |
 
-Active tab: `text-forest-green`. Inactive: `text-text-secondary`. Center gap reserved for ScanFab overlay.
+Active tab: `text-[var(--text-primary)]` with a dot indicator. Inactive: `text-text-secondary`.
 
 ---
 
 ### Capture
 
-#### ScanFab
+#### Scan button
 
-Floating action button that triggers the full-screen ScanFlow. Positioned above the TabBar, right-aligned.
-
-```tsx
-// No props — self-contained. Auth-gated (hidden when logged out).
-<ScanFab />
-```
-
-Styling: `w-14 h-14` circle, `bg-forest-green`, `shadow-lg`, camera icon. Press: `active:scale-95`.
+The center TabBar button opens the full-screen ScanFlow. `w-14 h-14` circle, `bg-[var(--orange)]`, elevated shadow with a background ring, `-mt-7` float above the bar. Press: `active:scale-95`.
 
 #### ScanFlow
 
@@ -690,7 +683,7 @@ Card-stack interface for rapid listing creation. Swipe-based decision making.
 | Component | Purpose |
 |-----------|---------|
 | `PhotoCaptureFlow` | Multi-photo capture with inline editing and reordering |
-| `PhotoEditor` | Crop, rotate, background removal overlay |
+| `PhotoEditOverlay` / `PhotoEditPanel` (in `capture/`) | Rotate, crop, exposure, enhance, BG removal overlay |
 | `RecognitionFork` | "List for Sale" vs "Save to Inventory" decision point |
 | `CompsPricingWidget` | Comparable sales display with price adjustment slider |
 | `PricingStrategyPicker` | Fast / Market / Max pricing presets |
@@ -718,11 +711,14 @@ Editable preview of listing before publish. Supports inline text editing (tap to
 interface ListingPreviewCardProps {
   data: PreparedListingData;
   photos: Array<{ url: string; key: string }>;
+  quantity: number;
   onFieldChange: (field: string, value: unknown) => void;
   onPriceChange: (price: number) => void;
-  onPublish: (marketplace: "ebay" | "reverb") => void;
+  onQuantityChange: (quantity: number) => void;
+  onPublish: (marketplace: "ebay" | "reverb", publishMode: "draft" | "live", aspects?: Record<string, string[]>) => void;
   isPublishing: boolean;
   sellerProfileComplete: boolean;
+  onPhotoUpdated?: (index: number, patch: { url: string; key?: string; width?: number; height?: number }) => void;
 }
 ```
 
@@ -739,7 +735,7 @@ interface CompsPricingWidgetProps {
 }
 ```
 
-Confidence colors: High = `#2D5A27`, Medium = `#B8860B`, Low = `#CC3333`.
+Confidence colors: High = `var(--teal)`, Medium = `#B8860B`, Low = `#CC3333`.
 
 #### PublishSuccess
 
@@ -748,12 +744,14 @@ Post-publish celebration with checkmark animation, listing summary, and navigati
 ```tsx
 interface PublishSuccessProps {
   listingId: string;
-  marketplace: 'ebay' | 'reverb' | 'etsy';
+  marketplace: 'ebay' | 'reverb';
   title: string;
   price: number;
   photoUrl: string | null;
   isFirstListing: boolean;
   onListAnother: () => void;
+  // Marketplace publish fell back to draft — carries the marketplace's reason
+  warning?: string;
 }
 ```
 
@@ -765,9 +763,9 @@ interface PublishSuccessProps {
 
 Horizontal drag slider comparing original and processed images (used for background removal preview).
 
-#### BgRemovalPanel
+#### Background removal (server-side)
 
-Background removal interface using `@imgly/background-removal` (client-side WASM). Shows before/after with the slider component.
+Background removal runs server-side, not in the browser: the `useBgRemoval` hook (`src/hooks/use-bg-removal.ts`) records a billing-gated usage event (`POST /usage/bg-removal`), then calls `POST /images/remove-bg`, which the API fulfills via the portage-rembg container and returns the processed image URL/key. Results are previewed with BeforeAfterSlider.
 
 ---
 

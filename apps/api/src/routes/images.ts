@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { createLogger } from '../lib/logger.js';
 import { requireAuth } from '../middleware/auth.js';
-import { processImage, generateThumbnail, enhanceImage, rotateImage, cropImage } from '../lib/image.js';
+import { processImage, generateThumbnail, enhanceImage, rotateImage, cropImage, adjustExposure, flattenToWhite } from '../lib/image.js';
 import { uploadImage, deleteImage, getImage } from '../lib/storage.js';
 import { z } from 'zod';
 import { eq, and, sql } from 'drizzle-orm';
@@ -10,8 +10,8 @@ import { AppError } from '../middleware/error.js';
 import { env } from '../lib/env.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
-import { computeEffectiveTier } from '../lib/billing-utils.js';
-import { FREE_TIER_LIMITS } from '@portage/shared';
+import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
+import { limitsForTier } from '@portage/shared';
 
 const logger = createLogger('images');
 
@@ -130,6 +130,86 @@ imagesRouter.post('/enhance', async (req, res, next) => {
   }
 });
 
+const batchEnhanceSchema = z.object({
+  imageUrls: z.array(z.string().url()).min(1).max(10),
+});
+
+type BatchEnhanceResult =
+  | {
+      status: 'success';
+      sourceUrl: string;
+      image: { key: string; url: string; width: number; height: number; size: number };
+    }
+  | { status: 'error'; sourceUrl: string; error: string };
+
+imagesRouter.post('/batch-enhance', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { imageUrls } = batchEnhanceSchema.parse(req.body);
+
+    // Validate every origin up front — a single foreign URL rejects the whole
+    // batch before any fetch/enhance work begins. (Per-photo fetch failures, in
+    // contrast, are isolated below and don't fail the batch.)
+    for (const url of imageUrls) {
+      if (!isAllowedImageOrigin(url)) {
+        throw new AppError(400, 'INVALID_ORIGIN', 'Image URL must be from Portage storage');
+      }
+    }
+
+    logger.info({ userId, count: imageUrls.length }, 'Batch enhance started');
+
+    // Sequential: one bad photo must never abort the batch, and per-photo results
+    // stay in request order.
+    const results: BatchEnhanceResult[] = [];
+    for (const imageUrl of imageUrls) {
+      try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          throw new AppError(400, 'FETCH_FAILED', 'Could not fetch the image to enhance');
+        }
+
+        const contentLength = Number(response.headers.get('content-length') || 0);
+        if (contentLength > MAX_FETCH_SIZE) {
+          throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        if (arrayBuffer.byteLength > MAX_FETCH_SIZE) {
+          throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+        }
+
+        const enhanced = await enhanceImage(Buffer.from(arrayBuffer));
+        const uploaded = await uploadImage(userId, enhanced.buffer, 'image/jpeg', '_enhanced.jpg');
+
+        results.push({
+          status: 'success',
+          sourceUrl: imageUrl,
+          image: {
+            key: uploaded.key,
+            url: uploaded.url,
+            width: enhanced.width,
+            height: enhanced.height,
+            size: enhanced.size,
+          },
+        });
+      } catch (err) {
+        logger.warn({ userId, imageUrl, error: (err as Error).message }, 'Batch enhance: photo failed');
+        results.push({
+          status: 'error',
+          sourceUrl: imageUrl,
+          error: err instanceof AppError ? err.message : 'Failed to enhance image',
+        });
+      }
+    }
+
+    logger.info({ userId, count: results.length }, 'Batch enhance complete');
+
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const removeBgSchema = z.object({
   imageUrl: z.string().url(),
 });
@@ -149,12 +229,13 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
       trialEndsAt: users.trialEndsAt,
       bgRemovalsThisMonth: users.bgRemovalsThisMonth,
       scanCountResetAt: users.scanCountResetAt,
+      limitOverrides: users.limitOverrides,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (!billingUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
 
     const tier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
-    const limit = tier === 'pro' ? null : FREE_TIER_LIMITS.bgRemovalsPerMonth;
+    const limit = effectiveLimits(tier, billingUser.limitOverrides).bgRemovalsPerMonth;
 
     let resetFired = false;
     if (limit !== null) {
@@ -214,8 +295,12 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
       throw new AppError(502, 'BG_REMOVAL_FAILED', 'Background removal service error');
     }
 
-    const resultBuffer = Buffer.from(await rembgResponse.arrayBuffer());
-    const uploaded = await uploadImage(userId, resultBuffer, 'image/png', '_nobg.png');
+    // rembg returns a transparent PNG; transparency renders/exports as black in
+    // JPEG contexts, so flatten onto white (also eBay's preferred background).
+    const cutout = Buffer.from(await rembgResponse.arrayBuffer());
+    const flattened = await flattenToWhite(cutout);
+    const resultBuffer = flattened.buffer;
+    const uploaded = await uploadImage(userId, resultBuffer, 'image/jpeg', '_nobg.jpg');
 
     // --- Billing: deduct AFTER successful removal (no credit loss on service failure) ---
     if (limit !== null) {
@@ -242,6 +327,56 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
         key: uploaded.key,
         url: uploaded.url,
         size: resultBuffer.length,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const exposureSchema = z.object({
+  imageUrl: z.string().url(),
+  ev: z.number().min(-2).max(2),
+});
+
+imagesRouter.post('/exposure', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { imageUrl, ev } = exposureSchema.parse(req.body);
+
+    if (!isAllowedImageOrigin(imageUrl)) {
+      throw new AppError(400, 'INVALID_ORIGIN', 'Image URL must be from Portage storage');
+    }
+
+    logger.info({ userId, imageUrl, ev }, 'Exposure adjust started');
+
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new AppError(400, 'FETCH_FAILED', 'Could not fetch the image to adjust');
+    }
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_FETCH_SIZE) {
+      throw new AppError(400, 'FILE_TOO_LARGE', `Image exceeds ${MAX_FETCH_SIZE / 1024 / 1024}MB limit`);
+    }
+
+    const adjusted = await adjustExposure(Buffer.from(arrayBuffer), ev);
+    const uploaded = await uploadImage(userId, adjusted.buffer, 'image/jpeg', '_exposure.jpg');
+
+    logger.info({ userId, key: uploaded.key, ev }, 'Exposure adjust complete');
+
+    res.json({
+      image: {
+        key: uploaded.key,
+        url: uploaded.url,
+        width: adjusted.width,
+        height: adjusted.height,
+        size: adjusted.size,
       },
     });
   } catch (err) {

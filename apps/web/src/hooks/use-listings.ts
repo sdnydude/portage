@@ -8,7 +8,7 @@ export interface Listing {
   id: string;
   itemId: string;
   userId: string;
-  marketplace: "ebay" | "etsy" | "reverb";
+  marketplace: "ebay" | "reverb";
   marketplaceListingId: string | null;
   marketplaceSpecificFields: Record<string, unknown> | null;
   status: "draft" | "active" | "sold" | "archived";
@@ -17,6 +17,8 @@ export interface Listing {
   createdAt: string;
   publishedAt: string | null;
   soldAt: string | null;
+  /** Joined from items server-side (GET /listings) — what the listing IS. */
+  itemTitle: string | null;
 }
 
 interface ListingsResponse {
@@ -29,6 +31,7 @@ interface ListingsResponse {
 interface UseListingsOptions {
   status?: string;
   marketplace?: string;
+  itemId?: string;
   limit?: number;
   offset?: number;
 }
@@ -49,6 +52,7 @@ export function useListings(options: UseListingsOptions = {}) {
       const params = new URLSearchParams();
       if (options.status) params.set("status", options.status);
       if (options.marketplace) params.set("marketplace", options.marketplace);
+      if (options.itemId) params.set("itemId", options.itemId);
       if (options.limit != null) params.set("limit", String(options.limit));
       if (options.offset != null) params.set("offset", String(options.offset));
 
@@ -61,7 +65,7 @@ export function useListings(options: UseListingsOptions = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [token, options.status, options.marketplace, options.limit, options.offset]);
+  }, [token, options.status, options.marketplace, options.itemId, options.limit, options.offset]);
 
   useEffect(() => {
     fetchListings();
@@ -69,7 +73,7 @@ export function useListings(options: UseListingsOptions = {}) {
 
   const createListing = useCallback(async (body: {
     itemId: string;
-    marketplace: "ebay" | "etsy" | "reverb";
+    marketplace: "ebay" | "reverb";
     price: number;
     currency?: string;
     publishImmediately?: boolean;

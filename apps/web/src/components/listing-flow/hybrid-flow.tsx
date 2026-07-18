@@ -1,16 +1,24 @@
 "use client";
 
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+
 import { useRef, useEffect, useCallback, useState } from "react";
-import { useListingFlow } from "@/hooks/use-listing-flow";
+import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { formatPrice } from "@/lib/format";
+import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
+import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
+import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
 import { ShippingConfigCard } from "./shipping-config-card";
 import { PricingStrategyPicker } from "./pricing-strategy-picker";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -18,7 +26,7 @@ export interface HybridFlowProps {
   itemId?: string;
 }
 
-type Marketplace = "ebay" | "etsy" | "reverb";
+type Marketplace = "ebay" | "reverb";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
 
@@ -386,10 +394,19 @@ function ChatMode({
   onShowCapture: () => void;
   prepareListing: ReturnType<typeof usePrepareListing>;
 }) {
-  const { state, lastStep, setField, confirmRecognition, fetchComps, applyPricingStrategy } = flow;
+  const { state, lastStep, setField, updateWeightDims, confirmRecognition, fetchComps, applyPricingStrategy } = flow;
   const bottomRef = useRef<HTMLDivElement>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  // Once the review card is on screen, the editable Item Details card collapses
+  // to a one-line summary (the visible duplication confused sellers); this
+  // re-expands it on demand.
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  // ChatMode stays mounted across "List Another" (flow.reset) — re-collapse
+  // for the next item or the feature silently dies after one expansion.
+  useEffect(() => {
+    if (lastStep === "idle") setDetailsExpanded(false);
+  }, [lastStep]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -412,17 +429,55 @@ function ChatMode({
     [flow, state.photos]
   );
 
-  const handlePublish = async () => {
+  const [aspectsNeeded, setAspectsNeeded] = useState<AspectRequirement[] | null>(null);
+  const [aspectSaving, setAspectSaving] = useState(false);
+  const [aspectError, setAspectError] = useState<string | null>(null);
+  const [weightNeeded, setWeightNeeded] = useState(false);
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const pendingPublishOpts = useRef<PublishOpts | undefined>(undefined);
+
+  const runPublish = async (opts?: PublishOpts) => {
+    const fillingAspects = !!opts?.aspects;
+    const fillingWeight = !!opts?.weightDims;
     setPublishError(null);
-    setIsPublishing(true);
-    const result = await flow.publish();
-    setIsPublishing(false);
+    setAspectError(null);
+    setWeightError(null);
+    if (fillingAspects) setAspectSaving(true);
+    else if (fillingWeight) setWeightSaving(true);
+    else setIsPublishing(true);
+
+    const result = await flow.publish(opts);
+
+    if (fillingAspects) setAspectSaving(false);
+    else if (fillingWeight) setWeightSaving(false);
+    else setIsPublishing(false);
+
     if (result.success) {
+      setAspectsNeeded(null);
+      setWeightNeeded(false);
       onPublish();
+    } else if (result.aspectsRequired) {
+      pendingPublishOpts.current = opts;
+      setAspectsNeeded(result.aspectsRequired);
+      if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
+    } else if (result.weightRequired) {
+      pendingPublishOpts.current = opts;
+      setWeightNeeded(true);
+      if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
+    } else if (fillingAspects) {
+      setAspectError(result.error ?? "Publishing failed");
+    } else if (fillingWeight) {
+      setWeightError(result.error ?? "Publishing failed");
     } else {
       setPublishError(result.error ?? "Publishing failed");
     }
   };
+
+  // Fallback Review pill (shown when no AI-prepared card). Pass the same context
+  // as the ListingPreviewCard path so eBay prepared fields + publishMode aren't
+  // dropped — this pill has no draft/live toggle, so live is the intended mode.
+  const handlePublish = () => runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode: "live" });
 
   const candidate = state.recognition.candidates[state.recognition.selectedIndex];
   const primaryPhoto = state.photos[state.primaryPhotoIndex];
@@ -441,6 +496,8 @@ function ChatMode({
     return (
       <PublishSuccess
         listingId={state.listingId}
+        itemId={state.inventoryItemId}
+        warning={state.publishWarning ?? undefined}
         marketplace={state.marketplace}
         title={state.title}
         price={state.price ?? 0}
@@ -558,9 +615,13 @@ function ChatMode({
             <Pill primary onClick={() => {
               confirmRecognition(state.recognition.selectedIndex);
               fetchComps();
-              if (state.inventoryItemId) {
-                prepareListing.prepare(state.inventoryItemId, ['ebay']);
-              }
+              // Fresh scans have no inventoryItemId yet — create the item now
+              // so prepare() (AI fields + comps + preview card) runs on every
+              // path. Creation failure degrades to the old manual flow;
+              // prepare failures surface via prepareListing.error.
+              void flow.ensureItemCreated()
+                .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+                .catch(() => {});
             }}>
               Looks right
             </Pill>
@@ -571,8 +632,23 @@ function ChatMode({
         </div>
       )}
 
-      {/* ── Confirmed: editable details ── */}
-      {showConfirmed && state.recognition.status === "complete" && (
+      {/* ── Confirmed: editable details (collapses once the review card shows) ── */}
+      {showConfirmed && state.recognition.status === "complete" && showReview && !detailsExpanded ? (
+        <InlineCard title="Item Details">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <p style={{ fontSize: 13, color: TEXT, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {state.title} · {state.category || "—"} · <span style={{ textTransform: "capitalize" }}>{state.condition || "—"}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setDetailsExpanded(true)}
+              style={{ fontSize: 12, fontWeight: 600, color: ACCENT, background: "none", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              Edit details
+            </button>
+          </div>
+        </InlineCard>
+      ) : showConfirmed && state.recognition.status === "complete" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <PorterMessage>Great. Review and edit the details below.</PorterMessage>
           <InlineCard title="Item Details">
@@ -660,10 +736,17 @@ function ChatMode({
           <InlineCard title="Shipping">
             <ShippingConfigCard
               packageSize={state.packageSize}
-              weight={state.weight}
               shippingMethod={state.shippingMethod}
+              weightDims={{
+                weight: state.weight,
+                dimLength: state.dimLength,
+                dimWidth: state.dimWidth,
+                dimHeight: state.dimHeight,
+                ebayPackageType: state.ebayPackageType,
+              }}
+              weightEstimated={state.weightEstimated}
               onPackageSizeChange={(s) => setField("packageSize", s)}
-              onWeightChange={(w) => setField("weight", w)}
+              onWeightDimsChange={updateWeightDims}
               onShippingMethodChange={(m) => setField("shippingMethod", m)}
               Pill={Pill}
               tokens={{ text: TEXT, secondary: SECONDARY, cardBg: CARD_BG, cardBorder: CARD_BORDER }}
@@ -680,20 +763,42 @@ function ChatMode({
         </div>
       )}
 
+      {/* Prepare failed: the item is already saved (confirm-time creation), so
+          surface the failure and offer a retry instead of a silent stall. */}
+      {prepareListing.error && !prepareListing.data && !prepareListing.isLoading && showConfirmed && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <PorterMessage>
+            I couldn&apos;t prepare the listing automatically — your item is saved, and you can keep going manually.
+          </PorterMessage>
+          <div style={{ marginLeft: 34 }}>
+            <Pill primary onClick={() => {
+              void flow.ensureItemCreated()
+                .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+                .catch(() => {});
+            }}>
+              Retry
+            </Pill>
+          </div>
+        </div>
+      )}
+
       {prepareListing.data && showConfirmed && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <PorterMessage>Here&apos;s your optimized listing. Tap any field to edit.</PorterMessage>
           <ListingPreviewCard
             data={prepareListing.data}
             photos={state.photos}
+            quantity={state.quantity}
             onFieldChange={(field, value) => setField(field as keyof typeof state, value as never)}
             onPriceChange={(price) => setField("price", price)}
-            onPublish={(marketplace) => {
+            onQuantityChange={(q) => setField("quantity", q)}
+            onPublish={(marketplace, publishMode, aspects) => {
               setField("marketplace", marketplace);
-              flow.publish();
+              runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode, aspects });
             }}
             isPublishing={state.publishStatus === "publishing"}
             sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
+            onPhotoUpdated={flow.updatePhoto}
           />
         </div>
       )}
@@ -753,6 +858,42 @@ function ChatMode({
       )}
 
       <div ref={bottomRef} />
+
+      {aspectsNeeded && (
+        <AspectFillSheet
+          missing={aspectsNeeded}
+          initial={{
+            ...(state.brand ? { Brand: [state.brand] } : {}),
+            ...(state.model ? { Model: [state.model] } : {}),
+          }}
+          saving={aspectSaving}
+          error={aspectError}
+          onCancel={() => {
+            setAspectsNeeded(null);
+            setAspectError(null);
+          }}
+          onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+        />
+      )}
+
+      {weightNeeded && (
+        <WeightFillSheet
+          initial={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          saving={weightSaving}
+          error={weightError}
+          onCancel={() => {
+            setWeightNeeded(false);
+            setWeightError(null);
+          }}
+          onSave={(value) => runPublish({ ...pendingPublishOpts.current, weightDims: value })}
+        />
+      )}
     </div>
   );
 }
@@ -760,10 +901,11 @@ function ChatMode({
 // ─── COMPACT MODE ─────────────────────────────────────────────────────────────
 
 function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
-  const { state, setField, applyPricingStrategy, publish } = flow;
+  const { state, setField, updateWeightDims, applyPricingStrategy, publish } = flow;
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoEdit = usePhotoEdit(state.photos, flow.updatePhoto);
 
   const handlePhotoSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -797,6 +939,8 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
     return (
       <PublishSuccess
         listingId={state.listingId}
+        itemId={state.inventoryItemId}
+        warning={state.publishWarning ?? undefined}
         marketplace={state.marketplace}
         title={state.title}
         price={state.price ?? 0}
@@ -829,47 +973,27 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       <style>{`@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }`}</style>
 
-      {/* Photo strip */}
+      {/* Photo gallery strip — tap a thumb to open the editor overlay (S2.5-8).
+          Local blob: photos render without the edit affordance until
+          recognition uploads them (if recognition fails they stay blob: and
+          stay non-editable — re-add via "Replace photos…"). */}
       <div style={{ ...rowStyle }}>
         <label style={labelStyle}>Photos</label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {state.photos.map((p, i) => (
-            <div
-              key={i}
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 8,
-                overflow: "hidden",
-                border: `2px solid ${i === state.primaryPhotoIndex ? ACCENT : CARD_BORDER}`,
-                flexShrink: 0,
-              }}
-            >
-              <img src={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            </div>
-          ))}
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 8,
-              border: `2px dashed ${CARD_BORDER}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              background: BG,
-              flexShrink: 0,
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SECONDARY} strokeWidth="2" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </div>
+        <PhotoGalleryStrip
+          photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
+          onEditPhoto={photoEdit.openEditor}
+          maxPhotos={MAX_PHOTOS_PER_ITEM}
+          onReorder={flow.reorderPhotos}
+          onReorderEnd={flow.commitPhotoOrder}
+          onDelete={flow.removePhoto}
+        />
+        <div onClick={() => fileInputRef.current?.click()} style={{ fontSize: 12, color: SECONDARY, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+          Replace photos…
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
       </div>
+
+      <PhotoEditOverlay photoEdit={photoEdit} photoCount={state.photos.length} alt={state.title || "Photo preview"} />
 
       {/* Recognition loading */}
       {state.recognition.status === "recognizing" && (
@@ -902,6 +1026,29 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
             <label style={labelStyle}>Condition</label>
             <div style={{ fontSize: 12, color: TEXT, background: BG, borderRadius: 6, padding: "7px 10px", border: `1px solid ${CARD_BORDER}`, textTransform: "capitalize" }}>{state.condition || "—"}</div>
           </div>
+        </div>
+      </div>
+
+      {/* Quantity */}
+      <div style={{ ...rowStyle, paddingTop: 14 }}>
+        <label style={labelStyle}>Quantity</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button
+            onClick={() => setField("quantity", Math.max(1, state.quantity - 1))}
+            disabled={state.quantity <= 1}
+            style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${CARD_BORDER}`, background: CARD_BG, color: TEXT, fontSize: 18, cursor: state.quantity <= 1 ? "not-allowed" : "pointer", opacity: state.quantity <= 1 ? 0.4 : 1 }}
+            aria-label="Decrease quantity"
+          >
+            −
+          </button>
+          <span style={{ minWidth: 24, textAlign: "center", fontSize: 16, fontWeight: 700, fontFamily: "var(--font-instrument)", color: TEXT }}>{state.quantity}</span>
+          <button
+            onClick={() => setField("quantity", state.quantity + 1)}
+            style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${CARD_BORDER}`, background: CARD_BG, color: TEXT, fontSize: 18, cursor: "pointer" }}
+            aria-label="Increase quantity"
+          >
+            +
+          </button>
         </div>
       </div>
 
@@ -943,9 +1090,9 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
       <div style={{ ...rowStyle, paddingTop: 14 }}>
         <label style={labelStyle}>Marketplace</label>
         <div style={{ display: "flex", gap: 6 }}>
-          {(["ebay", "etsy", "reverb"] as Marketplace[]).map((m) => (
+          {(["ebay", "reverb"] as Marketplace[]).map((m) => (
             <Pill key={m} small active={state.marketplace === m} onClick={() => setField("marketplace", m)}>
-              {m === "ebay" ? "eBay" : m === "etsy" ? "Etsy" : "Reverb"}
+              {m === "ebay" ? "eBay" : "Reverb"}
             </Pill>
           ))}
         </div>
@@ -955,10 +1102,17 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
       <div style={{ ...rowStyle, paddingTop: 14 }}>
         <ShippingConfigCard
           packageSize={state.packageSize}
-          weight={state.weight}
           shippingMethod={state.shippingMethod}
+          weightDims={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          weightEstimated={state.weightEstimated}
           onPackageSizeChange={(s) => setField("packageSize", s)}
-          onWeightChange={(w) => setField("weight", w)}
+          onWeightDimsChange={updateWeightDims}
           onShippingMethodChange={(m) => setField("shippingMethod", m)}
           Pill={Pill}
           tokens={{ text: TEXT, secondary: SECONDARY, cardBg: CARD_BG, cardBorder: CARD_BORDER }}
@@ -1009,6 +1163,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
 export function HybridFlow({ itemId }: HybridFlowProps) {
   const flow = useListingFlow();
   const prepareListing = usePrepareListing();
+  const { applyEstimatedWeightDims } = flow;
   const { compactMode, updatePrefs } = useUserPreferences();
   const [localCompact, setLocalCompact] = useState<boolean | null>(null);
   const [showCapture, setShowCapture] = useState(false);
@@ -1022,6 +1177,13 @@ export function HybridFlow({ itemId }: HybridFlowProps) {
       flow.startFromItem(itemId);
     }
   }, [itemId, flow]);
+
+  // Pre-fill weight/dims from the AI estimate (no-op once the seller has entered
+  // a weight, so it never clobbers confirmed values).
+  useEffect(() => {
+    const ebay = prepareListing.data?.ebay;
+    if (ebay) applyEstimatedWeightDims(ebayEstimateToWeightDims(ebay));
+  }, [prepareListing.data, applyEstimatedWeightDims]);
 
   const toggleMode = useCallback(() => {
     const next = !isCompact;

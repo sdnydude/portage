@@ -1,0 +1,624 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 3080" font-family="'Instrument Sans','Plus Jakarta Sans',system-ui,sans-serif">
+<defs><marker id="arr-nav" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2D5A27"/></marker><marker id="arr-overlay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1A7A6D"/></marker><marker id="arr-tab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b3ada0"/></marker><marker id="arr-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c07a24"/></marker></defs>
+<rect width="1240" height="3080" fill="#F4F2ED"/>
+<text x="60" y="62" font-size="30" font-weight="800" fill="#1e2225">Portage — App Sitemap</text>
+<text x="60" y="88" font-size="13.5" fill="#8a8f94">Vertical · 38 routes + overlays · generated from apps/web/src/app</text>
+<line x1="880" y1="46" x2="922" y2="46" stroke="#2D5A27" stroke-width="2.5"/>
+<text x="930" y="50" font-size="11.5" fill="#1e2225">navigation</text>
+<line x1="880" y1="63" x2="922" y2="63" stroke="#1A7A6D" stroke-width="2.5" stroke-dasharray="5 4"/>
+<text x="930" y="67" font-size="11.5" fill="#1e2225">overlay / panel (no route change)</text>
+<line x1="880" y1="80" x2="922" y2="80" stroke="#b3ada0" stroke-width="2.5" stroke-dasharray="2 4"/>
+<text x="930" y="84" font-size="11.5" fill="#1e2225">tab bar</text>
+<line x1="880" y1="97" x2="922" y2="97" stroke="#c07a24" stroke-width="2.5"/>
+<text x="930" y="101" font-size="11.5" fill="#1e2225">external (eBay)</text>
+<rect x="40" y="110" width="1160" height="230" rx="16" fill="none" stroke="#8a8f94" stroke-width="1.2" stroke-dasharray="8 6" opacity="0.55"/>
+<text x="56" y="134" font-size="14" font-weight="800" fill="#8a8f94" letter-spacing="2">AUTH &amp; LEGAL</text>
+<g transform="translate(80,150)">
+<rect width="360" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="360" height="16" rx="10" fill="#c07a24" opacity="0.9"/>
+<rect y="9" width="360" height="7" fill="#c07a24" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="336" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="54" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="62" width="336" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="78" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="86" width="336" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="300.5" y="20" width="54" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="327" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">CF gate</text>
+<text x="180.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Cloudflare Access</text>
+<text x="180.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">edge IdP · no passwords</text>
+</g>
+<g transform="translate(900,150)">
+<rect width="150" height="46" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="35" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="42" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="53" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="56" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="63" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<text x="75.0" y="64" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Privacy</text>
+<text x="75.0" y="79" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/legal/privacy</text>
+</g>
+<g transform="translate(900,232)">
+<rect width="150" height="46" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="35" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="42" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="53" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="56" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="63" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<text x="75.0" y="64" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Terms</text>
+<text x="75.0" y="79" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/legal/terms</text>
+</g>
+<rect x="40" y="380" width="1160" height="280" rx="16" fill="none" stroke="#8a8f94" stroke-width="1.2" stroke-dasharray="8 6" opacity="0.55"/>
+<text x="56" y="404" font-size="14" font-weight="800" fill="#8a8f94" letter-spacing="2">BOTTOM TAB BAR</text>
+<g transform="translate(70,440)">
+<rect width="150" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="46" height="30" rx="4" fill="#e8f2e6"/>
+<rect x="64" y="30" width="46" height="30" rx="4" fill="#e3eeec"/>
+<rect x="116" y="30" width="42" height="30" rx="4" fill="#f0e6d9"/>
+<polyline points="14,98 45,84 76,90 107,74 136,80" fill="none" stroke="#1A7A6D" stroke-width="2.5"/>
+<text x="75.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Home</text>
+<text x="75.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/home</text>
+</g>
+<g transform="translate(250,440)">
+<rect width="150" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="62" y="32" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="12" y="72" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="62" y="72" width="42" height="32" rx="4" fill="#e8e5de"/>
+<text x="75.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Inventory</text>
+<text x="75.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/inventory</text>
+</g>
+<g transform="translate(430,440)">
+<rect width="150" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="35" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="42" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="53" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="56" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="63" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="74" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="77" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="84" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<text x="75.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Listings</text>
+<text x="75.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/listings</text>
+</g>
+<g transform="translate(700,440)">
+<rect width="150" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="78" height="16" rx="8" fill="#e8f2e6"/>
+<rect x="63" y="54" width="78" height="16" rx="8" fill="#e3eeec"/>
+<rect x="12" y="76" width="93" height="16" rx="8" fill="#e8f2e6"/>
+<rect x="12" y="88" width="126" height="12" rx="6" fill="#f0ede6" stroke="#d9d5cc"/>
+<text x="75.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Porter</text>
+<text x="75.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/porter</text>
+</g>
+<g transform="translate(880,440)">
+<rect width="150" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="35" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="42" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="53" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="56" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="63" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="74" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="77" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="84" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<text x="75.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Orders</text>
+<text x="75.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/orders</text>
+</g>
+<g transform="translate(1060,440)">
+<rect width="150" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="35" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="42" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="53" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="56" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="63" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="74" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="77" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="84" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<text x="75.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">More</text>
+<text x="75.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/more</text>
+</g>
+<circle cx="632" cy="495" r="34" fill="#2D5A27"/>
+<text x="632" y="502" font-size="26" fill="white" text-anchor="middle" font-weight="700">+</text>
+<text x="632" y="560" font-size="12.5" font-weight="700" fill="#1e2225" text-anchor="middle">Scan FAB</text>
+<path d="M 260 260 C 260 350.0, 145 350.0, 145 440" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
+<text x="208" y="354" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="600">authenticated</text>
+<rect x="40" y="720" width="1160" height="300" rx="16" fill="none" stroke="#1A7A6D" stroke-width="1.2" stroke-dasharray="8 6" opacity="0.55"/>
+<text x="56" y="744" font-size="14" font-weight="800" fill="#1A7A6D" letter-spacing="2">CAPTURE (overlays)</text>
+<g transform="translate(70,770)">
+<rect width="170" height="120" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#1A7A6D" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#1A7A6D" opacity="0.9"/>
+<rect x="12" y="30" width="62" height="52" rx="5" fill="#e8e5de"/>
+<rect x="82" y="34" width="76" height="6" rx="3" fill="#c9c4b8"/>
+<rect x="82" y="46" width="53" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="82" y="56" width="44" height="10" rx="5" fill="#e3eeec"/>
+<rect x="12" y="88" width="146" height="9" rx="4" fill="#e8f2e6"/>
+<rect x="12" y="96" width="146" height="14" rx="7" fill="#1A7A6D" opacity="0.85"/>
+<rect x="110.5" y="20" width="54" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="137" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">AI scan</text>
+<text x="85.0" y="138" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">ScanFlow</text>
+<text x="85.0" y="153" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">overlay z-60</text>
+</g>
+<g transform="translate(290,770)">
+<rect width="170" height="120" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#1A7A6D" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#1A7A6D" opacity="0.9"/>
+<rect x="10" y="26" width="150" height="68" rx="6" fill="#23282c"/>
+<rect x="59" y="34" width="52" height="52" fill="none" stroke="white" stroke-width="1.5" stroke-dasharray="6 4"/>
+<circle cx="85.0" cy="106" r="9" fill="white"/>
+<circle cx="146" cy="106" r="7" fill="#1A7A6D"/>
+<rect x="136.5" y="20" width="28" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="150" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">NEW</text>
+<text x="85.0" y="138" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Camera</text>
+<text x="85.0" y="153" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">multi-shot · 1:1</text>
+</g>
+<g transform="translate(510,770)">
+<rect width="170" height="120" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#1A7A6D" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#1A7A6D" opacity="0.9"/>
+<rect x="10" y="26" width="150" height="64" rx="6" fill="#23282c"/>
+<rect x="61.0" y="34" width="48" height="48" rx="4" fill="#3a4046"/>
+<rect x="14" y="96" width="30" height="14" rx="7" fill="#e8f2e6"/>
+<rect x="50" y="96" width="30" height="14" rx="7" fill="#e3eeec"/>
+<rect x="85" y="96" width="30" height="14" rx="7" fill="#f0e6d9"/>
+<rect x="120" y="96" width="30" height="14" rx="7" fill="#ecdfe8"/>
+<text x="85.0" y="138" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Photo Editor</text>
+<text x="85.0" y="153" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">full-screen panel</text>
+</g>
+<g transform="translate(730,770)">
+<rect width="170" height="120" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#1A7A6D" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#1A7A6D" opacity="0.9"/>
+<rect x="10" y="26" width="150" height="68" rx="6" fill="#23282c"/>
+<rect x="59" y="34" width="52" height="52" fill="none" stroke="white" stroke-width="1.5" stroke-dasharray="6 4"/>
+<circle cx="85.0" cy="106" r="9" fill="white"/>
+<circle cx="146" cy="106" r="7" fill="#1A7A6D"/>
+<rect x="136.5" y="20" width="28" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="150" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">NEW</text>
+<text x="85.0" y="138" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Crop</text>
+<text x="85.0" y="153" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">pan/zoom · 1:1</text>
+</g>
+<g transform="translate(950,770)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#1A7A6D" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#1A7A6D" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="54" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="62" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="78" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="86" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Create Listing</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">sheet</text>
+</g>
+<path d="M 632 529 L 632 678 Q 632 690 620 690 L 167 690 Q 155 690 155 702 L 155 770" fill="none" stroke="#1A7A6D" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr-overlay)" opacity="0.9"/>
+<text x="394" y="704" font-size="10" fill="#1A7A6D" text-anchor="middle" font-weight="700">scan item</text>
+<path d="M 240 830 C 265.0 830, 265.0 830, 290 830" fill="none" stroke="#1A7A6D" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr-overlay)" opacity="0.85"/>
+<path d="M 460 830 C 485.0 830, 485.0 830, 510 830" fill="none" stroke="#1A7A6D" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr-overlay)" opacity="0.85"/>
+<text x="485" y="824" font-size="10" fill="#1A7A6D" text-anchor="middle" font-weight="600">tap photo</text>
+<path d="M 680 830 C 705.0 830, 705.0 830, 730 830" fill="none" stroke="#1A7A6D" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr-overlay)" opacity="0.85"/>
+<text x="705" y="824" font-size="10" fill="#1A7A6D" text-anchor="middle" font-weight="600">crop</text>
+<path d="M 155 895 L 155 926 Q 155 938 167 938 L 900 938 Q 912 938 912 926 L 912 842 Q 912 830 924 830 L 950 830" fill="none" stroke="#1A7A6D" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr-overlay)" opacity="0.9"/>
+<text x="534" y="952" font-size="10" fill="#1A7A6D" text-anchor="middle" font-weight="700">Save &amp; List</text>
+<path d="M 100 770 L 100 687 Q 100 675 112 675 L 313 675 Q 325 675 325 663 L 325 588" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="212" y="669" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="700">save → Inventory</text>
+<path d="M 1120 800 L 1196 800 Q 1208 800 1208 788 L 1208 657 Q 1208 645 1196 645 L 517 645 Q 505 645 505 633 L 505 588" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="856" y="659" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="700">draft / live</text>
+<rect x="40" y="1080" width="1160" height="480" rx="16" fill="none" stroke="#8a8f94" stroke-width="1.2" stroke-dasharray="8 6" opacity="0.55"/>
+<text x="56" y="1104" font-size="14" font-weight="800" fill="#8a8f94" letter-spacing="2">DETAIL &amp; CREATE</text>
+<g transform="translate(90,1130)">
+<rect width="170" height="120" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="62" height="52" rx="5" fill="#e8e5de"/>
+<rect x="82" y="34" width="76" height="6" rx="3" fill="#c9c4b8"/>
+<rect x="82" y="46" width="53" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="82" y="56" width="44" height="10" rx="5" fill="#e3eeec"/>
+<rect x="12" y="88" width="146" height="9" rx="4" fill="#e8f2e6"/>
+<rect x="12" y="96" width="146" height="14" rx="7" fill="#2D5A27" opacity="0.85"/>
+<text x="85.0" y="138" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Item Detail</text>
+<text x="85.0" y="153" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/inventory/[id]</text>
+</g>
+<g transform="translate(330,1130)">
+<rect width="170" height="120" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="62" height="52" rx="5" fill="#e8e5de"/>
+<rect x="82" y="34" width="76" height="6" rx="3" fill="#c9c4b8"/>
+<rect x="82" y="46" width="53" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="82" y="56" width="44" height="10" rx="5" fill="#e3eeec"/>
+<rect x="12" y="88" width="146" height="9" rx="4" fill="#e8f2e6"/>
+<rect x="12" y="96" width="146" height="14" rx="7" fill="#2D5A27" opacity="0.85"/>
+<rect x="104.0" y="20" width="60" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="134" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">GTC date</text>
+<text x="85.0" y="138" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Listing Detail</text>
+<text x="85.0" y="153" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/listings/[id]</text>
+</g>
+<g transform="translate(570,1130)">
+<rect width="170" height="120" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="62" height="52" rx="5" fill="#e8e5de"/>
+<rect x="82" y="34" width="76" height="6" rx="3" fill="#c9c4b8"/>
+<rect x="82" y="46" width="53" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="82" y="56" width="44" height="10" rx="5" fill="#e3eeec"/>
+<rect x="12" y="88" width="146" height="9" rx="4" fill="#e8f2e6"/>
+<rect x="12" y="96" width="146" height="14" rx="7" fill="#2D5A27" opacity="0.85"/>
+<text x="85.0" y="138" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Order Detail</text>
+<text x="85.0" y="153" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/orders/[id]</text>
+</g>
+<g transform="translate(90,1370)">
+<rect width="170" height="120" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="54" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="62" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="78" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="86" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<text x="85.0" y="138" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Item Edit</text>
+<text x="85.0" y="153" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/inventory/[id]/edit</text>
+</g>
+<g transform="translate(330,1370)">
+<rect width="210" height="140" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="210" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="210" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="109" height="16" rx="8" fill="#e8f2e6"/>
+<rect x="88" y="54" width="109" height="16" rx="8" fill="#e3eeec"/>
+<rect x="12" y="76" width="130" height="16" rx="8" fill="#e8f2e6"/>
+<rect x="12" y="118" width="186" height="12" rx="6" fill="#f0ede6" stroke="#d9d5cc"/>
+<rect x="111.5" y="20" width="92" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="158" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">preview+comps</text>
+<text x="105.0" y="158" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Create Listing Flow</text>
+<text x="105.0" y="173" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/list · hybrid | convo | swipe</text>
+</g>
+<g transform="translate(610,1390)">
+<rect width="170" height="80" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#c07a24" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#c07a24" opacity="0.9"/>
+<rect x="12" y="32" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="35" width="80" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="42" width="48" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="53" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="56" width="80" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="63" width="48" height="3" rx="1.5" fill="#eae7e0"/>
+<text x="85.0" y="98" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">eBay item page</text>
+<text x="85.0" y="113" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">external · Ship-It</text>
+</g>
+<g transform="translate(870,1130)">
+<rect width="150" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="35" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="42" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="53" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="56" width="60" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="63" width="36" height="3" rx="1.5" fill="#eae7e0"/>
+<text x="75.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Messages</text>
+<text x="75.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/messages</text>
+</g>
+<g transform="translate(870,1290)">
+<rect width="150" height="90" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="78" height="16" rx="8" fill="#e8f2e6"/>
+<rect x="63" y="54" width="78" height="16" rx="8" fill="#e3eeec"/>
+<rect x="12" y="68" width="126" height="12" rx="6" fill="#f0ede6" stroke="#d9d5cc"/>
+<text x="75.0" y="108" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Thread</text>
+<text x="75.0" y="123" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/messages/[key]</text>
+</g>
+<g transform="translate(870,1440)">
+<rect width="150" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="150" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="150" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="62" height="52" rx="5" fill="#e8e5de"/>
+<rect x="82" y="34" width="56" height="6" rx="3" fill="#c9c4b8"/>
+<rect x="82" y="46" width="39" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="82" y="56" width="44" height="10" rx="5" fill="#e3eeec"/>
+<rect x="12" y="88" width="126" height="9" rx="4" fill="#e8f2e6"/>
+<rect x="12" y="52" width="126" height="14" rx="7" fill="#2D5A27" opacity="0.85"/>
+<rect x="71.0" y="20" width="73" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="108" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">buyer view</text>
+<text x="75.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Share Preview</text>
+<text x="75.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/inventory/[id]/preview</text>
+</g>
+<path d="M 175 1130 L 175 1076 Q 175 1064 187 1064 L 1198 1064 Q 1210 1064 1210 1076 L 1210 1416 Q 1210 1428 1198 1428 L 957 1428 Q 945 1428 945 1440 L 945 1440" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="692" y="1060" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="700">share preview</text>
+<path d="M 325 588 L 325 640 Q 325 652 313 652 L 277 652 Q 265 652 265 664 L 265 1036 Q 265 1048 253 1048 L 187 1048 Q 175 1048 175 1060 L 175 1130" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<path d="M 505 588 L 505 634 Q 505 646 493 646 L 490 646 Q 478 646 478 658 L 478 1030 Q 478 1042 466 1042 L 427 1042 Q 415 1042 415 1054 L 415 1130" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<path d="M 955 588 L 955 640 Q 955 652 943 652 L 937 652 Q 925 652 925 664 L 925 1036 Q 925 1048 913 1048 L 667 1048 Q 655 1048 655 1060 L 655 1130" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<path d="M 175 1285 C 175 1327.5, 175 1327.5, 175 1370" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
+<text x="181" y="1332" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="600">edit</text>
+<path d="M 655 1285 C 655 1337.5, 695 1337.5, 695 1390" fill="none" stroke="#c07a24" stroke-width="2" marker-end="url(#arr-ext)" opacity="0.85"/>
+<text x="681" y="1342" font-size="10" fill="#c07a24" text-anchor="middle" font-weight="600">Ship-It</text>
+<path d="M 260 1250 C 260 1320.0, 350 1320.0, 350 1390" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
+<text x="311" y="1324" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="600">List It</text>
+<path d="M 335 1285 L 335 1318 Q 335 1330 323 1330 L 42 1330 Q 30 1330 30 1318 L 30 712 Q 30 700 42 700 L 480 700 Q 492 700 492 712 L 492 846 Q 492 858 504 858 L 510 858" fill="none" stroke="#1A7A6D" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr-overlay)" opacity="0.9"/>
+<text x="70" y="1322" font-size="10" fill="#1A7A6D" font-weight="700">edit photo</text>
+<path d="M 445 1370 L 445 1362 Q 445 1350 457 1350 L 528 1350 Q 540 1350 540 1338 L 540 1062 Q 540 1050 552 1050 L 548 1050 Q 560 1050 560 1038 L 560 905" fill="none" stroke="#1A7A6D" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr-overlay)" opacity="0.9"/>
+<text x="550" y="1046" font-size="10" fill="#1A7A6D" text-anchor="middle" font-weight="700">capture / hero tap</text>
+<path d="M 540 1485 L 568 1485 Q 580 1485 580 1497 L 580 1556 Q 580 1568 592 1568 L 1208 1568 Q 1220 1568 1220 1556 L 1220 642 Q 1220 630 1208 630 L 477 630 Q 465 630 465 618 L 465 588" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="620" y="1584" font-size="10" fill="#2D5A27" font-weight="700">publish → Listings</text>
+<rect x="40" y="1620" width="1160" height="330" rx="16" fill="none" stroke="#8a8f94" stroke-width="1.2" stroke-dasharray="8 6" opacity="0.55"/>
+<text x="56" y="1644" font-size="14" font-weight="800" fill="#8a8f94" letter-spacing="2">SETTINGS &amp; COMMS</text>
+<g transform="translate(90,1670)">
+<rect width="200" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="176" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<text x="100.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Profile</text>
+<text x="100.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/settings/profile</text>
+</g>
+<g transform="translate(350,1670)">
+<rect width="200" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="176" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<text x="100.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Marketplace</text>
+<text x="100.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/settings/marketplace</text>
+</g>
+<g transform="translate(610,1670)">
+<rect width="200" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="176" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="121.0" y="20" width="73" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="158" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">GTC toggle</text>
+<text x="100.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Seller Profile</text>
+<text x="100.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/settings/seller-profile</text>
+</g>
+<g transform="translate(90,1800)">
+<rect width="200" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="176" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<text x="100.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Notifications</text>
+<text x="100.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/settings/notifications</text>
+</g>
+<g transform="translate(350,1800)">
+<rect width="200" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="176" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<text x="100.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Billing</text>
+<text x="100.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/settings/billing</text>
+</g>
+<g transform="translate(610,1800)">
+<rect width="200" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="176" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<text x="100.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Help</text>
+<text x="100.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/settings/help</text>
+</g>
+<g transform="translate(890,1670)">
+<rect width="200" height="46" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="35" width="110" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="42" width="66" height="3" rx="1.5" fill="#eae7e0"/>
+<rect x="12" y="53" width="26" height="15" rx="3" fill="#e8e5de"/>
+<rect x="46" y="56" width="110" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="46" y="63" width="66" height="3" rx="1.5" fill="#eae7e0"/>
+<text x="100.0" y="64" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">OAuth callback</text>
+<text x="100.0" y="79" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/settings/marketplace/callback</text>
+</g>
+<g transform="translate(890,1800)">
+<rect width="200" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="176" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="160.0" y="20" width="34" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="177" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">beta</text>
+<text x="100.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Beta Report</text>
+<text x="100.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/beta/report · via Beta badge</text>
+</g>
+<path d="M 1135 588 L 1135 1628 Q 1135 1640 1123 1640 L 1022 1640 Q 1010 1640 1010 1652 L 1010 1670" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="1140" y="1100" font-size="10" fill="#2D5A27" font-weight="700" transform="rotate(90 1140 1100)">More → Settings · Messages · Admin</text>
+<path d="M 450 1670 L 450 1666 Q 450 1654 462 1654 L 978 1654 Q 990 1654 990 1666 L 990 1670" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="720" y="1651" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="700">OAuth</text>
+<path d="M 945 1206 C 945 1248.0, 945 1248.0, 945 1290" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
+<path d="M 1135 900 L 1135 1168 Q 1135 1180 1123 1180 L 1032 1180 Q 1020 1180 1020 1168 L 1020 1168" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<rect x="40" y="2010" width="1160" height="180" rx="16" fill="none" stroke="#8a8f94" stroke-width="1.2" stroke-dasharray="8 6" opacity="0.55"/>
+<text x="56" y="2034" font-size="14" font-weight="800" fill="#8a8f94" letter-spacing="2">TUTORIALS</text>
+<g transform="translate(610,2060)">
+<rect width="200" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="62" y="32" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="112" y="32" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="12" y="72" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="62" y="72" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="112" y="72" width="42" height="32" rx="4" fill="#e8e5de"/>
+<rect x="134.0" y="20" width="60" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="164" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">8 topics</text>
+<text x="100.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Tutorial Hub</text>
+<text x="100.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/tutorials</text>
+</g>
+<g transform="translate(870,2060)">
+<rect width="200" height="76" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="200" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="200" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="62" height="52" rx="5" fill="#e8e5de"/>
+<rect x="82" y="34" width="106" height="6" rx="3" fill="#c9c4b8"/>
+<rect x="82" y="46" width="74" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="82" y="56" width="44" height="10" rx="5" fill="#e3eeec"/>
+<rect x="12" y="88" width="176" height="9" rx="4" fill="#e8f2e6"/>
+<rect x="12" y="52" width="176" height="14" rx="7" fill="#2D5A27" opacity="0.85"/>
+<text x="100.0" y="94" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Tutorial Topic</text>
+<text x="100.0" y="109" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/tutorials/[topic]</text>
+</g>
+<path d="M 810 2098 C 840.0 2098, 840.0 2098, 870 2098" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.85"/>
+<text x="840" y="2092" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="600">topic</text>
+<path d="M 710 1912 L 710 2060" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="710" y="2000" font-size="10" fill="#2D5A27" text-anchor="middle" font-weight="700">Help → tutorials</text>
+<rect x="40" y="2190" width="1160" height="810" rx="16" fill="none" stroke="#8a8f94" stroke-width="1.2" stroke-dasharray="8 6" opacity="0.55"/>
+<text x="56" y="2214" font-size="14" font-weight="800" fill="#8a8f94" letter-spacing="2">ADMIN (requires role=admin · sidebar layout)</text>
+<g transform="translate(90,2240)">
+<rect width="170" height="120" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="46" height="30" rx="4" fill="#e8f2e6"/>
+<rect x="64" y="30" width="46" height="30" rx="4" fill="#e3eeec"/>
+<rect x="116" y="30" width="42" height="30" rx="4" fill="#f0e6d9"/>
+<polyline points="14,98 45,84 76,90 107,74 156,80" fill="none" stroke="#1A7A6D" stroke-width="2.5"/>
+<rect x="123.5" y="20" width="40" height="15" rx="7.5" fill="#1A7A6D"/>
+<text x="144" y="31" font-size="9.5" fill="white" text-anchor="middle" font-weight="700">admin</text>
+<text x="85.0" y="138" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Admin Home</text>
+<text x="85.0" y="153" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin</text>
+</g>
+<g transform="translate(90,2490)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="146" height="12" rx="2" fill="#eceae3"/>
+<rect x="12" y="52" width="146" height="12" rx="2" fill="#f4f2ed"/>
+<rect x="12" y="72" width="146" height="12" rx="2" fill="#eceae3"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Users</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/users</text>
+</g>
+<path d="M 175 2360 L 175 2448 Q 175 2460 175 2460 L 175 2460 Q 175 2460 175 2472 L 175 2490" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<g transform="translate(315,2490)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="62" height="52" rx="5" fill="#e8e5de"/>
+<rect x="82" y="34" width="76" height="6" rx="3" fill="#c9c4b8"/>
+<rect x="82" y="46" width="53" height="4" rx="2" fill="#dcd8cf"/>
+<rect x="82" y="56" width="44" height="10" rx="5" fill="#e3eeec"/>
+<rect x="12" y="88" width="146" height="9" rx="4" fill="#e8f2e6"/>
+<rect x="12" y="86" width="146" height="14" rx="7" fill="#2D5A27" opacity="0.85"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">User Detail</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/users/[id]</text>
+</g>
+<path d="M 175 2360 L 175 2448 Q 175 2460 187 2460 L 388 2460 Q 400 2460 400 2472 L 400 2490" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<g transform="translate(540,2490)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="146" height="12" rx="2" fill="#eceae3"/>
+<rect x="12" y="52" width="146" height="12" rx="2" fill="#f4f2ed"/>
+<rect x="12" y="72" width="146" height="12" rx="2" fill="#eceae3"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Inventory</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/inventory</text>
+</g>
+<path d="M 175 2360 L 175 2448 Q 175 2460 187 2460 L 613 2460 Q 625 2460 625 2472 L 625 2490" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<g transform="translate(765,2490)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="146" height="12" rx="2" fill="#eceae3"/>
+<rect x="12" y="52" width="146" height="12" rx="2" fill="#f4f2ed"/>
+<rect x="12" y="72" width="146" height="12" rx="2" fill="#eceae3"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Listings</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/listings</text>
+</g>
+<path d="M 175 2360 L 175 2448 Q 175 2460 187 2460 L 838 2460 Q 850 2460 850 2472 L 850 2490" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<g transform="translate(990,2490)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="146" height="12" rx="2" fill="#eceae3"/>
+<rect x="12" y="52" width="146" height="12" rx="2" fill="#f4f2ed"/>
+<rect x="12" y="72" width="146" height="12" rx="2" fill="#eceae3"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Orders</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/orders</text>
+</g>
+<path d="M 175 2360 L 175 2448 Q 175 2460 187 2460 L 1063 2460 Q 1075 2460 1075 2472 L 1075 2490" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<g transform="translate(90,2740)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="54" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="62" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="78" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="86" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Marketplace</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/marketplace</text>
+</g>
+<path d="M 120 2360 L 120 2408 Q 120 2420 108 2420 L 72 2420 Q 60 2420 60 2432 L 60 2698 Q 60 2710 72 2710 L 163 2710 Q 175 2710 175 2722 L 175 2740" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<g transform="translate(315,2740)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="88" height="16" rx="8" fill="#e8f2e6"/>
+<rect x="71" y="54" width="88" height="16" rx="8" fill="#e3eeec"/>
+<rect x="12" y="76" width="105" height="16" rx="8" fill="#e8f2e6"/>
+<rect x="12" y="88" width="146" height="12" rx="6" fill="#f0ede6" stroke="#d9d5cc"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Porter</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/porter</text>
+</g>
+<path d="M 120 2360 L 120 2408 Q 120 2420 108 2420 L 72 2420 Q 60 2420 60 2432 L 60 2698 Q 60 2710 72 2710 L 388 2710 Q 400 2710 400 2722 L 400 2740" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<g transform="translate(540,2740)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="46" height="30" rx="4" fill="#e8f2e6"/>
+<rect x="64" y="30" width="46" height="30" rx="4" fill="#e3eeec"/>
+<rect x="116" y="30" width="42" height="30" rx="4" fill="#f0e6d9"/>
+<polyline points="14,98 45,84 76,90 107,74 156,80" fill="none" stroke="#1A7A6D" stroke-width="2.5"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Observability</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/observability</text>
+</g>
+<path d="M 120 2360 L 120 2408 Q 120 2420 108 2420 L 72 2420 Q 60 2420 60 2432 L 60 2698 Q 60 2710 72 2710 L 613 2710 Q 625 2710 625 2722 L 625 2740" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<g transform="translate(765,2740)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="32" width="146" height="12" rx="2" fill="#eceae3"/>
+<rect x="12" y="52" width="146" height="12" rx="2" fill="#f4f2ed"/>
+<rect x="12" y="72" width="146" height="12" rx="2" fill="#eceae3"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Audit Log</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/audit</text>
+</g>
+<path d="M 120 2360 L 120 2408 Q 120 2420 108 2420 L 72 2420 Q 60 2420 60 2432 L 60 2698 Q 60 2710 72 2710 L 838 2710 Q 850 2710 850 2722 L 850 2740" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<g transform="translate(990,2740)">
+<rect width="170" height="110" rx="10" fill="#ffffff" stroke="#d9d5cc" stroke-width="1.5"/>
+<rect width="170" height="16" rx="10" fill="#2D5A27" opacity="0.9"/>
+<rect y="9" width="170" height="7" fill="#2D5A27" opacity="0.9"/>
+<rect x="12" y="30" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="38" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="54" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="62" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<rect x="12" y="78" width="52" height="5" rx="2.5" fill="#c9c4b8"/>
+<rect x="12" y="86" width="146" height="11" rx="4" fill="#f4f2ed" stroke="#d9d5cc"/>
+<text x="85.0" y="128" font-size="13.5" font-weight="700" fill="#1e2225" text-anchor="middle">Settings</text>
+<text x="85.0" y="143" font-size="10.5" fill="#8a8f94" text-anchor="middle" font-family="ui-monospace,monospace">/admin/settings</text>
+</g>
+<path d="M 120 2360 L 120 2408 Q 120 2420 108 2420 L 72 2420 Q 60 2420 60 2432 L 60 2698 Q 60 2710 72 2710 L 1063 2710 Q 1075 2710 1075 2722 L 1075 2740" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<path d="M 1185 588 L 1185 603 Q 1185 615 1197 615 L 1220 615 Q 1232 615 1232 627 L 1232 2203 Q 1232 2215 1220 2215 L 272 2215 Q 260 2215 260 2227 L 260 2240" fill="none" stroke="#2D5A27" stroke-width="2" marker-end="url(#arr-nav)" opacity="0.9"/>
+<text x="420" y="2230" font-size="10" fill="#2D5A27" font-weight="700">More → Admin (role gate)</text>
+</svg>

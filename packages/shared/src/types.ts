@@ -4,7 +4,7 @@ export interface User {
   id: string;
   email: string;
   displayName?: string;
-  subscriptionTier: 'free' | 'pro';
+  subscriptionTier: 'free' | 'pro' | 'beta-tester';
   stripeCustomerId?: string;
   aiScansThisMonth: number;
   bgRemovalsThisMonth: number;
@@ -50,10 +50,22 @@ export interface MarketplaceCacheEntry {
   cachedAt: string;
 }
 
+// Reverb's cache slot carries UUIDs and gear attributes rather than eBay's
+// numeric category ids — populated at prepare time, consumed by the publish
+// route's enrichment block.
+export interface ReverbCacheEntry {
+  categoryUuid: string | null;
+  categoryName: string | null;
+  conditionUuid: string | null;
+  conditionName: string | null;
+  year: string | null;
+  finish: string | null;
+  cachedAt: string;
+}
+
 export interface MarketplaceData {
   ebay?: MarketplaceCacheEntry;
-  etsy?: MarketplaceCacheEntry;
-  reverb?: MarketplaceCacheEntry;
+  reverb?: ReverbCacheEntry;
 }
 
 export interface Item {
@@ -68,10 +80,25 @@ export interface Item {
   brand: string;
   model: string;
   features: string[];
+  // eBay item specifics keyed → string[] (Brand, MPN, category aspects). Filled at
+  // scan, carried into publish. Defaults to {} for existing rows.
+  aspects?: Record<string, string[]>;
   estimatedValueMin?: number;
   estimatedValueMax?: number;
   estimatedValueRecommended?: number;
+  // Seller-set sale price (distinct from the AI estimate). Prefills the editable
+  // price field on every eBay publish; null/undefined means unset.
+  price?: number | null;
   aiConfidenceScore: number;
+  quantity: number;
+  // eBay Calculated shipping (error 25020): normalized weight in ounces,
+  // dimensions in inches. weightEstimated marks AI-populated vs seller-confirmed.
+  weightOz?: number | null;
+  lengthIn?: number | null;
+  widthIn?: number | null;
+  heightIn?: number | null;
+  ebayPackageType?: string | null;
+  weightEstimated?: boolean;
   marketplaceData?: MarketplaceData;
   createdAt: Date;
   updatedAt: Date;
@@ -81,12 +108,14 @@ export interface Listing {
   id: string;
   itemId: string;
   userId: string;
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
   marketplaceListingId?: string;
   marketplaceSpecificFields?: Record<string, unknown>;
   status: 'draft' | 'active' | 'sold' | 'archived';
   price: number;
   currency: string;
+  ebaySku?: string;
+  ebayOfferId?: string;
   createdAt: Date;
   publishedAt?: Date;
   soldAt?: Date;
@@ -97,7 +126,7 @@ export interface Order {
   listingId: string;
   itemId: string;
   userId: string;
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
   marketplaceOrderId: string;
   buyerUsername: string;
   salePrice: number;
@@ -186,7 +215,7 @@ export interface Notification {
 export interface MarketplaceAccount {
   id: string;
   userId: string;
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
   accessTokenEncrypted: string;
   refreshTokenEncrypted: string;
   tokenExpiresAt: Date;
@@ -210,6 +239,16 @@ export interface CompStats {
   activeMedian: number | null;
   activeAvg: number | null;
   sampleSize: number;
+  /**
+   * Market-shape percentiles over the RAW sold pool (no condition filtering) —
+   * for display/context only. Listing-price bands come from the prepare-listing
+   * pricing engine, which uses a condition-selected pool; do not mix the two.
+   */
+  p25?: number | null;
+  p50?: number | null;
+  p75?: number | null;
+  /** sold / (sold + active); null when there are no comps at all. */
+  sellThrough?: number | null;
 }
 
 export interface CompResult {
@@ -246,41 +285,6 @@ export interface ShipFromAddress {
 }
 
 export type PackageType = 'box' | 'envelope' | 'poly_mailer';
-export type ShippingProviderType = 'shippo' | 'easypost' | 'pirate_ship';
-
-export interface ShippingPreset {
-  id: string;
-  userId: string;
-  name: string;
-  packageType: PackageType;
-  length: number;
-  width: number;
-  height: number;
-  weightLbs: number;
-  weightOz: number;
-  isDefault: boolean;
-  sortOrder: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ShippingProvider {
-  id: string;
-  userId: string;
-  provider: ShippingProviderType;
-  isActive: boolean;
-  createdAt: Date;
-}
-
-export interface ShippingRate {
-  rateId: string;
-  carrier: string;
-  service: string;
-  price: number;
-  currency: string;
-  estimatedDays: number;
-  source: 'marketplace' | 'shippo' | 'easypost' | 'pirate_ship';
-}
 
 export interface DisclaimerAcceptance {
   id: string;
@@ -299,10 +303,16 @@ export interface RecognitionCandidate {
   conditionNotes: string;
   brand: string | null;
   model: string | null;
+  mpn?: string | null;
+  aspects?: Record<string, string[]>;
   features: string[];
   estimatedValueLow: number;
   estimatedValueHigh: number;
   confidence: number;
+  // AI-estimated packaged shipping weight (oz) + box dimensions (in) from the scan.
+  weight?: { value: number; unit: string };
+  dimensions?: { length: number; width: number; height: number; unit: string };
+  packageType?: string;
 }
 
 export interface RecognitionResult {
@@ -317,7 +327,7 @@ export type ShippingMethod = 'calculated' | 'flat' | 'free';
 export type PackageSize = 'small' | 'medium' | 'large' | 'custom';
 
 export interface ListingFlowState {
-  photos: Array<{ url: string; key: string; width?: number; height?: number; isPrimary?: boolean }>;
+  photos: ItemPhoto[];
   primaryPhotoIndex: number;
 
   recognition: {
@@ -336,32 +346,49 @@ export interface ListingFlowState {
   brand: string;
   model: string;
   features: string[];
+  quantity: number;
 
   price: number | null;
   pricingStrategy: PricingStrategy;
-  acceptOffers: boolean;
-  minimumOfferPrice: number | null;
   comps: CompResult | null;
   compsStatus: 'idle' | 'loading' | 'loaded' | 'failed';
 
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
 
   shippingMethod: ShippingMethod;
   shippingCost: number | null;
   packageSize: PackageSize;
+  // weight stays decimal pounds (existing flow consumers); dimensions are inches.
+  // ebayPackageType is the eBay enum (MAILING_BOX/LETTER/...), distinct from packageSize.
   weight: number | null;
+  dimLength: number | null;
+  dimWidth: number | null;
+  dimHeight: number | null;
+  ebayPackageType: string | null;
+  // true while weight/dims are AI-estimated and unconfirmed; any manual edit
+  // flips it false so the persisted item records seller-confirmed metrics.
+  weightEstimated: boolean;
 
   draftId: string | null;
   publishStatus: 'idle' | 'publishing' | 'published' | 'failed';
   listingId: string | null;
   inventoryItemId: string | null;
+  // Set when the listing row was created but the marketplace publish fell back
+  // to draft (e.g. eBay rejected it) — carries the marketplace's actual reason.
+  publishWarning: string | null;
+  // Dedup key for POST /listings, scoped as `${itemId}:${marketplace}:${random}`.
+  // Reused verbatim on retry so the server collides on (userId, idempotencyKey)
+  // and resumes the stuck row instead of inserting an orphan draft per attempt;
+  // cleared on success. Optional: drafts persisted before this field existed
+  // resume with it undefined.
+  publishIdempotencyKey?: string | null;
 }
 
 export interface ListingDraft {
   id: string;
   userId: string;
   itemId: string | null;
-  marketplace: 'ebay' | 'etsy' | 'reverb';
+  marketplace: 'ebay' | 'reverb';
   title: string | null;
   price: number | null;
   status: string;
@@ -376,6 +403,8 @@ export interface UserPreferences {
   listingForkPref: ListingForkPref;
   listingForkCount: number;
   listingCompactMode: boolean;
+  /** F3b: true while the publish terms sheet is suppressed (7-day window, current version). */
+  disclaimerSuppressed?: boolean;
 }
 
 export type ItemCondition = 'new' | 'like_new' | 'good' | 'fair' | 'poor';
@@ -390,6 +419,7 @@ export interface SellerProfile {
   ebayPaymentPolicyId: string | null;
   ebayReturnPolicyId: string | null;
   ebayMerchantLocationKey: string | null;
+  ebayPublishMode: 'draft' | 'live';
   reverbOffersEnabled: boolean;
   reverbDefaultShipping: ReverbShippingDefaults | null;
   shipFromAddress: ShipFromAddress | null;
@@ -399,6 +429,11 @@ export interface SellerProfile {
   preferredMarketplaces: MarketplaceType[];
   autoPublish: boolean;
   defaultCurrency: string;
+  pricingSuggestPercentile: number;
+  pricingFloorPercentile: number;
+  bestOfferAutoAcceptEnabled: boolean;
+  gtcAutoEnd: boolean;
+  defaultListingFooter: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -416,6 +451,12 @@ export interface PricingData {
   confidence: 'high' | 'medium' | 'low';
   basedOn: number;
   conditionMatch: 'exact' | 'nearby' | 'all';
+  /**
+   * Best-Offer auto-accept floor from the SAME comp pool as `suggested`
+   * (engine invariant — never recompute from a different pool). null/absent
+   * when the pool is too small (n<3) or the floor would invert.
+   */
+  bestOfferFloor?: number | null;
 }
 
 export interface ReverbCompListing {
@@ -434,6 +475,9 @@ export interface ReverbCompResult {
     avg: number | null;
     sampleSize: number;
   };
+  // True when the comps API call itself failed (outage/rate-limit) — the empty
+  // result then means "couldn't ask", not "no comparable listings exist".
+  degraded?: boolean;
 }
 
 export interface EbayPreparedFields {
@@ -448,10 +492,8 @@ export interface EbayPreparedFields {
   weight: { value: number; unit: string };
   dimensions: { length: number; width: number; height: number; unit: string };
   packageType: string;
-  fulfillmentPolicyId: string;
-  paymentPolicyId: string;
-  returnPolicyId: string;
-  merchantLocationKey: string;
+  /** Best-Offer auto-accept floor (seller opted in); flows to the adapter via marketplaceSpecific. */
+  bestOfferAutoAcceptPrice?: number;
 }
 
 export interface ReverbPreparedFields {
@@ -486,18 +528,8 @@ export interface PreparedListingData {
   isMusicGear: boolean;
   aiConfidence: number;
   warnings: string[];
-}
-
-export interface EbayPolicy {
-  policyId: string;
-  name: string;
-  description?: string;
-}
-
-export interface EbayPoliciesResponse {
-  fulfillment: EbayPolicy[];
-  payment: EbayPolicy[];
-  returnPolicy: EbayPolicy[];
+  /** Seller's default footer — display-only in previews; appended server-side at publish. */
+  listingFooter?: string | null;
 }
 
 // ─── Porter rich content blocks (SSE streaming protocol) ──
@@ -530,19 +562,12 @@ export interface ActionPill {
 export interface RichMessage {
   role: 'user' | 'assistant';
   blocks: ContentBlock[];
-  voiceTranscript?: string;
-}
-
-export interface AudioPlayback {
-  url: string;
-  duration?: number;
 }
 
 export type TextDeltaEvent = { type: 'text_delta'; text: string };
 export type ToolStartEvent = { type: 'tool_start'; toolId: string; toolName: string };
 export type ToolResultEvent = { type: 'tool_result'; toolId: string; toolName: string; structured?: unknown };
 export type ActionPillsEvent = { type: 'action_pills'; pills: ActionPill[] };
-export type AudioEvent = { type: 'audio_url'; url: string };
 export type DoneEvent = { type: 'done'; conversationId: string; model: string; inputTokens: number; outputTokens: number };
 export type ErrorEvent = { type: 'error'; message: string };
 
@@ -551,6 +576,5 @@ export type StreamEvent =
   | ToolStartEvent
   | ToolResultEvent
   | ActionPillsEvent
-  | AudioEvent
   | DoneEvent
   | ErrorEvent;

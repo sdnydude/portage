@@ -1,19 +1,22 @@
 @import "tailwindcss";
 
 :root {
-  --background: #F8F7F4;
-  --foreground: #1A1A1A;
+  /* Neutrals — DHG Warm Stone + Graphite (hybrid retheme) */
+  --background: #F5F2EB;
+  --foreground: #2D2A26;
   --surface: #FFFFFF;
   --surface-elevated: #FFFFFF;
-  --muted: #F5F3EF;
-  --border: #E8E5DE;
+  --muted: #EFEBE1;
+  --muted-bg: var(--muted);
+  --border: #D6D3CE;
   --border-focus: #2D5A27;
 
-  --text-primary: #1A1A1A;
-  --text-secondary: #6B6B6B;
+  --text-primary: #2D2A26;
+  --text-secondary: #4A4742;
   --text-placeholder: #A3A3A3;
   --text-inverse: #FFFFFF;
 
+  /* Legacy brand — kept until per-screen migration off forest-green */
   --forest-green: #2D5A27;
   --forest-green-light: #3D7A35;
   --forest-green-dark: #1E3D1A;
@@ -22,9 +25,32 @@
 
   --accent-warm: #D4A574;
   --accent-error: #DC3545;
+  --accent-error-soft: #FDECEA;   /* error banner / required-missing bg */
   --accent-warning: #F59E0B;
-  --accent-success: #2D5A27;
+  --accent-success: #0F9D58;
+  --accent-success-soft: #E6F4EE; /* success-tinted bg: comps/money highlight, "Complete" badge */
   --accent-info: #3B82F6;
+
+  /* DHG design system — accents (migrate forest-green → these per screen) */
+  --warm-stone: #F5F2EB;
+  --graphite: #2D2A26;
+  --charcoal: #3A3836;
+  --hero-top: #262A2D;
+  --hero-bottom: #15181B;
+  --on-forest: #EEF6F5;        /* light text on graphite/teal hero */
+  --on-forest-mute: #9FC9C8;
+  --on-forest-error: #FFB4A4;  /* error text legible on the always-dark hero (both themes) */
+  --teal: #0D7377;             /* AI / intelligence accent */
+  --teal-bright: #119AA0;
+  --teal-dark: #0A4A47;
+  --teal-soft: #E2F0F0;        /* -soft (NOT -50) so it can't shadow Tailwind's teal-50 */
+  --orb-core: #0B6360;         /* Porter orb gradient inner — theme-independent (orb always sits on the dark hero) */
+  --orange: #F77E2D;           /* primary CTA */
+  --orange-bright: #FF9A52;
+  --orange-dark: #C9621B;
+  --orange-soft: #FCEEE2;
+  --glass-control: rgba(255, 255, 255, 0.10);  /* glass card on dark hero */
+  --glass-nav-bg: rgba(245, 242, 235, 0.72);   /* warm-stone tab-bar glass */
 
   /* Apple Glass materials */
   --glass-thick-blur: 30px;
@@ -57,6 +83,10 @@
 }
 
 @theme inline {
+  /* Primary CTA color. Several pages (beta report, billing upsell) style
+     buttons with var(--color-primary); without this definition they render
+     text-white on a transparent background — invisible. */
+  --color-primary: var(--orange);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
@@ -82,19 +112,36 @@
   --color-accent-success: var(--accent-success);
   --color-accent-info: var(--accent-info);
 
+  /* DHG accents → Tailwind utilities (bg-teal, text-orange, bg-graphite, …) */
+  --color-warm-stone: var(--warm-stone);
+  --color-graphite: var(--graphite);
+  --color-charcoal: var(--charcoal);
+  --color-on-forest: var(--on-forest);
+  --color-on-forest-mute: var(--on-forest-mute);
+  --color-teal: var(--teal);
+  --color-teal-bright: var(--teal-bright);
+  --color-teal-dark: var(--teal-dark);
+  --color-teal-soft: var(--teal-soft);
+  --color-orange: var(--orange);
+  --color-orange-bright: var(--orange-bright);
+  --color-orange-dark: var(--orange-dark);
+  --color-orange-soft: var(--orange-soft);
+
   --font-sans: var(--font-plus-jakarta);
   --font-display: var(--font-instrument);
   --font-mono: var(--font-jetbrains);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0F1210;
+/* Dark theme — applied via the .dark class on <html>. The theme-init script in
+   the root layout defaults it to the OS preference, honoring a stored override. */
+:root.dark {
+    --background: #14130F;
     --foreground: #F0EDE8;
-    --surface: #1A1F1A;
-    --surface-elevated: #242B24;
-    --muted: #1A1F1A;
-    --border: #2D332D;
+    --surface: #1A1713;
+    --surface-elevated: #221E1A;
+    --muted: #1B1814;
+    --muted-bg: var(--muted);
+    --border: #332F2A;
     --border-focus: #4CAF50;
 
     --text-primary: #F0EDE8;
@@ -107,14 +154,34 @@
     --forest-green-50: #1A2E1A;
     --forest-green-100: #243824;
 
-    /* Apple Glass materials — dark */
-    --glass-thick-bg: rgba(26, 31, 26, 0.75);
+    --accent-error: #F87171;                          /* legible error fg on dark surfaces */
+    --accent-error-soft: rgba(220, 53, 69, 0.16);
+    --accent-success: #2EC27E;
+    --accent-success-soft: rgba(46, 194, 126, 0.14);
+
+    /* DHG accents — dark */
+    --warm-stone: #1B1814;
+    --on-forest: #EEF6F5;
+    --on-forest-mute: #9FC9C8;
+    --teal: #19A5AB;
+    --teal-bright: #2DBFC4;
+    --teal-dark: #0E6E6B;        /* dark-theme value for the teal scale (orb inner now uses theme-independent --orb-core) */
+    --teal-soft: rgba(17, 154, 160, 0.16);
+    --orange: #FF9A52;
+    --orange-bright: #FFB070;
+    --orange-dark: #F59147;      /* deep-orange accent ($, Scan label) readable on dark surfaces */
+    --orange-soft: rgba(247, 126, 45, 0.16);
+    --glass-control: rgba(255, 255, 255, 0.07);
+    --glass-nav-bg: rgba(26, 22, 18, 0.72);
+
+    /* Apple Glass materials — dark (warm) */
+    --glass-thick-bg: rgba(26, 22, 18, 0.75);
     --glass-thick-border: rgba(255, 255, 255, 0.08);
 
-    --glass-regular-bg: rgba(26, 31, 26, 0.60);
+    --glass-regular-bg: rgba(26, 22, 18, 0.60);
     --glass-regular-border: rgba(255, 255, 255, 0.06);
 
-    --glass-thin-bg: rgba(26, 31, 26, 0.40);
+    --glass-thin-bg: rgba(26, 22, 18, 0.40);
     --glass-thin-border: rgba(255, 255, 255, 0.04);
 
     /* Shadow depth — dark */
@@ -122,7 +189,6 @@
     --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.3);
     --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.4);
     --shadow-floating: 0 16px 48px rgba(0, 0, 0, 0.5);
-  }
 }
 
 body {
@@ -200,6 +266,44 @@ select {
   50% { transform: scaleY(1); }
 }
 
+/* Porter hero — teal AI aurora + breathing orb ring */
+@keyframes aurora-spin { to { transform: rotate(360deg); } }
+@keyframes orb-breathe { 0%, 100% { transform: scale(1); opacity: 0.7; } 50% { transform: scale(1.5); opacity: 0; } }
+.porter-aurora { animation: aurora-spin 26s linear infinite; }
+.porter-orb-ring { animation: orb-breathe 3.2s cubic-bezier(0.22, 0.61, 0.36, 1) infinite; }
+
+/* Staggered entrance (home sections) */
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.animate-rise { opacity: 0; animation: rise 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+
+/* Tutorial overlay animations (TutorialPlayer / onboarding carousel) */
+@keyframes tutorial-pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(45, 90, 39, 0.55); }
+  50% { box-shadow: 0 0 0 10px rgba(45, 90, 39, 0); }
+}
+
+@keyframes tutorial-tap-ripple {
+  0% { transform: scale(0.5); opacity: 0.85; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* Includes the callout's translateX(-50%) centering — an animation transform
+   REPLACES the inline transform while filling, it does not compose with it. */
+@keyframes tutorial-callout-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes tutorial-swipe-x {
+  0% { transform: translateX(-10px); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateX(18px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-overlay { animation: none !important; }
+}
+
 .animate-check-draw {
   stroke-dasharray: 48;
   stroke-dashoffset: 48;
@@ -236,6 +340,16 @@ select {
   }
 }
 
+/* Long-press drag tiles: iOS Safari's image save/copy callout and text
+   selection fire on the same long-press that arms photo drag — the callout
+   wins and the drag never starts. Applied to every use-photo-drag surface. */
+.photo-drag-tile,
+.photo-drag-tile img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* WCAG: reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .animate-spring-in,
@@ -244,10 +358,30 @@ select {
   .animate-slide-up,
   .animate-slide-up-full,
   .animate-pulse-glow,
-  .animate-check-draw {
+  .animate-check-draw,
+  .porter-aurora,
+  .porter-orb-ring,
+  .animate-rise {
     animation: none !important;
     opacity: 1;
     transform: none;
+  }
+  .porter-orb-ring { opacity: 0; }
+}
+
+/* WCAG: reduced transparency — opaque fallback for glass chrome/controls */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-nav {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .glass-control {
+    /* always sits on the dark graphite hero → opaque warm-dark, not white (which
+       would hide the light --on-forest text in light mode) */
+    background: var(--charcoal);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 
@@ -271,6 +405,44 @@ select {
   -webkit-backdrop-filter: blur(var(--glass-thin-blur)) saturate(180%);
   background: var(--glass-thin-bg);
   border-color: var(--glass-thin-border);
+}
+
+/* Liquid Glass — warm-stone navigation material (tab bar / chrome) */
+.glass-nav {
+  backdrop-filter: blur(22px) saturate(175%);
+  -webkit-backdrop-filter: blur(22px) saturate(175%);
+  background: var(--glass-nav-bg);
+}
+
+/* Glass control on a dark hero (Porter ask card) */
+.glass-control {
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  background: var(--glass-control);
+}
+
+/* Responsive content container — replaces scattered per-page max-w-lg.
+   Phone: max-w-lg · tablet portrait: max-w-2xl · desktop: fluid to max-w-5xl. */
+.content-container {
+  width: 100%;
+  margin-inline: auto;
+  max-width: 32rem; /* max-w-lg */
+}
+@media (min-width: 768px) {
+  .content-container { max-width: 42rem; } /* max-w-2xl */
+}
+@media (min-width: 1024px) {
+  .content-container { max-width: 64rem; } /* max-w-5xl */
+}
+
+/* Clears the floating compact tab bar (48px bar + 8px lift + safe area)
+   on non-tab routes below lg; desktop has no bar. */
+/* Mobile-only: unlayered rules beat Tailwind's layered py-*, so a lg reset
+   to 0 would also erase each page's own desktop padding — scope instead. */
+@media (max-width: 1023.98px) {
+  .compact-bar-clearance {
+    padding-bottom: calc(4rem + var(--safe-area-bottom));
+  }
 }
 
 /* Scrollbar hiding for horizontal scroll areas */

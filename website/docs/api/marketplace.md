@@ -6,14 +6,14 @@ sidebar_position: 8
 
 # Marketplace
 
-OAuth connection management for eBay, Etsy, and Reverb marketplace accounts.
+Connection management for eBay and Reverb marketplace accounts. (Etsy support was parked 2026-07-09 pending API key approval — see below.)
 
 ## Endpoints
 
 ### List Connected Accounts
 
 ```
-GET /marketplace/accounts
+GET /users/me/marketplace-accounts
 ```
 
 **Auth:** Required
@@ -27,24 +27,25 @@ GET /marketplace/accounts
       "id": "uuid",
       "marketplace": "ebay",
       "marketplaceUserId": "seller123",
-      "status": "connected",
-      "connectedAt": "2026-05-01T..."
+      "tokenExpiresAt": "2026-07-10T...",
+      "createdAt": "2026-05-01T..."
     }
   ]
 }
 ```
 
-### Get OAuth URL
+### eBay
 
 ```
-GET /marketplace/:marketplace/auth-url
+GET    /marketplace/ebay/connect      # Returns the OAuth authorization URL
+POST   /marketplace/ebay/callback     # Exchange { code, state } for tokens
+GET    /marketplace/ebay/status       # Connection status
+DELETE /marketplace/ebay/disconnect   # Remove connection + tokens
 ```
 
 **Auth:** Required
 
-Returns the OAuth authorization URL for the specified marketplace. Redirect the user to this URL to begin the connection flow.
-
-**Response** `200`:
+`GET /marketplace/ebay/connect` responds with:
 
 ```json
 {
@@ -52,35 +53,28 @@ Returns the OAuth authorization URL for the specified marketplace. Redirect the 
 }
 ```
 
-### OAuth Callback
+Redirect the user to `authUrl`; after they authorize, the frontend posts the returned `code` and `state` to `/marketplace/ebay/callback`, which exchanges them for tokens. Tokens are encrypted with AES-256-GCM before storage.
+
+Two Taxonomy-API helper endpoints also live under this prefix:
 
 ```
-GET /marketplace/:marketplace/callback?code=<auth_code>
+GET /marketplace/ebay/category-suggestion?q=<query>      # Suggest a leaf category
+GET /marketplace/ebay/category-aspects/:categoryId       # Required/recommended item aspects
 ```
 
-**Auth:** Required
+### Reverb
 
-Exchanges the authorization code for access/refresh tokens. Tokens are encrypted with AES-256-GCM before storage.
-
-### Disconnect Account
+Token-paste authentication using Personal Access Tokens (PATs). Users generate a token in their Reverb account settings and paste it into Portage. The token is validated against the live Reverb API (`GET /my/account`) before being stored.
 
 ```
-DELETE /marketplace/:marketplace
-```
-
-**Auth:** Required
-
-Removes the marketplace connection and deletes stored tokens.
-
-### Refresh Token
-
-```
-POST /marketplace/:marketplace/refresh
+POST   /marketplace/reverb/connect      # { token } — validate + store PAT
+GET    /marketplace/reverb/status       # Connection status
+DELETE /marketplace/reverb/disconnect   # Remove connection + token
 ```
 
 **Auth:** Required
 
-Manually refreshes an expired marketplace token.
+`POST /marketplace/reverb/connect` is rate-limited to **5 attempts per 15-minute window** (`express-rate-limit`); exceeding it returns `429 RATE_LIMITED`.
 
 ## OAuth Flows
 
@@ -88,26 +82,15 @@ Manually refreshes an expired marketplace token.
 
 Standard OAuth2 authorization code grant:
 
-1. Frontend redirects to eBay auth URL
+1. Frontend fetches the auth URL from `GET /marketplace/ebay/connect` and redirects to eBay
 2. User authorizes on eBay
-3. eBay redirects back with auth code
-4. API exchanges code for tokens
+3. eBay redirects back with auth code + state
+4. Frontend posts code + state to `POST /marketplace/ebay/callback`; the API exchanges them for tokens
 5. Tokens stored encrypted
 
-### Etsy
+### Etsy (parked)
 
-PKCE OAuth2 flow:
-
-1. Frontend generates code verifier and challenge
-2. Redirect to Etsy with challenge
-3. Etsy redirects back with auth code
-4. API exchanges code + verifier for tokens
-
-### Reverb
-
-Token-paste authentication using Personal Access Tokens (PATs). Users generate a token in their Reverb account settings and paste it into Portage. The token is validated against the live Reverb API (`GET /my/account`) before being stored.
-
-Endpoints: `POST /marketplace/reverb/connect`, `GET /marketplace/reverb/status`, `DELETE /marketplace/reverb/disconnect`.
+Etsy support was **removed 2026-07-09** pending Etsy API key approval — the adapter, auth routes, and UI no longer exist (pre-removal code is preserved at git tag `etsy-parked-2026-07`). The `etsy` database enum value remains but is inert; attempting to publish to Etsy is rejected at validation, since the request-body `marketplace` enum only accepts `ebay` | `reverb` — you get a `400 VALIDATION_ERROR`. (`400 MARKETPLACE_UNSUPPORTED` exists only on the legacy path for a pre-existing `etsy` listing row, and zero such rows exist.)
 
 ## Token Storage
 
@@ -115,6 +98,6 @@ All marketplace tokens are encrypted at rest:
 
 - **Algorithm:** AES-256-GCM
 - **Key:** `ENCRYPTION_KEY` environment variable (separate from `JWT_SECRET`)
-- **Storage:** `marketplace_accounts` table, encrypted columns for `accessToken` and `refreshToken`
+- **Storage:** `marketplace_accounts` table, in the `accessTokenEncrypted` and `refreshTokenEncrypted` columns
 
-Token refresh is handled automatically by the token manager when tokens expire during API calls.
+Token refresh is handled automatically by the token manager — access tokens are refreshed 5 minutes before expiry to avoid race conditions. There is no manual refresh endpoint.

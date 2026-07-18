@@ -17,10 +17,10 @@ import { ordersRouter } from './routes/orders.js';
 import { porterRouter } from './routes/porter.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { ebayAuthRouter } from './routes/marketplace/ebay-auth.js';
-import { etsyAuthRouter } from './routes/marketplace/etsy-auth.js';
 import { reverbAuthRouter } from './routes/marketplace/reverb-auth.js';
 import { adminRouter } from './routes/admin.js';
-import { shippingRouter } from './routes/shipping.js';
+import { disclaimerRouter } from './routes/disclaimer.js';
+import { faqsRouter } from './routes/faqs.js';
 import { surveyRouter } from './routes/survey.js';
 import { draftsRouter } from './routes/drafts.js';
 import { preferencesRouter } from './routes/preferences.js';
@@ -29,6 +29,7 @@ import { prepareListingRouter } from './routes/prepare-listing.js';
 import { usersRouter } from './routes/users.js';
 import { billingRouter, billingWebhookRouter } from './routes/billing.js';
 import { messagesRouter } from './routes/messages.js';
+import { betaRouter } from './routes/beta.js';
 
 export function createApp() {
   const config = env();
@@ -36,10 +37,17 @@ export function createApp() {
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
+  const baseOrigins = config.NODE_ENV === 'production'
+    ? ['https://portage.digitalharmonyai.com']
+    : ['http://10.0.0.251:3002', 'http://10.0.0.251:3000', 'https://10.0.0.251:3002', 'https://portage.digitalharmonyai.com', 'https://rehearsal.digitalharmonyai.com'];
+  // Additive, env-gated extra origins (comma-separated) — used by the ephemeral
+  // e2e stack to allow its isolated app port. Unset in prod ⇒ zero change.
+  const extraOrigins = (process.env.EXTRA_CORS_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.use(cors({
-    origin: config.NODE_ENV === 'production'
-      ? ['https://portage.digitalharmonyai.com']
-      : ['http://10.0.0.251:3002', 'http://10.0.0.251:3000', 'https://10.0.0.251:3002', 'https://portage.digitalharmonyai.com', 'https://rehearsal.digitalharmonyai.com'],
+    origin: [...baseOrigins, ...extraOrigins],
     credentials: true,
   }));
 
@@ -92,10 +100,10 @@ export function createApp() {
   app.use('/porter', porterRouter);
   app.use('/dashboard', dashboardRouter);
   app.use('/marketplace/ebay', ebayAuthRouter);
-  app.use('/marketplace/etsy', etsyAuthRouter);
   app.use('/marketplace/reverb', reverbAuthRouter);
   app.use('/admin', adminRouter);
-  app.use('/shipping', shippingRouter);
+  app.use('/disclaimer', disclaimerRouter);
+  app.use('/faqs', faqsRouter);
   app.use('/survey', surveyRouter);
   app.use('/drafts', draftsRouter);
   app.use('/users/me', usersRouter);
@@ -104,6 +112,7 @@ export function createApp() {
   app.use('/items', prepareListingRouter);
   app.use('/billing', billingRouter);
   app.use('/messages', messagesRouter);
+  app.use('/beta', betaRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -15,6 +15,9 @@ interface ItemPhoto {
 export interface Item {
   id: string;
   userId: string;
+  /** From GET /items: item has an active or sold listing. Absent on other
+   *  endpoints — the Unlisted chip only renders on an explicit false. */
+  listed?: boolean;
   title: string;
   description: string;
   category: string;
@@ -27,7 +30,19 @@ export interface Item {
   estimatedValueMin: number | null;
   estimatedValueMax: number | null;
   estimatedValueRecommended: number | null;
+  // Seller-set sale price (distinct from the AI estimate). Prefills the editable
+  // price field on every eBay publish; null means unset.
+  price?: number | null;
   aiConfidenceScore: number;
+  quantity: number;
+  // eBay Calculated shipping: weight in ounces, dimensions in inches.
+  // weightEstimated marks AI-populated values vs seller-confirmed.
+  weightOz?: number | null;
+  lengthIn?: number | null;
+  widthIn?: number | null;
+  heightIn?: number | null;
+  ebayPackageType?: string | null;
+  weightEstimated?: boolean;
   createdAt: string;
   updatedAt: string;
 }

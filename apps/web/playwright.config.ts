@@ -1,0 +1,44 @@
+import { defineConfig, devices } from "@playwright/test";
+
+/**
+ * Deterministic e2e harness. Runs against the REAL running app (the rebuilt
+ * portage-app container on :3002 by default), not a dev server — verifying the
+ * artifact users actually hit. Override the target with E2E_BASE_URL.
+ */
+const BASE_URL = process.env.E2E_BASE_URL ?? "http://10.0.0.251:3002";
+
+export default defineConfig({
+  testDir: "./e2e",
+  fullyParallel: false,
+  workers: 1,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 1 : 0,
+  reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
+  outputDir: "test-results",
+  use: {
+    baseURL: BASE_URL,
+    headless: true,
+    ignoreHTTPSErrors: true,
+    screenshot: "only-on-failure",
+    trace: "retain-on-failure",
+  },
+  projects: [
+    // Logs in once per run (the API auth limiter is 10-in-15min) and shares
+    // the session with every test via storageState.
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // Desktop Chrome's 1280x720 default lands on the lg (>=1024px) R1
+        // workbench, where the mobile layout every non-workbench spec drives
+        // is lg:hidden and item cards are buttons, not links. Pin the suite
+        // below lg; specs that exercise lg layouts (e2e/workbench.spec.ts)
+        // set their own viewport explicitly via test.use.
+        viewport: { width: 800, height: 900 },
+        storageState: "e2e/.auth/user.json",
+      },
+      dependencies: ["setup"],
+    },
+  ],
+});

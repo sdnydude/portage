@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { DeviceFrame } from "@/components/tutorials/device-frame";
+import type { Overlay } from "@/lib/tutorials";
 
 interface OnboardingFlowProps {
   onComplete: () => Promise<void>;
   onSkip: () => Promise<void>;
   isCompleting: boolean;
+  onExploreTutorials?: () => void;
 }
 
 interface Step {
@@ -13,34 +16,8 @@ interface Step {
   title: string;
   subtitle: string;
   body: string;
-  icon: React.ReactNode;
-}
-
-function EbayIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="eBay">
-      <rect width="28" height="28" rx="6" fill="#E53238" />
-      <text x="4" y="20" fontSize="11" fontWeight="700" fill="white" fontFamily="sans-serif">eBay</text>
-    </svg>
-  );
-}
-
-function EtsyIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="Etsy">
-      <rect width="28" height="28" rx="6" fill="#F56400" />
-      <text x="5" y="20" fontSize="11" fontWeight="700" fill="white" fontFamily="sans-serif">etsy</text>
-    </svg>
-  );
-}
-
-function ReverbIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="Reverb">
-      <rect width="28" height="28" rx="6" fill="#343E47" />
-      <path d="M8 10h8a4 4 0 010 8H8V10z" fill="none" stroke="white" strokeWidth="2" strokeLinejoin="round" />
-    </svg>
-  );
+  screenshot: string;
+  overlays: Overlay[];
 }
 
 const STEPS: Step[] = [
@@ -49,66 +26,44 @@ const STEPS: Step[] = [
     title: "Welcome to Portage",
     subtitle: "Your AI-powered selling assistant",
     body: "Turn your clutter into cash. Portage scans your items, identifies them instantly, and lists them across top marketplaces — all in seconds.",
-    icon: (
-      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-      </svg>
-    ),
+    screenshot: "/tutorials/adding-items/scan-home.png",
+    overlays: [{ type: "callout", x: 50, y: 40, text: "Your selling HQ", delay: 400 }],
   },
   {
     id: 1,
     title: "Scan & Inventory",
     subtitle: "AI identifies your items instantly",
     body: "Point your camera at any item. Porter's AI recognizes it, estimates its value, and adds it to your personal inventory catalog — automatically.",
-    icon: (
-      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
-        <circle cx="12" cy="13" r="4" />
-      </svg>
-    ),
+    screenshot: "/tutorials/adding-items/scan-home.png",
+    overlays: [{ type: "tap", x: 50, y: 93 }],
   },
   {
     id: 2,
     title: "List Anywhere",
-    subtitle: "eBay · Etsy · Reverb — one flow",
+    subtitle: "eBay · Reverb — one flow",
     body: "Choose your marketplace, pick your listing style — conversational, swipe, or hybrid — and Porter handles the details: title, description, pricing, and more.",
-    icon: (
-      <div className="flex items-center gap-3">
-        <EbayIcon />
-        <EtsyIcon />
-        <ReverbIcon />
-      </div>
-    ),
+    screenshot: "/tutorials/listings/create-listing.png",
+    overlays: [{ type: "highlight", x: 8, y: 25, w: 84, h: 30 }],
   },
   {
     id: 3,
     title: "Track & Ship",
     subtitle: "Orders, shipping, and analytics",
     body: "Monitor sales across all marketplaces in one place. Generate shipping labels, track packages, and watch your revenue grow — all from a single dashboard.",
-    icon: (
-      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="1" y="3" width="15" height="13" rx="2" />
-        <path d="M16 8h4l3 3v5a2 2 0 01-2 2h-1" />
-        <circle cx="5.5" cy="18.5" r="2.5" />
-        <circle cx="18.5" cy="18.5" r="2.5" />
-      </svg>
-    ),
+    screenshot: "/tutorials/orders/orders-tab.png",
+    overlays: [{ type: "highlight", x: 6, y: 20, w: 88, h: 30 }],
   },
   {
     id: 4,
     title: "You're all set",
     subtitle: "Start selling in seconds",
     body: "Scan your first item, and Porter will guide you through the rest. Your selling journey starts now.",
-    icon: (
-      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-        <polyline points="22 4 12 14.01 9 11.01" />
-      </svg>
-    ),
+    screenshot: "/tutorials/inventory/browse.png",
+    overlays: [{ type: "callout", x: 50, y: 30, text: "Let's go", delay: 300 }],
   },
 ];
 
-export function OnboardingFlow({ onComplete, onSkip, isCompleting }: OnboardingFlowProps) {
+export function OnboardingFlow({ onComplete, onSkip, isCompleting, onExploreTutorials }: OnboardingFlowProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [direction, setDirection] = useState<"next" | "prev">("next");
 
@@ -146,7 +101,7 @@ export function OnboardingFlow({ onComplete, onSkip, isCompleting }: OnboardingF
       {/* Card container */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-safe">
         <div
-          className="w-full max-w-sm rounded-3xl overflow-hidden"
+          className="w-full max-w-sm rounded-3xl max-h-[90dvh] overflow-y-auto"
           style={{
             background: "var(--surface)",
             boxShadow: "0 24px 80px rgba(0,0,0,0.4)",
@@ -172,9 +127,14 @@ export function OnboardingFlow({ onComplete, onSkip, isCompleting }: OnboardingF
               animation: "onboarding-slide-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
             }}
           >
-            {/* Icon */}
-            <div className="w-24 h-24 rounded-3xl bg-forest-green-50 flex items-center justify-center mb-6 mt-2">
-              {step.icon}
+            <div className="mb-6 mt-2">
+              <DeviceFrame
+                screenshot={step.screenshot}
+                overlays={step.overlays}
+                animationKey={step.id}
+                alt={step.title}
+                compact
+              />
             </div>
 
             {/* Text */}
@@ -223,6 +183,15 @@ export function OnboardingFlow({ onComplete, onSkip, isCompleting }: OnboardingF
                 disabled={isCompleting}
               >
                 Back
+              </button>
+            )}
+            {isLastStep && onExploreTutorials && (
+              <button
+                onClick={onExploreTutorials}
+                className="flex-1 py-3 rounded-2xl border border-border text-text-secondary font-semibold text-sm hover:bg-muted transition-colors"
+                disabled={isCompleting}
+              >
+                Explore tutorials
               </button>
             )}
             <button

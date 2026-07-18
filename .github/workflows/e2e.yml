@@ -1,0 +1,79 @@
+name: E2E (deterministic)
+
+# Deterministic e2e against an ISOLATED ephemeral stack (docker-compose.e2e.yml:
+# portage-e2e on 5998/8998/3998). NEVER touches the live stack (5436/8016/3002).
+# Runs on the self-hosted runner (g700data1) because that is where Docker lives.
+# Required check for merging to main (branch protection).
+
+on:
+  # Runs on ALL PRs to main (no path filter) so it is a reliable required
+  # status check — a path-filtered required check would block unrelated PRs
+  # that never trigger it. Builds are cached when no relevant files change.
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: portage-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Ephemeral e2e
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium
+
+      - name: Bring up ephemeral stack (build from this commit)
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: docker compose -f docker-compose.e2e.yml up -d --build
+
+      - name: Push schema to ephemeral DB
+        env:
+          DATABASE_URL: postgresql://portage:portage@localhost:5998/portage
+        run: npm run db:push -w apps/api
+
+      - name: Wait for ephemeral app and seed demo data
+        run: |
+          set -e
+          for i in $(seq 1 40); do curl -fsS http://10.0.0.251:8998/health >/dev/null && break || sleep 3; done
+          for i in $(seq 1 40); do curl -fsS -o /dev/null http://10.0.0.251:3998/ && break || sleep 3; done
+          # Dev-bypass session exchange (CF_ACCESS_DEV_EMAIL in the ephemeral
+          # stack) — auto-provisions e2e@portage.app and returns the token.
+          TOKEN=$(curl -fsS http://10.0.0.251:8998/auth/session \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          curl -fsS -X POST http://10.0.0.251:8998/items \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d '{"title":"E2E Seed Item","condition":"good","brand":"SeedBrand","photos":[{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==","key":"e2e-seed-photo"}]}'
+
+      - name: Run e2e against ephemeral app
+        env:
+          E2E_BASE_URL: http://10.0.0.251:3998
+          E2E_API_URL: http://10.0.0.251:8998
+          # Ephemeral stack runs a dev-bypass API behind the app, so the
+          # env-bound orders-sync login-trigger spec can pass here (and only here).
+          E2E_ORDERS_SYNC: "1"
+        run: npm run test:e2e -w apps/web
+
+      - name: Upload proof screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-proof
+          path: apps/web/test-results/proof/
+          if-no-files-found: ignore
+
+      - name: Tear down ephemeral stack
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v

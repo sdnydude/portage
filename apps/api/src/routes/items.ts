@@ -1,28 +1,72 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
-import { eq, desc, ilike, and, sql, inArray } from 'drizzle-orm';
+import { eq, desc, ilike, and, sql, inArray, getTableColumns } from 'drizzle-orm';
 import { Zip, ZipDeflate } from 'fflate';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { items, exportTokens } from '../db/schema.js';
+import { items, exportTokens, listings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
-import { EbayAdapter } from '../marketplace/ebay-adapter.js';
+import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
+import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
+import { mergeItemShipping, mergeItemAspects, applyShipFromOrigin } from './listings.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
+import type { MarketplaceData } from '@portage/shared';
+import { MAX_PHOTOS_PER_ITEM } from '@portage/shared';
 import { isAllowedImageOrigin } from './images.js';
 
 const logger = createLogger('items');
 
+// Drives the inventory "Unlisted" chip: confirm-time item creation (fresh-scan
+// prepare) means items can exist with no marketplace presence — drafts don't
+// count as listed. The outer items.id correlation must be sql.raw-qualified:
+// drizzle strips table qualifiers on single-table selects, so an interpolated
+// ${items.id} renders as bare "id", which Postgres resolves to listings.id
+// inside the subquery — an always-false correlation.
+export const itemListedExpr = sql<boolean>`exists (select 1 from ${listings} where ${listings.itemId} = ${sql.raw('"items"."id"')} and ${listings.status} in ('active', 'sold'))`;
+
 const photoSchema = z.object({
   url: z.string(),
-  key: z.string(),
+  // Optional: GetItem-imported photos (orphan-order backfill) carry only a
+  // url — requiring a key would 400 every reorder/delete echo on those items.
+  key: z.string().optional(),
   width: z.number().optional(),
   height: z.number().optional(),
   isPrimary: z.boolean().optional(),
 });
 
 const validConditions = ['new', 'like_new', 'good', 'fair', 'poor'] as const;
+
+// Per-marketplace resolved category cache (items.marketplaceData JSONB). The
+// eBay leaf categoryId persisted here is what resolveEbayCategoryId reads at
+// publish — without it, publish falls back to a title guess and can fail with
+// EBAY_CATEGORY_REQUIRED. title/cachedAt optional: the edit flow only resolves
+// category, and the column is JSONB so partial entries are valid at rest.
+const marketplaceCacheEntrySchema = z.object({
+  categoryId: z.string().nullable(),
+  categoryName: z.string().nullable(),
+  // Normalized so the stored entry is a well-formed MarketplaceCacheEntry even
+  // when the edit flow only resolved a category: title defaults null, cachedAt
+  // is stamped server-side.
+  title: z.string().nullable().default(null),
+  cachedAt: z.string().default(() => new Date().toISOString()),
+});
+// Reverb's slot carries UUIDs + gear attributes (ReverbCacheEntry), not eBay's
+// numeric category ids — written by prepare, read by the publish enrichment.
+const reverbCacheEntrySchema = z.object({
+  categoryUuid: z.string().nullable(),
+  categoryName: z.string().nullable(),
+  conditionUuid: z.string().nullable().default(null),
+  conditionName: z.string().nullable().default(null),
+  year: z.string().nullable().default(null),
+  finish: z.string().nullable().default(null),
+  cachedAt: z.string().default(() => new Date().toISOString()),
+});
+const marketplaceDataSchema = z.object({
+  ebay: marketplaceCacheEntrySchema.optional(),
+  reverb: reverbCacheEntrySchema.optional(),
+});
 
 const createItemSchema = z.object({
   title: z.string().min(1).max(500),
@@ -33,11 +77,23 @@ const createItemSchema = z.object({
   brand: z.string().max(255).optional(),
   model: z.string().max(255).optional(),
   features: z.array(z.string().max(100)).max(30).optional(),
+  aspects: z.record(z.string(), z.array(z.string())).optional(),
   estimatedValueMin: z.number().min(0).optional(),
   estimatedValueMax: z.number().min(0).optional(),
   estimatedValueRecommended: z.number().min(0).optional(),
+  // Seller-set sale price. Floor 0.01 — eBay disallows $0 listings, and null
+  // (omitted) means "unset", so it falls through to comps/estimate at publish.
+  price: z.number().min(0.01).optional(),
   aiConfidenceScore: z.number().min(0).max(1).optional(),
-  photos: z.array(photoSchema).optional(),
+  quantity: z.number().int().min(1).optional(),
+  weightOz: z.number().positive().optional(),
+  lengthIn: z.number().positive().optional(),
+  widthIn: z.number().positive().optional(),
+  heightIn: z.number().positive().optional(),
+  ebayPackageType: z.string().max(50).optional(),
+  weightEstimated: z.boolean().optional(),
+  photos: z.array(photoSchema).max(MAX_PHOTOS_PER_ITEM).optional(),
+  marketplaceData: marketplaceDataSchema.optional(),
 });
 
 const updateItemSchema = createItemSchema.partial();
@@ -132,7 +188,10 @@ itemsRouter.get('/', async (req, res, next) => {
     }
 
     const [results, countResult] = await Promise.all([
-      db.select().from(items)
+      db.select({
+        ...getTableColumns(items),
+        listed: itemListedExpr,
+      }).from(items)
         .where(and(...conditions))
         .orderBy(desc(items.createdAt))
         .limit(query.limit)
@@ -253,6 +312,99 @@ itemsRouter.get('/:id/comps', async (req, res, next) => {
   }
 });
 
+// Listing optimizer research: which eBay item-specifics buyers filter on that this
+// item is still missing, plus comps-based demand. App-token reads (taxonomy +
+// browse), so it works before any marketplace is connected.
+itemsRouter.get('/:id/research', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const [item] = await db.select().from(items)
+      .where(and(eq(items.id, req.params.id), eq(items.userId, userId)))
+      .limit(1);
+
+    if (!item) {
+      throw new AppError(404, 'NOT_FOUND', 'Item not found');
+    }
+
+    const searchQuery = (item.title || [item.brand, item.model].filter(Boolean).join(' ')).slice(0, 200);
+
+    // Prefer the eBay leaf category already cached on the item; else ask Taxonomy.
+    const cachedEbay = (item.marketplaceData as MarketplaceData | null)?.ebay;
+    let category: { categoryId: string; categoryName: string } | null =
+      cachedEbay?.categoryId
+        ? { categoryId: cachedEbay.categoryId, categoryName: cachedEbay.categoryName ?? '' }
+        : null;
+    if (!category) {
+      try {
+        category = await EbayAdapter.getCategorySuggestion(searchQuery);
+      } catch (err) {
+        logger.warn({ itemId: item.id, error: (err as Error).message }, 'Category suggestion failed for research');
+      }
+    }
+
+    const [aspectsMeta, comps] = await Promise.all([
+      category ? EbayAdapter.getRequiredAspects(category.categoryId) : Promise.resolve({}),
+      EbayAdapter.searchComps(searchQuery, category?.categoryId).catch((err) => {
+        logger.warn({ itemId: item.id, error: (err as Error).message }, 'Comps fetch failed for research');
+        return null;
+      }),
+    ]);
+
+    // Aspect gap: an aspect is "filled" when the item already carries a value for it
+    // (case-insensitive), with Brand/Model also honored from the dedicated columns.
+    const itemAspects = (item.aspects as Record<string, string[]>) ?? {};
+    const lowerToValues = new Map(Object.entries(itemAspects).map(([k, v]) => [k.toLowerCase(), v]));
+    const valueFor = (name: string): string[] | null => {
+      const v = lowerToValues.get(name.toLowerCase());
+      if (v && v.length) return v;
+      if (name.toLowerCase() === 'brand' && item.brand) return [item.brand];
+      if (name.toLowerCase() === 'model' && item.model) return [item.model];
+      return null;
+    };
+
+    const filled: Array<{ name: string; required: boolean; values: string[] }> = [];
+    const missing: Array<{ name: string; required: boolean; suggestedValues: string[] | null; cardinality: string }> = [];
+    for (const [name, meta] of Object.entries(aspectsMeta as Record<string, { required: boolean; values: string[] | null; cardinality: string }>)) {
+      const values = valueFor(name);
+      if (values) filled.push({ name, required: meta.required, values });
+      else missing.push({ name, required: meta.required, suggestedValues: meta.values, cardinality: meta.cardinality });
+    }
+    // Required gaps first, then alphabetical — fix what eBay enforces before the rest.
+    const byRequiredThenName = (a: { required: boolean; name: string }, b: { required: boolean; name: string }) =>
+      (Number(b.required) - Number(a.required)) || a.name.localeCompare(b.name);
+    missing.sort(byRequiredThenName);
+    filled.sort(byRequiredThenName);
+
+    const demand = comps
+      ? { ...comps.stats, soldCount: comps.sold.length, activeCount: comps.active.length }
+      : null;
+
+    // Performance feedback: the Analytics traffic report for the item's published
+    // eBay listing. Best-effort — needs a live listing AND the sell.analytics scope
+    // on the user token (pre-2026-06 connections lack it until they reconnect), so
+    // a missing scope / no listing simply yields null rather than failing research.
+    let traffic = null;
+    try {
+      const [listed] = await db.select({ marketplaceListingId: listings.marketplaceListingId })
+        .from(listings).where(and(
+          eq(listings.itemId, item.id),
+          eq(listings.userId, userId),
+          eq(listings.marketplace, 'ebay'),
+          eq(listings.status, 'active'),
+        )).limit(1);
+      if (listed?.marketplaceListingId) {
+        traffic = await new EbayAdapter(userId).getTrafficReport(listed.marketplaceListingId);
+      }
+    } catch (err) {
+      logger.warn({ itemId: item.id, error: (err as Error).message }, 'Traffic report fetch failed for research');
+    }
+
+    res.json({ category, aspects: { filled, missing }, demand, traffic });
+  } catch (err) {
+    next(err);
+  }
+});
+
 itemsRouter.get('/comps/search', async (req, res, next) => {
   try {
     const q = req.query.q as string | undefined;
@@ -282,11 +434,21 @@ itemsRouter.post('/', async (req, res, next) => {
       brand: body.brand ?? '',
       model: body.model ?? '',
       features: body.features ?? [],
+      aspects: body.aspects ?? {},
       estimatedValueMin: body.estimatedValueMin ?? null,
       estimatedValueMax: body.estimatedValueMax ?? null,
       estimatedValueRecommended: body.estimatedValueRecommended ?? null,
+      price: body.price ?? null,
       aiConfidenceScore: body.aiConfidenceScore ?? 0,
+      quantity: body.quantity ?? 1,
+      weightOz: body.weightOz ?? null,
+      lengthIn: body.lengthIn ?? null,
+      widthIn: body.widthIn ?? null,
+      heightIn: body.heightIn ?? null,
+      ebayPackageType: body.ebayPackageType ?? null,
+      weightEstimated: body.weightEstimated ?? false,
       photos: body.photos ?? [],
+      marketplaceData: body.marketplaceData ?? null,
     }).returning();
 
     logger.info({ userId, itemId: item.id, title: item.title }, 'Item created');
@@ -301,7 +463,7 @@ itemsRouter.patch('/:id', async (req, res, next) => {
     const userId = req.user!.sub;
     const body = updateItemSchema.parse(req.body);
 
-    const [existing] = await db.select({ id: items.id }).from(items)
+    const [existing] = await db.select({ id: items.id, marketplaceData: items.marketplaceData, aspects: items.aspects }).from(items)
       .where(and(eq(items.id, req.params.id), eq(items.userId, userId)))
       .limit(1);
 
@@ -309,13 +471,147 @@ itemsRouter.patch('/:id', async (req, res, next) => {
       throw new AppError(404, 'NOT_FOUND', 'Item not found');
     }
 
+    // marketplaceData is a per-marketplace JSONB cache; a partial PATCH must merge,
+    // not wholesale-replace. A category-only edit (the only thing the edit flow sends)
+    // would otherwise wipe sibling marketplace entries and null the AI-optimized eBay
+    // title that csv-export reads. Mirror the publish-time read-merge in listings.ts.
+    const updates: Record<string, unknown> = { ...body, updatedAt: new Date() };
+    if (body.marketplaceData) {
+      const current = (existing.marketplaceData as Record<string, Record<string, unknown>> | null) ?? {};
+      const merged: Record<string, Record<string, unknown>> = { ...current };
+      for (const [mk, entry] of Object.entries(body.marketplaceData)) {
+        const prev = current[mk];
+        merged[mk] = { ...prev, ...entry };
+        // The edit flow never sends a title, so Zod's null default must not clobber
+        // a previously cached one. Reverb's entry shape has no title.
+        if (mk !== 'reverb') {
+          const e = entry as { title?: string | null };
+          merged[mk].title = e.title ?? (prev as { title?: string | null } | undefined)?.title ?? null;
+        }
+      }
+      updates.marketplaceData = merged;
+    }
+
+    // aspects is JSONB like marketplaceData — a partial PATCH must read-merge,
+    // not wholesale-replace, or scan-captured specifics absent from this payload
+    // are silently wiped. Incoming keys win; existing keys are preserved.
+    if (body.aspects) {
+      const current = (existing.aspects as Record<string, string[]> | null) ?? {};
+      updates.aspects = { ...current, ...body.aspects };
+    }
+
     const [updated] = await db.update(items)
-      .set({ ...body, updatedAt: new Date() })
+      .set(updates)
       .where(eq(items.id, req.params.id))
       .returning();
 
     logger.info({ userId, itemId: updated.id }, 'Item updated');
-    res.json(updated);
+
+    // Push field edits to the item's marketplace listing(s) — eBay rejects UI
+    // edits on Inventory-API listings, and Reverb listings otherwise drift, so
+    // Portage is the source of truth. An item can have more than one syncable
+    // row, so sync every one and skip the rest — never just an arbitrary first.
+    // Entire block is best-effort: a failure fetching or syncing listings must
+    // not 500 the saved item edit — but failures are surfaced to the client as
+    // syncWarnings so a reorder that never reached eBay isn't a silent success.
+    const syncWarnings: string[] = [];
+    // eBay hard limit: the total length of all PictureURL values in a listing
+    // must not exceed 3975 characters. Warn at save time so the seller hears
+    // about it before a publish/revise fails on it.
+    const patchedPhotos = updated.photos as Array<{ url: string }> | null;
+    if (body.photos && patchedPhotos) {
+      const totalUrlChars = patchedPhotos.reduce((n, ph) => n + ph.url.length, 0);
+      if (totalUrlChars > 3975) {
+        syncWarnings.push(`Combined photo URL length (${totalUrlChars}) exceeds eBay's 3975-character PictureURL budget — eBay publishes/revisions may fail until some photos are removed.`);
+      }
+    }
+    try {
+      const marketplaceListings = await db.select({
+        marketplace: listings.marketplace,
+        status: listings.status,
+        marketplaceListingId: listings.marketplaceListingId,
+        ebaySku: listings.ebaySku,
+        marketplaceSpecificFields: listings.marketplaceSpecificFields,
+        currency: listings.currency,
+      }).from(listings).where(and(
+        eq(listings.itemId, updated.id),
+        eq(listings.userId, userId),
+        inArray(listings.marketplace, ['ebay', 'reverb']),
+        // Only live rows — never a stale archived/sold history row for this item.
+        inArray(listings.status, ['active', 'draft']),
+      ));
+
+      for (const listed of marketplaceListings) {
+        const syncId = listed.marketplaceListingId;
+        // eBay Trade-First: only a published listing (active + Trading ItemID)
+        // can be revised; a DB-only draft has no live listing until published.
+        // Reverb differs: publish can return a remote DRAFT that still carries
+        // a marketplaceListingId (shop setup pending) and remote drafts are
+        // revisable via the same PUT — so Reverb syncs on listingId alone.
+        if (!syncId) continue;
+        if (listed.marketplace === 'ebay' && listed.status !== 'active') continue;
+        try {
+          if (listed.marketplace === 'ebay') {
+            // GetItem-imported rows carry EMPTY specifics — without a leaf
+            // categoryId, ReviseFixedPriceItem rejects every edit-sync. Reuse
+            // the publish path's self-heal (listing intent → item cache →
+            // Taxonomy suggestion); imported items have the cache, so this is
+            // a no-op lookup for them.
+            const specifics = listed.marketplaceSpecificFields as Record<string, unknown> | undefined;
+            let healed = { ...(specifics ?? {}) };
+            if (!healed.categoryId || healed.categoryId === '99') {
+              const cat = await resolveEbayCategoryId(healed, updated);
+              if (cat.categoryId) healed.categoryId = cat.categoryId;
+            }
+            // Publish parity: inline calculated shipping needs the seller's
+            // ship-from ZIP; imported rows carry none in their specifics.
+            healed = (await applyShipFromOrigin(userId, healed)) as Record<string, unknown>;
+            const adapter = new EbayAdapter(userId);
+            const syncResult = await adapter.updateListing(syncId, {
+              title: updated.title,
+              description: updated.description,
+              price: updated.price ?? undefined,
+              currency: listed.currency,
+              condition: updated.condition,
+              quantity: updated.quantity,
+              brand: updated.brand,
+              model: updated.model,
+              photos: (updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
+              features: updated.features as string[],
+              ebaySku: listed.ebaySku ?? undefined,
+              // eBay-Trading-specific merges — never applied to Reverb.
+              marketplaceSpecific: mergeItemAspects(updated, mergeItemShipping(updated, healed)),
+            });
+            if (syncResult.warning) syncWarnings.push(`ebay: ${syncResult.warning}`);
+          } else {
+            const adapter = new ReverbAdapter(userId);
+            await adapter.updateListing(syncId, {
+              title: updated.title,
+              description: updated.description,
+              price: updated.price ?? undefined,
+              currency: listed.currency,
+              condition: updated.condition,
+              quantity: updated.quantity,
+              brand: updated.brand,
+              model: updated.model,
+              photos: (updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
+              // Publish-time specifics as stored (conditionUuid/categoryUuid/
+              // shippingRates) — no eBay aspect/shipping merging.
+              marketplaceSpecific: listed.marketplaceSpecificFields as Record<string, unknown> | undefined,
+            });
+          }
+        } catch (err) {
+          // One failed row must not block syncing the others.
+          logger.warn({ itemId: updated.id, marketplace: listed.marketplace, syncId, error: (err as Error).message }, 'Failed to sync item edit to marketplace listing');
+          syncWarnings.push(`${listed.marketplace}: listing ${syncId} was not updated — ${(err as Error).message}`);
+        }
+      }
+    } catch (err) {
+      logger.warn({ itemId: updated.id, error: (err as Error).message }, 'Failed to load listings for item-edit sync');
+      syncWarnings.push('Could not check marketplace listings for this edit — they may be out of date.');
+    }
+
+    res.json(syncWarnings.length > 0 ? { ...updated, syncWarnings } : updated);
   } catch (err) {
     next(err);
   }

@@ -17,7 +17,7 @@ const DISCLAIMER_CLAUSES = [
   },
   {
     title: "Marketplace Compliance",
-    text: "I agree to comply with all applicable marketplace policies, terms of service, and community guidelines for the selected platform (eBay, Etsy, or others).",
+    text: "I agree to comply with all applicable marketplace policies, terms of service, and community guidelines for the selected platform (eBay, Reverb, or others).",
   },
   {
     title: "Prohibited Items",
@@ -56,17 +56,21 @@ const DISCLAIMER_CLAUSES = [
 interface DisclaimerSheetProps {
   listingId: string;
   isFirstTime: boolean;
-  onAccept: () => void;
+  /** suppress7d = the seller ticked "don't show again for 7 days" (display only). */
+  onAccept: (suppress7d: boolean) => void;
   onCancel: () => void;
 }
 
 export function DisclaimerSheet({ listingId, isFirstTime, onAccept, onCancel }: DisclaimerSheetProps) {
   const [isExpanded, setIsExpanded] = useState(isFirstTime);
   const [isChecked, setIsChecked] = useState(false);
+  // F3b: opt-in to skip this sheet for 7 days. Unchecked by default.
+  const [suppress7d, setSuppress7d] = useState(false);
 
-  // Reset checkbox when sheet opens
+  // Reset checkboxes when sheet opens
   useEffect(() => {
     setIsChecked(false);
+    setSuppress7d(false);
     setIsExpanded(isFirstTime);
   }, [listingId, isFirstTime]);
 
@@ -147,6 +151,18 @@ export function DisclaimerSheet({ listingId, isFirstTime, onAccept, onCancel }: 
         </span>
       </label>
 
+      {/* F3b: opt-in to skip this sheet for 7 days (display only — consent is still recorded). */}
+      <label className="flex items-center gap-2 mt-3 cursor-pointer">
+        <input
+          type="checkbox"
+          aria-label="Don't show again for 7 days"
+          checked={suppress7d}
+          onChange={(e) => setSuppress7d(e.target.checked)}
+          className="h-4 w-4 accent-[var(--forest-green,#2D5A27)]"
+        />
+        <span className="text-xs text-text-secondary">Don&apos;t show these terms again for 7 days</span>
+      </label>
+
       {/* Action buttons */}
       <div className="flex gap-3 mt-3">
         <button
@@ -156,7 +172,7 @@ export function DisclaimerSheet({ listingId, isFirstTime, onAccept, onCancel }: 
           Cancel
         </button>
         <button
-          onClick={onAccept}
+          onClick={() => onAccept(suppress7d)}
           disabled={!isChecked}
           className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium disabled:opacity-50"
         >

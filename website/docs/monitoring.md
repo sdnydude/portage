@@ -1,7 +1,7 @@
 ---
 id: monitoring
 title: Monitoring
-sidebar_position: 3
+sidebar_position: 6
 ---
 
 # Monitoring
@@ -10,21 +10,24 @@ Portage includes built-in observability via Prometheus metrics, pino structured 
 
 ## Prometheus Metrics
 
-The API exposes 7 metrics at `GET /metrics`:
+The API exposes 8 custom metrics (plus Node.js default metrics, all `portage_`-prefixed) at `GET /metrics`:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `portage_http_requests_total` | Counter | Total HTTP requests by method, route, status |
-| `portage_http_request_duration_seconds` | Histogram | Request duration by route |
-| `portage_active_users_total` | Gauge | Currently active users |
-| `portage_items_total` | Gauge | Total inventory items |
-| `portage_listings_total` | Gauge | Total marketplace listings by status |
-| `portage_orders_total` | Gauge | Total orders by status |
-| `portage_ai_scans_total` | Counter | AI scan requests by status (success/failure) |
+| `portage_http_requests_total` | Counter | Total HTTP requests by method, route, status code |
+| `portage_http_request_duration_seconds` | Histogram | Request duration by method, route, status code |
+| `portage_active_listings` | Gauge | Active listings by marketplace |
+| `portage_orders_total` | Counter | Orders processed by marketplace and status |
+| `portage_revenue_dollars_total` | Counter | Revenue in dollars by marketplace |
+| `portage_scans_total` | Counter | Total item scans |
+| `portage_ai_request_duration_seconds` | Histogram | AI API call duration by provider and operation |
+| `portage_ebay_taxonomy_calls_total` | Counter | eBay taxonomy lookups by operation |
+
+If `METRICS_SECRET` is set, the endpoint requires `Authorization: Bearer <secret>`. Scrape targeting is advertised via Docker Compose labels on the `portage-api` service (`prometheus.io/scrape: "true"`, `prometheus.io/port: "8016"`, `prometheus.io/path: "/metrics"`).
 
 ## Grafana Dashboard
 
-A pre-built Grafana dashboard JSON is available for import. It visualizes:
+A pre-built Grafana dashboard JSON is available for import — it lives in the repo at `observability/grafana/portage-dashboard.json`. It visualizes:
 
 - Request rate and error rate over time
 - Response time percentiles (p50, p95, p99)
@@ -67,7 +70,7 @@ Access requires `role=admin` on the user account.
 | `GET /health` | API | `{ status: "ok", timestamp }` |
 | `GET /` | Web | Next.js renders the app |
 
-Docker health checks poll these endpoints to determine container health status.
+Docker health checks poll these endpoints to determine container health status — see [Deployment → Health Checks](/docs/deployment#health-checks) for the per-container probe configuration.
 
 ## Audit Logging
 

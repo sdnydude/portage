@@ -2,8 +2,6 @@
 
 AI-powered personal effects inventory and multi-marketplace seller app. Standalone project — not part of the DHG AI Factory stack.
 
-**Owner:** Stephen Webber — CEO/Founder, Digital Harmony Group. Bills at $600/hour. Expects Fortune 500 execution quality.
-
 **Server:** g700data1 (10.0.0.251), Ubuntu 24.04, 64GB RAM.
 
 **Repo:** https://github.com/sdnydude/portage.git — Branch: main.
@@ -27,28 +25,28 @@ npm workspaces monorepo with three packages:
 | portage-db | 5436 | PostgreSQL 15 |
 | portage-api | 8016 | Express 5 + TypeScript + pino |
 | portage-app | 3002 | Next.js 16 (standalone mode) |
-| dhg-docs | 8017 | nginx serving Docusaurus build |
-| dhg-stt | 8018 | Whisper large-v3-turbo (OpenAI-compatible STT, RTX 5080) |
-| dhg-tts | 8019 | Chatterbox Turbo (OpenAI-compatible TTS, RTX 5080) |
+| portage-rembg | 7000 | background-removal container (`REMBG_URL`) |
+| dhg-docs | 8017 | nginx serving Docusaurus build (runs outside docker-compose.yml — separate nginx) |
+| portage-graph | 8018 | nginx serving graphify-out/ code knowledge graph |
 
 ### Database
 
 Drizzle ORM, schema-push workflow (no migration files). 18 tables:
 
-users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, shipping_presets, shipping_providers, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages
+users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages, faqs, export_tokens
 
 Notable JSONB columns: `items.photos`, `items.marketplaceData` (eBay category/title cache), `orders.shippingAddress`.
 
 ### Auth
 
-JWT access + refresh tokens. bcrypt password hashing. Role column on users (`user` | `admin`). Admin middleware checks `req.user.role`. Promote via `npx tsx apps/api/src/scripts/promote-admin.ts <email>`.
+Cloudflare Access is the identity provider — no password. `GET /auth/session` verifies the `Cf-Access-Jwt-Assertion` header against the team JWKS, auto-provisions the user row on first login, then mints a short-lived (15m) internal JWT the API consumes for the rest of the session; the client just re-exchanges via CF Access when it expires. Role column on users (`user` | `admin`). Admin middleware checks `req.user.role`. Promote via `npx tsx apps/api/src/scripts/promote-admin.ts <email>`.
 
 ### Marketplace Adapters
 
 Shared TypeScript interface in `packages/shared/src/marketplace.ts`. Three adapters:
-- **eBay:** OAuth2 auth code grant, Inventory API (SKU/offer/publish), Fulfillment API, Taxonomy API
-- **Etsy:** PKCE OAuth2, Listings API with photo upload, Receipts API, Taxonomy API
-- **Reverb:** Adapter implemented (269 lines), comps search working, token-paste auth shipped (Personal Access Token validated against live API)
+- **eBay:** OAuth2 auth code grant. Listing lifecycle runs on the **Trading API** (Trade-First, PR #133, live-proven): AddFixedPriceItem / ReviseFixedPriceItem / ReviseInventoryStatus / EndFixedPriceItem / GetItem, inline shipping terms — no Business Policies, no Inventory-API offers (`ebayOfferId` removed from the adapter interface; DB column inert). Insert-first idempotency on publish (`listings.idempotency_key`). Fulfillment API for orders, Taxonomy API for categories/aspects
+- **Etsy:** PARKED 2026-07-09 (tag `etsy-parked-2026-07`) pending API key approval — adapter/auth routes/UI removed; DB enum value remains, inert
+- **Reverb:** Publish path shipped + live-proven (PRs #173-#177, 2026-07-08): per-user PAT token auth, comps search, create/update listing — real Reverb listing published (draft state pending Reverb shop account setup: shipping/policies/address)
 
 Marketplace tokens encrypted at rest with AES-256-GCM.
 
@@ -58,11 +56,10 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 
 ### AI
 
-- **Item scanning:** Claude Vision API via `apps/api/src/lib/vision.ts`
-- **Porter assistant:** Claude Sonnet SSE streaming via `client.messages.stream()`, 3 tools (search_inventory, get_inventory_stats, suggest_listing), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback), `POST /porter/transcribe` (STT proxy), `POST /porter/speak` (TTS proxy)
-- **Voice STT:** Whisper large-v3-turbo via dhg-stt container at `DHG_STT_URL`; `POST /porter/transcribe` → `GET /v1/audio/transcriptions`
-- **Voice TTS:** Chatterbox Turbo via dhg-tts container at `DHG_TTS_URL`; `POST /porter/speak` → `/audio/speech`; graceful fallback to text-only on 503
-- **Background removal:** Client-side WASM (@imgly/background-removal), billing-gated per tier
+- **Item scanning:** configurable provider chain defined by the `VISION_PROVIDERS` env var, consumed in `apps/api/src/lib/ai-client.ts` (`apps/api/src/lib/vision.ts` holds the vision prompt/schema logic) — Gemini 2.5 primary, Claude fallback in prod
+- **Porter assistant:** Claude Sonnet SSE streaming via `client.messages.stream()`, 3 tools (search_inventory, get_inventory_stats, suggest_listing), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback)
+- **Voice (STT/TTS):** REMOVED 2026-07-01 (parked for a future release) — pre-removal code preserved at git tag `voice-parked-2026-07`
+- **Background removal:** Server-side via portage-rembg container (`POST /images/remove-bg`, `REMBG_URL`), billing-gated per tier
 - **Auto-enhance:** Server-side Sharp pipeline, billing-gated per tier
 - **Photo tools:** Rotate, crop, enhance, BG-remove with before/after preview slider
 - **Prepare listing:** AI field generation (title, description, pricing from comps) via `apps/api/src/routes/prepare-listing.ts`
@@ -82,7 +79,7 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 |---------|------|
 | API entry | apps/api/src/index.ts |
 | DB schema | apps/api/src/db/schema.ts |
-| Auth (JWT, bcrypt) | apps/api/src/lib/jwt.ts, apps/api/src/lib/password.ts |
+| Auth (JWT, CF Access) | apps/api/src/lib/jwt.ts, apps/api/src/lib/cf-access.ts |
 | All API routes | apps/api/src/routes/ |
 | Admin endpoints | apps/api/src/routes/admin.ts |
 | Marketplace adapters | apps/api/src/marketplace/ |
@@ -96,11 +93,8 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Prepare-listing route | apps/api/src/routes/prepare-listing.ts |
 | Seller profile route | apps/api/src/routes/seller-profile.ts |
 | Drafts route | apps/api/src/routes/drafts.ts |
-| Shipping routes | apps/api/src/routes/shipping.ts |
-| Shipping hooks | apps/web/src/hooks/use-shipping.ts, use-shipping-provider.ts |
-| Ship order page | apps/web/src/app/orders/[id]/ship/page.tsx |
+| Disclaimer routes | apps/api/src/routes/disclaimer.ts |
 | Seller profile settings | apps/web/src/app/settings/seller-profile/page.tsx |
-| Shipping settings | apps/web/src/app/settings/shipping/page.tsx |
 | Billing settings | apps/web/src/app/settings/billing/page.tsx |
 | Billing routes | apps/api/src/routes/billing.ts |
 | Reverb adapter | apps/api/src/marketplace/reverb-adapter.ts |
@@ -112,7 +106,7 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Conversations list | apps/web/src/app/messages/page.tsx |
 | Conversation thread | apps/web/src/app/messages/[conversationKey]/page.tsx |
 | Shared types | packages/shared/src/types.ts |
-| Docker config | docker-compose.yml + docker-compose.override.yml |
+| Docker config | docker-compose.yml (+ opt-in docker-compose.dev.yml) |
 | Environment template | .env.example |
 | Docs CI/CD workflow | .github/workflows/deploy-docs.yml |
 | Docs source | website/docs/ |
@@ -154,30 +148,19 @@ npx tsx apps/api/src/scripts/promote-admin.ts <email>
 | Display font | Instrument Sans |
 | Body font | Plus Jakarta Sans |
 | Mono font | JetBrains Mono |
-| Layout | Mobile-first, 5-tab bottom nav |
+| Layout | Mobile-first; 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button; More via avatar menu |
 
 ---
 
 ## Dev Environment Notes
 
 - All URLs use **10.0.0.251** not localhost (server IP)
-- Next.js dev: polling mode (`WATCHPACK_POLLING=true`) for reliable HMR over network
 - next.config.ts: `allowedDevOrigins: ["10.0.0.251"]`
-- HTTPS dev mode requires certs at `certs/key.pem` + `certs/cert.pem` (Next.js uses `--experimental-https`)
-- Secrets managed via Doppler — `.env` auto-synced by SessionStart hook
+- Secrets managed via Doppler — `.env` auto-synced by SessionStart hook. Never
+  commit secrets (.env, API keys, passwords, demo credentials)
+- WATCHPACK_POLLING + HTTPS-cert details: see apps/web/CLAUDE.md Gotchas
 - Shared package must be rebuilt after changes: `npm run build -w packages/shared`
-
----
-
-## Production Rules
-
-1. No placeholders, TODOs, or provisional logic. Every file works on first deploy.
-2. View files before editing. State what you're changing and why.
-3. Run verification after any change. Show proof.
-4. One fix per hypothesis when debugging.
-5. Planning and building are separate phases.
-6. Never commit secrets (.env, API keys, passwords).
-7. Quality over speed. Always.
+- Both containers are image-baked (no bind-mounts): deploy = `docker compose up -d --build <service>`. Hot-reload dev is explicit opt-in only: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build portage-api`
 
 ---
 
@@ -197,12 +180,20 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-42/52 tasks complete, 3 partial, 7 remaining. See `docs/TODO.md` for full roadmap.
+Original roadmap essentially complete — a 2026-07-17 recount found the docs/TODO.md ledger lists 49 numbered task lines (task #53 reused twice; #22, #26, #28–#31 never on the ledger): 48 complete, 1 superseded (carrier APIs); the old 50/52-vs-51/52 figures used a 52-task denominator the ledger doesn't support. Integration testing, tunnel-config versioning, and Reverb OAuth resolution closed 2026-07-09. A separate Responsive UI Program (R0-R4, approved 2026-07-15) was added after this count and isn't folded into it — R0 shipped (PR #229), R1 desktop workbench shipped (PR #237, merged 2026-07-17, 15-finding adversarial fix round). See `docs/TODO.md` for the live backlog and in-flight branches.
 
-**Done:** Foundation (8/8), AI scanning, image pipeline, marketplace adapters (eBay + Etsy + Reverb comps), Porter AI, auth, admin panel (11/11), repo infra (2/3), scan entry point, orders UI, three-interface listing flow, smart-listing prepare (seller profiles, prepare-listing endpoint, PhotoCaptureFlow, comps/preview), listing detail page, dashboard (spinner fix + TabBar restructure), settings (8 pages: profile, marketplace, seller profile, shipping, notifications, help, admin, billing), listings CRUD (edit/update/delete + marketplace sync), security fixes (C1-C4: order sync matching, XSS elimination, SQL injection, encryption key decoupling), JWT auto-refresh, object URL leak fixes, test infra + 141 tests, auth middleware next(err), TOCTOU race fix, shared logger (28 files), AI SDK singletons, shippingAddress column, pagination, shared format helpers, listing flow component extraction, PWA (icons + favicon + service worker), admin observability (Prometheus + Grafana), bulk operations (select/delete/archive/activate/export), eBay CSV export (Seller Hub Reports draft format), onboarding flow (5-step carousel), Stripe billing (subscriptions + credits + enforcement gates), Reverb token-paste auth, photo tools UX (crop/rotate/enhance/BG-remove with before-after preview), eBay buyer messaging (inbox sync + conversation threads + reply via Trading API, 20 tests).
+**Done:** see docs/TODO.md and website/docs/ship-log/ for the full change
+history. Highlights: eBay Trade-First lifecycle (PR #133), CF Access auth
+(PRs #168-172), Reverb publish live-proven (PRs #173-177), listing-hub merge
+(PRs #207-213), responsive shell R0 (PR #229). Test suite: 687 API / 526 web as of 2026-07-18.
 
-**Partial:** Shipping (full UI + 16-endpoint API built, rates/labels stubbed — no real carrier API calls).
+Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
+PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
 
-**Remaining:** Carrier API integration (EasyPost/Shippo), Reverb OAuth code-grant (token-paste auth is shipped).
+**Superseded:** Carrier API integration (EasyPost/Shippo) — replaced by redirect-to-eBay for labels (decision 2026-07-01); the stubbed carrier subsystem was deleted in PR #142. W2 Fulfillment sync-back and W5 ebay-api SDK were dropped with it.
 
-**Demo account:** demo@portage.app / demo1234demo1234
+**Parked:** Voice feature (Whisper STT + Chatterbox TTS, Porter voice UI) — removed 2026-07-01 (Execution Phase 2) for a future release; the hardened pre-removal code (A1–A8 fixes included) is preserved at git tag `voice-parked-2026-07`. Etsy marketplace (PKCE OAuth2 adapter, auth routes, UI) — removed 2026-07-09 pending Etsy API key approval; pre-removal code at git tag `etsy-parked-2026-07`; zero etsy DB rows existed at park time, enum value remains inert.
+
+**Remaining:** notification system, dashboard trends + AI insights, enhanced-photo persistence, pagination on listing/item hooks. Closed 2026-07-09: integration testing (Task 35, PR #184 +43 route tests), tunnel config versioned (PR #182), prod CORS single-origin (PR #189), Reverb OAuth code-grant declared obsolete (PAT selling live-proven). See docs/TODO.md Phases 5–7.
+
+**Demo account:** credentials live in Doppler, not in this file.

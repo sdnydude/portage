@@ -142,7 +142,11 @@ export default function ConversationPage() {
         )}
       </div>
 
-      <div className="flex-shrink-0 border-t border-border bg-background px-4 py-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+      {/* Bottom padding clears the floating compact tab bar (48px + 8px lift)
+          below lg; desktop has no bar, so lg resets to the safe-area rule. */}
+      <div
+        className="flex-shrink-0 border-t border-border bg-background px-4 py-3 pb-[calc(3.75rem+var(--safe-area-bottom))] lg:pb-[max(12px,env(safe-area-inset-bottom))]"
+      >
         {replyError && (
           <div className="rounded-xl border border-accent-error bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-accent-error mb-2 max-w-lg mx-auto">
             {replyError}

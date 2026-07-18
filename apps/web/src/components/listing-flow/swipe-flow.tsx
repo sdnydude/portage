@@ -1,11 +1,20 @@
 "use client";
 
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useListingFlow } from "@/hooks/use-listing-flow";
+import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { formatCondition } from "@/lib/format";
+import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
+import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
+import { WeightDimsInputsInline } from "../listing/weight-dims-inputs";
+import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
 
 /* ─────────────────────────────────────────────
@@ -1064,10 +1073,12 @@ const PACKAGE_CARDS: PackageCard[] = [
 function ShippingPhase({
   state,
   setField,
+  updateWeightDims,
   onNext,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   setField: ReturnType<typeof useListingFlow>["setField"];
+  updateWeightDims: ReturnType<typeof useListingFlow>["updateWeightDims"];
   onNext: () => void;
 }) {
   const currentSize = (state.packageSize ?? "medium") as PackageSize;
@@ -1143,31 +1154,25 @@ function ShippingPhase({
           );
         })}
 
-        {/* Weight input */}
+        {/* Weight + dimensions */}
         <div style={{ marginTop: 8 }}>
-          <p style={{ color: "#666", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", letterSpacing: "0.1em", marginBottom: 8 }}>
-            WEIGHT (LBS) — OPTIONAL
-          </p>
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="e.g. 2.5"
-            value={state.weight ?? ""}
-            onChange={(e) => {
-              const val = e.target.value ? parseFloat(e.target.value) : null;
-              setField("weight", val);
+          <WeightDimsInputsInline
+            value={{
+              weight: state.weight,
+              dimLength: state.dimLength,
+              dimWidth: state.dimWidth,
+              dimHeight: state.dimHeight,
+              ebayPackageType: state.ebayPackageType,
             }}
-            style={{
-              width: "100%",
-              background: "#111",
-              border: "1px solid #222",
-              borderRadius: "10px",
-              padding: "14px 16px",
-              color: "#fff",
+            onChange={updateWeightDims}
+            estimated={state.weightEstimated}
+            tokens={{ text: "#fff", secondary: "#666", cardBg: "#111", cardBorder: "#222" }}
+            labelStyleOverride={{
+              color: "#666",
               fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: "16px",
-              outline: "none",
-              boxSizing: "border-box",
+              fontSize: "11px",
+              letterSpacing: "0.1em",
+              marginBottom: 8,
             }}
           />
         </div>
@@ -1186,17 +1191,28 @@ function ShippingPhase({
    Phase 5 — Review
 ───────────────────────────────────────────── */
 
-const MARKETPLACE_CYCLE: Array<"ebay" | "reverb" | "etsy"> = ["ebay", "reverb", "etsy"];
+const MARKETPLACE_CYCLE: Array<"ebay" | "reverb"> = ["ebay", "reverb"];
 
-function ReviewPhase({
+export function ReviewPhase({
   state,
   setField,
   onPublish,
+  updatePhoto,
+  reorderPhotos,
+  commitPhotoOrder,
+  removePhoto,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   setField: ReturnType<typeof useListingFlow>["setField"];
-  onPublish: () => void;
+  onPublish: (publishMode: "draft" | "live") => void;
+  updatePhoto: ReturnType<typeof useListingFlow>["updatePhoto"];
+  reorderPhotos?: ReturnType<typeof useListingFlow>["reorderPhotos"];
+  commitPhotoOrder?: ReturnType<typeof useListingFlow>["commitPhotoOrder"];
+  removePhoto?: ReturnType<typeof useListingFlow>["removePhoto"];
 }) {
+  const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
+  const photoEdit = usePhotoEdit(state.photos, updatePhoto);
+
   function cycleMarketplace() {
     const idx = MARKETPLACE_CYCLE.indexOf(state.marketplace);
     const next = MARKETPLACE_CYCLE[(idx + 1) % MARKETPLACE_CYCLE.length];
@@ -1206,7 +1222,6 @@ function ReviewPhase({
   const MARKETPLACE_COLORS: Record<string, string> = {
     ebay: "#E53238",
     reverb: "#0D6EFD",
-    etsy: "#F56400",
   };
 
   const rows = [
@@ -1228,37 +1243,19 @@ function ReviewPhase({
         overflow: "hidden",
       }}
     >
-      {/* Photo strip */}
-      <div
-        style={{
-          display: "flex",
-          gap: 6,
-          overflowX: "auto",
-          padding: "72px 20px 16px",
-          flexShrink: 0,
-          scrollbarWidth: "none",
-        }}
-      >
-        {state.photos.map((p, i) => (
-          <div
-            key={i}
-            style={{
-              width: 80,
-              height: 80,
-              borderRadius: 10,
-              overflow: "hidden",
-              flexShrink: 0,
-              border: i === state.primaryPhotoIndex ? "2px solid #F15A22" : "2px solid transparent",
-            }}
-          >
-            <img
-              src={p.url}
-              alt=""
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          </div>
-        ))}
+      {/* Photo gallery strip — tap a thumb to open the editor overlay (S2.5-9). */}
+      <div style={{ padding: "72px 20px 16px", flexShrink: 0 }}>
+        <PhotoGalleryStrip
+          photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
+          onEditPhoto={photoEdit.openEditor}
+          maxPhotos={MAX_PHOTOS_PER_ITEM}
+          onReorder={reorderPhotos}
+          onReorderEnd={commitPhotoOrder}
+          onDelete={removePhoto}
+        />
       </div>
+
+      <PhotoEditOverlay photoEdit={photoEdit} photoCount={state.photos.length} alt={state.title || "Photo preview"} />
 
       <div
         style={{
@@ -1335,6 +1332,43 @@ function ReviewPhase({
           </span>
         </button>
 
+        {/* Quantity stepper */}
+        <div
+          style={{
+            background: "#111",
+            border: "1px solid #222",
+            borderRadius: "12px",
+            padding: "14px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span style={{ color: "#666", fontSize: "12px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.08em" }}>
+            QUANTITY
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+            <button
+              onClick={() => setField("quantity", Math.max(1, state.quantity - 1))}
+              disabled={state.quantity <= 1}
+              style={{ width: 32, height: 32, borderRadius: "8px", border: "1px solid #333", background: "#1a1a1a", color: "#fff", fontSize: 20, cursor: state.quantity <= 1 ? "not-allowed" : "pointer", opacity: state.quantity <= 1 ? 0.4 : 1 }}
+              aria-label="Decrease quantity"
+            >
+              −
+            </button>
+            <span style={{ minWidth: 24, textAlign: "center", fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: "20px", color: "#fff" }}>
+              {state.quantity}
+            </span>
+            <button
+              onClick={() => setField("quantity", state.quantity + 1)}
+              style={{ width: 32, height: 32, borderRadius: "8px", border: "1px solid #333", background: "#1a1a1a", color: "#fff", fontSize: 20, cursor: "pointer" }}
+              aria-label="Increase quantity"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
         {/* Summary rows */}
         <div
           style={{
@@ -1378,9 +1412,39 @@ function ReviewPhase({
           </div>
         )}
 
+        {/* Publish mode toggle */}
+        <div style={{ display: "flex", gap: 8, padding: 4, background: "#111", border: "1px solid #222", borderRadius: "12px" }}>
+          {(["live", "draft"] as const).map((mode) => {
+            const selected = publishMode === mode;
+            return (
+              <button
+                key={mode}
+                onClick={() => setPublishMode(mode)}
+                style={{
+                  flex: 1,
+                  padding: "12px 0",
+                  borderRadius: "9px",
+                  border: "none",
+                  background: selected ? "#F15A22" : "transparent",
+                  color: selected ? "#fff" : "#888",
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontWeight: 600,
+                  fontSize: "12px",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                {mode === "live" ? "Publish Live" : "Save Draft"}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Publish */}
-        <OrangeButton onClick={onPublish} fullWidth large>
-          PUBLISH NOW
+        <OrangeButton onClick={() => onPublish(publishMode)} fullWidth large>
+          {publishMode === "draft" ? "SAVE DRAFT" : "PUBLISH NOW"}
         </OrangeButton>
       </div>
     </div>
@@ -1459,7 +1523,7 @@ function PublishingPhase() {
 export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const flow = useListingFlow();
   const prepareListing = usePrepareListing();
-  const { state, setField, startFromItem, confirmRecognition, fetchComps, applyPricingStrategy, publish, reset } = flow;
+  const { state, setField, updateWeightDims, startFromItem, confirmRecognition, fetchComps, applyPricingStrategy, publish, reset } = flow;
 
   const [phase, setPhase] = useState<Phase>("recognition");
   const [scanPercent, setScanPercent] = useState(0);
@@ -1517,6 +1581,14 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     if (idx > 0) setPhase(PHASE_ORDER[idx - 1]);
   }, [phase]);
 
+  // Pre-fill weight/dims from the AI estimate (guarded — never clobbers a weight
+  // the seller already entered).
+  useEffect(() => {
+    const ebay = prepareListing.data?.ebay;
+    if (ebay) flow.applyEstimatedWeightDims(ebayEstimateToWeightDims(ebay));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepareListing.data]);
+
   const handleConfirmRecognition = useCallback(() => {
     confirmRecognition(state.recognition.selectedIndex);
     if (state.inventoryItemId) {
@@ -1532,17 +1604,56 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     [applyPricingStrategy]
   );
 
-  const handlePublish = useCallback(async () => {
+  const [aspectsNeeded, setAspectsNeeded] = useState<AspectRequirement[] | null>(null);
+  const [aspectSaving, setAspectSaving] = useState(false);
+  const [aspectError, setAspectError] = useState<string | null>(null);
+  const [weightNeeded, setWeightNeeded] = useState(false);
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const pendingPublishOpts = useRef<PublishOpts | undefined>(undefined);
+
+  const runPublish = useCallback(async (opts?: PublishOpts) => {
+    const fillingAspects = !!opts?.aspects;
+    const fillingWeight = !!opts?.weightDims;
     setPublishError(null);
-    setPhase("publishing");
-    const result = await publish();
+    setAspectError(null);
+    setWeightError(null);
+    if (fillingAspects) setAspectSaving(true);
+    else if (fillingWeight) setWeightSaving(true);
+    else setPhase("publishing");
+
+    const result = await publish(opts);
+
+    if (fillingAspects) setAspectSaving(false);
+    else if (fillingWeight) setWeightSaving(false);
+
     if (result.success) {
+      setAspectsNeeded(null);
+      setWeightNeeded(false);
       setPhase("success");
+    } else if (result.aspectsRequired) {
+      pendingPublishOpts.current = opts;
+      setAspectsNeeded(result.aspectsRequired);
+      if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
+      else setPhase("review");
+    } else if (result.weightRequired) {
+      pendingPublishOpts.current = opts;
+      setWeightNeeded(true);
+      if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
+      else setPhase("review");
+    } else if (fillingAspects) {
+      setAspectError(result.error ?? "Publishing failed");
+    } else if (fillingWeight) {
+      setWeightError(result.error ?? "Publishing failed");
     } else {
       setPublishError(result.error ?? "Publishing failed");
       setPhase("review");
     }
   }, [publish]);
+
+  const handlePublish = useCallback((publishMode: "draft" | "live") => {
+    runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
+  }, [runPublish, prepareListing.data]);
 
   const handleListAnother = useCallback(() => {
     reset();
@@ -1561,6 +1672,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
           "--flow-accent": "#F15A22",
           position: "fixed",
           inset: 0,
+          zIndex: 60,
           background: "#0A0A0A",
           color: "#fff",
           overflow: "hidden",
@@ -1621,6 +1733,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
           <ShippingPhase
             state={state}
             setField={setField}
+            updateWeightDims={updateWeightDims}
             onNext={() => setPhase("review")}
           />
         )}
@@ -1631,6 +1744,10 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
               state={state}
               setField={setField}
               onPublish={handlePublish}
+              updatePhoto={flow.updatePhoto}
+              reorderPhotos={flow.reorderPhotos}
+              commitPhotoOrder={flow.commitPhotoOrder}
+              removePhoto={flow.removePhoto}
             />
             {publishError && (
               <div
@@ -1664,6 +1781,8 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
           >
             <PublishSuccess
               listingId={state.listingId}
+              itemId={state.inventoryItemId}
+              warning={state.publishWarning ?? undefined}
               marketplace={state.marketplace}
               title={state.title}
               price={state.price ?? 0}
@@ -1680,6 +1799,42 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
         onPhotos={(photos) => flow.startFromPhoto(photos)}
         onCancel={() => setShowCapture(false)}
       />
+
+      {aspectsNeeded && (
+        <AspectFillSheet
+          missing={aspectsNeeded}
+          initial={{
+            ...(state.brand ? { Brand: [state.brand] } : {}),
+            ...(state.model ? { Model: [state.model] } : {}),
+          }}
+          saving={aspectSaving}
+          error={aspectError}
+          onCancel={() => {
+            setAspectsNeeded(null);
+            setAspectError(null);
+          }}
+          onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+        />
+      )}
+
+      {weightNeeded && (
+        <WeightFillSheet
+          initial={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          saving={weightSaving}
+          error={weightError}
+          onCancel={() => {
+            setWeightNeeded(false);
+            setWeightError(null);
+          }}
+          onSave={(value) => runPublish({ ...pendingPublishOpts.current, weightDims: value })}
+        />
+      )}
     </div>
   );
 }

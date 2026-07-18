@@ -1,15 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, desc, and, ilike, sql } from 'drizzle-orm';
-import multer from 'multer';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { conversations, items, listings, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { chat, chatStream, type ToolDef, type StreamToolResult } from '../lib/ai-client.js';
-import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
-import { computeEffectiveTier } from '../lib/billing-utils.js';
+import { limitsForTier } from '@portage/shared';
+import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
 
 const logger = createLogger('porter');
 
@@ -18,13 +17,13 @@ export const PORTER_SYSTEM = `You are Porter, an AI assistant for the Portage ap
 You help users:
 - Understand and manage their inventory
 - Get value estimates and pricing suggestions
-- Create marketplace listings on eBay and Etsy
+- Create marketplace listings on eBay and Reverb
 - Track orders and sales
 - Optimize their selling strategy
 
-Personality: Friendly, knowledgeable about reselling and collectibles, concise. You speak like a helpful friend who knows their way around eBay and Etsy.
+Personality: Friendly, knowledgeable about reselling and collectibles, concise. You speak like a helpful friend who knows their way around eBay and Reverb.
 
-When users ask about items, use the search_inventory tool. When they ask about values, use the get_value_estimate tool. When they want to list something, use the suggest_listing tool.
+When users ask about items, use the search_inventory tool. When they ask about inventory totals or stats, use the get_inventory_stats tool. When they want to list something, use the suggest_listing tool.
 
 Always be direct and actionable. If you don't know something, say so.
 
@@ -69,7 +68,7 @@ const tools: ToolDef[] = [
       type: 'object',
       properties: {
         itemId: { type: 'string', description: 'The inventory item ID to create a listing for' },
-        marketplace: { type: 'string', enum: ['ebay', 'etsy'], description: 'Which marketplace to optimize the listing for' },
+        marketplace: { type: 'string', enum: ['ebay', 'reverb'], description: 'Which marketplace to optimize the listing for' },
       },
       required: ['itemId', 'marketplace'],
     },
@@ -291,6 +290,7 @@ porterRouter.post('/stream', async (req, res, next) => {
     const [porterUser] = await db.select({
       subscriptionTier: users.subscriptionTier,
       trialEndsAt: users.trialEndsAt,
+      limitOverrides: users.limitOverrides,
       porterMessagesToday: sql<number>`
         (select coalesce(sum(jsonb_array_length(messages)), 0) from ${conversations}
          where user_id = ${userId}
@@ -305,12 +305,11 @@ porterRouter.post('/stream', async (req, res, next) => {
     }
 
     const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
-    const exchangeLimit = tier === 'pro'
-      ? PRO_TIER_LIMITS.porterExchangesPerDay
-      : FREE_TIER_LIMITS.porterExchangesPerDay;
-    const messageThreshold = exchangeLimit * 2;
+    const exchangeLimit = effectiveLimits(tier, porterUser.limitOverrides).porterExchangesPerDay;
+    // null = unlimited (beta testers)
+    const messageThreshold = exchangeLimit === null ? null : exchangeLimit * 2;
 
-    if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
+    if (messageThreshold !== null && Number(porterUser.porterMessagesToday) >= messageThreshold) {
       res.status(429).json({
         error: `Daily limit: ${exchangeLimit} Porter exchanges per day.${tier === 'free' ? ' Upgrade to Pro for more.' : ''}`,
         code: 'PORTER_LIMIT_REACHED',
@@ -379,39 +378,14 @@ porterRouter.post('/stream', async (req, res, next) => {
     );
 
     const { pills, cleanText } = parseActionPills(accumulatedText);
-    const spokenText = cleanText.trim();
+    const finalText = cleanText.trim();
     if (pills.length > 0) writeSSE({ type: 'action_pills', pills });
-
-    // Fire-and-forget TTS: emit audio_url on success, silently ignore on failure
-    const ttsBase = process.env.DHG_TTS_URL;
-    if (ttsBase && spokenText.trim()) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-        try {
-          const ttsRes = await fetch(`${ttsBase}/audio/speech`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ input: spokenText, model: 'turbo' }),
-            signal: controller.signal,
-          });
-          if (ttsRes.ok) {
-            const data = (await ttsRes.json()) as { url?: string };
-            if (typeof data.url === 'string') {
-              writeSSE({ type: 'audio_url', url: data.url });
-            }
-          }
-        } finally {
-          clearTimeout(timeout);
-        }
-      } catch { /* silently ignore TTS failures */ }
-    }
 
     // Persist conversation using new blocks format
     const newMessages: NormalizedMessage[] = [
       ...conv.messages,
       { role: 'user', blocks: [{ type: 'text', text: message }] },
-      { role: 'assistant', blocks: [{ type: 'text', text: spokenText }] },
+      { role: 'assistant', blocks: [{ type: 'text', text: finalText }] },
     ];
     await db.update(conversations)
       .set({ messages: newMessages, updatedAt: new Date() })
@@ -445,6 +419,7 @@ porterRouter.post('/message', async (req, res, next) => {
     const [porterUser] = await db.select({
       subscriptionTier: users.subscriptionTier,
       trialEndsAt: users.trialEndsAt,
+      limitOverrides: users.limitOverrides,
       porterMessagesToday: sql<number>`
         (select coalesce(sum(jsonb_array_length(messages)), 0) from ${conversations}
          where user_id = ${userId}
@@ -456,12 +431,11 @@ porterRouter.post('/message', async (req, res, next) => {
     if (!porterUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
 
     const tier = computeEffectiveTier(porterUser.subscriptionTier, porterUser.trialEndsAt);
-    const exchangeLimit = tier === 'pro'
-      ? PRO_TIER_LIMITS.porterExchangesPerDay
-      : FREE_TIER_LIMITS.porterExchangesPerDay;
-    const messageThreshold = exchangeLimit * 2;
+    const exchangeLimit = effectiveLimits(tier, porterUser.limitOverrides).porterExchangesPerDay;
+    // null = unlimited (beta testers)
+    const messageThreshold = exchangeLimit === null ? null : exchangeLimit * 2;
 
-    if (Number(porterUser.porterMessagesToday) >= messageThreshold) {
+    if (messageThreshold !== null && Number(porterUser.porterMessagesToday) >= messageThreshold) {
       throw new AppError(429, 'PORTER_LIMIT_REACHED', `Daily limit: ${exchangeLimit} Porter exchanges per day. ${tier === 'free' ? 'Upgrade to Pro for more.' : ''}`);
     }
 
@@ -515,60 +489,5 @@ porterRouter.post('/message', async (req, res, next) => {
     });
   } catch (err) {
     next(err);
-  }
-});
-
-const upload = multer({ storage: multer.memoryStorage() });
-
-porterRouter.post('/transcribe', upload.single('audio'), async (req, res, next) => {
-  try {
-    if (!req.file) {
-      res.status(400).json({ error: 'No audio file uploaded' });
-      return;
-    }
-    const sttBase = process.env.DHG_STT_URL ?? 'http://dhg-stt:8000';
-    const form = new FormData();
-    form.append('file', new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname);
-    form.append('model', 'whisper-1');
-    const response = await fetch(`${sttBase}/v1/audio/transcriptions`, { method: 'POST', body: form });
-    if (!response.ok) {
-      res.status(502).json({ error: 'Transcription failed' });
-      return;
-    }
-    const data = await response.json() as { text: string; duration?: number };
-    res.json({ text: data.text, duration: data.duration });
-  } catch (err) {
-    next(err);
-  }
-});
-
-const speakSchema = z.object({ text: z.string().min(1).max(5000) });
-
-porterRouter.post('/speak', requireAuth, async (req, res) => {
-  const parsed = speakSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request', details: parsed.error.errors });
-    return;
-  }
-  const ttsBase = process.env.DHG_TTS_URL ?? 'http://dhg-tts:8000';
-  let ttsRes: Response;
-  try {
-    ttsRes = await fetch(`${ttsBase}/audio/speech`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: parsed.data.text, model: 'turbo' }),
-    });
-  } catch {
-    res.status(503).json({ error: 'TTS unavailable' });
-    return;
-  }
-  if (!ttsRes.ok) { res.status(503).json({ error: 'TTS unavailable' }); return; }
-  res.setHeader('Content-Type', ttsRes.headers.get('content-type') ?? 'audio/mpeg');
-  res.status(200);
-  if (ttsRes.body) {
-    const { Writable } = await import('node:stream');
-    await ttsRes.body.pipeTo(Writable.toWeb(res) as WritableStream);
-  } else {
-    res.end();
   }
 });

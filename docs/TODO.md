@@ -1,7 +1,97 @@
 # Portage — Roadmap
 
-**Progress: 48/52 tasks complete · 2 partial · 2 remaining · 18 TODO items (~56h est)**
-**Last updated:** 2026-05-26
+**Progress: 48/49 ledger tasks complete · 1 superseded (Task 21, carrier APIs) · Reverb OAuth code-grant obsolete (PAT auth ships selling, live-proven PRs #173–#177)**
+**Last updated:** 2026-07-18
+**Test suite:** 687/687 API · 526/526 web (run 2026-07-18, post-#237 merge)
+
+> **Recount 2026-07-17:** this ledger lists **49** numbered task lines (task **#53** appears twice — voice-era Home redesign and the listing detail page; #22, #26, #28–#31 never existed on this ledger). 48 are `[x]`, 1 is `[~]` superseded (Task 21). The earlier "50/52" (here) and "51/52" (CLAUDE.md) figures used a 52-task denominator this file does not support.
+
+---
+
+## Phased Execution Plan (2026-07-01)
+
+Ordered by dependency and value. Phase 1 (✅ complete, PR #142); Phase 2 rips out the voice feature (parked for a future release); Phase 3 closes the AI-specifics remnants; Phase 4 clears repo hygiene; Phases 5–7 burn down the backlog. A phase isn't done until its gate passes (DoD: rebuild containers + observe live behavior, not just green tests).
+
+### Phase 1 — Simplified sold-orders panel + carrier cleanup — ✅ COMPLETE (PR #142, merged 2026-07-01)
+
+All items shipped and live-verified; containers rebuilt from merged main. W2 Fulfillment sync-back + W5 ebay-api SDK dropped per 2026-07-01 decision.
+
+- [x] W1 — sold-date fix: Fulfillment `creationDate` → `soldAt` (`e859abe`)
+- [x] W3 — Ship-It opens eBay item page: list (`4ec0a36`), detail (`40f5130`), API `ebayItemId` (`0c7bb67`)
+- [x] Simplified sold-orders panel — items join on GET /orders; rows: thumbnail + title + marketplace badge + status chip + relative sold date + gross price; buyer/tracking/address on detail view (`584f321`)
+- [x] Carrier code cleanup — shipping.ts (17 handlers), `shipping_presets` + `shipping_providers` tables + enum (verified empty, dropped live), `useShipping*` hooks, ship page, shipping settings page, shared carrier types, all references (−2,474 lines, `d22945e`). Disclaimer flow relocated to `/disclaimer` (4 route tests); Mark-as-Shipped → `PATCH /orders/:id`, offered from payment_received
+- [x] Net proceeds — resolved: Fulfillment API never returns fees (Finances API needed); gross price only
+- [x] Sold-celebration Ship-It → routes to order detail (component currently has no callers; eBay link lives on detail)
+- [x] **BONUS — soldAt heal (`84c6bb4`):** sync skipped existing rows forever, so pre-fix orders kept their import-date stamp; re-sync now heals soldAt in place. Live-proven: 11 orders healed 06-30 → real dates 06-02…06-23
+- [x] **Gate passed:** containers rebuilt, e2e 15 green (sold-list rows + reload re-assert + carrier-gone 404), live API verified with real data, screenshots in docs/verification-archive/sold-list/
+- [x] PR #142 merged on 6 green CI checks; main rebuilt + healthy; worktree + branch cleaned up
+- [x] CLAUDE.md Progress + TODO.md updated (this commit)
+
+### Phase 2 — Rip out the voice feature (parked → future release; registry deferred item e37f4cd4)
+
+Product descoping 2026-07-01: voice returns in a future release. Removal is independent of the orders branch — branch from main. All A1–A8 hardening fixes are verified present on main, so the parked code is the hardened version.
+
+- [x] Tag pre-removal main tip — `voice-parked-2026-07` pushed to origin; restore is a checkout
+- [x] Web: removed `use-voice-input` + `use-porter-audio` hooks; VoiceButton, VoiceOverlay, AudioPlayback, FloatingMic, voice BottomSheet components; their wiring in FullChat/StreamingMessage/PorterProvider/tab-bar/home/porter pages (BottomSheet had zero callers — deleted outright)
+- [x] API: removed `POST /porter/transcribe`, `POST /porter/speak`, TTS fire-and-forget in `POST /porter/stream`; shared types dropped `AudioEvent`/`audio_url`, `AudioPlayback`, `RichMessage.voiceTranscript`
+- [x] Infra: removed dhg-stt (8018) + dhg-tts (8019) + `dhg-stt-models` volume from docker-compose; dropped `DHG_STT_URL`/`DHG_TTS_URL` from `.env.example` (they were never in the env.ts Zod schema — porter read process.env directly)
+- [x] Tests: deleted porter-speak + porter-transcribe specs; replaced the stream TTS-failure test with a no-TTS regression guard (asserts no fetch + no audio_url frame); removed floating-mic mock from tab-bar test — API 537 + web 225 green
+- [x] Docs: CLAUDE.md Services/AI sections; TODO.md (reflected post-merge; voice rows retagged PARKED)
+- [x] **Gate:** typecheck + lint + test:api (537) / web (225) green; portage-app + portage-api rebuilt from the branch; live e2e `porter-text-chat.spec.ts` proves text chat streams end-to-end (assistant reply asserted as a 2nd marker occurrence — user bubble alone can't pass) + no voice UI on home/inventory/porter; authed `/porter/transcribe` + `/porter/speak` → 404 live; screenshots in `docs/verification-archive/voice-removal/`
+- [x] Open PR → merge on green CI (PR merges only when checks pass; dhg-stt/dhg-tts containers stopped+removed post-merge)
+
+(~5h)
+
+### Phase 3 — AI-specifics follow-through
+
+**Correction 2026-07-01:** `feat/ai-specifics-and-publish-result` MERGED as PR #132 on 2026-06-23 (reached main via #133's merge of main). Scan-time aspect prefill, inline [AI] auto-fill + chips, quantity capture, MPN "Does Not Apply" sentinel, F2 malformed-aspect guard, F9 enum validation are all live. Remaining from that epic (burndown 2.1, 3.3–3.5):
+
+- [x] E-panel decision (burndown 2.1): CLOSED AS SUPERSEDED 2026-07-01 — inline `[AI]` auto-fill + chips (PR #132) is the consumer of AI-suggested aspects; `AiIdentificationPanel` was never built and won't be
+- [x] Camera-driven scan→save Playwright e2e (burndown 3.3) — `camera-scan-save.spec.ts`: canvas-stream getUserMedia polyfill, mocked AI/taxonomy boundary, real `/items` save asserted after reload + cleanup
+- [x] Type-AI auto-pick on high-cardinality aspects (burndown 3.4) — `aspect-pick.ts` constrained second pass wired into `generateListingFields` (covers scan prefill + prepare-listing); enum-validated, canonical casing, never throws
+- [x] SKU "Custom label" check (burndown 3.5) — live GetItem proof: ended ItemIDs 307034606520/307034773471 return SKU `PRT-000016`/`PRT-000017`; Seller Hub Custom label = Trading SKU field (no new publish needed)
+- [x] Plan-doc PR #126 CLOSED unmerged 2026-07-01 — plan superseded by the shipped shape (inline chips, Trade-First transport); history in registry ship sessions
+
+### Phase 4 — Repo hygiene & Trade-First housekeeping — ✅ COMPLETE (2026-07-01)
+
+- [x] PR #127 decided — superseded by PR #149: capture-guarantee Stop hook wired into the CURRENT settings.json (the stale diff would have created a duplicate `Stop` key vs the agentlint block)
+- [x] Dependabot triage — single lockfile PR #148 (`npm audit fix` + tsx bump) resolved 22 of 23 alerts incl. 3 PR-less transitives; alert 11 (@anthropic-ai/sdk nested under tdd-guard) waits on upstream tdd-guard unpinning `claude-agent-sdk <0.2.113`. Merged #129 (checkout v7), #99 (upload-artifact v7), #150 (anthropic-sdk 0.109.1 + sharp 0.35.3, superseding Dependabot #115 whose lockfile generation is broken for this workspaces monorepo). 17 PRs closed; 6 deliberate defers remain open (#53/#55/#58/#60/#134/#135: zod 4, pino-http 11, eslint 10, TS 6, types majors — registry deferred items)
+- [x] GTC / no-auto-renewal reconciliation — PR #151: opt-in `gtc_auto_end` toggle, login-triggered `/listings/gtc-sweep` ends listings via EndFixedPriceItem 2 days before the monthly anniversary, archives + notifies; no auto-relist (same insertion fee). Error path live-proven on the real account
+- [x] Verify pre-flight wiring — DECIDED proof-only (registry decision log; revisit trigger = fee-preview UX)
+- [x] Dead Inventory helper sweep — `isOfferExistsError` + `bestOfferTerms` deleted (Serena zero-reference proven). `resolveEbayCategoryCondition` confirmed live (prepare-listing.ts:333); `ebayOfferId` column deliberately kept
+- [x] `docs/trade-first-burndown.md` refreshed — 1.17/1.19/1.20 closed, 2.4/2.7 marked shipped, 2.6 branch ref fixed
+- [x] CLAUDE.md/TODO.md refreshed (this commit)
+
+**Discovered + deferred (registry):** reconcile externally-ended eBay listings (Seller-Hub-ended rows stay `active` locally; only sold listings get healed).
+
+### Phase 5 — Deferred product gaps (registry backlog) — audited 2026-07-02, 4/5 closed
+
+- [x] Package weight + dims capture — AUDIT: already shipped (schema columns, scan + all 3 flows capture, `mergeItemShipping` on every eBay publish, `EBAY_WEIGHT_REQUIRED` gate)
+- [x] Scan-flow Save & List honors `ebayPublishMode` — AUDIT: already fixed (profile read seeds `initialPublishNow` → `resolvePublishMode`); note: seller still confirms in CreateListingSheet (not silent), `scan-listing-payload.ts` is dead code (test-only)
+- [x] ListingPreviewCard/CompsPricingWidget unreachable on fresh scans — FIXED (fresh-scan prepare PR): item created at recognition-confirm via `ensureItemCreated()`, prepare() runs on every path, error+Retry surface, Unlisted chip on inventory, hero-tap photo editor, iOS paddingBottom hero fix
+- [x] Photo-gallery redesign — AUDIT: already shipped (Stage 2.5: strip + full-screen editor overlay, e2e-proven)
+- [ ] Re-validate locked batch-enhance FE design against Stage 1 scan-review redesign before building *(design review task — parked)*
+
+*(Former Phase 5 — voice-audit sweep A1–A8 from 2026-05 — DELETED 2026-07-01: evaluator verified all eight findings are already fixed on main, e.g. `porter.ts:525` req.file 400, `porter.ts:545` speak Zod schema, `use-voice-input.ts:94` stoppedRef guard, `use-porter-stream.ts:145` unconditional setConversationId.)*
+
+### Phase 6 — Feature completeness
+
+- [x] **Listing-hub merge** — EXECUTED 2026-07-11, all 6 plan tasks shipped as PRs #207–#212: itemId filter (API), Marketplace Listings hub on inventory/[id], ListingCard action surface, listings/[id] retired to a resolver-redirect (−913 lines), /inventory/[id]/preview PNG share (CORS solved via /img-cdn next.config rewrite — R2 bucket CORS deferred, no R2-admin credential), Reverb edit-sync. Plan: `docs/superpowers/plans/2026-07-11-listing-hub-merge.md`
+- [ ] Notification system — push + in-app center (8h)
+- [ ] Dashboard trends + AI insights — sparklines, category breakdown (6h)
+- [ ] Enhanced-photo persistence — "Replace Photo" action after before/after (2h)
+- [ ] Reconcile externally-ended eBay listings — Seller-Hub-ended rows stay `active` locally (only sold listings heal). Weekly GET active-listings reconciliation pass or manual "Reconcile with eBay" admin action; needed before real user volume (phantom actives + duplicate end-attempts in GTC sweep) (2h)
+
+### Phase 7 — Quality & hardening
+
+- [x] Integration testing — uncovered routes (Task 35) — route coverage +43 tests (PR #184, 2026-07-09); suites ~664 API + 293 web; ephemeral e2e stack in CI
+- [x] Version Cloudflare tunnel config into repo (Task 34 gap) — `infra/cloudflared/config-portage.yml` + deploy README (2026-07-09)
+- [x] Prod CORS single-origin restriction — done via PR #189 (2026-07-09): api now runs NODE_ENV=production, CORS list = prod domain only
+- [ ] Pagination on listing/item hooks (4h)
+- [x] Reverb listings don't sync on item edit — RESOLVED PR #211 (2026-07-11): sync loop widened to Reverb (syncs on listingId alone incl. remote drafts; eBay stays active-only), adapter maps brand/model→make/model. Live-proven: PUT /listings/99270095 fired; Reverb 403 "account under review" is the known shop-setup gate
+- [x] eBay edit-sync silently failing for GetItem-imported listings — FIXED same session (fix/ebay-edit-sync-category-heal): sync loop reuses resolveEbayCategoryId self-heal + applyShipFromOrigin publish parity; live-proven ReviseFixedPriceItem success on ItemID 307038681268 (all 4 affected rows heal from item cache)
+- [x] R2 CORS for portage-images — CLOSED: /img-cdn next.config rewrite is the permanent same-origin mechanism (decision logged); bucket CORS unnecessary
+- [ ] Self-hosted runner hardening before public launch — `claude-review.yml`, `e2e.yml`, `deploy-docs.yml` all run `pull_request` jobs on the stateful g700data1 runner; gate to same-repo PRs (`github.event.pull_request.head.repo.full_name == github.repository`) or move untrusted jobs to `ubuntu-latest`. Fork PRs also receive no secrets. Low urgency while repo is private/solo (CodeRabbit finding, PR #203) (1h)
 
 ---
 
@@ -11,7 +101,7 @@
 - [x] **Task 2:** Docker stack — PostgreSQL (5436), Express API (8016), Next.js (3002)
 - [x] **Task 3:** Database schema — Drizzle ORM, 10 tables (users, items, images, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings)
 - [x] **Task 4:** Express API bootstrap — pino logging, error handling, health route
-- [x] **Task 5:** Auth system — bcrypt password hashing, JWT + refresh tokens, register/login/refresh routes, 7 tests
+- [x] **Task 5:** Auth system — bcrypt password hashing, JWT + refresh tokens, register/login/refresh routes, 7 tests *(Superseded: auth is now CF Access + 15-min internal JWT, no passwords — PRs #168–#172.)*
 - [x] **Task 6:** Next.js frontend — design system (forest green, Instrument Sans/Plus Jakarta/JetBrains Mono), 5-tab mobile nav, Tailwind v4
 - [x] **Task 7:** Image pipeline — R2 storage, Sharp processing, upload/resize/webp, auth + file validation
 - [x] **Task 8:** Camera capture — `useCamera` hook, `CaptureSheet`, `CameraCapture`, `ImagePicker` components, scan FAB in tab layout
@@ -24,10 +114,10 @@
 
 ## Phase 3: Image Processing (Tasks 12-13) — 2/2
 
-- [x] **Task 12:** Background removal — client-side WASM (@imgly/background-removal), usage credit gating, before/after slider, progress tracking. Accessible from item detail page.
+- [x] **Task 12:** Background removal — originally client-side WASM (@imgly/background-removal), usage credit gating, before/after slider, progress tracking. Accessible from item detail page. *(Since moved server-side: portage-rembg container, `POST /images/remove-bg`.)*
 - [x] **Task 13:** Auto-enhance — server-side Sharp pipeline (normalize + sharpen + modulate), enhance endpoint, before/after comparison. *(Minor gap: enhanced photo cannot be saved/persisted — before/after is shown but no "Replace Photo" action exists.)*
 
-## Phase 4: Marketplace (Tasks 14-20) — 6/7
+## Phase 4: Marketplace (Tasks 14-20) — 7/7
 
 - [x] **Task 14:** Marketplace adapter interface — shared TypeScript interface (create/update/delete listing, orders, categories)
 - [x] **Task 15:** eBay OAuth2 — auth code grant, connect/callback/status/disconnect routes
@@ -42,7 +132,7 @@
 - [x] **Task 24:** Porter AI backend — Claude Sonnet tool_use loop, 3 tools (search_inventory, get_inventory_stats, suggest_listing), conversation history in JSONB, free tier 20 msg/day. Fixed Zod validation bug rejecting null conversationId (9f8db4e).
 - [x] **Task 25:** Porter chat UI — message bubbles, typing indicator, suggestion chips, new chat, keyboard enter-to-send
 
-## Phase 10: Voice Chat Interface (PR #87) — complete
+## Phase 10: Voice Chat Interface (PR #87) — complete, **PARKED 2026-07-01** (removed in Execution Phase 2; code preserved at tag `voice-parked-2026-07`; returns in a future release)
 
 - [x] **Task 51:** Porter SSE streaming — `POST /porter/stream` using `client.messages.stream()`, live token streaming, tool transparency blocks, action pills, TTS fire-and-forget. JSONB upgraded to `blocks: ContentBlock[]` with lazy backward-compat migration.
 - [x] **Task 52:** Voice I/O — `POST /porter/transcribe` (Whisper via dhg-stt), `POST /porter/speak` (Chatterbox via dhg-tts), `useVoiceInput` hook (push-to-talk + silence detection), `usePorterAudio` hook.
@@ -83,7 +173,7 @@
 
 ### Scan & Camera (Task 8 fixed)
 
-- [x] **Task 50:** Scan entry point — FAB in tab layout on all tabs, wires CaptureSheet → image upload → AI scan → review screen → create item → navigate to detail. z-index fix for sheet overlay. *(Requires valid ANTHROPIC_API_KEY in .env for Claude Vision.)*
+- [x] **Task 50:** Scan entry point — FAB in tab layout on all tabs, wires CaptureSheet → image upload → AI scan → review screen → create item → navigate to detail. z-index fix for sheet overlay. *(Historical note: vision now runs the configurable provider chain — Gemini 2.5 primary, Claude fallback.)*
 
 ### Listings Completion (fix Task 19)
 
@@ -91,7 +181,7 @@
 
 ### Shipping & Payments
 
-- [~] **Task 21:** Shipping system — presets CRUD, provider config, rate quotes, label purchase, ship flow, shipping settings page (638-line API, 822-line ship page). **GAP: Rates and labels return hardcoded stub data. No actual EasyPost/Shippo/Pirate Ship API calls — provider config validated but external APIs never invoked. Stub label purchase no longer mutates order state (fixed 0567ab8).**
+- [~] **Task 21:** Shipping system — **SUPERSEDED (2026-07-01).** Carrier API integration (EasyPost/Shippo) is dead: decision is redirect-to-eBay for labels + Fulfillment API sync-back. The stubbed carrier subsystem (presets/provider config/rate quotes/label purchase/ship page/shipping settings) is slated for **deletion** in the Phase 1 carrier cleanup (see Phased Execution Plan).
 - [x] **Task 23:** Stripe subscription — Free/Pro tier billing ($39/mo, $390/yr), 7-day trial, credit packs, usage limits enforcement (marketplace count, bg-removal, AI listings, Porter exchanges). PRs #73, #74.
 
 ### Settings
@@ -100,77 +190,32 @@
 
 ### Production & Testing
 
-- [~] **Task 34:** Cloudflare tunnel + production Docker config — tunnel live (`portage.digitalharmonyai.com`, `portage-api.digitalharmonyai.com`), Docker production mode working with HTTPS cert mount. **GAP: config not versioned in repo.**
-- [ ] **Task 35:** Integration testing + final polish
+- [x] **Task 34:** Cloudflare tunnel + production Docker config — tunnel live (`portage.digitalharmonyai.com`, `portage-api.digitalharmonyai.com`), Docker production mode with HTTPS cert mount. Gap closed 2026-07-09: config versioned at `infra/cloudflared/config-portage.yml` (PR #182)
+- [x] **Task 35:** Integration testing + final polish — route coverage +43 tests (PR #184, 2026-07-09); suites ~664 API + 293 web; ephemeral e2e stack in CI
 
 ---
 
-## TODO — Prioritized
+## Resolved Criticals (2026-05-09, historical)
 
-### Critical (blocks real usage)
-
-All critical items resolved (2026-05-09):
 - ~~Dashboard spinner bug~~ — Fixed (949a8dd)
 - ~~Dashboard navigation dead end~~ — TabBar restructured to 5 tabs (84ba9ee)
 - ~~Settings pages 404~~ — 5 new pages + expanded More hub (ad03728→b5f0f33)
 - ~~Porter chat broken~~ — Fixed Zod null validation (9f8db4e)
 
-### Critical — Voice Chat Audit Fixes (PR #87 advisor findings)
+---
 
-| # | Task | File | Est |
-|---|------|------|-----|
-| A1 | **`/transcribe` input validation** — add `req.file` presence check (400 if missing) + STT non-ok response guard (502) | `porter.ts:497` | 1h |
-| A2 | **`/speak` body validation** — add Zod schema `{ text: z.string().min(1).max(5000) }` before forwarding | `porter.ts:511` | 1h |
+## Completed Work — May 26 → July 1 Round
 
-### Important — Voice Chat Audit Fixes
-
-| # | Task | File | Est |
-|---|------|------|-----|
-| A3 | **rAF stale closure in useVoiceInput** — add `stoppedRef` flag; guard `checkSilence` entry to prevent `DOMException` on AudioContext after stop | `use-voice-input.ts:92` | 1h |
-| A4 | **AudioPlayback unmount leak** — add `useEffect(() => () => audioRef.current?.pause(), [])` cleanup; remove duplicate audio control in `StreamingMessage` | `audio-playback.tsx:14` | 1h |
-| A5 | **Conversation history text-only rebuild** — document that tool blocks are intentionally not persisted; add a comment at line 323 so a future dev doesn't silently break this | `porter.ts:323` | 0.5h |
-| A6 | **conversationId lost on network drop** — remove `finalConvId !== conversationId` guard in `finally`; always call `setConversationId(finalConvId)` | `use-porter-stream.ts:130` | 0.5h |
-| A7 | **parseActionPills structural validation** — validate each pill after JSON.parse: `label` string ≤50 chars, `message` string ≤500 chars; filter malformed entries | `porter.ts:192` | 1h |
-| A8 | **Amplitude loop GC pressure** — replace `Math.max(...buffer.map(Math.abs))` with a manual loop in `checkSilence` | `use-voice-input.ts:94` | 0.5h |
-
-### High Priority (core product gaps)
-
-| # | Task | Scope | Est |
-|---|------|-------|-----|
-| 4 | ~~Listings edit/update/delete~~ (Task 19 gap) | ✅ Done (PR #27) | — |
-| 5 | **Carrier API integration** (Task 21 gap) | Shipping rates + labels are stubs — need EasyPost/Shippo/Pirate Ship | 8h |
-| 6 | ~~Stripe subscription~~ (Task 23) | ✅ Done (PRs #73, #74) | — |
-| 7 | ~~PWA icons + service worker~~ (Task 29 gap) | ✅ Done (PR #46) | — |
-
-### Medium Priority (feature completeness)
-
-| # | Task | Scope | Est |
-|---|------|-------|-----|
-| 8 | **Notification system** (Task 26) | Push notifications + in-app center | 8h |
-| 9 | ~~Onboarding flow~~ (Task 28) | ✅ Done (PR #50) | — |
-| 10 | **Dashboard trends + insights** (Task 52) | Sparkline charts, AI selling tips, category breakdown | 6h |
-| 11 | ~~Bulk operations~~ (Task 30) | ✅ Done (PR #48) | — |
-| 12 | ~~Buyer messaging~~ (Task 31) | ✅ Done (PR #84) | — |
-| 13 | **Reverb OAuth** | Token-paste auth shipped (PR #79); full OAuth code-grant still needed for selling | 4h |
-
-### Infrastructure
-
-| # | Task | Scope | Est |
-|---|------|-------|-----|
-| 14 | ~~Branch protection~~ (Task 49) | ✅ Done (PR #69) | — |
-| 15 | **Integration testing** (Task 35) | 238 tests exist but many routes still uncovered | 12h |
-| 16 | **Version tunnel config** (Task 34 gap) | Tunnel works but config isn't in the repo | 2h |
-| 17 | **Enhanced photo persistence** (Task 13 gap) | Before/after shown but no "Replace Photo" action | 2h |
-
-### Known Bugs (from code health audit — 2026-05-09)
-
-| # | Issue | Severity | Est |
-|---|-------|----------|-----|
-| 18 | `CORS` in production restricts to single origin — blocks API access from non-tunnel paths | Low | 1h |
-| 19 | No pagination on listing/item hooks — will degrade with scale | Medium | 4h |
-| 20 | ~~Object URL memory leaks in photo capture flows~~ | ✅ Fixed | — |
-| 21 | ~~No automatic JWT refresh — silent auth expiry~~ | ✅ Fixed (auto-refresh on 401) | — |
-| 22 | Enhanced photo can't be saved (before/after preview only) | Low | 2h |
+| Ship | PR(s) | Summary |
+|------|-------|---------|
+| eBay listing hardening | #94 | Draft/live publish mode, one-click auto-setup, self-healing photo-first publish (49 commits, 351 tests) |
+| Stripe billing | #73, #74 | Free/Pro tiers, 7-day trial, credit packs, enforcement gates |
+| Reverb token-paste auth | #79 | Personal Access Token validated against live API (Reverb has no OAuth for PATs) |
+| eBay buyer messaging | #84 | Inbox sync, conversation threads, reply via Trading API, 20 tests |
+| Dead /settings links | #125 | Fixed dead navigation destinations |
+| **eBay Trade-First** | **#133** | Full listing lifecycle Inventory→Trading API (AddFixedPriceItem/Revise/End/GetItem), inline terms, no Business Policies, `ebayOfferId` dropped from adapter interface, insert-first idempotency, VerifyAddFixedPriceItem dry-run tooling. Live-proven publish/revise/end on real eBay (ItemIDs 307034606520, 307034773471). 52 commits |
+| **eBay orders sync** | **#139**, #140 | Errors[] surfacing + login-triggered sync (keepalive) + Sync button; GetItem orphan backfill ingests external eBay sales as item+listing per ItemID (lineItem-title fallback, in-run dedup). Live-proven synced:11 |
+| Voice-audit-era infra | #127 (open) | Capture-guarantee Stop hook wired; registry silent-failure root cause found (tldr>280 → 500, scripts swallow it) |
 
 ---
 
@@ -292,20 +337,53 @@ All critical items resolved (2026-05-09):
 
 ---
 
+## Responsive UI Program (approved 2026-07-15, precedes onboarding-expansion build)
+
+Sequencing note (resolved): the onboarding-expansion ship (plan `docs/superpowers/plans/2026-07-14-onboarding-expansion.md`, spec PR #228) was queued behind Phase R0 and SHIPPED after it as PR #231 (2026-07-15) — tutorial screenshots captured the new shell.
+
+### Phase R0 — Responsive Shell — ✅ SHIPPED (PR #229, merged 2026-07-15)
+- [x] Desktop sidebar — persistent left nav ≥1024px, collapsible 240px ↔ 72px icon rail, Scan on top
+- [x] Desktop top bar — page title · Ask Porter input (focus-expands 1→3 lines, page-specific pills) · unread badge, theme toggle, avatar menu
+- [x] iPad/tablet — breakpoint-based: portrait (`md`) = mobile chrome + wider content grids; landscape (≥1024) = desktop shell
+- [x] Mobile tab bar redesign — floating inset glass bar, `rounded-[22px]` photo-editor idiom; shipped as 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button, More via avatar menu (HIG 5-tab alignment)
+- [x] Persistent Home chip — round glass chip bottom-left on all tab-bar-less pages (mobile/tablet)
+- [x] Ask Porter row — same component under PageHeader on inventory/listings/orders (mobile/tablet portrait)
+- [x] Content width system — shared responsive container replaces per-page `max-w-lg`; content region reserves right-dock slot (R3) + pane-capable main area (R1)
+
+### Phase R1 — Desktop Workbench
+- [x] Master-detail inventory/listings — list pane + edit pane (`inventory/[id]` surface), arrow-key nav, no page swaps (PR #237, 2026-07-17)
+
+### Phase R2 — Desktop Ingest
+- [ ] Drag-and-drop photo ingest — drop image files → batch queue → vision-identify pipeline → items
+
+### Phase R3 — Porter Everywhere
+- [ ] Porter side dock — collapsible right dock on desktop, context-aware of on-screen item
+- [ ] Porter conversation history UI — list/deep-links/resume over existing `GET /porter/conversations` endpoints
+
+### Phase R4 — Cross-Device
+- [ ] QR phone-camera handoff — desktop Scan → QR → phone captures → item lands live in desktop session
+
+### Deferred / unscheduled
+- [ ] Keyboard shortcuts (`g i`, `/`, `n`)
+- [ ] Hover row-actions + dense table views
+
+---
+
 ## Summary
 
-| Category | Count |
-|----------|-------|
-| Completed (all time) | 48 roadmap tasks + 70 subtasks |
-| Partial | 2 (shipping stubs, CF tunnel config) |
-| TODO — Voice chat audit (Critical) | 2 (transcribe validation, speak validation) |
-| TODO — Voice chat audit (Important) | 6 (rAF closure, audio unmount, conv history, convId drop, pill validation, GC) |
-| TODO — High Priority | 1 (carrier API) |
-| TODO — Medium Priority | 3 (notifications, dashboard trends, Reverb OAuth) |
-| TODO — Infrastructure | 3 (integration testing, tunnel config, photo persistence) |
-| TODO — Known Bugs | 3 (CORS, pagination, photo save) |
-| **Total remaining items** | **18** |
-| **Estimated remaining effort** | **~56 hours** |
+| Phase | Open items | Est |
+|-------|-----------|-----|
+| 1 — Sold-orders panel + carrier cleanup | ✅ COMPLETE — PR #142 merged 2026-07-01 (+ soldAt-heal bonus) | done |
+| 2 — Rip out voice feature (parked → future release) | ✅ COMPLETE 2026-07-01 — removed, tag `voice-parked-2026-07` | done |
+| 3 — AI-specifics follow-through (PR #132 merged 06-23) | ✅ COMPLETE 2026-07-01 — all 5 items closed | done |
+| 4 — Repo hygiene & Trade-First housekeeping | ✅ COMPLETE 2026-07-01 | done |
+| 5 — Deferred product gaps (registry) | batch-enhance design re-validation (1, parked) — 4/5 closed 2026-07-02 | — |
+| 6 — Feature completeness | notifications, dashboard trends, photo persistence, eBay listing reconciliation (4) | ~18h |
+| 7 — Quality & hardening | pagination, runner hardening (2) — integration testing, tunnel config, CORS all closed 2026-07-09 | ~5h |
+| Responsive UI Program | R0 shipped (PR #229) · R1 in flight (PR #237) · R2–R4 queued | — |
+| ~~Voice-audit sweep~~ | DELETED — evaluator verified A1–A8 all already fixed on main (2026-07-01) | — |
+| Completed (all time) | 48 roadmap tasks + 8 major ships May 26→Jul 1 (PRs #73/#74/#79/#84/#94/#125/#133/#139) | — |
+| Superseded | Task 21 carrier APIs → redirect-to-eBay (stub deleted in W4) | — |
 
 ---
 
@@ -323,13 +401,13 @@ All critical items resolved (2026-05-09):
 | API | Express 5, TypeScript, pino |
 | Frontend | Next.js 16, React 19, Tailwind v4 |
 | Database | PostgreSQL 15, Drizzle ORM |
-| Auth | JWT + refresh tokens, bcrypt |
+| Auth | Cloudflare Access (IdP) + short-lived internal JWT — no passwords (bcrypt/refresh tokens removed, PRs #168–#172) |
 | Images | Cloudflare R2, Sharp |
-| AI | Claude Sonnet (vision + tool_use + SSE streaming via MessageStream) |
-| Voice STT | Whisper large-v3-turbo via dhg-stt container (OpenAI-compatible API) |
-| Voice TTS | Chatterbox Turbo via dhg-tts container (OpenAI-compatible API) |
-| BG Removal | @imgly/background-removal (WASM) |
-| Marketplaces | eBay (REST), Etsy (REST + PKCE), Reverb (REST, OAuth pending) |
+| AI vision | Configurable provider chain (`VISION_PROVIDERS`, consumed in ai-client.ts) — Gemini 2.5 primary, Claude fallback in prod |
+| AI assistant (Porter) | Chat-provider chain (`CHAT_PROVIDERS`) — Claude Sonnet in prod, tool_use + SSE streaming |
+| Voice STT/TTS | REMOVED 2026-07-01 (Execution Phase 2) — parked at git tag `voice-parked-2026-07` for a future release |
+| BG Removal | Server-side portage-rembg container (`POST /images/remove-bg`), billing-gated |
+| Marketplaces | eBay (Trading API for listings + Fulfillment REST for orders), Reverb (REST, per-user PAT auth — selling live-proven), Etsy PARKED 2026-07-09 (tag `etsy-parked-2026-07`) |
 | Token encryption | AES-256-GCM |
 
 ## Ports
@@ -339,10 +417,20 @@ All critical items resolved (2026-05-09):
 | portage-db | 5436 |
 | portage-api | 8016 |
 | portage-app | 3002 |
+| portage-rembg | 7000 |
 | dhg-docs (nginx) | 8017 |
-| dhg-stt (Whisper large-v3-turbo) | 8018 |
-| dhg-tts (Chatterbox Turbo) | 8019 |
+| portage-graph (nginx) | 8018 |
 
 ## Demo Account
 
-`demo@portage.app` / `demo1234demo1234` — 16 items, Pro tier (promoted 2026-05-09, all limits removed)
+Demo credentials live in Doppler (never committed).
+
+## DHG Assets pipeline (own project — Stephen 2026-07-15)
+
+Registry table `dhg_assets` + ingest/search for marketing/collateral assets (registry deferred item, priority high):
+
+- [ ] Table: project, repo path/URL, kind (screenshot|panel|frame|logo|doc), variant (with-copy|without-copy), dimensions, source_commit, tags, caption, pgvector embedding, FTS
+- [ ] Ingest `docs/assets/**` from Portage (extendable to other repos)
+- [ ] Process each asset for searchability: vision-model caption (Gemini per vision strategy) → embedding + FTS, exposed via hybrid KB search
+- [ ] Autopost pipeline (post-assets.sh + rule) so future asset exports auto-ingest — use the autopost-setup agent
+- [ ] Prereq for marketing-grade assets: stage real-looking demo inventory (items + order + conversation), recapture, re-export

@@ -1,12 +1,21 @@
 "use client";
 
+import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
+
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useListingFlow } from "@/hooks/use-listing-flow";
+import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { formatPrice, formatCondition } from "@/lib/format";
+import { ebayEstimateToWeightDims } from "@/lib/weight";
 import { FeeEstimate } from "./fee-estimate";
 import { PublishSuccess } from "./publish-success";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { ListingPreviewCard } from "../listing/listing-preview-card";
+import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
+import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
+import { usePhotoEdit } from "@/hooks/use-photo-edit";
+import { WeightDimsInputs, type WeightDimsChange } from "../listing/weight-dims-inputs";
+import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
+import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
 import type { ListingFlowState } from "@portage/shared";
 
@@ -278,11 +287,16 @@ function deriveMessages(
     onEditDescription: () => void;
     onSetShippingSize: (s: string) => void;
     onSetShippingMethod: (m: string) => void;
-    onSetMarketplace: (m: "ebay" | "etsy" | "reverb") => void;
+    onWeightDimsChange: WeightDimsChange;
+    onSetMarketplace: (m: "ebay" | "reverb") => void;
     onPublish: () => void;
     onConfirmDetails: () => void;
     onConfirmShipping: () => void;
     onAddPhoto: () => void;
+    onEditPhoto: (index: number) => void;
+    onReorderPhotos: (from: number, to: number) => void;
+    onReorderEnd: () => void;
+    onDeletePhoto: (index: number) => void;
   }
 ): FlowMessage[] {
   const msgs: FlowMessage[] = [];
@@ -490,6 +504,21 @@ function deriveMessages(
     id: "shipping-q",
     role: "porter",
     content: "How should we ship this? Pick a package size, then a method.",
+    card: !shippingReached ? (
+      <div className="rounded-2xl p-4" style={{ background: "#FAF8F5", border: "1px solid #E8E5DE" }}>
+        <WeightDimsInputs
+          value={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          onChange={handlers.onWeightDimsChange}
+          estimated={state.weightEstimated}
+        />
+      </div>
+    ) : undefined,
     pills: !shippingReached
       ? [
           { label: "Small", action: () => handlers.onSetShippingSize("small"), variant: state.packageSize === "small" ? "primary" : "outline" },
@@ -519,7 +548,7 @@ function deriveMessages(
     msgs.push({
       id: "review",
       role: "porter",
-      content: `Here's your listing — looking good. Ready to publish on **${state.marketplace === "ebay" ? "eBay" : state.marketplace === "etsy" ? "Etsy" : "Reverb"}**?`,
+      content: `Here's your listing — looking good. Ready to publish on **${state.marketplace === "ebay" ? "eBay" : "Reverb"}**?`,
       card: (
         <div
           className="rounded-2xl overflow-hidden"
@@ -534,6 +563,18 @@ function deriveMessages(
                 src={state.photos[0].url}
                 alt={state.title}
                 className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+          {state.photos.length > 0 && (
+            <div className="px-3 pt-3">
+              <PhotoGalleryStrip
+                photos={state.photos.map((p) => ({ key: p.key, url: p.url, editable: !p.url.startsWith("blob:") }))}
+                onEditPhoto={handlers.onEditPhoto}
+                onReorder={handlers.onReorderPhotos}
+                onReorderEnd={handlers.onReorderEnd}
+                onDelete={handlers.onDeletePhoto}
+                maxPhotos={MAX_PHOTOS_PER_ITEM}
               />
             </div>
           )}
@@ -557,7 +598,6 @@ function deriveMessages(
       pills: !reviewReached
         ? [
             { label: "eBay", action: () => handlers.onSetMarketplace("ebay"), variant: state.marketplace === "ebay" ? "primary" : "outline" },
-            { label: "Etsy", action: () => handlers.onSetMarketplace("etsy"), variant: state.marketplace === "etsy" ? "primary" : "outline" },
             { label: "Reverb", action: () => handlers.onSetMarketplace("reverb"), variant: state.marketplace === "reverb" ? "primary" : "outline" },
             { label: "🚀 Publish", action: handlers.onPublish, variant: "primary" },
           ]
@@ -574,6 +614,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
   const flow = useListingFlow();
   const prepareListing = usePrepareListing();
   const { state, lastStep } = flow;
+  const photoEdit = usePhotoEdit(state.photos, flow.updatePhoto);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -602,17 +643,29 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
     }
   }, [lastStep, state.recognition.status, state.compsStatus, state.publishStatus, isPublishing]);
 
+  // Pre-fill weight/dims from the AI estimate (guarded — never clobbers a weight
+  // the seller already entered).
+  useEffect(() => {
+    const ebay = prepareListing.data?.ebay;
+    if (ebay) flow.applyEstimatedWeightDims(ebayEstimateToWeightDims(ebay));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepareListing.data]);
+
   // ── handlers ──
 
   const handleConfirmRecognition = useCallback(
     (i: number) => {
       flow.confirmRecognition(i);
       flow.fetchComps();
-      if (state.inventoryItemId) {
-        prepareListing.prepare(state.inventoryItemId, ['ebay']);
-      }
+      // Fresh scans have no inventoryItemId yet — create the item now so
+      // prepare() (AI fields + comps pricing + preview card) runs on every
+      // path, not just start-from-item. Creation failure degrades to the old
+      // manual flow; prepare failures surface via prepareListing.error.
+      void flow.ensureItemCreated()
+        .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+        .catch(() => {});
     },
-    [flow, state.inventoryItemId, prepareListing]
+    [flow, prepareListing]
   );
 
   const handleDenyRecognition = useCallback(() => {
@@ -645,7 +698,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
   );
 
   const handleSetMarketplace = useCallback(
-    (m: "ebay" | "etsy" | "reverb") => {
+    (m: "ebay" | "reverb") => {
       flow.setField("marketplace", m);
     },
     [flow]
@@ -655,15 +708,57 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
     setShippingConfirmed(true);
   }, []);
 
-  const handlePublish = useCallback(async () => {
-    setIsPublishing(true);
+  const [aspectsNeeded, setAspectsNeeded] = useState<AspectRequirement[] | null>(null);
+  const [aspectSaving, setAspectSaving] = useState(false);
+  const [aspectError, setAspectError] = useState<string | null>(null);
+  const [weightNeeded, setWeightNeeded] = useState(false);
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const [pendingPublishOpts, setPendingPublishOpts] = useState<PublishOpts | undefined>(undefined);
+
+  const runPublish = useCallback(async (opts?: PublishOpts) => {
+    const fillingAspects = !!opts?.aspects;
+    const fillingWeight = !!opts?.weightDims;
     setPublishError(null);
-    const result = await flow.publish();
-    setIsPublishing(false);
-    if (!result.success) {
+    setAspectError(null);
+    setWeightError(null);
+    if (fillingAspects) setAspectSaving(true);
+    else if (fillingWeight) setWeightSaving(true);
+    else setIsPublishing(true);
+
+    const result = await flow.publish(opts);
+
+    if (fillingAspects) setAspectSaving(false);
+    else if (fillingWeight) setWeightSaving(false);
+    else setIsPublishing(false);
+
+    if (result.success) {
+      setAspectsNeeded(null);
+      setWeightNeeded(false);
+    } else if (result.aspectsRequired) {
+      setPendingPublishOpts(opts);
+      setAspectsNeeded(result.aspectsRequired);
+      if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
+    } else if (result.weightRequired) {
+      setPendingPublishOpts(opts);
+      setWeightNeeded(true);
+      if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
+    } else if (fillingAspects) {
+      setAspectError(result.error ?? "Publishing failed");
+    } else if (fillingWeight) {
+      setWeightError(result.error ?? "Publishing failed");
+    } else {
       setPublishError(result.error ?? "Publishing failed");
     }
   }, [flow]);
+
+  // Chat "Publish" pill (primary CTA) + Review fallback. Pass eBay prepared
+  // fields + publishMode so they aren't dropped on this path; no draft/live
+  // toggle here, so live is the intended mode (matches prior behavior).
+  const handlePublish = useCallback(
+    () => runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode: "live" }),
+    [runPublish, prepareListing.data],
+  );
 
   // Derive the effective lastStep (merging hook's lastStep with local flags)
   const effectiveLastStep = useMemo(() => {
@@ -686,10 +781,17 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onConfirmDetails: handleConfirmDetails,
         onSetShippingSize: handleSetShippingSize,
         onSetShippingMethod: handleSetShippingMethod,
+        onWeightDimsChange: flow.updateWeightDims,
         onSetMarketplace: handleSetMarketplace,
         onPublish: handlePublish,
         onConfirmShipping: handleConfirmShipping,
         onAddPhoto: () => setShowCapture(true),
+        // Blob (still-uploading) photos render without an edit affordance in
+        // the strip, so this only fires for editable photos.
+        onEditPhoto: photoEdit.openEditor,
+        onReorderPhotos: flow.reorderPhotos,
+        onReorderEnd: flow.commitPhotoOrder,
+        onDeletePhoto: flow.removePhoto,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state, effectiveLastStep]
@@ -720,6 +822,8 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         <div className="flex-1 overflow-auto">
           <PublishSuccess
             listingId={state.listingId}
+            itemId={state.inventoryItemId}
+            warning={state.publishWarning ?? undefined}
             marketplace={state.marketplace}
             title={state.title}
             price={state.price ?? 0}
@@ -793,6 +897,36 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
           </div>
         )}
 
+        {/* Prepare failed: the item is already saved (confirm-time creation),
+            so surface the failure and offer a retry instead of a silent stall. */}
+        {prepareListing.error && !prepareListing.data && !prepareListing.isLoading && (
+          <div className="flex items-end gap-2 mb-3">
+            <PorterAvatar />
+            <div
+              className="px-4 py-3 text-[13px]"
+              style={{
+                background: "#F0EDE6",
+                borderRadius: "18px 18px 18px 4px",
+                color: "#1A1A1A",
+              }}
+            >
+              <p className="mb-2">I couldn&apos;t prepare the listing automatically — your item is saved, and you can keep going manually.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  void flow.ensureItemCreated()
+                    .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+                    .catch(() => {});
+                }}
+                className="px-4 py-1.5 rounded-full text-[13px] font-semibold text-white"
+                style={{ background: "#2D5A27" }}
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
         {prepareListing.data && (
           <div className="mb-3">
             <div className="flex items-end gap-2 mb-2">
@@ -812,14 +946,17 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
               <ListingPreviewCard
                 data={prepareListing.data}
                 photos={state.photos}
+                quantity={state.quantity}
                 onFieldChange={(field, value) => flow.setField(field as keyof typeof state, value as never)}
                 onPriceChange={(price) => flow.setField("price", price)}
-                onPublish={(marketplace) => {
+                onQuantityChange={(q) => flow.setField("quantity", q)}
+                onPublish={(marketplace, publishMode, aspects) => {
                   flow.setField("marketplace", marketplace);
-                  flow.publish();
+                  runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode, aspects });
                 }}
                 isPublishing={state.publishStatus === "publishing"}
                 sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
+                onPhotoUpdated={flow.updatePhoto}
               />
             </div>
           </div>
@@ -896,6 +1033,44 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
         onPhotos={(photos) => flow.startFromPhoto(photos)}
         onCancel={() => setShowCapture(false)}
       />
+
+      <PhotoEditOverlay photoEdit={photoEdit} photoCount={state.photos.length} alt={state.title || "Photo preview"} />
+
+      {aspectsNeeded && (
+        <AspectFillSheet
+          missing={aspectsNeeded}
+          initial={{
+            ...(state.brand ? { Brand: [state.brand] } : {}),
+            ...(state.model ? { Model: [state.model] } : {}),
+          }}
+          saving={aspectSaving}
+          error={aspectError}
+          onCancel={() => {
+            setAspectsNeeded(null);
+            setAspectError(null);
+          }}
+          onSave={(aspects) => runPublish({ ...pendingPublishOpts, aspects })}
+        />
+      )}
+
+      {weightNeeded && (
+        <WeightFillSheet
+          initial={{
+            weight: state.weight,
+            dimLength: state.dimLength,
+            dimWidth: state.dimWidth,
+            dimHeight: state.dimHeight,
+            ebayPackageType: state.ebayPackageType,
+          }}
+          saving={weightSaving}
+          error={weightError}
+          onCancel={() => {
+            setWeightNeeded(false);
+            setWeightError(null);
+          }}
+          onSave={(value) => runPublish({ ...pendingPublishOpts, weightDims: value })}
+        />
+      )}
     </div>
   );
 }

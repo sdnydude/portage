@@ -19,5 +19,33 @@ drizzle/meta/
 certs/
 *.png
 .claude/projects/
+
+# Playwright e2e transient artifacts (not committed)
+apps/web/test-results/
+apps/web/playwright-report/
+# Keep committed e2e proof screenshots (override global *.png above)
+!website/static/img/verification/**
+!docs/verification-archive/**
+# Keep the docs screenshot-appendix gallery
+!website/static/img/screenshots/**
+# Keep tutorial screenshot assets (rendered by /tutorials, baked into the image)
+!apps/web/public/tutorials/**
+# Keep exported marketing/collateral assets
+!docs/assets/**
 .env.backup-*
 .superpowers/
+apps/web/e2e/.auth/
+
+# Claude Code session/runtime artifacts
+.claude/handoff-*.md
+.claude/rules/00-daemon-live-briefing.md
+.claude/tdd-guard/data/
+.claude/worktrees/
+
+# Generated outputs
+exports/
+graphify-out/
+.claude/.claude/
+
+# Local scratch notes (untracked working file, not a repo artifact)
+whats-next.md

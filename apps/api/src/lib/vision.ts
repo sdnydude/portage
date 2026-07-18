@@ -3,6 +3,7 @@ import { analyzeImage, analyzeImages, chatText } from './ai-client.js';
 import { createLogger } from './logger.js';
 import type { ImageInput } from './ai-client.js';
 import { AppError } from '../middleware/error.js';
+import { pickMissingRequiredAspects } from './aspect-pick.js';
 import type { RecognitionCandidate } from '@portage/shared';
 
 const logger = createLogger('vision');
@@ -40,7 +41,7 @@ const VisionResultSchema = z.object({
   description: z.string(),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
-  conditionNotes: z.string().optional().default(''),
+  conditionNotes: z.string().nullish().transform((v) => v ?? ''),
   estimatedValueLow: z.number(),
   estimatedValueHigh: z.number(),
   brand: z.string().nullable(),
@@ -53,13 +54,21 @@ const CandidateSchema = z.object({
   description: z.string(),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
-  conditionNotes: z.string().optional().default(''),
+  conditionNotes: z.string().nullish().transform((v) => v ?? ''),
   brand: z.string().nullable(),
   model: z.string().nullable(),
+  mpn: z.string().nullable().optional(),
+  aspects: z.record(z.string(), z.array(z.string())).optional().default({}),
   features: z.array(z.string()).optional().default([]),
   estimatedValueLow: z.number(),
   estimatedValueHigh: z.number(),
   confidence: z.number().min(0).max(1),
+  // AI-estimated packaged shipping weight (ounces) + box dimensions (inches), so a
+  // scanned item carries weight/dims for eBay Calculated shipping without waiting
+  // for the prepare-listing step. Optional — older responses may omit them.
+  weight: z.object({ value: z.number(), unit: z.string() }).optional(),
+  dimensions: z.object({ length: z.number(), width: z.number(), height: z.number(), unit: z.string() }).optional(),
+  packageType: z.string().optional(),
 });
 
 const DetailedVisionResultSchema = z.object({
@@ -82,7 +91,15 @@ const ListingFieldsOutputSchema = z.object({
     categoryName: z.string().optional().default(''),
     condition: z.string().optional().default(''),
     conditionDescription: z.string().optional().default(''),
-    aspects: z.record(z.string(), z.unknown()).optional().default({}),
+    // Coerce scalar-string aspect values (some models return "Sony" instead of
+    // ["Sony"]) to arrays. A malformed value (null/object) is caught PER KEY and
+    // degrades to [] (dropped downstream by normalizeAspects) rather than failing
+    // the whole parse — so one bad specific never 502s generateListingFields /
+    // prepare-listing (which has no non-fatal guard). Good values still survive.
+    aspects: z.record(
+      z.string(),
+      z.union([z.string().transform((v) => [v]), z.array(z.string())]).catch([]),
+    ).optional().default({}),
     upc: z.string().nullable().optional().default(null),
     epid: z.string().nullable().optional().default(null),
     weight: z.object({ value: z.number(), unit: z.string() }).optional().default({ value: 0, unit: 'oz' }),
@@ -181,8 +198,18 @@ Analyze the image and return a JSON object with:
 - candidates: array of 1-3 possible matches, each with:
   - name, description, category, condition, conditionNotes
   - brand (string|null), model (string|null), features (string[])
+  - mpn (string|null): the Manufacturer Part Number — the real part/SKU number printed on
+    the item's label, box, plate, or sticker (e.g. "WH1000XM4/B", "DSR-PD170"). This is NOT
+    the model name. If no genuine part number is visible, return null. Never put the model
+    name here.
   - estimatedValueLow (int), estimatedValueHigh (int)
   - confidence (float 0-1, your confidence this is the correct identification)
+  - weight: { value, unit:"oz" } — the realistic PACKAGED shipping weight (item + box
+    + padding) in ounces, estimated from the item type. NEVER 0. (e.g. paperback ≈ 8oz,
+    guitar pedal ≈ 14oz, projector ≈ 48oz, coffee mug ≈ 16oz)
+  - dimensions: { length, width, height, unit:"in" } — the shipping box size in inches,
+    estimated from the item. NEVER 0.
+  - packageType: one of "LETTER" | "PACKAGE_THICK_ENVELOPE" | "MAILING_BOX" | "LARGE_PACKAGE", by size
 - reasoning: array of 3-5 strings explaining what visual features led to the identification
   (e.g. "Pointed pocket flaps indicate Type III", "Tab logo suggests pre-1971")
 
@@ -228,11 +255,11 @@ const LISTING_FIELDS_SYSTEM_PROMPT = `You are a marketplace listing expert. Gene
 
 RULES:
 - eBay title must be ≤80 characters. Pack keywords: Brand + Model + Key Attributes + Condition hint
-- Fill ALL required item specifics from the provided aspects list. Use "N/A" only as last resort.
+- Fill EVERY required item specific. When a specific provides a list of allowed values, you MUST output the single closest-matching value FROM THAT LIST — map the item to the best fit (e.g. an external SSD → "Portable External SSD", a hand tool → its closest "Type"). Never leave a required specific blank, never output "N/A" when the list has any reasonable match, and never invent a value that is not in the provided list. Only use "N/A" for a free-text specific (no allowed list) you genuinely cannot determine.
 - Condition description must reference specific wear visible in photos (scratches, scuffs, patina, etc.)
 - If no wear is visible, say "Item appears to be in [condition] condition with no visible wear."
 - Price suggestion should target slightly below sold median for faster sale
-- Weight and dimensions are visual estimates — always flag as estimated
+- ALWAYS estimate a realistic PACKAGED shipping weight (item + box + padding) in ounces and the shipping box dimensions in inches, inferred from the item type, brand/model, and what is visible. These are required for shipping — NEVER return 0 for weight or any dimension. If unsure, estimate from a comparable item. Anchor examples: guitar pedal ≈ 12–18 oz in a 7×5×4 in box; vinyl LP ≈ 9 oz in 13×13×1; paperback book ≈ 8 oz in 9×6×1; wireless mic/instrument system ≈ 24–40 oz in a 12×9×4 box; coffee mug ≈ 16 oz in 6×6×5. Pick the closest analog and adjust. Flag them as estimates.
 - Determine if item is music gear (instruments, amps, pedals, audio equipment, accessories)
 - If music gear, fill Reverb fields. If not, set reverb to null and isMusicGear to false.
 
@@ -246,7 +273,7 @@ OUTPUT JSON STRUCTURE (all top-level fields required):
   "model": "Model name/number",
   "isMusicGear": true/false,
   "aiConfidence": 0.0-1.0,
-  "ebay": { "title": "≤80 char eBay title", "categoryId": "", "categoryName": "", "condition": "", "conditionDescription": "", "aspects": {}, "upc": null, "epid": null, "weight": {"value":0,"unit":"oz"}, "dimensions": {"length":0,"width":0,"height":0,"unit":"in"}, "packageType": "LETTER" },
+  "ebay": { "title": "≤80 char eBay title", "categoryId": "", "categoryName": "", "condition": "", "conditionDescription": "", "aspects": {}, "upc": null, "epid": null, "weight": {"value": <estimated packaged oz, never 0>, "unit":"oz"}, "dimensions": {"length": <in>, "width": <in>, "height": <in>, "unit":"in"}, "packageType": "LETTER|PACKAGE_THICK_ENVELOPE|MAILING_BOX|LARGE_PACKAGE — pick by size" },
   "reverb": null or { "make": "", "model": "", "title": "", "categoryUuid": "", "categoryName": "", "conditionUuid": "", "conditionName": "", "year": null, "finish": null, "description": "" }
 }
 
@@ -263,6 +290,10 @@ export interface ListingFieldsInput {
     description: string;
   };
   photoUrls: string[];
+  // Pre-fetched images (e.g. the in-memory scan buffer). When present, these are
+  // used directly and photoUrls is not fetched — keeps the vision path (JSON-mode)
+  // instead of the text-only fallback.
+  images?: ImageInput[];
   ebayCategorySuggestion: { categoryId: string; categoryName: string } | null;
   requiredAspects: Record<string, { required: boolean; values: string[] | null }>;
   soldComps: Array<{ title: string; price: number; condition: string; soldDate: string | null }>;
@@ -392,7 +423,9 @@ SELLER DEFAULTS: ${JSON.stringify(input.sellerDefaults)}
 
 Generate all listing fields as JSON.`;
 
-  const images = await fetchPhotosAsBase64(input.photoUrls, 5);
+  const images = input.images?.length
+    ? input.images
+    : await fetchPhotosAsBase64(input.photoUrls, 5);
 
   let text: string;
   if (images.length > 0) {
@@ -408,5 +441,21 @@ Generate all listing fields as JSON.`;
   if (!validated.success) {
     throw new AppError(502, 'AI_RESPONSE_INVALID', `AI listing fields returned invalid response: ${validated.error.message}`);
   }
-  return validated.data as ListingFieldsOutput;
+  const fields = validated.data as ListingFieldsOutput;
+
+  // Constrained second pass (burndown 3.4): high-cardinality enum aspects like
+  // "Type" routinely come back unfilled from the single-shot call. Never throws.
+  if (fields.ebay) {
+    fields.ebay.aspects = await pickMissingRequiredAspects({
+      aspects: fields.ebay.aspects ?? {},
+      requiredAspects: input.requiredAspects,
+      itemContext: {
+        brand: input.scanData.brand,
+        model: input.scanData.model,
+        category: input.scanData.category,
+        title: fields.ebay.title ?? fields.title ?? '',
+      },
+    });
+  }
+  return fields;
 }

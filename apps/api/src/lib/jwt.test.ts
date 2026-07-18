@@ -1,10 +1,7 @@
 import jwt from 'jsonwebtoken';
 import {
   signAccessToken,
-  signRefreshToken,
   verifyAccessToken,
-  verifyRefreshToken,
-  hashToken,
   type JwtPayload,
 } from './jwt.js';
 import { env } from './env.js';
@@ -27,8 +24,12 @@ describe('jwt', () => {
       expect(decoded.role).toBe(testPayload.role);
     });
 
-    it('rejects a refresh token used as access token', () => {
-      const refreshToken = signRefreshToken(testPayload);
+    it('rejects a legacy refresh token used as access token', () => {
+      const refreshToken = jwt.sign(
+        { ...testPayload, type: 'refresh' },
+        env().JWT_SECRET,
+        { expiresIn: '1h' },
+      );
       expect(() => verifyAccessToken(refreshToken)).toThrow('Cannot use refresh token as access token');
     });
 
@@ -44,32 +45,6 @@ describe('jwt', () => {
       );
       const decoded = verifyAccessToken(token);
       expect(decoded.role).toBe('user');
-    });
-  });
-
-  describe('refresh tokens', () => {
-    it('sign and verify roundtrip preserves payload fields', () => {
-      const token = signRefreshToken(testPayload);
-      const decoded = verifyRefreshToken(token);
-      expect(decoded.sub).toBe(testPayload.sub);
-      expect(decoded.email).toBe(testPayload.email);
-    });
-
-    it('rejects an access token used as refresh token', () => {
-      const accessToken = signAccessToken(testPayload);
-      expect(() => verifyRefreshToken(accessToken)).toThrow('Invalid refresh token');
-    });
-  });
-
-  describe('hashToken', () => {
-    it('is deterministic', () => {
-      const hash1 = hashToken('my-token');
-      const hash2 = hashToken('my-token');
-      expect(hash1).toBe(hash2);
-    });
-
-    it('produces different hashes for different inputs', () => {
-      expect(hashToken('token-a')).not.toBe(hashToken('token-b'));
     });
   });
 });

@@ -7,7 +7,7 @@ import { useAuth } from "./use-auth";
 interface RecentListing {
   id: string;
   itemId: string;
-  marketplace: "ebay" | "etsy";
+  marketplace: "ebay" | "reverb";
   status: "draft" | "active" | "sold" | "archived";
   price: number;
   currency: string;
@@ -15,11 +15,12 @@ interface RecentListing {
   publishedAt: string | null;
   itemTitle: string;
   itemPhotoUrl: string | null;
+  confidence: number;
 }
 
 interface PendingShipment {
   id: string;
-  marketplace: "ebay" | "etsy";
+  marketplace: "ebay" | "reverb";
   buyerUsername: string;
   salePrice: number;
   currency: string;

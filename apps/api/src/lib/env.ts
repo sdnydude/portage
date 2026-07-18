@@ -2,7 +2,7 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 import { resolve } from 'node:path';
 
-const envSchema = z.object({
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.coerce.number().default(8016),
   DATABASE_URL: z.string().url(),
@@ -35,11 +35,9 @@ const envSchema = z.object({
   EBAY_PROD_CLIENT_ID: z.string().optional(),
   EBAY_PROD_CLIENT_SECRET: z.string().optional(),
   EBAY_REDIRECT_URI: z.string().optional(),
-  EBAY_SANDBOX: z.coerce.boolean().default(true),
-  ETSY_API_KEY: z.string().optional(),
-  ETSY_SHARED_SECRET: z.string().optional(),
-  ETSY_REDIRECT_URI: z.string().optional(),
-  EASYPOST_API_KEY: z.string().optional(),
+  // NOTE: z.coerce.boolean() treats any non-empty string as true (Boolean('false') === true),
+  // so "false" would wrongly enable sandbox. Parse the string explicitly instead.
+  EBAY_SANDBOX: z.string().default('true').transform((v) => v.toLowerCase() !== 'false'),
   REVERB_API_TOKEN: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -51,6 +49,37 @@ const envSchema = z.object({
   VAPID_EMAIL: z.string().optional(),
   REMBG_URL: z.string().default('http://localhost:7000'),
   METRICS_SECRET: z.string().optional(),
+  // Beta invite emails (Resend). FROM must be on a verified Resend domain.
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM: z.string().default('Portage Beta <beta@beta.digitalharmonyai.com>'),
+  APP_URL: z.string().default('https://portage.digitalharmonyai.com'),
+  // User identity for CF Access service-token requests (e2e) — service tokens
+  // carry a common_name instead of an email. BOTH values must be set and the
+  // token's common_name must match, or the service token is rejected.
+  CF_ACCESS_SERVICE_EMAIL: z.string().optional(),
+  CF_ACCESS_SERVICE_COMMON_NAME: z.string().optional(),
+  // Audience tag of the Cloudflare Access application protecting Portage.
+  CF_ACCESS_AUD: z.string().optional(),
+  CF_ACCESS_TEAM_DOMAIN: z.string().default('digitalharmonyai'),
+  // Cloudflare API access for the admin allowlist manager (Access:Edit scope).
+  CF_API_TOKEN: z.string().optional(),
+  CF_ACCOUNT_ID: z.string().optional(),
+  // Access application IDs whose allow policy carries the email allowlist
+  // (comma-separated: web app + API hostname app).
+  CF_ACCESS_APP_IDS: z.string().optional(),
+  // Dev-only identity when no Cloudflare edge is in front (LAN dev). Read
+  // only when NODE_ENV=development, so it can never bypass auth elsewhere.
+  CF_ACCESS_DEV_EMAIL: z.string().optional(),
+}).superRefine((value, ctx) => {
+  // /auth/session is dead without an audience — surface the misconfiguration
+  // at startup instead of 401-ing every login in production.
+  if (value.NODE_ENV === 'production' && !value.CF_ACCESS_AUD) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['CF_ACCESS_AUD'],
+      message: 'CF_ACCESS_AUD is required in production',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

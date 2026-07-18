@@ -50,7 +50,7 @@ export default function MorePage() {
   return (
     <>
       <PageHeader title="Settings" />
-      <div className="px-4 py-4 max-w-lg mx-auto">
+      <div className="px-4 py-4 content-container">
         {/* User info */}
         {user && (
           <div className="mb-6 p-4 rounded-2xl border border-border bg-surface" style={{ boxShadow: "var(--shadow-subtle)" }}>
@@ -104,7 +104,7 @@ export default function MorePage() {
               </svg>
             }
             title="Marketplace Accounts"
-            description="eBay, Etsy, and Reverb connections"
+            description="eBay and Reverb connections"
           />
 
           <SettingsLink
@@ -131,20 +131,6 @@ export default function MorePage() {
           />
 
           <SettingsLink
-            href="/settings/shipping"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="1" y="3" width="15" height="13" rx="2" />
-                <path d="M16 8h4l3 3v5a2 2 0 01-2 2h-1" />
-                <circle cx="5.5" cy="18.5" r="2.5" />
-                <circle cx="18.5" cy="18.5" r="2.5" />
-              </svg>
-            }
-            title="Shipping"
-            description="Ship-from address, presets, provider"
-          />
-
-          <SettingsLink
             href="/settings/notifications"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -154,6 +140,18 @@ export default function MorePage() {
             }
             title="Notifications"
             description="Sale alerts, shipping reminders"
+          />
+
+          <SettingsLink
+            href="/tutorials"
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--forest-green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" />
+                <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" />
+              </svg>
+            }
+            title="Tutorials"
+            description="Learn Portage step by step"
           />
 
           <SettingsLink

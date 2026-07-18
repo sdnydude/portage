@@ -1,15 +1,21 @@
-import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, doublePrecision, jsonb, pgEnum, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, varchar, timestamp, boolean, integer, real, doublePrecision, jsonb, pgEnum, pgSequence, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
+// Serialized eBay SKU source (PRT-000123). Minted once per item and persisted on
+// items.ebaySku so retried publishes reuse the same SKU — keeping eBay's
+// inventory_item PUT idempotent and out of the "rapid listing" ATO heuristic.
+export const ebaySkuSeq = pgSequence('portage_ebay_sku_seq', { startWith: 1 });
+
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
-export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro']);
+export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro', 'beta-tester']);
 export const conditionEnum = pgEnum('item_condition', ['new', 'like_new', 'good', 'fair', 'poor']);
+// 'etsy' parked 2026-07 (tag etsy-parked-2026-07): Postgres cannot drop an enum
+// value, so it stays here inert — no adapter, no routes, no UI offer it.
 export const marketplaceEnum = pgEnum('marketplace_type', ['ebay', 'etsy', 'reverb']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'active', 'sold', 'archived']);
-export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered']);
+export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered', 'canceled']);
 export const notificationTypeEnum = pgEnum('notification_type', ['sale', 'buyer_message', 'listing_expiry', 'price_alert', 'shipping_reminder']);
 export const referenceTypeEnum = pgEnum('reference_type', ['order', 'listing', 'item']);
-export const shippingProviderEnum = pgEnum('shipping_provider', ['shippo', 'easypost', 'pirate_ship']);
 export const packageTypeEnum = pgEnum('package_type', ['box', 'envelope', 'poly_mailer']);
 export const messageDirectionEnum = pgEnum('message_direction', ['inbound', 'outbound']);
 export const messageTypeEnum = pgEnum('message_type', ['asq', 'rtq', 'aaq']);
@@ -17,7 +23,9 @@ export const messageTypeEnum = pgEnum('message_type', ['asq', 'rtq', 'aaq']);
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: varchar('email', { length: 255 }).notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  // Nullable since the Cloudflare Access migration: CF is the IdP, accounts
+  // auto-provisioned at /auth/session have no local password.
+  passwordHash: text('password_hash'),
   displayName: varchar('display_name', { length: 255 }),
   subscriptionTier: subscriptionTierEnum('subscription_tier').notNull().default('free'),
   stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
@@ -27,6 +35,10 @@ export const users = pgTable('users', {
   aiScansThisMonth: integer('ai_scans_this_month').notNull().default(0),
   aiListingsThisMonth: integer('ai_listings_this_month').notNull().default(0),
   aiListingCredits: integer('ai_listing_credits').notNull().default(0),
+  // Admin-set per-user meter overrides: partial {aiScansPerMonth, aiListingsPerMonth,
+  // bgRemovalsPerMonth, porterExchangesPerDay, marketplaces} — number wins over the
+  // tier limit, null key = unlimited, absent key = tier default.
+  limitOverrides: jsonb('limit_overrides'),
   bgRemovalsThisMonth: integer('bg_removals_this_month').notNull().default(0),
   scanCountResetAt: timestamp('scan_count_reset_at').notNull().defaultNow(),
   onboardingCompleted: boolean('onboarding_completed').notNull().default(false),
@@ -37,7 +49,6 @@ export const users = pgTable('users', {
   disabledAt: timestamp('disabled_at'),
   disabledReason: text('disabled_reason'),
   lastActiveAt: timestamp('last_active_at'),
-  refreshTokenHash: text('refresh_token_hash'),
   pushSubscription: jsonb('push_subscription'),
   shipFromAddress: jsonb('ship_from_address'),
   shippingAutoMark: boolean('shipping_auto_mark').notNull().default(false),
@@ -46,6 +57,12 @@ export const users = pgTable('users', {
   listingForkPref: text('listing_fork_pref').notNull().default('ask'),
   listingForkCount: integer('listing_fork_count').notNull().default(0),
   listingCompactMode: boolean('listing_compact_mode').notNull().default(false),
+  // F3b: display-only suppression of the publish terms sheet ("don't show for 7
+  // days"). NOT a consent record — that lives in disclaimerAcceptances. Suppressed
+  // only when suppressUntil > now AND suppressVersion === CURRENT_DISCLAIMER_VERSION
+  // (a version bump voids it). Null = never suppressed.
+  disclaimerSuppressUntil: timestamp('disclaimer_suppress_until'),
+  disclaimerSuppressVersion: integer('disclaimer_suppress_version'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -61,11 +78,34 @@ export const items = pgTable('items', {
   brand: varchar('brand', { length: 255 }).notNull().default(''),
   model: varchar('model', { length: 255 }).notNull().default(''),
   features: jsonb('features').notNull().default([]),
+  // eBay item specifics (Brand, MPN, category aspects) keyed → string[] values.
+  // AI-filled at scan, carried into every publish path so the aspect pop-up never
+  // re-asks for data already captured. Existing rows default to {}.
+  aspects: jsonb('aspects').$type<Record<string, string[]>>().notNull().default({}),
   estimatedValueMin: doublePrecision('estimated_value_min'),
   estimatedValueMax: doublePrecision('estimated_value_max'),
   estimatedValueRecommended: doublePrecision('estimated_value_recommended'),
+  // Seller-set sale price (distinct from the AI estimate above). Prefills the
+  // editable price field shown on every eBay publish; nullable (existing rows).
+  price: doublePrecision('price'),
   aiConfidenceScore: real('ai_confidence_score').notNull().default(0),
+  quantity: integer('quantity').notNull().default(1),
+  // eBay Calculated shipping requires package weight + dimensions (error 25020).
+  // Normalized: weight in ounces, dimensions in inches; nullable (existing rows).
+  weightOz: real('weight_oz'),
+  lengthIn: real('length_in'),
+  widthIn: real('width_in'),
+  heightIn: real('height_in'),
+  // eBay enum string (MAILING_BOX/LETTER/...) — deliberately varchar, not packageTypeEnum.
+  ebayPackageType: varchar('ebay_package_type', { length: 50 }),
+  // true when AI-populated the metrics; flips false on seller edit.
+  weightEstimated: boolean('weight_estimated').notNull().default(false),
   marketplaceData: jsonb('marketplace_data').$type<import('@portage/shared').MarketplaceData>(),
+  // Stable serialized eBay SKU (PRT-000123), minted once per item from
+  // ebaySkuSeq and reused across every (re)publish so eBay's inventory_item PUT
+  // stays idempotent — no churning SKUs that trip ATO. Nullable (existing rows;
+  // minted lazily on first eBay publish).
+  ebaySku: varchar('ebay_sku', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
@@ -78,10 +118,17 @@ export const listings = pgTable('listings', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   marketplace: marketplaceEnum('marketplace').notNull(),
   marketplaceListingId: varchar('marketplace_listing_id', { length: 255 }),
+  ebaySku: varchar('ebay_sku', { length: 255 }),
+  ebayOfferId: varchar('ebay_offer_id', { length: 255 }),
   marketplaceSpecificFields: jsonb('marketplace_specific_fields'),
   status: listingStatusEnum('status').notNull().default('draft'),
   price: doublePrecision('price').notNull(),
   currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  // Idempotency anchor (R3): the row is inserted FIRST with a null marketplaceListingId
+  // and this key, then eBay is called, then the row is UPDATEd. The partial unique
+  // index below serializes concurrent submits that share a key so a non-idempotent
+  // AddFixedPriceItem can't double-list. Null for non-publish drafts / legacy rows.
+  idempotencyKey: varchar('idempotency_key', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   publishedAt: timestamp('published_at'),
@@ -90,6 +137,9 @@ export const listings = pgTable('listings', {
   index('idx_listings_user_id').on(t.userId),
   index('idx_listings_item_id').on(t.itemId),
   index('idx_listings_marketplace_listing_id').on(t.marketplaceListingId),
+  uniqueIndex('uq_listings_idempotency_key')
+    .on(t.userId, t.idempotencyKey)
+    .where(sql`${t.idempotencyKey} IS NOT NULL`),
 ]);
 
 export const orders = pgTable('orders', {
@@ -173,35 +223,6 @@ export const appSettings = pgTable('app_settings', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-export const shippingPresets = pgTable('shipping_presets', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  name: varchar('name', { length: 100 }).notNull(),
-  packageType: packageTypeEnum('package_type').notNull(),
-  length: real('length').notNull(),
-  width: real('width').notNull(),
-  height: real('height').notNull(),
-  weightLbs: integer('weight_lbs').notNull().default(0),
-  weightOz: real('weight_oz').notNull().default(0),
-  isDefault: boolean('is_default').notNull().default(false),
-  sortOrder: integer('sort_order').notNull().default(0),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, (t) => [
-  uniqueIndex('shipping_presets_one_default_per_user')
-    .on(t.userId)
-    .where(sql`is_default = true`),
-]);
-
-export const shippingProviders = pgTable('shipping_providers', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  provider: shippingProviderEnum('provider').notNull(),
-  apiKeyEncrypted: text('api_key_encrypted').notNull(),
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
-
 export const designSurveyResponses = pgTable('design_survey_responses', {
   id: uuid('id').defaultRandom().primaryKey(),
   preferredDirection: varchar('preferred_direction', { length: 1 }).notNull(),
@@ -227,6 +248,16 @@ export const designReviewComments = pgTable('design_review_comments', {
   comment: text('comment').notNull(),
   reviewerName: varchar('reviewer_name', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const faqs = pgTable('faqs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  question: varchar('question', { length: 500 }).notNull(),
+  answer: text('answer').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  published: boolean('published').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
 export const disclaimerAcceptances = pgTable('disclaimer_acceptances', {
@@ -272,6 +303,7 @@ export const sellerProfiles = pgTable('seller_profiles', {
   ebayPaymentPolicyId: varchar('ebay_payment_policy_id', { length: 100 }),
   ebayReturnPolicyId: varchar('ebay_return_policy_id', { length: 100 }),
   ebayMerchantLocationKey: varchar('ebay_merchant_location_key', { length: 100 }),
+  ebayPublishMode: varchar('ebay_publish_mode', { length: 10 }).notNull().default('live'),
   reverbOffersEnabled: boolean('reverb_offers_enabled').notNull().default(true),
   reverbDefaultShipping: jsonb('reverb_default_shipping'),
   shipFromAddress: jsonb('ship_from_address'),
@@ -281,6 +313,11 @@ export const sellerProfiles = pgTable('seller_profiles', {
   preferredMarketplaces: jsonb('preferred_marketplaces').notNull().default(['ebay']),
   autoPublish: boolean('auto_publish').notNull().default(false),
   defaultCurrency: varchar('default_currency', { length: 3 }).notNull().default('USD'),
+  pricingSuggestPercentile: integer('pricing_suggest_percentile').notNull().default(50),
+  pricingFloorPercentile: integer('pricing_floor_percentile').notNull().default(25),
+  bestOfferAutoAcceptEnabled: boolean('best_offer_auto_accept_enabled').notNull().default(false),
+  gtcAutoEnd: boolean('gtc_auto_end').notNull().default(false),
+  defaultListingFooter: text('default_listing_footer'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

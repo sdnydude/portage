@@ -2,16 +2,17 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { eq, and, sql } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
+import { computePriceBands } from '../lib/pricing.js';
 import { db } from '../db/index.js';
 import { items, sellerProfiles, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
-import { EbayAdapter } from '../marketplace/ebay-adapter.js';
+import { EbayAdapter, resolveEbayCategoryCondition } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
-import { computeEffectiveTier } from '../lib/billing-utils.js';
-import { FREE_TIER_LIMITS, PRO_TIER_LIMITS } from '@portage/shared';
-import type { PreparedListingData, PricingData, CompResult, ReverbCompResult, MarketplaceCacheEntry } from '@portage/shared';
+import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
+import { limitsForTier } from '@portage/shared';
+import type { PreparedListingData, PricingData, CompResult, ReverbCompResult, MarketplaceCacheEntry, ReverbCacheEntry } from '@portage/shared';
 
 const logger = createLogger('prepare-listing');
 
@@ -33,6 +34,60 @@ export const EBAY_CONDITION_MAP: Record<string, string> = {
 
 export const EBAY_CONDITION_ORDER = ['NEW', 'LIKE_NEW', 'VERY_GOOD', 'GOOD', 'ACCEPTABLE'];
 
+/**
+ * Cache entries merged into items.marketplace_data after a prepare run. The
+ * ebay entry always writes (category self-heal depends on it); the reverb
+ * entry writes only when the AI produced reverb fields (music gear), so a
+ * non-gear prepare never clobbers an earlier gear scan's slot.
+ */
+export function buildMarketplaceCacheEntries(
+  aiFields: {
+    ebay?: { categoryId?: string | null; categoryName?: string | null; title?: string | null } | null;
+    reverb?: {
+      categoryUuid?: string | null; categoryName?: string | null;
+      conditionUuid?: string | null; conditionName?: string | null;
+      year?: string | null; finish?: string | null;
+    } | null;
+  },
+  categorySuggestion: { categoryId: string; categoryName: string } | null,
+): { ebay: MarketplaceCacheEntry; reverb?: ReverbCacheEntry } {
+  const entries: { ebay: MarketplaceCacheEntry; reverb?: ReverbCacheEntry } = {
+    ebay: {
+      categoryId: categorySuggestion?.categoryId ?? aiFields.ebay?.categoryId ?? null,
+      categoryName: categorySuggestion?.categoryName ?? aiFields.ebay?.categoryName ?? null,
+      title: aiFields.ebay?.title ?? null,
+      cachedAt: new Date().toISOString(),
+    },
+  };
+  if (aiFields.reverb) {
+    entries.reverb = {
+      categoryUuid: aiFields.reverb.categoryUuid ?? null,
+      categoryName: aiFields.reverb.categoryName ?? null,
+      conditionUuid: aiFields.reverb.conditionUuid ?? null,
+      conditionName: aiFields.reverb.conditionName ?? null,
+      year: aiFields.reverb.year ?? null,
+      finish: aiFields.reverb.finish ?? null,
+      cachedAt: new Date().toISOString(),
+    };
+  }
+  return entries;
+}
+
+/**
+ * A degraded comps result means the Reverb API call itself failed — the empty
+ * list is "couldn't ask", not "no comparable listings", and pricing built on
+ * it deserves a seller-visible caveat.
+ */
+export function reverbCompsWarning(comps: ReverbCompResult): string | undefined {
+  return comps.degraded ? 'Reverb comps search failed — pricing may be less accurate' : undefined;
+}
+
+/** Cache-write-failure warning that names every marketplace whose data was lost. */
+export function cacheFailWarning(entries: { ebay: MarketplaceCacheEntry; reverb?: ReverbCacheEntry }): string {
+  const names = [entries.ebay && 'eBay', entries.reverb && 'Reverb'].filter(Boolean).join(' + ');
+  return `${names} category data could not be saved — re-run prepare before publishing`;
+}
+
 export function conditionNeighbors(condition: string): string[] {
   const idx = EBAY_CONDITION_ORDER.indexOf(condition);
   if (idx === -1) return EBAY_CONDITION_ORDER;
@@ -46,6 +101,7 @@ export function computePricing(
   soldComps: Array<{ price: number; condition: string }>,
   aiCondition: string,
   currency: string,
+  opts: { suggestPercentile?: number; floorPercentile?: number } = {},
 ): PricingData {
   const ebayCondition = EBAY_CONDITION_MAP[aiCondition] ?? 'GOOD';
 
@@ -77,25 +133,30 @@ export function computePricing(
       confidence: 'low',
       basedOn: 0,
       conditionMatch: 'all',
+      // Same "no floor" encoding as the engine path — null, never omitted.
+      bestOfferFloor: null,
     };
   }
 
-  const prices = pool.map(p => p.price).sort((a, b) => a - b);
-  const mid = Math.floor(prices.length / 2);
-  const median = prices.length % 2 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
-  const p25 = prices[Math.floor(prices.length * 0.25)] ?? prices[0];
-  const p75 = prices[Math.ceil(prices.length * 0.75) - 1] ?? prices[prices.length - 1];
+  // Bands from the condition-selected pool via the shared engine (R-7,
+  // round-once, undercut-at-p50) — pool is non-empty here, so bands exist.
+  const bands = computePriceBands(pool.map(p => p.price), {
+    suggestPercentile: opts.suggestPercentile,
+    floorPercentile: opts.floorPercentile,
+  });
+  if (!bands) throw new Error('unreachable: pool verified non-empty above');
 
   const confidence = conditionMatch === 'exact' ? 'high' : conditionMatch === 'nearby' ? 'medium' : 'low';
 
   return {
-    suggested: Math.round(median * 0.97 * 100) / 100,
-    low: Math.round(p25 * 100) / 100,
-    high: Math.round(p75 * 100) / 100,
+    suggested: bands.suggested,
+    low: bands.p25,
+    high: bands.p75,
     currency,
     confidence,
-    basedOn: pool.length,
+    basedOn: bands.basedOn,
     conditionMatch,
+    bestOfferFloor: bands.floor,
   };
 }
 
@@ -121,6 +182,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       aiListingsThisMonth: users.aiListingsThisMonth,
       aiListingCredits: users.aiListingCredits,
       scanCountResetAt: users.scanCountResetAt,
+      limitOverrides: users.limitOverrides,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (!billingUser) throw new AppError(401, 'UNAUTHORIZED', 'User not found');
@@ -141,9 +203,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     }
 
     const effectiveTier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
-    const limit = effectiveTier === 'pro'
-      ? PRO_TIER_LIMITS.aiListingsPerMonth
-      : FREE_TIER_LIMITS.aiListingsPerMonth;
+    const limit = effectiveLimits(effectiveTier, billingUser.limitOverrides).aiListingsPerMonth;
 
     // C2: Atomic reserve — try monthly allocation first
     const reserved = await db.update(users)
@@ -188,7 +248,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       logger.warn({ searchQuery, error: (err as Error).message }, 'Category suggestion failed — searching without category');
     }
 
-    const [ebayCompsResult, aspectsResult, reverbCompsResult] = await Promise.allSettled([
+    const [ebayCompsResult, aspectsResult, reverbCompsResult, validConditionsResult] = await Promise.allSettled([
       EbayAdapter.searchComps(searchQuery, categorySuggestion?.categoryId),
       categorySuggestion
         ? EbayAdapter.getRequiredAspects(categorySuggestion.categoryId)
@@ -196,6 +256,9 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       targetMarketplaces.includes('reverb')
         ? ReverbAdapter.searchComps(searchQuery)
         : Promise.resolve({ listings: [], stats: { median: null, avg: null, sampleSize: 0 } }),
+      categorySuggestion
+        ? EbayAdapter.getValidConditions(categorySuggestion.categoryId)
+        : Promise.resolve([] as string[]),
     ]);
 
     if (ebayCompsResult.status === 'rejected') {
@@ -213,7 +276,9 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       : { sold: [], active: [], stats: { soldMedian: null, soldAvg: null, activeMedian: null, activeAvg: null, sampleSize: 0 } };
     const reverbComps: ReverbCompResult = reverbCompsResult.status === 'fulfilled'
       ? reverbCompsResult.value
-      : { listings: [], stats: { median: null, avg: null, sampleSize: 0 } };
+      : { listings: [], stats: { median: null, avg: null, sampleSize: 0 }, degraded: true };
+    const compsWarning = reverbCompsWarning(reverbComps);
+    if (compsWarning) warnings.push(compsWarning);
     const requiredAspects = aspectsResult.status === 'fulfilled'
       ? aspectsResult.value as Record<string, { required: boolean; values: string[] | null }>
       : {};
@@ -272,30 +337,28 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       throw aiError;
     }
 
-    const ebayEntry: MarketplaceCacheEntry = {
-      categoryId: categorySuggestion?.categoryId ?? aiFields.ebay?.categoryId ?? null,
-      categoryName: categorySuggestion?.categoryName ?? aiFields.ebay?.categoryName ?? null,
-      title: aiFields.ebay?.title ?? null,
-      cachedAt: new Date().toISOString(),
-    };
+    const cacheEntries = buildMarketplaceCacheEntries(aiFields, categorySuggestion);
 
     try {
       await db.update(items)
         .set({
-          marketplaceData: sql`COALESCE(marketplace_data, '{}'::jsonb) || ${JSON.stringify({ ebay: ebayEntry })}::jsonb`,
+          marketplaceData: sql`COALESCE(marketplace_data, '{}'::jsonb) || ${JSON.stringify(cacheEntries)}::jsonb`,
           updatedAt: new Date(),
         })
         .where(eq(items.id, itemId));
     } catch (cacheErr) {
       logger.warn({ itemId, error: (cacheErr as Error).message }, 'Failed to cache marketplace data');
-      warnings.push('eBay category data could not be saved — re-run prepare before exporting CSV');
+      warnings.push(cacheFailWarning(cacheEntries));
     }
 
     const soldWithCondition = ebayComps.sold.map(s => ({
       price: s.price,
       condition: s.condition,
     }));
-    const pricing = computePricing(soldWithCondition, aiFields.condition, currency);
+    const pricing = computePricing(soldWithCondition, aiFields.condition, currency, {
+      suggestPercentile: profile?.pricingSuggestPercentile,
+      floorPercentile: profile?.pricingFloorPercentile,
+    });
 
     if (pricing.conditionMatch === 'all' && pricing.basedOn > 0) {
       warnings.push('Limited comps at this condition — price may be less accurate');
@@ -310,12 +373,29 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       warnings.push('Dimensions are AI-estimated — verify before shipping');
     }
 
+    // T6: per-category condition auto-correct. eBay validates condition against
+    // the category's allowed set at publish; the static CONDITION_MAP default
+    // isn't valid in every category (esp. media/apparel). When the category's
+    // supported conditions are known, snap to the closest supported grade and
+    // surface any deviation as a warning.
+    const validConditionIds = validConditionsResult.status === 'fulfilled' ? validConditionsResult.value : [];
+    const conditionFix = aiFields.ebay
+      ? resolveEbayCategoryCondition(aiFields.condition, validConditionIds)
+      : {};
+    if (conditionFix.warning) warnings.push(conditionFix.warning);
+
+    // Opted-in Best Offer with no usable floor (n<3 or inversion) degrades
+    // silently at publish otherwise — tell the seller at prepare time.
+    if (aiFields.ebay && profile?.bestOfferAutoAcceptEnabled && !pricing.bestOfferFloor) {
+      warnings.push('Too few comparable sales to set a Best Offer auto-accept floor — the listing will publish without one.');
+    }
+
     const ebayFields = aiFields.ebay ? {
       ...aiFields.ebay,
-      fulfillmentPolicyId: profile?.ebayFulfillmentPolicyId ?? '',
-      paymentPolicyId: profile?.ebayPaymentPolicyId ?? '',
-      returnPolicyId: profile?.ebayReturnPolicyId ?? '',
-      merchantLocationKey: profile?.ebayMerchantLocationKey ?? 'default',
+      ...(conditionFix.condition ? { condition: conditionFix.condition } : {}),
+      ...(profile?.bestOfferAutoAcceptEnabled && pricing.bestOfferFloor
+        ? { bestOfferAutoAcceptPrice: pricing.bestOfferFloor }
+        : {}),
     } : null;
 
     const reverbFields = aiFields.reverb ? {
@@ -341,6 +421,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       isMusicGear: aiFields.isMusicGear,
       aiConfidence: aiFields.aiConfidence,
       warnings,
+      listingFooter: profile?.defaultListingFooter ?? null,
     };
 
     logger.info({

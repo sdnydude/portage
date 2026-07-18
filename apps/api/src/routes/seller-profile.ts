@@ -3,10 +3,9 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
-import { sellerProfiles, marketplaceAccounts } from '../db/schema.js';
+import { sellerProfiles } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
-import { getEbayAccessToken } from '../marketplace/token-manager.js';
-import { env } from '../lib/env.js';
+import { AppError } from '../middleware/error.js';
 
 const logger = createLogger('seller-profile');
 
@@ -61,9 +60,15 @@ const updateSchema = z.object({
   defaultWeightUnit: z.enum(['oz', 'lb', 'g', 'kg']).optional(),
   defaultDimensionUnit: z.enum(['in', 'cm']).optional(),
   defaultPackageType: z.enum(['box', 'envelope', 'poly_mailer']).optional(),
-  preferredMarketplaces: z.array(z.enum(['ebay', 'etsy', 'reverb'])).optional(),
+  ebayPublishMode: z.enum(['draft', 'live']).optional(),
+  preferredMarketplaces: z.array(z.enum(['ebay', 'reverb'])).optional(),
   autoPublish: z.boolean().optional(),
   defaultCurrency: z.string().length(3).optional(),
+  pricingSuggestPercentile: z.number().int().min(10).max(90).optional(),
+  pricingFloorPercentile: z.number().int().min(5).max(75).optional(),
+  bestOfferAutoAcceptEnabled: z.boolean().optional(),
+  gtcAutoEnd: z.boolean().optional(),
+  defaultListingFooter: z.string().max(2000).nullable().optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field required' });
 
 sellerProfileRouter.patch('/', async (req, res, next) => {
@@ -76,10 +81,20 @@ sellerProfileRouter.patch('/', async (req, res, next) => {
       if (value !== undefined) updates[key] = value;
     }
 
-    const [existing] = await db.select({ id: sellerProfiles.id })
+    const [existing] = await db.select()
       .from(sellerProfiles)
       .where(eq(sellerProfiles.userId, userId))
       .limit(1);
+
+    // Cross-field invariant cannot live in Zod: a partial PATCH sees only one
+    // field, so merge with the stored row (or column defaults) before checking.
+    if (body.pricingSuggestPercentile !== undefined || body.pricingFloorPercentile !== undefined) {
+      const suggest = body.pricingSuggestPercentile ?? existing?.pricingSuggestPercentile ?? 50;
+      const floor = body.pricingFloorPercentile ?? existing?.pricingFloorPercentile ?? 25;
+      if (floor >= suggest) {
+        throw new AppError(400, 'PRICING_FLOOR_INVALID', 'Floor percentile must be below the suggested-price percentile');
+      }
+    }
 
     let profile;
     if (existing) {
@@ -100,54 +115,7 @@ sellerProfileRouter.patch('/', async (req, res, next) => {
   }
 });
 
-sellerProfileRouter.get('/ebay-policies', async (req, res, next) => {
-  try {
-    const userId = req.user!.sub;
-
-    const [account] = await db.select()
-      .from(marketplaceAccounts)
-      .where(eq(marketplaceAccounts.userId, userId))
-      .limit(1);
-
-    if (!account) {
-      res.json({ fulfillment: [], payment: [], returnPolicy: [] });
-      return;
-    }
-
-    const token = await getEbayAccessToken(userId);
-    const baseUrl = env().EBAY_SANDBOX
-      ? 'https://api.sandbox.ebay.com'
-      : 'https://api.ebay.com';
-
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-
-    const [fulfillmentRes, paymentRes, returnRes] = await Promise.allSettled([
-      fetch(`${baseUrl}/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_US`, { headers }),
-      fetch(`${baseUrl}/sell/account/v1/payment_policy?marketplace_id=EBAY_US`, { headers }),
-      fetch(`${baseUrl}/sell/account/v1/return_policy?marketplace_id=EBAY_US`, { headers }),
-    ]);
-
-    const extractPolicies = async (result: PromiseSettledResult<Response>, key: string) => {
-      if (result.status === 'rejected') return [];
-      if (!result.value.ok) return [];
-      const data = await result.value.json() as Record<string, Array<{ [k: string]: string }>>;
-      const policies = data[key] ?? [];
-      return policies.map((p: Record<string, string>) => ({
-        policyId: p.fulfillmentPolicyId ?? p.paymentPolicyId ?? p.returnPolicyId ?? p.policyId,
-        name: p.name ?? 'Unnamed',
-        description: p.description,
-      }));
-    };
-
-    const fulfillment = await extractPolicies(fulfillmentRes, 'fulfillmentPolicies');
-    const payment = await extractPolicies(paymentRes, 'paymentPolicies');
-    const returnPolicy = await extractPolicies(returnRes, 'returnPolicies');
-
-    res.json({ fulfillment, payment, returnPolicy });
-  } catch (err) {
-    next(err);
-  }
-});
+// Business Policies endpoints (GET /ebay-policies, POST /ebay/auto-setup) were
+// REMOVED 2026-07-09: Trade-First publishes with inline terms (Decision 5 —
+// account opted OUT of Business Policies), and the seller-profile screen no
+// longer renders policy pickers or the setup button they served.

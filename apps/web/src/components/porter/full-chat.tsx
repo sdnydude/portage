@@ -3,8 +3,6 @@
 import { useRef, useEffect } from "react";
 import { StreamingMessage } from "./streaming-message";
 import { ActionPills } from "./action-pills";
-import { VoiceButton } from "./voice-button";
-import { AudioPlayback } from "./audio-playback";
 import type { RichMessage, ActionPill } from "@portage/shared";
 import type { StreamingBlock } from "@/hooks/use-porter-stream";
 
@@ -13,13 +11,11 @@ interface FullChatProps {
   streamingBlocks: StreamingBlock[];
   isStreaming: boolean;
   pills: ActionPill[];
-  audioUrl: string | null;
   error: string | null;
   chatInput: string;
   onChatInputChange: (value: string) => void;
   onSend: () => void;
   onPillSelect: (message: string) => void;
-  onVoiceTranscript: (text: string) => void;
   onNewChat: () => void;
   onClose: () => void;
 }
@@ -29,13 +25,11 @@ export function FullChat({
   streamingBlocks,
   isStreaming,
   pills,
-  audioUrl,
   error,
   chatInput,
   onChatInputChange,
   onSend,
   onPillSelect,
-  onVoiceTranscript,
   onNewChat,
   onClose,
 }: FullChatProps) {
@@ -94,7 +88,6 @@ export function FullChat({
             key={i}
             message={msg}
             pills={i === messages.length - 1 ? pills : []}
-            audioUrl={i === messages.length - 1 ? audioUrl : null}
             onPillSelect={onPillSelect}
           />
         ))}
@@ -103,11 +96,6 @@ export function FullChat({
             streamingBlocks={streamingBlocks}
             isStreaming={isStreaming}
           />
-        )}
-        {audioUrl && !isStreaming && (
-          <div className="flex justify-start">
-            <AudioPlayback audioUrl={audioUrl} />
-          </div>
         )}
       </div>
 
@@ -130,7 +118,6 @@ export function FullChat({
             autoFocus
             className="flex-1 bg-[var(--background)] border border-[var(--border)] rounded-2xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--forest-green)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)]"
           />
-          <VoiceButton onTranscript={onVoiceTranscript} />
           <button
             onClick={onSend}
             disabled={!chatInput.trim() || isStreaming}

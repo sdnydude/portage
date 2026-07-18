@@ -8,6 +8,8 @@ sidebar_position: 3
 
 The listing flow is Portage's core feature — creating marketplace listings through one of three interfaces that all share a common state machine.
 
+This is a differentiator, not just a UI choice: Conversational, Swipe, and Hybrid are three skins over **one** state machine — each flow component calls the same `useListingFlow` hook, so switching interfaces never changes behavior. Drafts auto-persist as you work (debounced saves via `useDrafts`), so an interrupted listing survives a closed tab or a dead battery, and every publish attempt carries a scoped idempotency key that the API enforces with a unique `(userId, idempotencyKey)` constraint — retries and replays can never double-list an item (see [eBay Trade-First Publishing](/docs/reference/ebay-trade-first)).
+
 ## Three Interfaces
 
 Users choose their preferred listing experience in settings. All three share the same `useListingFlow` hook and publish path.
@@ -20,7 +22,7 @@ Porter-guided chat bubbles alongside inline cards. Combines AI guidance with dir
 - AI recognition card with candidate selection
 - Metadata fields (title, description, category, condition)
 - Pricing strategy picker (Fast Sale / Market Price / Maximize)
-- Marketplace selector (eBay, Etsy, Reverb)
+- Marketplace selector (eBay, Reverb — Etsy was parked 2026-07-09 pending API key approval)
 - Shipping configuration card
 - Fee estimate breakdown
 
@@ -34,10 +36,11 @@ Card-stack rapid-entry mode for bulk listing. Swipe gestures for quick decisions
 
 ## State Machine
 
-The `useListingFlow` hook (`apps/web/src/hooks/use-listing-flow.ts`) manages the entire listing lifecycle:
+The `useListingFlow` hook (`apps/web/src/hooks/use-listing-flow.ts`) manages the entire listing lifecycle. Progress is tracked as `lastStepCompleted` checkpoints (persisted with the draft):
 
 ```
-idle → photo_capture → recognition → metadata → pricing → shipping → review → publishing → published
+idle → recognizing → recognition → confirmed → details → pricing → published
+       (error paths: recognition-failed, publish-failed)
 ```
 
 ### Key Actions
@@ -47,12 +50,14 @@ idle → photo_capture → recognition → metadata → pricing → shipping →
 | `startFromPhoto(photos)` | Begin flow with captured photos |
 | `startFromItem(itemId)` | Begin flow from an existing inventory item |
 | `resumeDraft(draftId)` | Continue a saved draft |
-| `confirmRecognition(candidate)` | Accept an AI identification |
+| `confirmRecognition(index)` | Accept an AI identification candidate by index |
 | `fetchComps(query)` | Load eBay comparable sales |
 | `applyPricingStrategy(strategy)` | Set pricing from comp data |
 | `addPhotos(files)` | Add more photos to the listing |
 | `publish()` | Submit to marketplace |
 | `cancel()` | Exit the flow |
+
+`publish()` creates the inventory item first if needed (`ensureItemCreated`), runs prepare-listing for marketplace-specific fields (non-fatal on failure), and sends a scoped idempotency key per publish attempt so retries and replays cannot create duplicate listings. eBay supports both `draft` and `live` publish modes (defaulted from the seller profile's `ebayPublishMode`, with a per-publish toggle).
 
 ## Auto-Draft Persistence
 
@@ -83,7 +88,6 @@ Located in `apps/web/src/components/listing-flow/`:
 | `swipe-flow.tsx` | Card-stack rapid entry |
 | `photo-capture-flow.tsx` | Multi-angle photo capture |
 | `photo-capture-overlay.tsx` | Full-screen photo capture |
-| `photo-editor.tsx` | Crop/enhance/BG removal tools |
 | `photo-grid.tsx` | Drag-reorderable photo grid |
 | `crop-tool.tsx` | Interactive crop/rotate canvas |
 | `recognition-fork.tsx` | Multi-candidate disambiguation |
@@ -91,3 +95,5 @@ Located in `apps/web/src/components/listing-flow/`:
 | `shipping-config-card.tsx` | Package dimensions and weight |
 | `fee-estimate.tsx` | Marketplace fee breakdown |
 | `publish-success.tsx` | Confetti success state |
+
+Photo editing (rotate, crop, exposure, enhance, BG removal) lives in `components/capture/` as `photo-edit-overlay.tsx` and `photo-edit-panel.tsx`, shared with the scan flow.

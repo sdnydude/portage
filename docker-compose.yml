@@ -58,6 +58,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     container_name: portage-app
     restart: unless-stopped
     ports:
@@ -65,6 +67,13 @@ services:
     environment:
       NODE_ENV: production
       HOSTNAME: "0.0.0.0"
+      # Same-origin /backend/* rewrite target (see apps/web/next.config.ts).
+      # Goes via the host-published port so the API's self-signed cert
+      # (SAN 10.0.0.251) verifies against NODE_EXTRA_CA_CERTS below.
+      API_INTERNAL_URL: https://10.0.0.251:8016
+      NODE_EXTRA_CA_CERTS: /app/certs/cert.pem
+    volumes:
+      - ./certs:/app/certs:ro
     depends_on:
       portage-api:
         condition: service_healthy
@@ -74,6 +83,22 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    networks:
+      - portage-network
+
+  # Code knowledge graph dashboard — serves the graphify-out/ artifacts
+  # (regenerate with `/graphify /path --update`; the bind mount picks up new
+  # builds with no restart). Dashboard: http://10.0.0.251:8018/ (graph.html).
+  portage-graph:
+    image: nginx:alpine
+    container_name: portage-graph
+    restart: unless-stopped
+    ports:
+      - "8018:80"
+    volumes:
+      - ./graphify-out:/usr/share/nginx/html:ro
+      - ./infra/portal:/srv/portal:ro
+      - ./infra/graphify-nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - portage-network
 
@@ -93,58 +118,8 @@ services:
     networks:
       - portage-network
 
-  dhg-stt:
-    image: hwdsl2/whisper-live-server:latest
-    container_name: dhg-stt
-    restart: unless-stopped
-    ports:
-      - "8018:8000"
-    environment:
-      WHISPERLIVE_MODEL: large-v3-turbo
-      WHISPERLIVE_REST_PORT: "8000"
-      WHISPERLIVE_PORT: "9090"
-      WHISPERLIVE_USE_VAD: "true"
-      WHISPERLIVE_MAX_CLIENTS: "4"
-    volumes:
-      - dhg-stt-models:/var/lib/whisper-live
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/docs > /dev/null"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-    networks:
-      - portage-network
-
-  dhg-tts:
-    image: romheat/chatterbox:latest
-    container_name: dhg-tts
-    restart: unless-stopped
-    ports:
-      - "8019:8000"
-    environment:
-      CHATTERBOX_DEVICE: cpu
-      CHATTERBOX_MODEL: turbo
-      HUGGING_FACE_HUB_TOKEN: ${HUGGINGFACE_API_KEY}
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/docs > /dev/null || curl -sf http://localhost:8000/health > /dev/null"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    networks:
-      - portage-network
-
 volumes:
   portage-pgdata:
-  dhg-stt-models:
 
 networks:
   portage-network:

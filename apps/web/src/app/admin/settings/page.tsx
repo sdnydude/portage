@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useAdminApi } from "@/hooks/use-admin";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { AllowlistSection } from "@/components/admin/allowlist-section";
+import { FaqSection } from "@/components/admin/faq-section";
 
 interface SettingsMap {
   [key: string]: unknown;
@@ -17,7 +19,6 @@ const settingsMeta: { key: string; label: string; description: string; type: "nu
   { key: "registration_open", label: "Registration Open", description: "Allow new user signups", type: "boolean" },
   { key: "maintenance_mode", label: "Maintenance Mode", description: "Show maintenance page to non-admin users", type: "boolean" },
   { key: "ebay_enabled", label: "eBay Integration", description: "Allow eBay marketplace connections", type: "boolean" },
-  { key: "etsy_enabled", label: "Etsy Integration", description: "Allow Etsy marketplace connections", type: "boolean" },
   { key: "porter_enabled", label: "Porter AI", description: "Enable the Porter AI assistant", type: "boolean" },
 ];
 
@@ -101,6 +102,10 @@ export default function AdminSettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <h1 className="text-xl font-bold text-text-primary font-[family-name:var(--font-instrument)]">App Settings</h1>
+
+      <AllowlistSection />
+
+      <FaqSection />
 
       <div className="bg-surface rounded-xl border border-border p-4">
         <h2 className="text-sm font-semibold text-text-primary mb-2">Tier Limits</h2>

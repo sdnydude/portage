@@ -7,7 +7,7 @@ Type-only monorepo package. Zero external dependencies, zero runtime code.
 ```
 src/
 ├── index.ts         # Barrel export
-├── types.ts         # All type definitions (~436 lines)
+├── types.ts         # All type definitions (~580 lines)
 ├── constants.ts     # Enums and limits
 └── marketplace.ts   # Adapter interface contract
 ```
@@ -62,11 +62,10 @@ interface MarketplaceAdapter {
 
 ```typescript
 FREE_TIER_LIMITS = { aiScansPerMonth: 25, aiListingsPerMonth: 10, bgRemovalsPerMonth: 5, porterMessagesPerDay: 20, porterExchangesPerDay: 5, marketplaces: 1 }
-MARKETPLACE_TYPES = ['ebay', 'etsy', 'reverb']
+MARKETPLACE_TYPES = ['ebay', 'reverb']
 CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor']
 LISTING_STATUSES = ['draft', 'active', 'sold', 'archived']
 PACKAGE_TYPES = ['box', 'envelope', 'poly_mailer']
-SHIPPING_PROVIDERS = ['shippo', 'easypost', 'pirate_ship']
 CURRENT_DISCLAIMER_VERSION = 1
 ```
 
@@ -74,7 +73,7 @@ CURRENT_DISCLAIMER_VERSION = 1
 
 | Union | Values |
 |-------|--------|
-| `MarketplaceType` | `'ebay' \| 'etsy' \| 'reverb'` |
+| `MarketplaceType` | `'ebay' \| 'reverb'` |
 | `ItemCondition` | `'new' \| 'like_new' \| 'good' \| 'fair' \| 'poor'` |
 | `ListingInterface` | `'conversational' \| 'swipe' \| 'hybrid'` |
 | `PricingStrategy` | `'fast' \| 'market' \| 'max' \| 'custom'` |
