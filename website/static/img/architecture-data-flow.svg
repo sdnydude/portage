@@ -1,335 +1,236 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 950" font-family="'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="1140" viewBox="0 0 1360 1140" font-family="'Plus Jakarta Sans','Segoe UI',system-ui,sans-serif">
   <defs>
-    <marker id="af" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#2D5A27"/>
-    </marker>
-    <marker id="af-blue" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#3B5998"/>
-    </marker>
-    <marker id="af-orange" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#C4722A"/>
-    </marker>
-    <marker id="af-gray" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
-    </marker>
-    <filter id="sh" x="-2%" y="-2%" width="104%" height="104%">
-      <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+    <linearGradient id="dfTeal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0D7377"/><stop offset="1" stop-color="#0A5A5D"/></linearGradient>
+    <linearGradient id="dfOrange" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F77E2D"/><stop offset="1" stop-color="#E0631A"/></linearGradient>
+    <linearGradient id="dfInk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A3836"/><stop offset="1" stop-color="#2D2A26"/></linearGradient>
+    <filter id="dfShadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#2D2A26" flood-opacity="0.14"/>
     </filter>
+    <marker id="dfArrow" markerWidth="11" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0 0 L11 4 L0 8 Z" fill="#4A4742"/>
+    </marker>
+    <style>
+      text{font-family:'Plus Jakarta Sans','Segoe UI',system-ui,sans-serif}
+      .lbl{fill:#2D2A26;font-size:13px}
+      .sub{fill:#4A4742;font-size:12.5px}
+      .mono{font-weight:600;letter-spacing:.1px}
+      .hd{fill:#FFFFFF;font-weight:600;font-size:13px;letter-spacing:.1px}
+      .flow{font-weight:700;font-size:14px;letter-spacing:.06em;fill:#4A4742}
+    </style>
   </defs>
 
-  <rect width="1200" height="950" fill="#FAFAF9" rx="8"/>
-  <text x="600" y="40" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1a1a">Portage — Data Flow Wiring Diagram</text>
-  <text x="600" y="62" text-anchor="middle" font-size="13" fill="#666">End-to-end request flows for scan, listing, order sync, and shipping</text>
-
-  <!-- ====== FLOW 1: SCAN ====== -->
-  <text x="50" y="100" font-size="14" font-weight="700" fill="#2D5A27">Flow 1: Photo Capture → AI Scan → Inventory</text>
-
-  <rect x="50" y="115" width="130" height="50" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="115" y="137" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">Camera/Gallery</text>
-  <text x="115" y="153" text-anchor="middle" font-size="9" fill="#666">getUserMedia</text>
-
-  <line x1="180" y1="140" x2="220" y2="140" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#af)"/>
-  <text x="200" y="133" text-anchor="middle" font-size="8" fill="#2D5A27">Blob</text>
-
-  <rect x="225" y="115" width="130" height="50" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="290" y="137" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">POST /images</text>
-  <text x="290" y="153" text-anchor="middle" font-size="9" fill="#666">FormData upload</text>
-
-  <line x1="355" y1="140" x2="395" y2="140" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#af)"/>
-  <text x="375" y="133" text-anchor="middle" font-size="8" fill="#2D5A27">R2 URL</text>
-
-  <rect x="400" y="115" width="140" height="50" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="470" y="137" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">POST /scan/refine</text>
-  <text x="470" y="153" text-anchor="middle" font-size="9" fill="#666">1-3 image URLs</text>
-
-  <line x1="540" y1="140" x2="580" y2="140" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#af)"/>
-  <text x="560" y="133" text-anchor="middle" font-size="8" fill="#2D5A27">SSRF✓</text>
-
-  <rect x="585" y="115" width="130" height="50" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="650" y="137" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">Claude Vision</text>
-  <text x="650" y="153" text-anchor="middle" font-size="9" fill="#666">identifyItemsMulti</text>
-
-  <line x1="715" y1="140" x2="755" y2="140" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#af)"/>
-  <text x="735" y="133" text-anchor="middle" font-size="8" fill="#2D5A27">Zod✓</text>
-
-  <rect x="760" y="115" width="130" height="50" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="825" y="137" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">Candidates</text>
-  <text x="825" y="153" text-anchor="middle" font-size="9" fill="#666">confidence % select</text>
-
-  <line x1="890" y1="140" x2="930" y2="140" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#af)"/>
-
-  <rect x="935" y="115" width="120" height="50" rx="8" fill="#E8F5E3" stroke="#2D5A27" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="995" y="137" text-anchor="middle" font-size="11" font-weight="600" fill="#2D5A27">POST /items</text>
-  <text x="995" y="153" text-anchor="middle" font-size="9" fill="#666">save to DB</text>
-
-  <line x1="1055" y1="140" x2="1095" y2="140" stroke="#2D5A27" stroke-width="1.5" marker-end="url(#af)"/>
-
-  <rect x="1100" y="125" width="60" height="30" rx="6" fill="#2D5A27"/>
-  <text x="1130" y="145" text-anchor="middle" font-size="10" font-weight="600" fill="#fff">DB</text>
-
-  <!-- ====== FLOW 2: LISTING ====== -->
-  <text x="50" y="210" font-size="14" font-weight="700" fill="#3B5998">Flow 2: Listing Creation → Marketplace Publish</text>
-
-  <rect x="50" y="225" width="130" height="50" rx="8" fill="#E0E8F5" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="115" y="247" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">Item Detail</text>
-  <text x="115" y="263" text-anchor="middle" font-size="9" fill="#666">"List for Sale"</text>
-
-  <line x1="180" y1="250" x2="220" y2="250" stroke="#3B5998" stroke-width="1.5" marker-end="url(#af-blue)"/>
-
-  <rect x="225" y="225" width="130" height="50" rx="8" fill="#E0E8F5" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="290" y="247" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">useListingFlow</text>
-  <text x="290" y="263" text-anchor="middle" font-size="9" fill="#666">state machine</text>
-
-  <line x1="355" y1="250" x2="395" y2="250" stroke="#3B5998" stroke-width="1.5" marker-end="url(#af-blue)"/>
-
-  <rect x="400" y="225" width="140" height="50" rx="8" fill="#E0E8F5" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="470" y="247" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">prepare-listing</text>
-  <text x="470" y="263" text-anchor="middle" font-size="9" fill="#666">AI field gen + comps</text>
-
-  <line x1="540" y1="250" x2="580" y2="250" stroke="#3B5998" stroke-width="1.5" marker-end="url(#af-blue)"/>
-
-  <rect x="585" y="225" width="130" height="50" rx="8" fill="#E0E8F5" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="650" y="247" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">useDrafts</text>
-  <text x="650" y="263" text-anchor="middle" font-size="9" fill="#666">auto-save 2s</text>
-
-  <line x1="715" y1="250" x2="755" y2="250" stroke="#3B5998" stroke-width="1.5" marker-end="url(#af-blue)"/>
-
-  <rect x="760" y="225" width="130" height="50" rx="8" fill="#E0E8F5" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="825" y="247" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">POST /listings</text>
-  <text x="825" y="263" text-anchor="middle" font-size="9" fill="#666">create listing</text>
-
-  <line x1="890" y1="250" x2="930" y2="250" stroke="#3B5998" stroke-width="1.5" marker-end="url(#af-blue)"/>
-
-  <rect x="935" y="225" width="120" height="50" rx="8" fill="#E0E8F5" stroke="#3B5998" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="995" y="247" text-anchor="middle" font-size="11" font-weight="600" fill="#3B5998">Marketplace</text>
-  <text x="995" y="263" text-anchor="middle" font-size="9" fill="#666">Adapter.create()</text>
-
-  <line x1="1055" y1="250" x2="1095" y2="250" stroke="#3B5998" stroke-width="1.5" marker-end="url(#af-blue)"/>
-
-  <rect x="1100" y="235" width="60" height="30" rx="6" fill="#3B5998"/>
-  <text x="1130" y="255" text-anchor="middle" font-size="10" font-weight="600" fill="#fff">eBay</text>
-
-  <!-- ====== FLOW 3: ORDER SYNC ====== -->
-  <text x="50" y="320" font-size="14" font-weight="700" fill="#C4722A">Flow 3: Order Sync → Shipping → Label</text>
-
-  <rect x="50" y="335" width="130" height="50" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="115" y="357" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Sync Button</text>
-  <text x="115" y="373" text-anchor="middle" font-size="9" fill="#666">Orders page</text>
-
-  <line x1="180" y1="360" x2="220" y2="360" stroke="#C4722A" stroke-width="1.5" marker-end="url(#af-orange)"/>
-
-  <rect x="225" y="335" width="130" height="50" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="290" y="357" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">POST /orders/sync</text>
-  <text x="290" y="373" text-anchor="middle" font-size="9" fill="#666">all marketplaces</text>
-
-  <line x1="355" y1="360" x2="395" y2="360" stroke="#C4722A" stroke-width="1.5" marker-end="url(#af-orange)"/>
-
-  <rect x="400" y="335" width="140" height="50" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="470" y="357" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Adapter.sync()</text>
-  <text x="470" y="373" text-anchor="middle" font-size="9" fill="#666">match by listingId</text>
-
-  <line x1="540" y1="360" x2="580" y2="360" stroke="#C4722A" stroke-width="1.5" marker-end="url(#af-orange)"/>
-
-  <rect x="585" y="335" width="130" height="50" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="650" y="357" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Package Config</text>
-  <text x="650" y="373" text-anchor="middle" font-size="9" fill="#666">presets or manual</text>
-
-  <line x1="715" y1="360" x2="755" y2="360" stroke="#C4722A" stroke-width="1.5" marker-end="url(#af-orange)"/>
-
-  <rect x="760" y="335" width="130" height="50" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="825" y="357" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Get Rates</text>
-  <text x="825" y="373" text-anchor="middle" font-size="9" fill="#666">carrier compare</text>
-
-  <line x1="890" y1="360" x2="930" y2="360" stroke="#C4722A" stroke-width="1.5" marker-end="url(#af-orange)"/>
-
-  <rect x="935" y="335" width="120" height="50" rx="8" fill="#FFF5F0" stroke="#C4722A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="995" y="357" text-anchor="middle" font-size="11" font-weight="600" fill="#C4722A">Buy Label</text>
-  <text x="995" y="373" text-anchor="middle" font-size="9" fill="#666">mark shipped</text>
-
-  <line x1="1055" y1="360" x2="1095" y2="360" stroke="#C4722A" stroke-width="1.5" marker-end="url(#af-orange)"/>
-
-  <rect x="1100" y="345" width="60" height="30" rx="6" fill="#C4722A"/>
-  <text x="1130" y="365" text-anchor="middle" font-size="10" font-weight="600" fill="#fff">Done</text>
-
-  <!-- ====== FLOW 4: AUTH ====== -->
-  <text x="50" y="430" font-size="14" font-weight="700" fill="#5B4B8A">Flow 4: Auth Token Lifecycle</text>
-
-  <rect x="50" y="445" width="130" height="50" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="115" y="467" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">Login / Register</text>
-  <text x="115" y="483" text-anchor="middle" font-size="9" fill="#666">email + password</text>
-
-  <line x1="180" y1="470" x2="220" y2="470" stroke="#5B4B8A" stroke-width="1.5" marker-end="url(#af-gray)"/>
-
-  <rect x="225" y="445" width="150" height="50" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="300" y="467" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">bcrypt verify</text>
-  <text x="300" y="483" text-anchor="middle" font-size="9" fill="#666">JWT sign (access+refresh)</text>
-
-  <line x1="375" y1="470" x2="415" y2="470" stroke="#5B4B8A" stroke-width="1.5" marker-end="url(#af-gray)"/>
-
-  <rect x="420" y="445" width="140" height="50" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="490" y="467" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">localStorage</text>
-  <text x="490" y="483" text-anchor="middle" font-size="9" fill="#666">token + refresh + user</text>
-
-  <line x1="560" y1="470" x2="600" y2="470" stroke="#5B4B8A" stroke-width="1.5" marker-end="url(#af-gray)"/>
-
-  <rect x="605" y="445" width="140" height="50" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="675" y="467" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">API call (Bearer)</text>
-  <text x="675" y="483" text-anchor="middle" font-size="9" fill="#666">requireAuth mid.</text>
-
-  <line x1="745" y1="470" x2="785" y2="470" stroke="#5B4B8A" stroke-width="1.5" marker-end="url(#af-gray)"/>
-
-  <rect x="790" y="445" width="120" height="50" rx="8" fill="#FFF0F0" stroke="#DC3545" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="850" y="467" text-anchor="middle" font-size="11" font-weight="600" fill="#DC3545">401?</text>
-  <text x="850" y="483" text-anchor="middle" font-size="9" fill="#666">expired token</text>
-
-  <line x1="910" y1="470" x2="950" y2="470" stroke="#DC3545" stroke-width="1.5" marker-end="url(#af-gray)"/>
-
-  <rect x="955" y="445" width="130" height="50" rx="8" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1.5" filter="url(#sh)"/>
-  <text x="1020" y="467" text-anchor="middle" font-size="11" font-weight="600" fill="#5B4B8A">Auto Refresh</text>
-  <text x="1020" y="483" text-anchor="middle" font-size="9" fill="#666">singleton promise</text>
-
-  <!-- Refresh loop arrow -->
-  <path d="M1020 445 L1020 425 L490 425 L490 445" fill="none" stroke="#5B4B8A" stroke-width="1" stroke-dasharray="4 2" marker-end="url(#af-gray)"/>
-  <text x="755" y="420" text-anchor="middle" font-size="9" fill="#5B4B8A">retry original request with new token</text>
-
-  <!-- ====== DATABASE ENTITY RELATIONSHIPS ====== -->
-  <text x="50" y="540" font-size="14" font-weight="700" fill="#1a1a1a">Database Entity Relationships (16 tables)</text>
-
-  <!-- users -->
-  <rect x="50" y="560" width="170" height="180" rx="8" fill="#fff" stroke="#2D5A27" stroke-width="2" filter="url(#sh)"/>
-  <rect x="50" y="560" width="170" height="25" rx="8" fill="#2D5A27"/>
-  <rect x="50" y="578" width="170" height="7" fill="#2D5A27"/>
-  <text x="135" y="579" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">users</text>
-  <text x="65" y="602" font-size="9" font-family="monospace" fill="#333">id (PK)</text>
-  <text x="65" y="616" font-size="9" font-family="monospace" fill="#333">email (unique)</text>
-  <text x="65" y="630" font-size="9" font-family="monospace" fill="#333">passwordHash</text>
-  <text x="65" y="644" font-size="9" font-family="monospace" fill="#333">role (user|admin)</text>
-  <text x="65" y="658" font-size="9" font-family="monospace" fill="#333">subscriptionTier</text>
-  <text x="65" y="672" font-size="9" font-family="monospace" fill="#333">address (jsonb)</text>
-  <text x="65" y="686" font-size="9" font-family="monospace" fill="#333">shipFromAddress (jsonb)</text>
-  <text x="65" y="700" font-size="9" font-family="monospace" fill="#333">listingInterface</text>
-  <text x="65" y="714" font-size="9" font-family="monospace" fill="#333">onboardingCompleted</text>
-  <text x="65" y="730" font-size="9" font-family="monospace" fill="#2D5A27">+ 12 more columns</text>
-
-  <!-- items -->
-  <rect x="280" y="560" width="170" height="180" rx="8" fill="#fff" stroke="#3B5998" stroke-width="2" filter="url(#sh)"/>
-  <rect x="280" y="560" width="170" height="25" rx="8" fill="#3B5998"/>
-  <rect x="280" y="578" width="170" height="7" fill="#3B5998"/>
-  <text x="365" y="579" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">items</text>
-  <text x="295" y="602" font-size="9" font-family="monospace" fill="#333">id (PK)</text>
-  <text x="295" y="616" font-size="9" font-family="monospace" fill="#333">userId (FK→users)</text>
-  <text x="295" y="630" font-size="9" font-family="monospace" fill="#333">title, description</text>
-  <text x="295" y="644" font-size="9" font-family="monospace" fill="#333">category, condition</text>
-  <text x="295" y="658" font-size="9" font-family="monospace" fill="#333">brand, model</text>
-  <text x="295" y="672" font-size="9" font-family="monospace" fill="#333">photos (jsonb[])</text>
-  <text x="295" y="686" font-size="9" font-family="monospace" fill="#333">features (jsonb[])</text>
-  <text x="295" y="700" font-size="9" font-family="monospace" fill="#333">estimatedValue*</text>
-  <text x="295" y="714" font-size="9" font-family="monospace" fill="#333">aiConfidenceScore</text>
-  <text x="295" y="730" font-size="9" font-family="monospace" fill="#3B5998">ON DELETE CASCADE</text>
-
-  <!-- listings -->
-  <rect x="510" y="560" width="170" height="180" rx="8" fill="#fff" stroke="#C4722A" stroke-width="2" filter="url(#sh)"/>
-  <rect x="510" y="560" width="170" height="25" rx="8" fill="#C4722A"/>
-  <rect x="510" y="578" width="170" height="7" fill="#C4722A"/>
-  <text x="595" y="579" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">listings</text>
-  <text x="525" y="602" font-size="9" font-family="monospace" fill="#333">id (PK)</text>
-  <text x="525" y="616" font-size="9" font-family="monospace" fill="#333">itemId (FK→items)</text>
-  <text x="525" y="630" font-size="9" font-family="monospace" fill="#333">userId (FK→users)</text>
-  <text x="525" y="644" font-size="9" font-family="monospace" fill="#333">marketplace (enum)</text>
-  <text x="525" y="658" font-size="9" font-family="monospace" fill="#333">marketplaceListingId</text>
-  <text x="525" y="672" font-size="9" font-family="monospace" fill="#333">status (enum)</text>
-  <text x="525" y="686" font-size="9" font-family="monospace" fill="#333">price, currency</text>
-  <text x="525" y="700" font-size="9" font-family="monospace" fill="#333">publishedAt, soldAt</text>
-  <text x="525" y="714" font-size="9" font-family="monospace" fill="#333">marketplaceSpecific</text>
-  <text x="525" y="730" font-size="9" font-family="monospace" fill="#C4722A">ON DELETE CASCADE</text>
-
-  <!-- orders -->
-  <rect x="740" y="560" width="170" height="180" rx="8" fill="#fff" stroke="#5B4B8A" stroke-width="2" filter="url(#sh)"/>
-  <rect x="740" y="560" width="170" height="25" rx="8" fill="#5B4B8A"/>
-  <rect x="740" y="578" width="170" height="7" fill="#5B4B8A"/>
-  <text x="825" y="579" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">orders</text>
-  <text x="755" y="602" font-size="9" font-family="monospace" fill="#333">id (PK)</text>
-  <text x="755" y="616" font-size="9" font-family="monospace" fill="#333">listingId (FK→listings)</text>
-  <text x="755" y="630" font-size="9" font-family="monospace" fill="#333">userId (FK→users)</text>
-  <text x="755" y="644" font-size="9" font-family="monospace" fill="#333">marketplace (enum)</text>
-  <text x="755" y="658" font-size="9" font-family="monospace" fill="#333">marketplaceOrderId</text>
-  <text x="755" y="672" font-size="9" font-family="monospace" fill="#333">buyerUsername</text>
-  <text x="755" y="686" font-size="9" font-family="monospace" fill="#333">salePrice</text>
-  <text x="755" y="700" font-size="9" font-family="monospace" fill="#333">shippingAddress (jsonb)</text>
-  <text x="755" y="714" font-size="9" font-family="monospace" fill="#333">status (enum)</text>
-  <text x="755" y="730" font-size="9" font-family="monospace" fill="#5B4B8A">ON DELETE CASCADE</text>
-
-  <!-- Supporting tables -->
-  <rect x="970" y="560" width="180" height="180" rx="8" fill="#fff" stroke="#888" stroke-width="1.5" filter="url(#sh)"/>
-  <rect x="970" y="560" width="180" height="25" rx="8" fill="#888"/>
-  <rect x="970" y="578" width="180" height="7" fill="#888"/>
-  <text x="1060" y="579" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">Supporting (12 tables)</text>
-  <text x="985" y="602" font-size="9" font-family="monospace" fill="#333">marketplace_accounts</text>
-  <text x="985" y="616" font-size="9" font-family="monospace" fill="#333">conversations</text>
-  <text x="985" y="630" font-size="9" font-family="monospace" fill="#333">notifications</text>
-  <text x="985" y="644" font-size="9" font-family="monospace" fill="#333">listing_drafts</text>
-  <text x="985" y="658" font-size="9" font-family="monospace" fill="#333">seller_profiles</text>
-  <text x="985" y="672" font-size="9" font-family="monospace" fill="#333">shipping_presets</text>
-  <text x="985" y="686" font-size="9" font-family="monospace" fill="#333">shipping_providers</text>
-  <text x="985" y="700" font-size="9" font-family="monospace" fill="#333">admin_audit_log</text>
-  <text x="985" y="714" font-size="9" font-family="monospace" fill="#333">app_settings</text>
-  <text x="985" y="728" font-size="9" font-family="monospace" fill="#333">disclaimer_acceptances</text>
-
-  <!-- FK relationship lines -->
-  <line x1="220" y1="650" x2="278" y2="615" stroke="#555" stroke-width="1.5" marker-end="url(#af-gray)"/>
-  <text x="250" y="628" text-anchor="middle" font-size="8" fill="#555">1:N</text>
-
-  <line x1="450" y1="615" x2="508" y2="615" stroke="#555" stroke-width="1.5" marker-end="url(#af-gray)"/>
-  <text x="480" y="610" text-anchor="middle" font-size="8" fill="#555">1:N</text>
-
-  <line x1="680" y1="615" x2="738" y2="615" stroke="#555" stroke-width="1.5" marker-end="url(#af-gray)"/>
-  <text x="710" y="610" text-anchor="middle" font-size="8" fill="#555">1:1</text>
-
-  <!-- ====== ENUMS ====== -->
-  <text x="50" y="775" font-size="14" font-weight="700" fill="#1a1a1a">Enum Types</text>
-
-  <rect x="50" y="790" width="165" height="80" rx="6" fill="#F0F7EE" stroke="#2D5A27" stroke-width="1"/>
-  <text x="60" y="808" font-size="10" font-weight="600" fill="#2D5A27">item_condition</text>
-  <text x="60" y="824" font-size="9" font-family="monospace" fill="#555">new | like_new | good</text>
-  <text x="60" y="838" font-size="9" font-family="monospace" fill="#555">fair | poor</text>
-
-  <rect x="235" y="790" width="165" height="80" rx="6" fill="#E0E8F5" stroke="#3B5998" stroke-width="1"/>
-  <text x="245" y="808" font-size="10" font-weight="600" fill="#3B5998">listing_status</text>
-  <text x="245" y="824" font-size="9" font-family="monospace" fill="#555">draft | active</text>
-  <text x="245" y="838" font-size="9" font-family="monospace" fill="#555">sold | archived</text>
-
-  <rect x="420" y="790" width="165" height="80" rx="6" fill="#FFF5F0" stroke="#C4722A" stroke-width="1"/>
-  <text x="430" y="808" font-size="10" font-weight="600" fill="#C4722A">order_status</text>
-  <text x="430" y="824" font-size="9" font-family="monospace" fill="#555">payment_received</text>
-  <text x="430" y="838" font-size="9" font-family="monospace" fill="#555">label_purchased | shipped</text>
-  <text x="430" y="852" font-size="9" font-family="monospace" fill="#555">delivered</text>
-
-  <rect x="605" y="790" width="155" height="80" rx="6" fill="#F5F0FF" stroke="#5B4B8A" stroke-width="1"/>
-  <text x="615" y="808" font-size="10" font-weight="600" fill="#5B4B8A">marketplace_type</text>
-  <text x="615" y="824" font-size="9" font-family="monospace" fill="#555">ebay | etsy | reverb</text>
-
-  <rect x="780" y="790" width="155" height="80" rx="6" fill="#fff" stroke="#888" stroke-width="1"/>
-  <text x="790" y="808" font-size="10" font-weight="600" fill="#555">user_role</text>
-  <text x="790" y="824" font-size="9" font-family="monospace" fill="#555">user | admin</text>
-  <text x="790" y="845" font-size="10" font-weight="600" fill="#555">subscription_tier</text>
-  <text x="790" y="860" font-size="9" font-family="monospace" fill="#555">free | pro</text>
-
-  <rect x="955" y="790" width="195" height="80" rx="6" fill="#fff" stroke="#888" stroke-width="1"/>
-  <text x="965" y="808" font-size="10" font-weight="600" fill="#555">package_type</text>
-  <text x="965" y="824" font-size="9" font-family="monospace" fill="#555">box | envelope | poly_mailer</text>
-  <text x="965" y="845" font-size="10" font-weight="600" fill="#555">shipping_provider</text>
-  <text x="965" y="860" font-size="9" font-family="monospace" fill="#555">shippo | easypost | pirate_ship</text>
+  <!-- Page background -->
+  <rect width="1360" height="1140" fill="#F5F2EB"/>
+  <rect x="0" y="0" width="1360" height="6" fill="#F77E2D"/>
+
+  <!-- Title -->
+  <text x="48" y="48" font-size="27" font-weight="800" letter-spacing="-.2px" fill="#2D2A26">Portage — Core Data Flows</text>
+  <text x="48" y="74" class="sub" font-size="13">Four request paths through the stack, per apps/api/src/routes and apps/web/src — 2026-07-17</text>
 
   <!-- Legend -->
-  <rect x="50" y="895" width="1100" height="40" rx="6" fill="#f5f5f5" stroke="#ddd"/>
-  <text x="70" y="920" font-size="11" font-weight="600" fill="#333">Legend:</text>
-  <rect x="130" y="908" width="12" height="12" rx="2" fill="#2D5A27"/>
-  <text x="148" y="919" font-size="10" fill="#333">Scan Flow</text>
-  <rect x="230" y="908" width="12" height="12" rx="2" fill="#3B5998"/>
-  <text x="248" y="919" font-size="10" fill="#333">Listing Flow</text>
-  <rect x="340" y="908" width="12" height="12" rx="2" fill="#C4722A"/>
-  <text x="358" y="919" font-size="10" fill="#333">Order/Shipping Flow</text>
-  <rect x="490" y="908" width="12" height="12" rx="2" fill="#5B4B8A"/>
-  <text x="508" y="919" font-size="10" fill="#333">Auth Flow</text>
-  <text x="620" y="919" font-size="10" fill="#666">FK = Foreign Key · PK = Primary Key · jsonb = JSON Binary column</text>
+  <g transform="translate(1000,26)">
+    <rect x="0" y="0" width="14" height="14" rx="3" fill="#0D7377"/>
+    <text x="20" y="11" class="sub" font-size="13">Portage code path</text>
+    <rect x="170" y="0" width="14" height="14" rx="3" fill="#F77E2D"/>
+    <text x="190" y="11" class="sub" font-size="13">External service</text>
+    <rect x="0" y="22" width="14" height="14" rx="3" fill="url(#dfInk)"/>
+    <text x="20" y="33" class="sub" font-size="13">AI / data step</text>
+  </g>
+
+  <!-- ════════ FLOW 1 — SCAN ════════ -->
+  <rect x="40" y="96" width="1280" height="220" rx="12" fill="#EFEBE2" stroke="#D6D3CE" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="60" y="122" class="flow">FLOW 1 — SCAN → ITEM (camera to inventory)</text>
+
+  <!-- 1.1 capture -->
+  <rect x="64" y="146" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#0D7377" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="64" y="146" width="216" height="26" rx="10" fill="url(#dfTeal)"/>
+  <rect x="64" y="163" width="216" height="9" fill="#0A5A5D"/>
+  <text x="172" y="164" text-anchor="middle" class="hd">Capture (client)</text>
+  <text x="80" y="194" class="sub">ScanFlow + CameraCapture</text>
+  <text x="80" y="215" class="sub mono">use-camera hook</text>
+  <text x="80" y="236" class="sub">Photo held as File in memory</text>
+  <path d="M280 216 L308 216" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 1.2 upload -->
+  <rect x="320" y="146" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#0D7377" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="320" y="146" width="216" height="26" rx="10" fill="url(#dfTeal)"/>
+  <rect x="320" y="163" width="216" height="9" fill="#0A5A5D"/>
+  <text x="428" y="164" text-anchor="middle" class="hd">POST /images</text>
+  <text x="336" y="194" class="sub">Multipart upload (multer)</text>
+  <text x="336" y="215" class="sub">Stored via lib/storage.ts</text>
+  <text x="336" y="236" class="sub">→ R2 bucket portage-images</text>
+  <text x="336" y="257" class="sub">Cap: 24 photos per item</text>
+  <path d="M536 216 L564 216" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 1.3 vision -->
+  <rect x="576" y="146" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#2D2A26" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="576" y="146" width="216" height="26" rx="10" fill="url(#dfInk)"/>
+  <rect x="576" y="163" width="216" height="9" fill="#2D2A26"/>
+  <text x="684" y="164" text-anchor="middle" class="hd">POST /scan/refine</text>
+  <text x="592" y="194" class="sub">Vision chain (lib/vision.ts)</text>
+  <text x="592" y="215" class="sub mono">VISION_PROVIDERS:</text>
+  <text x="592" y="236" class="sub">Gemini 2.5 → Claude (prod)</text>
+  <text x="592" y="257" class="sub">Returns item candidates</text>
+  <path d="M792 216 L820 216" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 1.4 comps -->
+  <rect x="832" y="146" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#C4722A" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="832" y="146" width="216" height="26" rx="10" fill="url(#dfOrange)"/>
+  <rect x="832" y="163" width="216" height="9" fill="#E0631A"/>
+  <text x="940" y="164" text-anchor="middle" class="hd">Comps lookup</text>
+  <text x="848" y="194" class="sub mono">GET /items/comps/search</text>
+  <text x="848" y="215" class="sub">Comparable eBay listings</text>
+  <text x="848" y="236" class="sub">for pricing guidance</text>
+  <path d="M1048 216 L1076 216" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 1.5 create item -->
+  <rect x="1088" y="146" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#0D7377" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="1088" y="146" width="216" height="26" rx="10" fill="url(#dfTeal)"/>
+  <rect x="1088" y="163" width="216" height="9" fill="#0A5A5D"/>
+  <text x="1196" y="164" text-anchor="middle" class="hd">POST /items</text>
+  <text x="1104" y="194" class="sub">Inventory row created</text>
+  <text x="1104" y="215" class="sub mono">items.photos (JSONB)</text>
+  <text x="1104" y="236" class="sub">Postgres via Drizzle</text>
+
+  <!-- ════════ FLOW 2 — PUBLISH ════════ -->
+  <rect x="40" y="348" width="1280" height="220" rx="12" fill="#EFEBE2" stroke="#D6D3CE" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="60" y="374" class="flow">FLOW 2 — PREPARE → PUBLISH (listing lifecycle)</text>
+
+  <!-- 2.1 prepare -->
+  <rect x="64" y="398" width="280" height="140" rx="10" fill="#FFFFFF" stroke="#2D2A26" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="64" y="398" width="280" height="26" rx="10" fill="url(#dfInk)"/>
+  <rect x="64" y="415" width="280" height="9" fill="#2D2A26"/>
+  <text x="204" y="416" text-anchor="middle" class="hd">Prepare — AI field generation</text>
+  <text x="80" y="446" class="sub mono">POST /items/:id/prepare-listing</text>
+  <text x="80" y="467" class="sub">Title · description · pricing from comps</text>
+  <text x="80" y="488" class="sub">Seller-profile defaults applied</text>
+  <path d="M344 468 L372 468" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 2.2 drafts -->
+  <rect x="384" y="398" width="280" height="140" rx="10" fill="#FFFFFF" stroke="#0D7377" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="384" y="398" width="280" height="26" rx="10" fill="url(#dfTeal)"/>
+  <rect x="384" y="415" width="280" height="9" fill="#0A5A5D"/>
+  <text x="524" y="416" text-anchor="middle" class="hd">Draft auto-save</text>
+  <text x="400" y="446" class="sub mono">use-listing-flow hook</text>
+  <text x="400" y="467" class="sub">POST /drafts → listing_drafts table</text>
+  <text x="400" y="488" class="sub">GET /drafts restores in-progress work</text>
+  <path d="M664 468 L692 468" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 2.3 create + publish -->
+  <rect x="704" y="398" width="280" height="140" rx="10" fill="#FFFFFF" stroke="#0D7377" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="704" y="398" width="280" height="26" rx="10" fill="url(#dfTeal)"/>
+  <rect x="704" y="415" width="280" height="9" fill="#0A5A5D"/>
+  <text x="844" y="416" text-anchor="middle" class="hd">Create + publish</text>
+  <text x="720" y="446" class="sub mono">POST /listings</text>
+  <text x="720" y="467" class="sub mono">POST /listings/:id/publish</text>
+  <text x="720" y="488" class="sub">Insert-first idempotency:</text>
+  <text x="720" y="509" class="sub mono">uq(user_id, idempotency_key)</text>
+  <path d="M984 468 L1012 468" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 2.4 marketplace -->
+  <rect x="1024" y="398" width="280" height="140" rx="10" fill="#FFFFFF" stroke="#C4722A" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="1024" y="398" width="280" height="26" rx="10" fill="url(#dfOrange)"/>
+  <rect x="1024" y="415" width="280" height="9" fill="#E0631A"/>
+  <text x="1164" y="416" text-anchor="middle" class="hd">Marketplace publish</text>
+  <text x="1040" y="446" class="sub">eBay Trading (XML):</text>
+  <text x="1040" y="467" class="sub mono">AddFixedPriceItem</text>
+  <text x="1040" y="488" class="sub">Inline shipping terms</text>
+  <text x="1040" y="509" class="sub">Reverb (PAT): create listing</text>
+
+  <!-- ════════ FLOW 3 — ORDER SYNC ════════ -->
+  <rect x="40" y="600" width="1280" height="220" rx="12" fill="#EFEBE2" stroke="#D6D3CE" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="60" y="626" class="flow">FLOW 3 — ORDER SYNC (sold → ship)</text>
+
+  <!-- 3.1 trigger -->
+  <rect x="64" y="650" width="280" height="140" rx="10" fill="#FFFFFF" stroke="#0D7377" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="64" y="650" width="280" height="26" rx="10" fill="url(#dfTeal)"/>
+  <rect x="64" y="667" width="280" height="9" fill="#0A5A5D"/>
+  <text x="204" y="668" text-anchor="middle" class="hd">Sync trigger</text>
+  <text x="80" y="698" class="sub mono">use-orders hook</text>
+  <text x="80" y="719" class="sub mono">POST /orders/sync</text>
+  <path d="M344 720 L372 720" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 3.2 fulfillment -->
+  <rect x="384" y="650" width="280" height="140" rx="10" fill="#FFFFFF" stroke="#C4722A" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="384" y="650" width="280" height="26" rx="10" fill="url(#dfOrange)"/>
+  <rect x="384" y="667" width="280" height="9" fill="#E0631A"/>
+  <text x="524" y="668" text-anchor="middle" class="hd">eBay Fulfillment API</text>
+  <text x="400" y="698" class="sub mono">GET /sell/fulfillment/v1/order</text>
+  <text x="400" y="719" class="sub">Paginated order fetch</text>
+  <text x="400" y="740" class="sub">via eBay adapter</text>
+  <path d="M664 720 L692 720" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 3.3 persist -->
+  <rect x="704" y="650" width="280" height="140" rx="10" fill="#FFFFFF" stroke="#2D2A26" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="704" y="650" width="280" height="26" rx="10" fill="url(#dfInk)"/>
+  <rect x="704" y="667" width="280" height="9" fill="#2D2A26"/>
+  <text x="844" y="668" text-anchor="middle" class="hd">Persist</text>
+  <text x="720" y="698" class="sub">Orders rows in Postgres</text>
+  <text x="720" y="719" class="sub mono">orders.shippingAddress (JSONB)</text>
+  <text x="720" y="740" class="sub">Cancel state → fulfillmentStatus</text>
+  <path d="M984 720 L1012 720" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 3.4 ship -->
+  <rect x="1024" y="650" width="280" height="140" rx="10" fill="#FFFFFF" stroke="#C4722A" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="1024" y="650" width="280" height="26" rx="10" fill="url(#dfOrange)"/>
+  <rect x="1024" y="667" width="280" height="9" fill="#E0631A"/>
+  <text x="1164" y="668" text-anchor="middle" class="hd">Ship-It → eBay</text>
+  <text x="1040" y="698" class="sub mono">ebay.com/itm/{ebayItemId}</text>
+  <text x="1040" y="719" class="sub">Label purchased on eBay —</text>
+  <text x="1040" y="740" class="sub">no carrier API (decision 2026-07)</text>
+
+  <!-- ════════ FLOW 4 — AUTH ════════ -->
+  <rect x="40" y="852" width="1280" height="220" rx="12" fill="#EFEBE2" stroke="#D6D3CE" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="60" y="878" class="flow">FLOW 4 — AUTH (Cloudflare Access → internal JWT)</text>
+
+  <!-- 4.1 browser -->
+  <rect x="64" y="902" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#C4722A" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="64" y="902" width="216" height="26" rx="10" fill="url(#dfOrange)"/>
+  <rect x="64" y="919" width="216" height="9" fill="#E0631A"/>
+  <text x="172" y="920" text-anchor="middle" class="hd">Browser</text>
+  <text x="80" y="950" class="sub">Login at CF Access edge</text>
+  <text x="80" y="971" class="sub">No passwords</text>
+  <path d="M280 972 L308 972" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 4.2 header -->
+  <rect x="320" y="902" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#C4722A" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="320" y="902" width="216" height="26" rx="10" fill="url(#dfOrange)"/>
+  <rect x="320" y="919" width="216" height="9" fill="#E0631A"/>
+  <text x="428" y="920" text-anchor="middle" class="hd">CF Access assertion</text>
+  <text x="336" y="950" class="sub mono">Cf-Access-Jwt-Assertion</text>
+  <text x="336" y="971" class="sub">header injected at the edge</text>
+  <path d="M536 972 L564 972" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 4.3 verify -->
+  <rect x="576" y="902" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#0D7377" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="576" y="902" width="216" height="26" rx="10" fill="url(#dfTeal)"/>
+  <rect x="576" y="919" width="216" height="9" fill="#0A5A5D"/>
+  <text x="684" y="920" text-anchor="middle" class="hd">GET /auth/session</text>
+  <text x="592" y="950" class="sub">Verify vs team JWKS</text>
+  <text x="592" y="971" class="sub mono">/cdn-cgi/access/certs</text>
+  <text x="592" y="992" class="sub">(jose, lib/cf-access.ts)</text>
+  <path d="M792 972 L820 972" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 4.4 provision + mint -->
+  <rect x="832" y="902" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#0D7377" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="832" y="902" width="216" height="26" rx="10" fill="url(#dfTeal)"/>
+  <rect x="832" y="919" width="216" height="9" fill="#0A5A5D"/>
+  <text x="940" y="920" text-anchor="middle" class="hd">Provision + mint</text>
+  <text x="848" y="950" class="sub">Auto-provision users row</text>
+  <text x="848" y="971" class="sub">on first login</text>
+  <text x="848" y="992" class="sub">Mint internal JWT — 15 m</text>
+  <text x="848" y="1013" class="sub">(lib/jwt.ts)</text>
+  <path d="M1048 972 L1076 972" fill="none" stroke="#4A4742" stroke-width="2" marker-end="url(#dfArrow)"/>
+
+  <!-- 4.5 re-exchange -->
+  <rect x="1088" y="902" width="216" height="140" rx="10" fill="#FFFFFF" stroke="#2D2A26" stroke-width="2" filter="url(#dfShadow)"/>
+  <rect x="1088" y="902" width="216" height="26" rx="10" fill="url(#dfInk)"/>
+  <rect x="1088" y="919" width="216" height="9" fill="#2D2A26"/>
+  <text x="1196" y="920" text-anchor="middle" class="hd">Re-exchange on expiry</text>
+  <text x="1104" y="950" class="sub">On 401 the client calls</text>
+  <text x="1104" y="971" class="sub mono">GET /auth/session</text>
+  <text x="1104" y="992" class="sub">again — no refresh tokens</text>
+
+  <!-- Footnote -->
+  <text x="48" y="1112" class="sub" font-size="12">All API calls carry the internal JWT · Marketplace tokens AES-256-GCM at rest · Etsy parked 2026-07 — no Etsy flow</text>
 </svg>

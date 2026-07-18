@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useOnboarding } from "@/hooks/use-onboarding";
@@ -69,6 +70,7 @@ const STATUS_BADGE: Record<string, { bg: string; label: string }> = {
 };
 
 export default function HomePage() {
+  const router = useRouter();
   const { isAuthenticated } = useAuth();
   const { data, isLoading, error } = useDashboard();
   const { shouldShowOnboarding, completeOnboarding, isCompleting } = useOnboarding();
@@ -133,9 +135,9 @@ export default function HomePage() {
 
       {/* ─── Porter hero ─── */}
       <div
-        className="animate-rise relative -mx-4 px-4 pb-7 rounded-b-[32px] overflow-hidden"
+        className="animate-rise relative -mx-4 px-4 pb-5 rounded-b-[32px] overflow-hidden"
         style={{
-          paddingTop: "max(env(safe-area-inset-top), 18px)",
+          paddingTop: "max(env(safe-area-inset-top), 14px)",
           background:
             "radial-gradient(125% 95% at 80% -12%, rgba(63,192,196,0.38), transparent 58%), radial-gradient(80% 65% at 8% 6%, rgba(17,154,160,0.16), transparent 60%), linear-gradient(162deg, var(--hero-top) 0%, var(--hero-bottom) 100%)",
           boxShadow: "0 20px 44px -30px rgba(6,18,20,0.85)",
@@ -148,8 +150,9 @@ export default function HomePage() {
           style={{ background: "conic-gradient(from 200deg, rgba(63,192,196,0.6), rgba(17,154,160,0.4), rgba(110,210,215,0.5), rgba(63,192,196,0.6))" }}
         />
 
-        {/* Header row: greeting + actions */}
-        <div className="relative flex items-center gap-3 mb-5">
+        {/* Header row: greeting + actions — density-tuned so the value band
+            and eBay Price Check land above the fold on 390×844 */}
+        <div className="relative flex items-center gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <p className="flex items-center gap-1.5 font-[family-name:var(--font-jetbrains)] text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--on-forest-mute)]">
               <span
@@ -159,7 +162,7 @@ export default function HomePage() {
               />
               {getGreeting()}
             </p>
-            <p className="font-[family-name:var(--font-instrument)] italic font-medium text-[32px] leading-[1.1] -tracking-[0.01em] text-[var(--orange-bright)] mt-0.5">
+            <p className="font-[family-name:var(--font-instrument)] italic font-medium text-2xl leading-[1.1] -tracking-[0.01em] text-[var(--orange-bright)] mt-0.5">
               {data.displayName}
             </p>
           </div>
@@ -194,11 +197,11 @@ export default function HomePage() {
         {!isEngaged ? (
           /* Idle Porter card — prominent circular orb + PORTER·READY label + prompt */
           <div
-            className="glass-control relative flex items-start gap-3 rounded-2xl p-4 mb-4"
+            className="glass-control relative flex items-start gap-3 rounded-2xl p-3 mb-3"
             style={{ border: "1px solid rgba(255,255,255,0.14)" }}
           >
             <div
-              className="relative flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center"
+              className="relative flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
               style={{ background: "radial-gradient(circle at 35% 28%, var(--teal-bright), var(--orb-core))" }}
             >
               <span className="porter-orb-ring absolute inset-0 rounded-full" style={{ border: "1.5px solid var(--teal-bright)" }} />
@@ -456,6 +459,13 @@ export default function HomePage() {
           onComplete={completeOnboarding}
           onSkip={completeOnboarding}
           isCompleting={isCompleting}
+          onExploreTutorials={() => {
+            // Navigate even if completion fails — the carousel will simply
+            // reappear on the next home visit rather than trapping the user.
+            void completeOnboarding()
+              .catch(() => {})
+              .then(() => router.push("/tutorials"));
+          }}
         />
       )}
 

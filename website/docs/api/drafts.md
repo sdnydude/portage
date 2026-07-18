@@ -77,7 +77,7 @@ DELETE /drafts/:id
 
 **Auth:** Required
 
-### Delete All Drafts
+### Clean Up Stale Drafts
 
 ```
 DELETE /drafts
@@ -85,7 +85,13 @@ DELETE /drafts
 
 **Auth:** Required
 
-Deletes all of the user's drafts.
+Deletes the user's stale drafts — those not updated in the last 30 days. Recent drafts are untouched.
+
+**Response** `200`:
+
+```json
+{ "cleaned": true }
+```
 
 ## Auto-Save Behavior
 

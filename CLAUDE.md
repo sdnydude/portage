@@ -25,7 +25,7 @@ npm workspaces monorepo with three packages:
 | portage-db | 5436 | PostgreSQL 15 |
 | portage-api | 8016 | Express 5 + TypeScript + pino |
 | portage-app | 3002 | Next.js 16 (standalone mode) |
-| portage-rembg | — | background-removal container (`REMBG_URL`) |
+| portage-rembg | 7000 | background-removal container (`REMBG_URL`) |
 | dhg-docs | 8017 | nginx serving Docusaurus build (runs outside docker-compose.yml — separate nginx) |
 | portage-graph | 8018 | nginx serving graphify-out/ code knowledge graph |
 
@@ -56,7 +56,7 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 
 ### AI
 
-- **Item scanning:** configurable provider chain via `apps/api/src/lib/vision.ts` (`VISION_PROVIDERS` — Gemini 2.5 primary, Claude fallback in prod)
+- **Item scanning:** configurable provider chain defined by the `VISION_PROVIDERS` env var, consumed in `apps/api/src/lib/ai-client.ts` (`apps/api/src/lib/vision.ts` holds the vision prompt/schema logic) — Gemini 2.5 primary, Claude fallback in prod
 - **Porter assistant:** Claude Sonnet SSE streaming via `client.messages.stream()`, 3 tools (search_inventory, get_inventory_stats, suggest_listing), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback)
 - **Voice (STT/TTS):** REMOVED 2026-07-01 (parked for a future release) — pre-removal code preserved at git tag `voice-parked-2026-07`
 - **Background removal:** Server-side via portage-rembg container (`POST /images/remove-bg`, `REMBG_URL`), billing-gated per tier
@@ -148,7 +148,7 @@ npx tsx apps/api/src/scripts/promote-admin.ts <email>
 | Display font | Instrument Sans |
 | Body font | Plus Jakarta Sans |
 | Mono font | JetBrains Mono |
-| Layout | Mobile-first, 6-tab bottom nav (Home/Inventory/Listings · Porter/Orders/More) + center Scan button |
+| Layout | Mobile-first; 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button; More via avatar menu |
 
 ---
 
@@ -180,12 +180,12 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-As of 2026-07-12: roadmap essentially complete — 51/52 tasks done (integration testing, tunnel-config versioning, and Reverb OAuth resolution closed 2026-07-09), 1 superseded (carrier APIs). See `docs/TODO.md` for the live backlog and in-flight branches.
+Original roadmap essentially complete — a 2026-07-17 recount found the docs/TODO.md ledger lists 49 numbered task lines (task #53 reused twice; #22, #26, #28–#31 never on the ledger): 48 complete, 1 superseded (carrier APIs); the old 50/52-vs-51/52 figures used a 52-task denominator the ledger doesn't support. Integration testing, tunnel-config versioning, and Reverb OAuth resolution closed 2026-07-09. A separate Responsive UI Program (R0-R4, approved 2026-07-15) was added after this count and isn't folded into it — R0 shipped (PR #229), R1 desktop workbench shipped (PR #237, merged 2026-07-17, 15-finding adversarial fix round). See `docs/TODO.md` for the live backlog and in-flight branches.
 
 **Done:** see docs/TODO.md and website/docs/ship-log/ for the full change
 history. Highlights: eBay Trade-First lifecycle (PR #133), CF Access auth
 (PRs #168-172), Reverb publish live-proven (PRs #173-177), listing-hub merge
-(PRs #207-213). Test suite: 676 API / 337 web as of 2026-07-12.
+(PRs #207-213), responsive shell R0 (PR #229). Test suite: 687 API / 526 web as of 2026-07-18.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.

@@ -1,6 +1,6 @@
 # Portage — Onboarding Guide
 
-AI-powered personal effects inventory and multi-marketplace seller app. Scan items with AI, list across eBay/Etsy/Reverb, manage orders and messaging — all from a mobile-first PWA.
+AI-powered personal effects inventory and multi-marketplace seller app. Scan items with AI, list across eBay and Reverb, manage orders and messaging — all from a mobile-first PWA.
 
 ## Quick Start
 
@@ -20,6 +20,8 @@ npm run dev:web    # Next.js on :3002
 # Install dev tools for /ship_v3 workflow
 ./scripts/setup-dev-tools.sh
 ```
+
+For environment setup detail (env vars, Doppler, dev URLs), see the deployed getting-started guide: `website/docs/getting-started.md` — served at http://10.0.0.251:8017/portage/getting-started/.
 
 ## Architecture
 
@@ -50,7 +52,7 @@ Run these before any PR:
 ```bash
 npm run typecheck   # All workspaces
 npm run lint        # ESLint (web)
-npm run test:api    # Vitest — 238 tests
+npm run test:api    # Vitest (current counts: see docs/TODO.md)
 ```
 
 ## Key Conventions
@@ -58,7 +60,7 @@ npm run test:api    # Vitest — 238 tests
 - **Mobile-first PWA.** Every UI component assumes a phone-sized viewport first.
 - **Design system:** Forest Green (#2D5A27), Instrument Sans (display), Plus Jakarta Sans (body), JetBrains Mono (code).
 - **API pattern:** Every route handler wraps in `try { ... } catch (err) { next(err) }`. Errors thrown as `AppError(status, code, message)`.
-- **Auth:** JWT access + refresh tokens. `requireAuth` middleware on all protected routes. Roles: `user` | `admin`.
+- **Auth:** Cloudflare Access is the identity provider — no passwords. `GET /auth/session` verifies the `Cf-Access-Jwt-Assertion` header against the team JWKS, auto-provisions the user row on first login, and mints a short-lived (15m) internal JWT the API consumes. `requireAuth` middleware on all protected routes. Roles: `user` | `admin`.
 - **Hook contract:** All React data hooks return `{ isLoading, error, ...data }`.
 - **No migration files.** Drizzle schema-push only.
 - **Secrets via Doppler.** Never hardcode API keys. `.env` is auto-synced.
@@ -111,6 +113,6 @@ Run `./scripts/setup-dev-tools.sh` to install all of these:
 
 ## Current State
 
-47/52 roadmap tasks complete. 238 tests. See `docs/TODO.md` for full details.
+See `docs/TODO.md` for the live roadmap, current task status, and test counts.
 
-**Demo account:** demo@portage.app / demo1234demo1234
+**Demo account:** demo credentials live in Doppler (never committed).

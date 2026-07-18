@@ -1,9 +1,11 @@
 ---
-title: DHG Style Guide
+title: DHG Design System v1
 sidebar_position: 1
 ---
 
 # DHG Design System v1
+
+*Scope note: this guide is the DHG-wide design reference, canonically hosted in the Portage docs — other DHG projects link here rather than maintaining their own copies.*
 
 The canonical color, typography, and component reference for all Digital Harmony Group products. Every design artifact — UI, SVG diagrams, documentation, marketing — references these tokens.
 
@@ -558,8 +560,7 @@ All main content constrained to `max-w-lg` (32rem / 512px) centered with `mx-aut
 |-------|---------|---------|
 | Content | `auto` | Normal page content |
 | Sticky headers | `z-40` | PageHeader |
-| FAB | `z-40` | ScanFab button |
-| Tab bar | `z-50` | Bottom navigation |
+| Tab bar | `z-50` | Bottom navigation (includes the center Scan button) |
 | Overlays | `z-[60]` | ScanFlow, modals |
 
 ---
@@ -598,7 +599,7 @@ Styling: `sticky top-0`, `bg-background/95` with `backdrop-blur-md`, bottom bord
 
 #### TabBar
 
-Bottom navigation with 6 tabs split around a center Scan button. Uses glass morphism with safe area padding.
+Bottom navigation with 5 tabs (Home, Inventory, Listings, Porter, Orders) split around a center Scan button. Uses glass morphism with safe area padding. More is not a tab — Settings (`/more`) is reached via the PageHeader avatar on mobile and the sidebar secondary section on `lg+`.
 
 | Tab | Position |
 |-----|----------|
@@ -607,7 +608,6 @@ Bottom navigation with 6 tabs split around a center Scan button. Uses glass morp
 | Listings | Left |
 | Porter | Right (tinted `--teal` as the AI accent) |
 | Orders | Right |
-| More | Right |
 
 Active tab: `text-[var(--text-primary)]` with a dot indicator. Inactive: `text-text-secondary`.
 
@@ -763,9 +763,9 @@ interface PublishSuccessProps {
 
 Horizontal drag slider comparing original and processed images (used for background removal preview).
 
-#### BgRemovalPanel
+#### Background removal (server-side)
 
-Background removal interface using `@imgly/background-removal` (client-side WASM). Shows before/after with the slider component.
+Background removal runs server-side, not in the browser: the `useBgRemoval` hook (`src/hooks/use-bg-removal.ts`) records a billing-gated usage event (`POST /usage/bg-removal`), then calls `POST /images/remove-bg`, which the API fulfills via the portage-rembg container and returns the processed image URL/key. Results are previewed with BeforeAfterSlider.
 
 ---
 

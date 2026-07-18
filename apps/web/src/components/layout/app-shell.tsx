@@ -1,25 +1,22 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { TabBar } from "./tab-bar";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { UnreadCountProvider } from "@/hooks/use-unread-count";
 
 /**
- * Route-aware responsive shell. Breakpoint switching is CSS-only:
+ * Responsive shell. Breakpoint switching is CSS-only:
  * mobile chrome and desktop chrome both render; `lg:` classes decide
- * visibility, so SSR/hydration never flickers. Admin keeps its own layout.
+ * visibility, so SSR/hydration never flickers.
  * The dock-slot aside is the reserved Phase R3 Porter-dock mount point;
  * shell-main is the pane-capable Phase R1 region.
- * TabBar mounting: unified in AppShell (Task 8) for every non-admin route —
- * TabBar decides full vs. compact state internally via `isTabRoute`.
+ * TabBar mounting: unified in AppShell (Task 8) for every route — admin
+ * included since 2026-07-17 (carve-out removed; admin/layout.tsx nests its
+ * own sub-nav inside shell-main). TabBar decides full vs. compact state
+ * internally via `isTabRoute`.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname() ?? "/";
-
-  if (pathname.startsWith("/admin")) return <>{children}</>;
-
   return (
     <UnreadCountProvider>
     <div className="min-h-dvh lg:flex">
@@ -27,7 +24,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Sidebar />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="hidden lg:block">
+        {/* Sticky lives on the wrapper: TopBar's own `sticky top-0` is a no-op
+            because this wrapper is its containing block and exactly its height
+            (zero travel). Pre-existing since R0; surfaced when the admin header
+            began stacking below the bar (lg:top-16). */}
+        <div className="hidden lg:block sticky top-0 z-40">
           <TopBar />
         </div>
         <div className="flex min-w-0 flex-1">

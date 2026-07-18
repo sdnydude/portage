@@ -1,12 +1,15 @@
 ---
-slug: competitive-analysis
+id: competitive-analysis
 title: Competitive Analysis
+sidebar_position: 3
 sidebar_label: Competitive Analysis
 ---
 
 # Competitive Analysis — Portage vs. Reseller Tools
 
-*Last updated: 2026-05-17*
+*Last updated: 2026-07-17*
+
+> **Point-in-time analysis.** Competitor research was verified in May 2026; Portage product-side facts were refreshed in July 2026. For the current Portage feature list, see [Features](./features.md).
 
 ## Market Position
 
@@ -16,7 +19,7 @@ Portage is the only tool combining **AI-first design** (Vision scanning, comp-gr
 
 | Tool | Price | AI Scan | AI Listing | BG Remove | AI Chat | Markets | Inventory | Orders | Shipping | Mobile | Free |
 |------|-------|---------|------------|-----------|---------|---------|-----------|--------|----------|--------|------|
-| **Portage** | $39/mo | ✓ Claude Vision | ✓ + comps data | ✓ Free WASM | ✓ Porter | 3 | ✓ | ✓ | ◐ | ✓ PWA | Trial |
+| **Portage** | $39/mo | ✓ Gemini 2.5 + Claude | ✓ + comps data | ✓ Self-hosted, tier-gated | ✓ Porter | 2 | ✓ | ✓ | ◐ | ✓ PWA | ✓ |
 | List Perfectly | $29-99 | ◐ Barcode only | ✓ | ✓ Quota | ✗ | 8+ | ◐ | ◐ | ✗ | ◐ | ✗ |
 | Vendoo | $0-150 | ✗ | ◐ | ✓ Quota | ✗ | 10+ | ✓ | ✗ | ✗ | ✓ Native | ✓ |
 | Crosslist | $30-45 | ✗ | ✓ | ✓ Unlimited | ✗ | 11+ | ✓ | ✗ | ◐ | ◐ | ✗ |
@@ -53,22 +56,14 @@ Simple cross-lister         |            Full suite
 
 ## Unique Differentiators (What Only Portage Does)
 
-| Feature | Detail | Nearest competitor |
-|---------|--------|--------------------|
-| Conversational AI with live inventory access | Porter (Claude Sonnet tool_use) queries real data | Nobody — 3Dsellers has AI but no conversational agent |
-| Zero-cost background removal | Client-side WASM, no quota, no API fee | All others use PhotoRoom with monthly caps |
-| Three listing UX modes | Conversational / Swipe / Hybrid | Nobody — all use single form paradigm |
-| Reverb marketplace | Musical instrument/gear resellers | No competitor supports Reverb |
-| Comp-grounded AI pricing | Real comparable sales data feeds AI pricing | Nobody — others generate from image context alone |
+Portage is the only tool with a conversational AI on live inventory data, self-hosted background removal, three listing UX modes, Reverb support, and comp-grounded AI pricing. See [Features — Only in Portage](./features.md#only-in-portage) for the maintained list with details and nearest competitors.
 
 ## Weaknesses vs. Competitors
 
 | Gap | Impact | Mitigation |
 |-----|--------|-----------|
-| 3 marketplaces vs. 6-15 | Biggest competitive gap. Missing Poshmark, Mercari, Depop, Facebook | Priority roadmap: Poshmark + Mercari next |
-| No free tier (only trial) | Higher acquisition friction | 7-day Pro trial; competitive with Flyp's 100-day |
+| 2 live marketplaces (eBay + Reverb) vs. 6-15 | Biggest competitive gap. Missing Poshmark, Mercari, Depop, Facebook; Etsy parked 2026-07-09 pending API key approval | Priority roadmap: Poshmark + Mercari next |
 | No native app store presence | Missing organic discovery channel | PWA installable on any device; no 30% Apple tax |
-| Carrier API not live | Shipping labels still stubbed | UI + architecture built; EasyPost/Shippo integration deferred |
 
 ## Pricing Landscape
 
@@ -100,6 +95,6 @@ Simple cross-lister         |            Full suite
 ## Strategic Priorities
 
 1. **Add Poshmark + Mercari adapters** — covers ~80% of reseller volume, eliminates #1 objection
-2. **Launch Stripe billing** — monetize the AI advantage
-3. **Reverb OAuth** — complete the 3rd marketplace (adapter already built)
-4. **Carrier API integration** — make shipping end-to-end
+2. **Re-enable Etsy** — adapter parked 2026-07-09 pending Etsy API key approval
+
+Closed since the May analysis: Stripe billing shipped (subscriptions + credit packs); Reverb publish is live-proven on per-user PAT auth (the OAuth code-grant item was declared obsolete 2026-07-09); carrier API integration was dropped — shipping labels are handled by redirecting to eBay, and the stubbed carrier subsystem was deleted.

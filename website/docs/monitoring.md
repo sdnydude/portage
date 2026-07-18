@@ -1,7 +1,7 @@
 ---
 id: monitoring
 title: Monitoring
-sidebar_position: 3
+sidebar_position: 6
 ---
 
 # Monitoring
@@ -23,11 +23,11 @@ The API exposes 8 custom metrics (plus Node.js default metrics, all `portage_`-p
 | `portage_ai_request_duration_seconds` | Histogram | AI API call duration by provider and operation |
 | `portage_ebay_taxonomy_calls_total` | Counter | eBay taxonomy lookups by operation |
 
-If `METRICS_SECRET` is set, the endpoint requires `Authorization: Bearer <secret>`.
+If `METRICS_SECRET` is set, the endpoint requires `Authorization: Bearer <secret>`. Scrape targeting is advertised via Docker Compose labels on the `portage-api` service (`prometheus.io/scrape: "true"`, `prometheus.io/port: "8016"`, `prometheus.io/path: "/metrics"`).
 
 ## Grafana Dashboard
 
-A pre-built Grafana dashboard JSON is available for import. It visualizes:
+A pre-built Grafana dashboard JSON is available for import — it lives in the repo at `observability/grafana/portage-dashboard.json`. It visualizes:
 
 - Request rate and error rate over time
 - Response time percentiles (p50, p95, p99)
@@ -70,7 +70,7 @@ Access requires `role=admin` on the user account.
 | `GET /health` | API | `{ status: "ok", timestamp }` |
 | `GET /` | Web | Next.js renders the app |
 
-Docker health checks poll these endpoints to determine container health status.
+Docker health checks poll these endpoints to determine container health status — see [Deployment → Health Checks](/docs/deployment#health-checks) for the per-container probe configuration.
 
 ## Audit Logging
 
