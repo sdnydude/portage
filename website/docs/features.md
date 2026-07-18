@@ -1,5 +1,5 @@
 ---
-slug: features
+id: features
 title: Features
 sidebar_label: Features
 sidebar_position: 2
@@ -7,7 +7,7 @@ sidebar_position: 2
 
 # Portage Features
 
-*Last updated: 2026-07-09*
+*Last updated: 2026-07-17*
 
 Portage is an AI-powered personal effects inventory and multi-marketplace seller app. This document covers every shipped feature, its implementation status, and what makes it unique in the reseller tool market.
 
@@ -27,7 +27,7 @@ Scan an item with your camera → AI identifies it instantly → real eBay sold 
 
 ### Porter AI with Live Inventory Access
 
-Conversational assistant powered by Claude Sonnet with tool_use — searches your actual inventory, queries stats, and suggests listings based on what you own.
+Conversational assistant powered by the configurable chat-provider chain (Claude Sonnet in prod) with tool_use — searches your actual inventory, queries stats, and suggests listings based on what you own.
 
 - **Advantage:** Unlike generic chatbots, Porter has function-calling access to your real data (items, prices, conditions, photos)
 - **Benefit:** Ask "what should I list next?" and get actionable answers based on your highest-value unsold inventory
@@ -104,7 +104,8 @@ These features exist in other tools, but Portage's implementation offers distinc
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Multi-Photo Capture | Shipped | Camera capture up to 12 photos per item with upload-on-capture |
+| Multi-Photo Capture | Shipped | Camera capture up to 24 photos per item with upload-on-capture |
+| Photo Drag-Reorder | Shipped | Long-press (touch) or drag (mouse) reordering in the gallery strip and a full-screen manage sheet sized for the 24-photo cap |
 | Gallery Import | Shipped | Pick existing photos from device gallery |
 | Background Removal | Shipped | Self-hosted rembg service via `POST /images/remove-bg` (billing-gated) |
 | Crop Tool | Shipped | Interactive crop with aspect ratio options |
@@ -123,6 +124,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 | Save & List Shortcut | Shipped | One-tap: saves item + creates eBay draft at comp price |
 | Inline Photo Editing | Shipped | Rotate, crop, enhance, BG remove without leaving scan flow |
 | Rescan | Shipped | Re-run AI on same photos if identification is wrong |
+| Camera Zoom + Continuity Camera | Shipped | Pinch-to-zoom with 0.5×/1×/2×/3× presets (native sensor zoom where supported, digital fallback) and a camera device picker including iPhone-via-Mac |
 
 ### Inventory Management
 
@@ -164,7 +166,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 | Reverb Token Auth | Shipped | Per-user Personal Access Token validated against live API |
 | Reverb Publish | Shipped | Create/update listing — live-proven with a real published listing |
 | Reverb Comps Search | Shipped | Comparable listings for musical instruments |
-| Reverb OAuth Code Grant | Planned | Full OAuth2 flow (token-paste auth is live) |
+| Reverb OAuth Code Grant | Obsolete | Declared obsolete 2026-07-09 — per-user PAT auth is live-proven, no OAuth flow needed |
 
 ### Orders & Shipping
 
@@ -190,10 +192,14 @@ These features exist in other tools, but Portage's implementation offers distinc
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Onboarding Flow | Shipped | 5-step first-time user carousel |
+| Tutorial Hub | Shipped | 8-topic in-app tutorial hub with screenshot walkthroughs (setup, adding items, inventory, listings, messages, orders, Porter, settings) |
+| Responsive Shell | Shipped | Adaptive layout across phone, tablet, and desktop — sidebar navigation and top bar on large screens |
 | Mobile-First PWA | Shipped | Installable, 5-tab bottom nav, safe-area support |
 | Dark Mode | Shipped | System preference-driven with CSS variables |
 | Glass Morphism UI | Shipped | Backdrop-filter panels with `@supports` fallback |
 | Sold Celebration | Shipped | Confetti animation on successful sale |
+| Buyer Messages Inbox | Shipped | In-app eBay inbox — conversation list with manual sync, threaded message view, reply from the app, unread badges in the navigation |
+| Porter Chat Experience | Shipped | SSE-streamed chat with live tool-call indicators and action-pill follow-ups — reachable from the Porter tab, the home hero card, and the Ask Porter bar |
 | Settings (6 pages) | Shipped | Profile, marketplace, seller profile, billing, notifications, help |
 
 ### Admin & Ops
@@ -204,7 +210,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 | User Management | Shipped | List, search, promote/demote, view details |
 | Admin Audit Log | Shipped | All admin actions logged with timestamp and actor |
 | App Settings | Shipped | System-wide configuration from admin panel |
-| Prometheus Metrics | Shipped | 7 custom metrics + /metrics endpoint |
+| Prometheus Metrics | Shipped | 8 custom metrics + /metrics endpoint |
 | Grafana Dashboard | Shipped | Pre-configured panels for API observability |
 
 ### Security
@@ -227,9 +233,8 @@ These features exist in other tools, but Portage's implementation offers distinc
 | Poshmark Adapter | High | #1 competitive gap — most requested marketplace |
 | Mercari Adapter | High | Second most-requested marketplace for resellers |
 | Etsy Re-enable | Medium | Adapter parked pending Etsy API key approval (tag `etsy-parked-2026-07`) |
-| Reverb OAuth Code Grant | Low | Token-paste auth works; OAuth is polish |
 
-Carrier API integration (EasyPost/Shippo) was superseded 2026-07-01 — shipping labels are handled by redirecting to eBay, and the stubbed carrier subsystem was deleted. eBay buyer messaging shipped (see Marketplace Integrations above).
+Carrier API integration (EasyPost/Shippo) was superseded 2026-07-01 — shipping labels are handled by redirecting to eBay, and the stubbed carrier subsystem was deleted. Reverb OAuth code grant was declared obsolete 2026-07-09 — per-user PAT auth is live-proven. eBay buyer messaging shipped (see Marketplace Integrations above).
 
 ---
 

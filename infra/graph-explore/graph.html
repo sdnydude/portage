@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portage Knowledge Graph Explorer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='4.7' y='4.7' width='6.6' height='6.6' transform='rotate(45 8 8)' fill='%23e8833a'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #14130f; --panel: #1d1c17; --panel2: #24221c; --border: #35332a;
+    --text: #e8e4da; --dim: #9a958a; --accent: #e8833a; --teal: #2aa198;
+    --green: #3fb950; --red: #f85149; --amber: #d29922;
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f4ee; --panel: #ffffff; --panel2: #efece3; --border: #d8d4c8;
+    --text: #23211b; --dim: #6f6a5e; --accent: #c05f1a; --teal: #1c7f77;
+    --green: #1a7f37; --red: #c93c37; --amber: #9a6700;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { color-scheme: dark; }
+  :root[data-theme="light"] { color-scheme: light; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+  }
+  a { color: var(--teal); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 12.5px; }
+  header {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; font-weight: 700; letter-spacing: .3px; white-space: nowrap; }
+  header h1 span { color: var(--accent); }
+  header h1 a { color: inherit; }
+  header h1 a:hover { text-decoration: none; }
+  #q {
+    flex: 1 1 220px; max-width: 480px; background: var(--panel2);
+    border: 1px solid var(--border); color: var(--text);
+    padding: 7px 10px; border-radius: 8px; font: inherit;
+  }
+  #q:focus { outline: none; border-color: var(--teal); }
+  .hlinks { margin-left: auto; display: flex; gap: 10px; align-items: center; font-size: 12.5px; }
+  .hlinks a { color: var(--dim); }
+  .hlinks a:hover { color: var(--text); text-decoration: none; }
+  #theme {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--dim);
+    padding: 4px 10px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12px;
+  }
+  #theme:hover { color: var(--text); border-color: var(--accent); }
+  main { max-width: 1060px; margin: 0 auto; padding: 18px 16px 60px; }
+  .crumbs { font-size: 12.5px; color: var(--dim); margin-bottom: 14px; }
+  .crumbs a { color: var(--dim); }
+  .crumbs a:hover { color: var(--text); }
+  .crumbs .sep { margin: 0 6px; opacity: .6; }
+  h2.page { font-size: 21px; margin-bottom: 4px; overflow-wrap: anywhere; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 16px; }
+  section { margin-bottom: 26px; }
+  section > h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--dim); margin-bottom: 8px;
+  }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 16px; min-width: 110px;
+  }
+  .stat b { display: block; font-size: 20px; }
+  .stat span { color: var(--dim); font-size: 11.5px; text-transform: uppercase; letter-spacing: .8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+    padding: 5px 12px; color: var(--text); cursor: pointer; font: inherit; font-size: 13px;
+    text-decoration: none;
+  }
+  a.chip:hover { border-color: var(--accent); text-decoration: none; }
+  .chip .n { color: var(--accent); font-weight: 700; font-size: 12px; }
+  .chip.flat { cursor: default; }
+  .chip.flat .n { color: var(--dim); font-weight: 600; }
+  .rows { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel); }
+  .row {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-top: 1px solid var(--border); color: var(--text); text-decoration: none;
+  }
+  .row:first-child { border-top: 0; }
+  a.row:hover { background: var(--panel2); text-decoration: none; }
+  .row .name { font-weight: 600; font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; }
+  .row .file {
+    color: var(--dim); font-size: 11.5px; font-family: ui-monospace, monospace;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+    text-align: right;
+  }
+  .row .count { color: var(--accent); font-weight: 700; font-size: 12px; flex: none; }
+  .badge {
+    flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: .6px;
+    border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; color: var(--dim);
+  }
+  .badge.inferred { color: var(--amber); border-color: var(--amber); }
+  .badge.ambiguous { color: var(--red); border-color: var(--red); }
+  .filterbox {
+    width: 100%; max-width: 340px; background: var(--panel2); border: 1px solid var(--border);
+    color: var(--text); padding: 6px 10px; border-radius: 8px; font: inherit; margin-bottom: 8px;
+  }
+  .filterbox:focus { outline: none; border-color: var(--teal); }
+  .edge { display: flex; align-items: baseline; gap: 8px; padding: 7px 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .edge:first-child { border-top: 0; }
+  .edge .dir { color: var(--accent); font-family: ui-monospace, monospace; flex: none; width: 16px; text-align: center; }
+  .edge .ctx { flex-basis: 100%; color: var(--dim); font-size: 12px; padding-left: 24px; }
+  .edge .loc { color: var(--dim); font-size: 11px; font-family: ui-monospace, monospace; margin-left: auto; flex: none; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13px; }
+  .kv dt { color: var(--dim); }
+  .kv dd { overflow-wrap: anywhere; }
+  .empty { color: var(--dim); font-size: 13px; padding: 10px 12px; }
+  #status { padding: 60px 20px; text-align: center; color: var(--dim); }
+  #status .err { color: var(--red); }
+  details.group { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); margin-bottom: 8px; }
+  details.group > summary {
+    cursor: pointer; padding: 8px 12px; font-weight: 600; font-size: 13px; list-style: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  details.group > summary::before { content: "▸"; color: var(--dim); font-size: 11px; }
+  details.group[open] > summary::before { content: "▾"; }
+  details.group > summary .count { margin-left: auto; }
+  .note { color: var(--dim); font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="#/"><span>◆</span> Portage Knowledge Graph</a></h1>
+  <input id="q" type="search" placeholder="Search nodes, files, symbols…" autocomplete="off" aria-label="Search nodes">
+  <nav class="hlinks">
+    <a href="../graph.html">Raw graph ↗</a>
+    <a href="../GRAPH_REPORT.md">Report</a>
+    <a href="../wiki/index.md">Wiki</a>
+    <a href="/portal/">Portal</a>
+    <button id="theme" type="button" aria-label="Toggle color theme">theme</button>
+  </nav>
+</header>
+<main id="app"><div id="status">Loading graph data…</div></main>
+<script>
+"use strict";
+/* Portage Knowledge Graph Explorer — self-contained client-side layer.
+   Reads ../graph.json and ../.graphify_labels.json (both regenerated by
+   `graphify update .`), so this page survives rebuilds AND stays current.
+   No external libraries, no backend. */
+
+const $app = document.getElementById("app");
+const $q = document.getElementById("q");
+
+/* ---------- theme ---------- */
+(function initTheme() {
+  const saved = localStorage.getItem("kg-theme");
+  const preferLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+  const t = saved || (preferLight ? "light" : "dark");
+  if (t === "light") document.documentElement.setAttribute("data-theme", "light");
+  document.getElementById("theme").addEventListener("click", () => {
+    const cur = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+    const next = cur === "light" ? "dark" : "light";
+    if (next === "light") document.documentElement.setAttribute("data-theme", "light");
+    else document.documentElement.removeAttribute("data-theme");
+    localStorage.setItem("kg-theme", next);
+  });
+})();
+
+/* ---------- data ---------- */
+const G = {
+  nodes: [], links: [], hyper: [], labels: {}, byId: new Map(),
+  adj: new Map(),            // id -> [{link, other, out}]
+  communities: new Map(),    // cid -> {id, label, members: [node], internal, external, neighbors: Map(cid -> count)}
+  degree: new Map(),
+  builtAt: "", lastModified: "",
+};
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function commLabel(cid) { return G.labels[String(cid)] || ("Community " + cid); }
+function nodeHref(id) { return "#/node/" + encodeURIComponent(id); }
+function commHref(cid) { return "#/community/" + encodeURIComponent(cid); }
+
+async function load() {
+  try {
+    // no-cache = revalidate with the server every load (304 when unchanged),
+    // so a `graphify update .` rebuild is visible immediately, never stale-cached.
+    const [gRes, lRes] = await Promise.all([
+      fetch("../graph.json", { cache: "no-cache" }),
+      fetch("../.graphify_labels.json", { cache: "no-cache" }),
+    ]);
+    if (!gRes.ok) throw new Error("graph.json HTTP " + gRes.status);
+    G.lastModified = gRes.headers.get("last-modified") || "";
+    const data = await gRes.json();
+    G.labels = lRes.ok ? await lRes.json() : {};
+    G.nodes = data.nodes || [];
+    G.links = data.links || data.edges || [];
+    G.hyper = (data.graph && data.graph.hyperedges) || data.hyperedges || [];
+    G.builtAt = data.built_at_commit || "";
+
+    for (const n of G.nodes) G.byId.set(n.id, n);
+    for (const n of G.nodes) { G.degree.set(n.id, 0); G.adj.set(n.id, []); }
+    for (const l of G.links) {
+      if (!G.byId.has(l.source) || !G.byId.has(l.target)) continue;
+      G.degree.set(l.source, G.degree.get(l.source) + 1);
+      G.degree.set(l.target, G.degree.get(l.target) + 1);
+      G.adj.get(l.source).push({ link: l, other: l.target, out: true });
+      G.adj.get(l.target).push({ link: l, other: l.source, out: false });
+    }
+    for (const n of G.nodes) {
+      const cid = n.community;
+      if (cid === undefined || cid === null) continue;
+      if (!G.communities.has(cid))
+        G.communities.set(cid, { id: cid, label: commLabel(cid), members: [], internal: 0, external: 0, neighbors: new Map() });
+      G.communities.get(cid).members.push(n);
+    }
+    for (const l of G.links) {
+      const a = G.byId.get(l.source), b = G.byId.get(l.target);
+      if (!a || !b) continue;
+      const ca = a.community, cb = b.community;
+      if (ca === cb) { const c = G.communities.get(ca); if (c) c.internal++; }
+      else {
+        const A = G.communities.get(ca), B = G.communities.get(cb);
+        if (A) { A.external++; A.neighbors.set(cb, (A.neighbors.get(cb) || 0) + 1); }
+        if (B) { B.external++; B.neighbors.set(ca, (B.neighbors.get(ca) || 0) + 1); }
+      }
+    }
+    route();
+    window.addEventListener("hashchange", route);
+  } catch (e) {
+    $app.innerHTML = '<div id="status"><p class="err">Failed to load graph data: ' + esc(e.message) +
+      '</p><p>Expected <code>../graph.json</code> next to this page (generated by graphify).</p></div>';
+  }
+}
+
+/* ---------- routing ---------- */
+function route() {
+  const h = decodeURIComponent(location.hash.replace(/^#/, "")) || "/";
+  const mN = h.match(/^\/node\/(.+)$/);
+  const mC = h.match(/^\/community\/(.+)$/);
+  if (mN) renderNode(mN[1]);
+  else if (mC) renderCommunity(mC[1]);
+  else renderOverview();
+  if (!$q.value) window.scrollTo(0, 0);
+}
+
+/* ---------- overview ---------- */
+function renderOverview() {
+  const comms = [...G.communities.values()].sort((x, y) => y.members.length - x.members.length);
+  const gods = [...G.degree.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
+  const relCounts = {};
+  for (const l of G.links) relCounts[l.relation] = (relCounts[l.relation] || 0) + 1;
+  const rels = Object.entries(relCounts).sort((a, b) => b[1] - a[1]);
+
+  let html = "";
+  html += '<h2 class="page">Knowledge Graph Explorer</h2>';
+  html += '<p class="sub">Portage codebase graph, generated by graphify' +
+    (G.builtAt ? ' at commit <code>' + esc(G.builtAt.slice(0, 7)) + "</code>" : "") +
+    (G.lastModified ? " · data updated " + esc(G.lastModified) : "") +
+    ". Search above, or drill in: overview → community → node.</p>";
+
+  html += '<section><h3>Corpus</h3><div class="stats">' +
+    '<div class="stat"><b>' + G.nodes.length.toLocaleString() + "</b><span>nodes</span></div>" +
+    '<div class="stat"><b>' + G.links.length.toLocaleString() + "</b><span>edges</span></div>" +
+    '<div class="stat"><b>' + G.communities.size.toLocaleString() + "</b><span>communities</span></div>" +
+    '<div class="stat"><b>' + G.hyper.length + "</b><span>hyperedges</span></div>" +
+    "</div></section>";
+
+  html += '<section><h3>God nodes — most connected</h3><div class="chips">' +
+    gods.map(([id, deg]) => {
+      const n = G.byId.get(id);
+      return '<a class="chip" href="' + nodeHref(id) + '">' + esc(n ? n.label : id) +
+        ' <span class="n">' + deg + "</span></a>";
+    }).join("") + "</div></section>";
+
+  html += '<section><h3>Edge relations</h3><div class="chips">' +
+    rels.map(([r, c]) => '<span class="chip flat">' + esc(r) + ' <span class="n">' + c + "</span></span>").join("") +
+    "</div></section>";
+
+  if (G.hyper.length) {
+    html += '<section><h3>Group relationships (hyperedges)</h3>';
+    for (const h of G.hyper) {
+      const members = (h.nodes || []).map(id => {
+        const n = G.byId.get(id);
+        return n ? '<a class="chip" href="' + nodeHref(id) + '">' + esc(n.label) + "</a>"
+                 : '<span class="chip flat">' + esc(id) + "</span>";
+      }).join(" ");
+      html += '<details class="group"><summary>' + esc(h.label || h.id) +
+        ' <span class="badge">' + esc(h.relation || "group") + '</span>' +
+        '<span class="count">' + (h.nodes ? h.nodes.length : 0) + " nodes</span></summary>" +
+        '<div class="edge" style="border-top:1px solid var(--border)"><div class="chips">' + members + "</div></div></details>";
+    }
+    html += "</section>";
+  }
+
+  html += '<section><h3>Communities — ' + comms.length + " total, largest first</h3>" +
+    '<input class="filterbox" id="commFilter" type="search" placeholder="Filter communities…" autocomplete="off" aria-label="Filter communities">' +
+    '<div class="rows" id="commRows">' + commRowsHtml(comms) + "</div></section>";
+
+  $app.innerHTML = html;
+  const cf = document.getElementById("commFilter");
+  cf.addEventListener("input", () => {
+    const t = cf.value.trim().toLowerCase();
+    const filtered = t ? comms.filter(c => c.label.toLowerCase().includes(t) || String(c.id) === t) : comms;
+    document.getElementById("commRows").innerHTML =
+      filtered.length ? commRowsHtml(filtered) : '<div class="empty">No communities match “' + esc(cf.value) + "”.</div>";
+  });
+}
+function commRowsHtml(list) {
+  return list.map(c =>
+    '<a class="row" href="' + commHref(c.id) + '"><span class="name">' + esc(c.label) +
+    '</span><span class="file">community ' + c.id + '</span><span class="count">' +
+    c.members.length + " nodes</span></a>").join("");
+}
+
+/* ---------- community ---------- */
+function renderCommunity(cidRaw) {
+  const cid = isNaN(Number(cidRaw)) ? cidRaw : Number(cidRaw);
+  const c = G.communities.get(cid);
+  if (!c) { renderMissing("Community “" + cidRaw + "” not found."); return; }
+  const members = [...c.members].sort((a, b) => (G.degree.get(b.id) || 0) - (G.degree.get(a.id) || 0));
+  const neigh = [...c.neighbors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+
+  let html = '<div class="crumbs"><a href="#/">Overview</a><span class="sep">›</span>' + esc(c.label) + "</div>";
+  html += '<h2 class="page">' + esc(c.label) + "</h2>";
+  html += '<p class="sub">Community ' + c.id + " · " + members.length + " nodes · " +
+    c.internal + " internal edges · " + c.external + " edges to other communities</p>";
+
+  if (neigh.length) {
+    html += '<section><h3>Connected communities</h3><div class="chips">' +
+      neigh.map(([nc, cnt]) => '<a class="chip" href="' + commHref(nc) + '">' + esc(commLabel(nc)) +
+        ' <span class="n">' + cnt + "</span></a>").join("") + "</div></section>";
+  }
+
+  html += '<section><h3>Members — most connected first</h3>' +
+    '<input class="filterbox" id="memFilter" type="search" placeholder="Filter members…" autocomplete="off" aria-label="Filter community members">' +
+    '<div class="rows" id="memRows">' + memberRowsHtml(members) + "</div></section>";
+
+  $app.innerHTML = html;
+  const mf = document.getElementById("memFilter");
+  mf.addEventListener("input", () => {
+    const t = mf.value.trim().toLowerCase();
+    const filtered = t ? members.filter(n =>
+      (n.label || "").toLowerCase().includes(t) || (n.source_file || "").toLowerCase().includes(t)) : members;
+    document.getElementById("memRows").innerHTML =
+      filtered.length ? memberRowsHtml(filtered) : '<div class="empty">No members match “' + esc(mf.value) + "”.</div>";
+  });
+}
+function memberRowsHtml(list) {
+  return list.map(n =>
+    '<a class="row" href="' + nodeHref(n.id) + '"><span class="name">' + esc(n.label) + "</span>" +
+    '<span class="badge">' + esc((n.metadata && n.metadata.kind) || n.file_type || "node") + "</span>" +
+    '<span class="file">' + esc(n.source_file || "") + '</span><span class="count">' +
+    (G.degree.get(n.id) || 0) + "</span></a>").join("");
+}
+
+/* ---------- node detail ---------- */
+function renderNode(id) {
+  const n = G.byId.get(id);
+  if (!n) { renderMissing("Node “" + id + "” not found in the graph."); return; }
+  const edges = G.adj.get(id) || [];
+  const byRel = new Map();
+  for (const e of edges) {
+    const r = e.link.relation || "related";
+    if (!byRel.has(r)) byRel.set(r, []);
+    byRel.get(r).push(e);
+  }
+  const rels = [...byRel.entries()].sort((a, b) => b[1].length - a[1].length);
+  const inHyper = G.hyper.filter(h => (h.nodes || []).includes(id));
+
+  let html = '<div class="crumbs"><a href="#/">Overview</a><span class="sep">›</span>' +
+    '<a href="' + commHref(n.community) + '">' + esc(commLabel(n.community)) + "</a>" +
+    '<span class="sep">›</span>' + esc(n.label) + "</div>";
+  html += '<h2 class="page">' + esc(n.label) + "</h2>";
+  html += '<p class="sub">' + esc((n.metadata && n.metadata.kind) || n.file_type || "node") +
+    ((n.metadata && n.metadata.language) ? " · " + esc(n.metadata.language) : "") +
+    " · " + edges.length + " edge" + (edges.length === 1 ? "" : "s") +
+    (n._origin ? " · extracted via " + esc(n._origin === "ast" ? "AST (structural)" : n._origin) : "") + "</p>";
+
+  html += '<section><h3>Definition</h3><dl class="kv">' +
+    '<dt>File</dt><dd><code>' + esc(n.source_file || "—") + "</code></dd>" +
+    '<dt>Location</dt><dd><code>' + esc(n.source_location || "—") + "</code></dd>" +
+    '<dt>Community</dt><dd><a href="' + commHref(n.community) + '">' + esc(commLabel(n.community)) +
+      "</a> (community " + esc(String(n.community)) + ")</dd>" +
+    '<dt>Node id</dt><dd><code>' + esc(n.id) + "</code></dd>" +
+    "</dl></section>";
+
+  if (rels.length) {
+    html += '<section><h3>Relationships</h3>';
+    for (const [rel, list] of rels) {
+      list.sort((a, b) => (G.degree.get(b.other) || 0) - (G.degree.get(a.other) || 0));
+      html += '<details class="group" ' + (list.length <= 25 ? "open" : "") + "><summary>" + esc(rel) +
+        '<span class="count">' + list.length + "</span></summary>";
+      for (const e of list) {
+        const o = G.byId.get(e.other);
+        const conf = e.link.confidence || "";
+        const badge = conf && conf !== "EXTRACTED"
+          ? ' <span class="badge ' + esc(conf.toLowerCase()) + '">' + esc(conf) + "</span>" : "";
+        html += '<div class="edge"><span class="dir" title="' +
+          (e.out ? "outgoing: this node → neighbor" : "incoming: neighbor → this node") + '">' +
+          (e.out ? "→" : "←") + "</span>" +
+          '<a href="' + nodeHref(e.other) + '">' + esc(o ? o.label : e.other) + "</a>" + badge +
+          '<span class="loc">' + esc((e.link.source_file || "") +
+            (e.link.source_location ? " " + e.link.source_location : "")) + "</span>" +
+          (e.link.context ? '<span class="ctx">' + esc(e.link.context) + "</span>" : "") +
+          "</div>";
+      }
+      html += "</details>";
+    }
+    html += '<p class="note">→ outgoing / ← incoming, from the extractor’s source→target direction. ' +
+      "Unmarked edges are EXTRACTED (verbatim from source); INFERRED/AMBIGUOUS are badged.</p></section>";
+  } else {
+    html += '<section><h3>Relationships</h3><div class="rows"><div class="empty">No edges recorded for this node.</div></div></section>';
+  }
+
+  if (inHyper.length) {
+    html += '<section><h3>Group relationships</h3>';
+    for (const h of inHyper) {
+      const members = (h.nodes || []).filter(m => m !== id).map(m => {
+        const o = G.byId.get(m);
+        return o ? '<a class="chip" href="' + nodeHref(m) + '">' + esc(o.label) + "</a>"
+                 : '<span class="chip flat">' + esc(m) + "</span>";
+      }).join(" ");
+      html += '<details class="group" open><summary>' + esc(h.label || h.id) +
+        ' <span class="badge">' + esc(h.relation || "group") + "</span></summary>" +
+        '<div class="edge"><div class="chips">' + members + "</div></div></details>";
+    }
+    html += "</section>";
+  }
+
+  $app.innerHTML = html;
+}
+
+function renderMissing(msg) {
+  $app.innerHTML = '<div id="status"><p class="err">' + esc(msg) + "</p>" +
+    '<p><a href="#/">Back to overview</a></p></div>';
+}
+
+/* ---------- search ---------- */
+let searchTimer = null;
+$q.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 120);
+});
+$q.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const first = document.querySelector("#searchRows a.row");
+    if (first) { location.hash = first.getAttribute("href").slice(1); $q.value = ""; route(); }
+  }
+  if (e.key === "Escape") { $q.value = ""; route(); }
+});
+function runSearch() {
+  const t = $q.value.trim().toLowerCase();
+  if (!t) { route(); return; }
+  const scored = [];
+  for (const n of G.nodes) {
+    const label = (n.label || "").toLowerCase();
+    const file = (n.source_file || "").toLowerCase();
+    const idl = n.id.toLowerCase();
+    let score = -1;
+    if (label === t) score = 100;
+    else if (label.startsWith(t)) score = 80;
+    else if (label.includes(t)) score = 60;
+    else if (idl.includes(t)) score = 40;
+    else if (file.includes(t)) score = 20;
+    if (score >= 0) scored.push([score + Math.min((G.degree.get(n.id) || 0), 19) / 20, n]);
+  }
+  scored.sort((a, b) => b[0] - a[0]);
+  const top = scored.slice(0, 100);
+  $app.innerHTML = '<h2 class="page">Search: “' + esc($q.value) + "”</h2>" +
+    '<p class="sub">' + scored.length + " match" + (scored.length === 1 ? "" : "es") +
+    (scored.length > 100 ? " · showing top 100" : "") + " · Enter opens the first result · Esc clears</p>" +
+    '<div class="rows" id="searchRows">' +
+    (top.length ? top.map(([, n]) =>
+      '<a class="row" href="' + nodeHref(n.id) + '"><span class="name">' + esc(n.label) + "</span>" +
+      '<span class="badge">' + esc(commLabel(n.community)) + "</span>" +
+      '<span class="file">' + esc(n.source_file || "") + '</span><span class="count">' +
+      (G.degree.get(n.id) || 0) + "</span></a>").join("")
+      : '<div class="empty">No nodes match. Search covers node names, ids, and file paths.</div>') +
+    "</div>";
+}
+
+load();
+</script>
+</body>
+</html>

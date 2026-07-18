@@ -19,13 +19,36 @@ POST /scan?detail=full
 **Auth:** Required  
 **Content-Type:** `multipart/form-data`
 
-Single-image scan. Upload the photo as an `image` form field (JPEG/PNG/WebP/HEIC, max 10 MB); the API processes it, uploads it to storage, and returns identification data.
+Single-image scan. Upload the photo as an `image` form field (JPEG/PNG/WebP/HEIC/HEIF, max 10 MB); the API processes it, uploads it to storage, and returns identification data.
 
 **Query Parameters:**
 
 | Param | Type | Description |
 |-------|------|-------------|
 | `detail` | string | `full` for detailed multi-candidate analysis (with eBay aspect prefill) |
+
+**Response** `201`:
+
+```json
+{
+  "identification": {
+    "name": "Fender Stratocaster",
+    "description": "...",
+    "category": "Musical Instruments",
+    "condition": "good",
+    "conditionNotes": "",
+    "brand": "Fender",
+    "model": "American Professional II",
+    "estimatedValueLow": 1200,
+    "estimatedValueHigh": 1600
+  },
+  "detailed": { "candidates": [...], "reasoning": ["..."] },
+  "image": { "key": "...", "url": "https://...", "width": 2048, "height": 1536 },
+  "thumbnail": { "key": "...", "url": "https://..." }
+}
+```
+
+`detailed` is present only when `detail=full` (its shape matches the refine response below — `identification` is then the top candidate). `image` and `thumbnail` are `null` if the storage upload failed (the identification is still returned).
 
 ### Refined Multi-Image Scan
 
@@ -48,36 +71,35 @@ The primary scanning endpoint. Accepts 1-3 image URLs for multi-angle identifica
 }
 ```
 
-**Response** `200`:
+**Response** `201`:
 
 ```json
 {
-  "detailed": {
-    "candidates": [
-      {
-        "name": "Fender Stratocaster American Professional II",
-        "category": "Musical Instruments",
-        "condition": "good",
-        "confidence": 87,
-        "brand": "Fender",
-        "model": "American Professional II Stratocaster",
-        "valueLow": 1200,
-        "valueHigh": 1600,
-        "valueMedian": 1400,
-        "features": ["Alder body", "Rosewood fingerboard", "V-Mod II pickups"],
-        "description": "..."
-      }
-    ],
-    "reasoning": "The guitar body shape and headstock are characteristic of..."
-  },
-  "single": {
-    "name": "Fender Stratocaster",
+  "identification": {
+    "name": "Fender Stratocaster American Professional II",
+    "description": "...",
     "category": "Musical Instruments",
     "condition": "good",
-    "confidence": 82
+    "conditionNotes": "",
+    "brand": "Fender",
+    "model": "American Professional II Stratocaster",
+    "mpn": null,
+    "aspects": { "Brand": ["Fender"], "Model": ["American Professional II"] },
+    "features": ["Alder body", "Rosewood fingerboard", "V-Mod II pickups"],
+    "estimatedValueLow": 1200,
+    "estimatedValueHigh": 1600,
+    "confidence": 0.87,
+    "weight": { "value": 180, "unit": "oz" },
+    "dimensions": { "length": 44, "width": 18, "height": 6, "unit": "in" }
+  },
+  "detailed": {
+    "candidates": [ ... 1-3 candidates in the same shape as identification ... ],
+    "reasoning": ["The guitar body shape and headstock are characteristic of..."]
   }
 }
 ```
+
+`identification` is the top candidate (`detailed.candidates[0]`) with required eBay aspects pre-filled best-effort. `confidence` is a 0–1 float; `mpn`, `weight`, `dimensions`, and `packageType` are optional; `reasoning` is an array of strings.
 
 ## Security
 
@@ -99,8 +121,8 @@ Free-tier users have a **monthly** scan limit (Pro and beta-tester are unlimited
 
 ## Error Responses
 
-| Code | Error | Description |
-|------|-------|-------------|
+| Status | Code | Description |
+|--------|------|-------------|
 | 400 | `INVALID_INPUT` | Invalid image URLs or failed SSRF check (refine) |
 | 400 | `NO_FILE` / `INVALID_FILE_TYPE` | Missing or unsupported upload (basic scan) |
 | 401 | `USER_NOT_FOUND` | Authenticated user not in database |

@@ -52,15 +52,17 @@ Full-mode sync performs:
 
 ### 4. Recall (every session start)
 
-The `SessionStart` hook injects a 7-section briefing:
+The `SessionStart` hook (`.claude/hooks/session-briefing.sh`) prints a freshness indicator (time since last full sync), then a 9-section briefing:
 
-1. Freshness (time since last full sync)
-2. Recent sessions (from registry API)
-3. 7-day activity (from `recent.md`)
-4. Today's journal
-5. Recent decisions
-6. Git status
-7. Detected patterns
+1. Recent sessions (from registry API) — including recent ship sessions
+2. Recent activity (7-day rolling, from `recent.md`)
+3. Today's journal
+4. Decision log (from `decisions_index.md`)
+5. Git state (branch + recent commits)
+6. Progress (phase headers from `docs/TODO.md`)
+7. Memory intelligence (hot areas, unfinished work, workflow alerts)
+8. Correction lessons (recent, from registry API)
+9. Bug-fix root causes (recent, from registry API)
 
 ## Feedback Loops
 

@@ -4,9 +4,16 @@ title: AI Pipeline
 sidebar_position: 3
 ---
 
+import ThemedImage from '@theme/ThemedImage';
+
 # AI Pipeline
 
 Portage uses AI for item identification, listing preparation, background removal, photo enhancement, and the Porter conversational assistant.
+
+<ThemedImage
+  alt="AI pipeline: vision chain and Porter"
+  sources={{light: '/portage/img/ai-pipeline-chain.svg', dark: '/portage/img/ai-pipeline-chain-dark.svg'}}
+/>
 
 ## Item Scanning
 
@@ -51,7 +58,7 @@ The seller profile (return policy, shipping terms) is incorporated into the gene
 
 ## Porter AI Assistant
 
-Porter is a conversational AI assistant accessible from the Porter tab. It uses Claude Sonnet with **SSE streaming** (`POST /porter/stream`, with `POST /porter/message` as a non-streaming fallback) in a **tool_use loop** with three tools:
+Porter is a conversational AI assistant accessible from the Porter tab. It uses the configurable chat-provider chain (`CHAT_PROVIDERS` — Claude Sonnet in prod) with **SSE streaming** (`POST /porter/stream`, with `POST /porter/message` as a non-streaming fallback) in a **tool_use loop** with three tools:
 
 | Tool | Purpose |
 |------|---------|

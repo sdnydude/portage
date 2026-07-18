@@ -1,8 +1,8 @@
 # Portage — Development History & Burndown Detail
 
-_Compiled 2026-06-24 from git history (668 commits), auto-memory, the DHG Registry KB (ship sessions, decisions, bug fixes, corrections, deferred items, insights), and the codebase. Companion to the registry burndown list `e0c6e2ae-0ec8-4360-9192-963934efa887` (interactive view at `http://10.0.0.251:8011/api/burndown-lists/e0c6e2ae-0ec8-4360-9192-963934efa887/view`)._
+_Compiled 2026-06-24 from git history (668 commits), auto-memory, the DHG Registry KB (ship sessions, decisions, bug fixes, corrections, deferred items, insights), and the codebase. Companion to the registry burndown list `e0c6e2ae-0ec8-4360-9192-963934efa887` (interactive view at `http://10.0.0.251:8011/api/burndown-lists/e0c6e2ae-0ec8-4360-9192-963934efa887/view`). A condensed version of the same era is published on the docs site from `website/docs/development/history.md`._
 
-Portage is an AI-powered personal-effects inventory and multi-marketplace seller app (eBay, Etsy, Reverb). npm-workspaces monorepo: `apps/api` (Express 5 + Drizzle + PostgreSQL), `apps/web` (Next.js 16 / React 19), `packages/shared` (types). Owner: Stephen Webber / Digital Harmony Group. Server: g700data1 (10.0.0.251).
+Portage is an AI-powered personal-effects inventory and multi-marketplace seller app (eBay, Etsy, and Reverb at the time of this snapshot; Etsy was later parked 2026-07-09, tag `etsy-parked-2026-07`). npm-workspaces monorepo: `apps/api` (Express 5 + Drizzle + PostgreSQL), `apps/web` (Next.js 16 / React 19), `packages/shared` (types). Owner: Stephen Webber / Digital Harmony Group. Server: g700data1 (10.0.0.251).
 
 **Span:** 2026-04-24 → 2026-06-23 (~2 months). **Commits:** 668 (sdnydude 546, web UI 76, dependabot 47). **~70 merged PRs.** **Tests:** 0 → 531 api / 213 web.
 
@@ -107,6 +107,8 @@ The hardest problems and how they were solved — the core of this project's ins
 
 ## 6. Portage ↔ DHG AIFactory infra integration
 
+> Note: the voice containers (`dhg-stt`/`dhg-tts`) referenced below were removed 2026-07-01 — voice is parked at git tag `voice-parked-2026-07`.
+
 Product-wise Portage is standalone, but it shares the g700data1 server and several DHG services. **Key fact:** the Portage *app* has zero runtime coupling to the DHG Registry — all registry I/O lives in the Claude Code tooling layer.
 
 - **DHG Registry KB** (`10.0.0.251:8011`) — Portage's Claude Code sessions auto-post 8 data types via `~/.claude/scripts/` shims → `memreg_capture.py`: `insights`, `decisions`, `ship_sessions`, `bug_fixes`, `corrections`, `deferred_items`, `test_coverage`, `agent_sessions`. Behavioral triggers live in `.claude/rules/auto-*.md`; a Stop-hook `capture-guarantee.py` backfills anything missed. Read back via the KB-search rule and the SessionStart **briefing** (recent sessions, ship sessions, correction patterns, bug-fix RCAs). Also hosts `doc_pages` (Docusaurus chunks, hybrid RRF search) and the **burndown lists** (this document's companion).
@@ -119,6 +121,8 @@ Product-wise Portage is standalone, but it shares the g700data1 server and sever
 ---
 
 ## 7. Open backlog (not done)
+
+> **Snapshot 2026-06-24; backlog since closed — see `docs/TODO.md` for current status.**
 
 See the burndown list for status + urgency. Highest-urgency open items:
 

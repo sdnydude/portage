@@ -1,5 +1,7 @@
 # Responsive Shell (Phase R0) Implementation Plan
 
+> **EXECUTED 2026-07-15** — shipped and merged as PR #229 (feat: responsive shell — desktop sidebar, iPad, glass tab bar (R0)).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Desktop sidebar + top bar with Ask Porter, breakpoint-based iPad behavior, a floating glass mobile tab bar with a compact/minimize-on-scroll state, and a shared content-width system — the shell every later phase (workbench, dock, ingest, QR) plugs into.

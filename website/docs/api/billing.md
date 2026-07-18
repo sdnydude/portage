@@ -12,8 +12,8 @@ Stripe-powered subscription management, usage tracking, and credit packs.
 
 | Tier | Features |
 |------|----------|
-| Free | Limited AI scans, AI listings, and BG-removals per month. 1 marketplace connection. |
-| Pro | Unlimited AI tools, unlimited marketplace connections, priority support. |
+| Free | 25 AI scans, 10 AI listings, and 5 BG-removals per month; 5 Porter exchanges per day. 1 marketplace connection. |
+| Pro | Unlimited AI scans and BG-removals, 75 AI listings per month, 500 Porter exchanges per day, unlimited marketplace connections. |
 | Beta-tester | Private beta tier — unlimited AI and Porter limits. |
 | Credits | Purchasable packs that extend free-tier AI listing limits without upgrading. |
 
@@ -40,8 +40,8 @@ Returns the user's effective tier, trial state, subscription, usage counts, and 
   "subscription": null,
   "usage": {
     "aiListings": { "used": 3, "limit": 10, "credits": 0 },
-    "bgRemovals": { "used": 5, "limit": 10 },
-    "porterExchanges": { "limit": 20 },
+    "bgRemovals": { "used": 2, "limit": 5 },
+    "porterExchanges": { "limit": 5 },
     "marketplaces": { "limit": 1 }
   }
 }
@@ -119,10 +119,12 @@ Events are stored in the `stripe_events` table for idempotent processing.
 
 AI tools (scan, prepare-listing, BG-removal, Porter) check usage against effective-tier limits before processing. When a limit is reached:
 
-- Returns `429` with `code: "LIMIT_REACHED"` (BG-removal uses `BG_REMOVAL_LIMIT_REACHED`)
+- Returns `429` with `code: "LIMIT_REACHED"` (BG-removal uses `BG_REMOVAL_LIMIT_REACHED`; Porter uses `PORTER_LIMIT_REACHED`)
 - Frontend shows upgrade prompt with checkout link
 
 Usage counters reset monthly (idempotent reset on first request of new billing cycle). Prepare-listing reserves usage atomically, falling back to purchased credits when the monthly allocation is exhausted.
+
+The three Stripe-session endpoints (`create-checkout`, `create-portal`, `buy-credits`) share a **10 requests/hour** rate limit keyed on user ID (IP subnet for anonymous callers), returning `429` with `code: "RATE_LIMITED"` when exceeded.
 
 ## Environment Variables
 
@@ -133,3 +135,4 @@ Usage counters reset monthly (idempotent reset on first request of new billing c
 | `STRIPE_PRICE_MONTHLY` | Pro monthly price ID |
 | `STRIPE_PRICE_ANNUAL` | Pro annual price ID |
 | `STRIPE_PRICE_CREDITS` | Credit pack price ID |
+| `STRIPE_PORTAL_CONFIG` | Optional Customer Portal configuration ID (omitted → Stripe default portal config) |

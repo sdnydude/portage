@@ -26,7 +26,7 @@ The primary write channel. Rules in `.claude/rules/*.md` instruct Claude Code to
 ~/.claude/scripts/post-insight.sh  →  /home/swebber64/DHG/dhg-memreg/scripts/memreg_capture.py
 ```
 
-`memreg_capture.py` maps 8 subcommands 1:1 to registry endpoints:
+`memreg_capture.py` maps 9 subcommands 1:1 to registry endpoints:
 
 | Command | Endpoint |
 |---|---|
@@ -36,6 +36,7 @@ The primary write channel. Rules in `.claude/rules/*.md` instruct Claude Code to
 | `post-bug-fixes` | `POST /api/bug-fixes` |
 | `post-correction` | `POST /api/corrections` |
 | `post-deferred-items` | `POST /api/deferred-items` |
+| `post-session-reports` | `POST /api/session-reports` |
 | `post-ship-session` | `POST /api/ship-sessions` |
 | `post-test-coverage` | `POST /api/test-coverage` |
 
@@ -89,6 +90,8 @@ The `/api/kb/search` endpoint runs a unified RRF (Reciprocal Rank Fusion) search
 | `dev_changelog` | Development changelog entries by epic/category |
 
 Filter to specific corpora by passing a `"sources"` array in the request body.
+
+Note: `session_reports` (narrative session reports — markdown file in `docs/session-reports/` + registry row, captured via `post-session-reports` above) is stored in the registry but not yet exposed as a `/api/kb/search` source (verified 2026-07-17 — the endpoint rejects it as an invalid source value).
 
 ## Channel 4 — Docs CI Ingestion (Write, Not HTTP)
 

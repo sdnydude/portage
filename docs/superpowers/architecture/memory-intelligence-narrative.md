@@ -2,7 +2,7 @@
 
 A persistent cross-session learning system for Claude Code. Built for the Portage project at Digital Harmony Group, this suite gives an AI coding assistant durable memory, self-correcting knowledge, and pattern recognition across sessions.
 
-**Architecture diagrams:** See the `*.svg` files in this directory.
+**Architecture diagrams:** canonical copies live at `website/static/img/memory-*.svg` (the byte-identical twins formerly in this directory were removed 2026-07-17).
 
 ---
 
@@ -80,7 +80,7 @@ The system went from "disconnected memory stores" to "self-maintaining knowledge
 
 ## 3. System Architecture
 
-> See `01-system-overview.svg` for the visual diagram.
+> See `website/static/img/memory-system-overview.svg` for the visual diagram.
 
 The suite operates across four layers:
 
@@ -185,16 +185,18 @@ Five independent stores, each optimized for a different access pattern:
 | `plans/2026-05-09-memory-intelligence.md` | Plan | 14-task implementation plan |
 | `specs/2026-05-09-session-briefing-design.md` | Spec | Briefing hook design |
 | `specs/2026-05-09-decision-log-design.md` | Spec | Decision log type design |
-| `architecture/01-system-overview.svg` | Diagram | Full system architecture |
-| `architecture/02-data-lifecycle.svg` | Diagram | Data flow and aging |
-| `architecture/03-feedback-loop.svg` | Diagram | Self-training loops |
-| `architecture/04-sync-phases.svg` | Diagram | /sync-memory phase detail |
+| `website/static/img/memory-system-overview.svg` | Diagram | Full system architecture |
+| `website/static/img/memory-data-lifecycle.svg` | Diagram | Data flow and aging |
+| `website/static/img/memory-feedback-loop.svg` | Diagram | Self-training loops |
+| `website/static/img/memory-sync-phases.svg` | Diagram | /sync-memory phase detail |
+
+> Note (2026-07-17): the byte-identical SVG twins that lived in this directory were removed; the canonical copies live in `website/static/img/` (embedded by `website/docs/development/memory-system.md`).
 
 ---
 
 ## 5. Data Lifecycle
 
-> See `02-data-lifecycle.svg` for the visual diagram.
+> See `website/static/img/memory-data-lifecycle.svg` for the visual diagram.
 
 Information flows through four stages:
 
@@ -262,7 +264,7 @@ This closes the loop: information captured in Stage 1 is delivered back in Stage
 
 ## 6. Self-Training Feedback Loops
 
-> See `03-feedback-loop.svg` for the visual diagram.
+> See `website/static/img/memory-feedback-loop.svg` for the visual diagram.
 
 Three feedback loops are operational today. A fourth is planned.
 

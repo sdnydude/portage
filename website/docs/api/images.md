@@ -26,15 +26,15 @@ POST /images
 ```json
 {
   "image": {
-    "key": "items/uuid/photo-1.jpg",
-    "url": "https://images.portage.app/items/uuid/photo-1.jpg",
+    "key": "items/uuid/2026/07/17/a1b2c3.jpg",
+    "url": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/a1b2c3.jpg",
     "width": 2048,
     "height": 2048,
     "size": 524288
   },
   "thumbnail": {
-    "key": "items/uuid/photo-1_thumb.jpg",
-    "url": "https://images.portage.app/items/uuid/photo-1_thumb.jpg"
+    "key": "items/uuid/2026/07/17/b2c3d4_thumb.jpg",
+    "url": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/b2c3d4_thumb.jpg"
   }
 }
 ```
@@ -53,7 +53,7 @@ Server-side auto-enhancement via Sharp (auto-level, sharpen, color correction). 
 
 ```json
 {
-  "imageUrl": "https://images.portage.app/items/uuid/photo-1.jpg"
+  "imageUrl": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/a1b2c3.jpg"
 }
 ```
 
@@ -62,8 +62,8 @@ Server-side auto-enhancement via Sharp (auto-level, sharpen, color correction). 
 ```json
 {
   "image": {
-    "key": "items/uuid/photo-1-enhanced.jpg",
-    "url": "https://images.portage.app/items/uuid/photo-1-enhanced.jpg",
+    "key": "items/uuid/2026/07/17/c3d4e5_enhanced.jpg",
+    "url": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/c3d4e5_enhanced.jpg",
     "width": 2048,
     "height": 2048,
     "size": 498000
@@ -79,15 +79,31 @@ POST /images/remove-bg
 
 **Auth:** Required
 
-Background removal is handled **client-side** via `@imgly/background-removal` WASM module. This endpoint exists as a server-side fallback.
+Background removal is handled **server-side** by the `portage-rembg` container (reached via `REMBG_URL`, model `isnet-general-use`). The transparent cutout is flattened onto a white background (eBay's preferred background) and re-uploaded as a JPEG. Billing-gated per tier — see [Billing Gates](#billing-gates).
 
 **Body:**
 
 ```json
 {
-  "imageUrl": "https://images.portage.app/items/uuid/photo-1.jpg"
+  "imageUrl": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/a1b2c3.jpg"
 }
 ```
+
+**Response** `200`:
+
+```json
+{
+  "image": {
+    "key": "items/uuid/2026/07/17/d4e5f6_nobg.jpg",
+    "url": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/d4e5f6_nobg.jpg",
+    "size": 412000
+  }
+}
+```
+
+**Errors:** `400 INVALID_ORIGIN` (URL not from Portage storage), `400 FETCH_FAILED` (source image could not be fetched), `400 FILE_TOO_LARGE` (over the 20 MB fetch limit), `429 BG_REMOVAL_LIMIT_REACHED` (monthly limit), `502 BG_REMOVAL_FAILED` (rembg service error — no credit is deducted).
+
+The same `INVALID_ORIGIN` / `FETCH_FAILED` / `FILE_TOO_LARGE` codes apply to all URL-based image endpoints (enhance, rotate, exposure, crop). A URL passes the origin check only when it starts with the configured `R2_PUBLIC_URL` or with `https://portage-images.digitalharmonyai.com/` — everything else is rejected with `INVALID_ORIGIN`.
 
 ### Rotate Image
 
@@ -103,7 +119,7 @@ Rotates an image by the specified degrees (90, 180, 270).
 
 ```json
 {
-  "imageUrl": "https://images.portage.app/items/uuid/photo-1.jpg",
+  "imageUrl": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/a1b2c3.jpg",
   "degrees": 90
 }
 ```
@@ -113,8 +129,8 @@ Rotates an image by the specified degrees (90, 180, 270).
 ```json
 {
   "image": {
-    "key": "items/uuid/photo-1-rotated.jpg",
-    "url": "https://images.portage.app/items/uuid/photo-1-rotated.jpg",
+    "key": "items/uuid/2026/07/17/e5f6a7_rotated.jpg",
+    "url": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/e5f6a7_rotated.jpg",
     "width": 2048,
     "height": 2048
   }
@@ -135,7 +151,7 @@ Adjusts exposure by an EV value between -2 and +2.
 
 ```json
 {
-  "imageUrl": "https://images.portage.app/items/uuid/photo-1.jpg",
+  "imageUrl": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/a1b2c3.jpg",
   "ev": 0.5
 }
 ```
@@ -154,7 +170,7 @@ Crops an image to the specified rectangle (pixel coordinates).
 
 ```json
 {
-  "imageUrl": "https://images.portage.app/items/uuid/photo-1.jpg",
+  "imageUrl": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/a1b2c3.jpg",
   "crop": { "x": 100, "y": 50, "width": 800, "height": 800 }
 }
 ```
@@ -164,23 +180,37 @@ Crops an image to the specified rectangle (pixel coordinates).
 ```json
 {
   "image": {
-    "key": "items/uuid/photo-1-cropped.jpg",
-    "url": "https://images.portage.app/items/uuid/photo-1-cropped.jpg",
+    "key": "items/uuid/2026/07/17/f6a7b8_cropped.jpg",
+    "url": "https://portage-images.digitalharmonyai.com/items/uuid/2026/07/17/f6a7b8_cropped.jpg",
     "width": 800,
     "height": 800
   }
 }
 ```
 
-### Delete Image
+### Fetch Image (authenticated proxy)
 
 ```
-DELETE /images
+GET /images/r2/*path
 ```
 
 **Auth:** Required (owner only)
 
-Deletes an image from storage by its key.
+Streams an R2 object through the API. The wildcard path is the R2 object key and must start with `items/{userId}/` — keys belonging to another user return `403 FORBIDDEN`. Responses are served with `Cache-Control: public, max-age=31536000, immutable`.
+
+### Delete Image
+
+```
+DELETE /images?key=<key>
+```
+
+**Auth:** Required (owner only)
+
+Deletes an image from storage. The R2 object key is passed as the `key` **query parameter** and must start with `items/{userId}/`.
+
+**Response** `200`: `{ "deleted": true }`
+
+**Errors:** `400 MISSING_KEY`, `403 FORBIDDEN` (key belongs to another user).
 
 ## Billing Gates
 
@@ -202,8 +232,10 @@ Images are stored in **Cloudflare R2** (S3-compatible object storage):
 ### Image Key Format
 
 ```
-items/{userId}/{filename}
+items/{userId}/{yyyy}/{mm}/{dd}/{uuid}{suffix}
 ```
+
+Every upload — including each processed result — gets a **fresh** key (upload date + random UUID); derived images are new objects, not renamed variants of the source. The suffix identifies the operation: `_thumb.jpg`, `_enhanced.jpg`, `_nobg.jpg`, `_rotated.jpg`, `_cropped.jpg`, `_exposure.jpg`.
 
 ### Photo Object Shape
 
@@ -211,10 +243,12 @@ items/{userId}/{filename}
 interface ItemPhoto {
   url: string;      // Public R2 URL
   key: string;      // R2 object key
-  width: number;
-  height: number;
-  isPrimary: boolean;
+  width?: number;
+  height?: number;
+  isPrimary?: boolean;
 }
 ```
 
-Items store photos as a JSONB array, allowing multiple photos per item (up to 12).
+`width`, `height`, and `isPrimary` are optional — only `url` and `key` are guaranteed on every photo.
+
+Items store photos as a JSONB array, allowing multiple photos per item (up to 24 — `MAX_PHOTOS_PER_ITEM`).
