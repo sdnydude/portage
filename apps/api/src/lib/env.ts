@@ -70,6 +70,13 @@ export const envSchema = z.object({
   // Dev-only identity when no Cloudflare edge is in front (LAN dev). Read
   // only when NODE_ENV=development, so it can never bypass auth elsewhere.
   CF_ACCESS_DEV_EMAIL: z.string().optional(),
+  // Langfuse LLM observability. Tracing stays off unless BOTH keys are present,
+  // so dev boxes, CI, and the test suite emit nothing without opting in.
+  LANGFUSE_PUBLIC_KEY: z.string().optional(),
+  LANGFUSE_SECRET_KEY: z.string().optional(),
+  LANGFUSE_BASE_URL: z.string().default('https://us.cloud.langfuse.com'),
+  // Fraction of traces exported, 0..1. Full sampling until volume justifies less.
+  LANGFUSE_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
 }).superRefine((value, ctx) => {
   // /auth/session is dead without an audience — surface the misconfiguration
   // at startup instead of 401-ing every login in production.

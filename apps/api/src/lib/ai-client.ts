@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import { observeOpenAI } from '@langfuse/openai';
 import { env } from './env.js';
 import { createLogger } from './logger.js';
 import { AppError } from '../middleware/error.js';
@@ -25,7 +26,11 @@ function getAnthropicClient(config: ProviderConfig): Anthropic {
 function getOpenAIClient(config: ProviderConfig): OpenAI {
   let client = openaiClients.get(config.name);
   if (!client) {
-    client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
+    // observeOpenAI emits a Langfuse `generation` per call with model, tokens,
+    // and cost. Gemini and the local models run through the OpenAI-compat API,
+    // so this covers them too. No-op when tracing is off. Anthropic gets the
+    // same treatment via the OpenInference patch in instrumentation.ts.
+    client = observeOpenAI(new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl }));
     openaiClients.set(config.name, client);
   }
   return client;

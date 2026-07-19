@@ -10,6 +10,7 @@ import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryCondition } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
+import { traceRequest } from '../lib/tracing.js';
 import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
 import { limitsForTier } from '@portage/shared';
 import type { PreparedListingData, PricingData, CompResult, ReverbCompResult, MarketplaceCacheEntry, ReverbCacheEntry } from '@portage/shared';
@@ -287,7 +288,26 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
 
     let aiFields;
     try {
-      aiFields = await generateListingFields({
+      aiFields = await traceRequest(
+        'prepare-listing',
+        {
+          userId,
+          tags: ['prepare-listing'],
+          metadata: {
+            itemId,
+            photoCount: String(photoUrls.length),
+            soldComps: String(ebayComps.sold.length),
+            activeComps: String(ebayComps.active.length),
+            reverbComps: String(reverbComps.listings.length),
+          },
+          input: {
+            brand: item.brand,
+            model: item.model,
+            category: item.category,
+            condition: item.condition,
+          },
+        },
+        async () => generateListingFields({
       scanData: {
         brand: item.brand,
         model: item.model,
@@ -322,7 +342,8 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
         packageType: profile?.defaultPackageType ?? 'box',
         currency,
       },
-    });
+        }),
+      );
     } catch (aiError) {
       // I2: Rollback reservation on AI failure — user not charged for failed calls
       if (usedCredit) {

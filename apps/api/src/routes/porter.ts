@@ -7,6 +7,7 @@ import { conversations, items, listings, users } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { chat, chatStream, type ToolDef, type StreamToolResult } from '../lib/ai-client.js';
+import { traceRequest, traceTool } from '../lib/tracing.js';
 import { limitsForTier } from '@portage/shared';
 import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
 
@@ -76,6 +77,12 @@ const tools: ToolDef[] = [
 ];
 
 async function executeToolCall(userId: string, name: string, input: Record<string, unknown>): Promise<string> {
+  // Both the streaming and non-streaming routes funnel through here, so one
+  // wrapper gives every Porter tool call its own `tool` observation.
+  return traceTool(name, input, () => runToolCall(userId, name, input));
+}
+
+async function runToolCall(userId: string, name: string, input: Record<string, unknown>): Promise<string> {
   switch (name) {
     case 'search_inventory': {
       const conditions = [eq(items.userId, userId)];
@@ -357,28 +364,45 @@ porterRouter.post('/stream', async (req, res, next) => {
     let inputTokens = 0;
     let outputTokens = 0;
     let accumulatedText = '';
+    let pills: ReturnType<typeof parseActionPills>['pills'] = [];
 
-    await chatStream(
-      chatMessages,
-      PORTER_SYSTEM,
-      tools,
-      (name, input) => executeToolCallStructured(userId, name, input),
-      (event) => {
-        if (event.type === 'text_delta') {
-          accumulatedText += event.text;
-          writeSSE(event);
-        } else if (event.type === 'tool_start' || event.type === 'tool_result') {
-          writeSSE(event);
-        } else if (event.type === 'done') {
-          finalModel = event.model;
-          inputTokens = event.inputTokens;
-          outputTokens = event.outputTokens;
-        }
+    // One trace per turn, grouped into a session by conversation id — the
+    // Sessions view then replays the whole conversation in order.
+    const finalText = await traceRequest(
+      'porter-chat-turn',
+      {
+        userId,
+        sessionId: conv.id,
+        tags: ['porter', 'stream'],
+        metadata: { tier, turn: String(conv.messages.length / 2 + 1) },
+        input: message,
+      },
+      async () => {
+        await chatStream(
+          chatMessages,
+          PORTER_SYSTEM,
+          tools,
+          (name, input) => executeToolCallStructured(userId, name, input),
+          (event) => {
+            if (event.type === 'text_delta') {
+              accumulatedText += event.text;
+              writeSSE(event);
+            } else if (event.type === 'tool_start' || event.type === 'tool_result') {
+              writeSSE(event);
+            } else if (event.type === 'done') {
+              finalModel = event.model;
+              inputTokens = event.inputTokens;
+              outputTokens = event.outputTokens;
+            }
+          },
+        );
+
+        const parsed = parseActionPills(accumulatedText);
+        pills = parsed.pills;
+        return parsed.cleanText.trim();
       },
     );
 
-    const { pills, cleanText } = parseActionPills(accumulatedText);
-    const finalText = cleanText.trim();
     if (pills.length > 0) writeSSE({ type: 'action_pills', pills });
 
     // Persist conversation using new blocks format
@@ -468,11 +492,24 @@ porterRouter.post('/message', async (req, res, next) => {
       content: m.content,
     }));
 
-    const { text: assistantMessage } = await chat(
-      chatMessages,
-      PORTER_SYSTEM,
-      tools,
-      (name, input) => executeToolCall(userId, name, input),
+    const assistantMessage = await traceRequest(
+      'porter-chat-turn',
+      {
+        userId,
+        sessionId: conv.id,
+        tags: ['porter', 'non-streaming'],
+        metadata: { tier },
+        input: message,
+      },
+      async () => {
+        const { text } = await chat(
+          chatMessages,
+          PORTER_SYSTEM,
+          tools,
+          (name, input) => executeToolCall(userId, name, input),
+        );
+        return text;
+      },
     );
 
     history.push({ role: 'assistant', content: assistantMessage });
