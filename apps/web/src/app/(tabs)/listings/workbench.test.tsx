@@ -57,12 +57,36 @@ describe("Listings workbench (lg master-detail)", () => {
 
   afterEach(() => {
     window.history.replaceState(null, "", "/");
+    // Restore the default listings mock so a per-test override (mockReturnValue)
+    // can't bleed into the next test.
+    useListingsMock.mockReset();
+    useListingsMock.mockImplementation(() => ({
+      listings: h.listings,
+      isLoading: false,
+      error: null as string | null,
+      refetch: vi.fn(),
+    }));
   });
 
   it("opens the listing's item in the pane with the listing focused", () => {
     render(<ListingsPage />);
     const workbench = screen.getByTestId("workbench");
     fireEvent.click(within(workbench).getByRole("button", { name: /strat/i }));
+    expect(within(workbench).getByTestId("item-detail-stub")).toHaveTextContent("i1:l1");
+  });
+
+  // Parity with the inventory pane (fetch-by-id, survives filter-out): once a
+  // listing is opened, filtering it out of the loaded set must NOT clear the
+  // pane. Previously selectedListing derived from listings.find() alone, so a
+  // status-filter change collapsed the pane to the empty hint.
+  it("keeps the pane open when the selected listing filters out of the list", () => {
+    render(<ListingsPage />);
+    const workbench = screen.getByTestId("workbench");
+    fireEvent.click(within(workbench).getByRole("button", { name: /strat/i }));
+    expect(within(workbench).getByTestId("item-detail-stub")).toHaveTextContent("i1:l1");
+    // l1 no longer in the loaded (status-filtered) set.
+    useListingsMock.mockReturnValue({ listings: [h.listings[1]], isLoading: false, error: null, refetch: vi.fn() });
+    fireEvent.click(within(workbench).getByRole("button", { name: /drafts/i }));
     expect(within(workbench).getByTestId("item-detail-stub")).toHaveTextContent("i1:l1");
   });
 
