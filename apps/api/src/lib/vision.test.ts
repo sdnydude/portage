@@ -69,6 +69,20 @@ describe('identifyItem', () => {
     expect(result.suggestedTags).toEqual(['headphones', 'wireless', 'sony', 'noise-cancelling']);
   });
 
+  it('clamps an over-long conditionNotes to what POST /items will accept', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify({ ...VALID_VISION_JSON, conditionNotes: 'A'.repeat(2500) }),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    const result = await identifyItem('base64data', 'image/jpeg');
+
+    expect(result.conditionNotes).toHaveLength(2000);
+  });
+
   it('parses JSON wrapped in markdown fences', async () => {
     const fenced = '```json\n' + JSON.stringify(VALID_VISION_JSON) + '\n```';
     vi.mocked(analyzeImage).mockResolvedValue({
