@@ -133,7 +133,18 @@ export default function ListingsPage() {
   const { listings, isLoading, error, refetch } = useListings({ status: statusFilter || undefined });
   const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<Listing>();
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
-  const selectedListing = listings.find((l) => l.id === selectedListingId) ?? null;
+  // Parity with the inventory pane (which passes a raw id to a fetch-by-id
+  // ItemDetail and so survives filter-out): cache the last resolved listing so
+  // a status-filter change that drops it from the loaded set keeps the pane
+  // open instead of collapsing to the empty hint.
+  const [selectedSnapshot, setSelectedSnapshot] = useState<Listing | null>(null);
+  const foundListing = listings.find((l) => l.id === selectedListingId) ?? null;
+  useEffect(() => {
+    if (foundListing) setSelectedSnapshot(foundListing);
+    else if (selectedListingId === null) setSelectedSnapshot(null);
+  }, [foundListing, selectedListingId]);
+  const selectedListing =
+    foundListing ?? (selectedSnapshot?.id === selectedListingId ? selectedSnapshot : null);
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("listing");
