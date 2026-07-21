@@ -16,6 +16,7 @@ import { ListingOptimizerPanel } from "@/components/listing/listing-optimizer-pa
 import { CropTool } from "@/components/listing-flow/crop-tool";
 import { ExposureTool } from "@/components/capture/exposure-tool";
 import { useComps } from "@/hooks/use-comps";
+import { usePublishCurrentItem } from "@/hooks/use-current-item";
 import { api, apiUpload } from "@/lib/api";
 import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 import type { CompListing, ItemPhoto } from "@portage/shared";
@@ -52,6 +53,8 @@ export function ItemDetail({
 }: ItemDetailProps) {
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
+  // Publish the on-screen item so the Porter dock is context-aware (Phase R3).
+  usePublishCurrentItem(itemId);
   const { item, isLoading, error, deleteItem, updateItem, refetch: refetchItem } = useItem(itemId);
   const { isProcessing: isEnhancing, result: enhanceResult, error: enhanceError, enhance, reset: resetEnhance } = useEnhance();
   const { isProcessing: isRemovingBg, resultUrl: bgResultUrl, resultKey: bgResultKey, error: bgError, removeBackground, reset: resetBgRemoval } = useBgRemoval();

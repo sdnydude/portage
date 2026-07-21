@@ -16,6 +16,7 @@ import { api, ApiError } from "@/lib/api";
 import { useExport } from "@/hooks/use-export";
 import { ItemDetail } from "@/components/inventory/item-detail";
 import { MasterDetail } from "@/components/workbench/master-detail";
+import { DesktopIngestPanel } from "@/components/workbench/desktop-ingest-panel";
 import { useListNav } from "@/hooks/use-list-nav";
 
 function ExportButton() {
@@ -482,6 +483,7 @@ export default function InventoryPage() {
       <MasterDetail
         listLabel="Inventory list"
         list={
+          <DesktopIngestPanel>
           <div
             ref={listPaneRef}
             className="space-y-3 p-4 outline-none"
@@ -556,6 +558,7 @@ export default function InventoryPage() {
               />
             )}
           </div>
+          </DesktopIngestPanel>
         }
         detail={
           selectedId ? (

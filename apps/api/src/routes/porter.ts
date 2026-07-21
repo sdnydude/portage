@@ -204,6 +204,19 @@ export function normalizeConversationMessages(
   });
 }
 
+// First user message text, truncated — a scannable preview for the Porter
+// conversation-history list (Phase R3). Reuses the normalizer so it handles
+// both persisted message shapes ({role,content} and {role,blocks}).
+export function conversationPreview(messages: unknown[], maxLen = 80): string {
+  const normalized = normalizeConversationMessages(messages);
+  const firstUser = normalized.find((m) => m.role === 'user');
+  const text = (firstUser?.blocks ?? [])
+    .map((b) => b.text)
+    .join(' ')
+    .trim();
+  return text.length > maxLen ? `${text.slice(0, maxLen).trimEnd()}…` : text;
+}
+
 export function parseActionPills(text: string): { pills: Array<{ label: string; message: string }>; cleanText: string } {
   const match = text.match(/<actions>([\s\S]*?)<\/actions>/i);
   if (!match) return { pills: [], cleanText: text };
@@ -236,13 +249,22 @@ porterRouter.get('/conversations', async (req, res, next) => {
       id: conversations.id,
       createdAt: conversations.createdAt,
       updatedAt: conversations.updatedAt,
+      messages: conversations.messages,
     })
       .from(conversations)
       .where(eq(conversations.userId, userId))
       .orderBy(desc(conversations.updatedAt))
       .limit(20);
 
-    res.json({ conversations: results });
+    // Derive a scannable preview; don't ship the full message payload in the list.
+    res.json({
+      conversations: results.map((c) => ({
+        id: c.id,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        preview: conversationPreview((c.messages as unknown[]) ?? []),
+      })),
+    });
   } catch (err) {
     next(err);
   }

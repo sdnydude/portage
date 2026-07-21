@@ -6,7 +6,7 @@ Next.js 16 frontend. See root CLAUDE.md for architecture overview.
 
 ```
 src/app/
-├── (tabs)/          # 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button; More via avatar menu
+├── (tabs)/          # 4 tabs (Home, Inventory, Porter, Orders) + center Scan button; Listings reached via Home/Inventory; More via avatar menu
 │   ├── home/        # Dashboard
 │   ├── inventory/   # Item grid/list
 │   ├── listings/    # Active/sold

@@ -17,6 +17,11 @@ vi.mock("@/components/layout/sidebar", () => ({
 vi.mock("@/components/layout/top-bar", () => ({
   TopBar: () => <div data-testid="top-bar" />,
 }));
+// PorterDock consumes Porter + current-item contexts; mock it so AppShell
+// structure tests stay context-free (it renders the dock-slot aside).
+vi.mock("@/components/porter/porter-dock", () => ({
+  PorterDock: () => <aside data-testid="dock-slot" />,
+}));
 
 describe("AppShell", () => {
   it("mounts the shell on admin routes too — no admin carve-out", () => {

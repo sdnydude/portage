@@ -148,7 +148,7 @@ npx tsx apps/api/src/scripts/promote-admin.ts <email>
 | Display font | Instrument Sans |
 | Body font | Plus Jakarta Sans |
 | Mono font | JetBrains Mono |
-| Layout | Mobile-first; 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button; More via avatar menu |
+| Layout | Mobile-first; 4 tabs (Home, Inventory, Porter, Orders) + center Scan button; Listings reached from Home/Inventory (dropped from the bar 2026-07-17, PR #240); More via avatar menu |
 
 ---
 
@@ -185,7 +185,7 @@ Original roadmap essentially complete — a 2026-07-17 recount found the docs/TO
 **Done:** see docs/TODO.md and website/docs/ship-log/ for the full change
 history. Highlights: eBay Trade-First lifecycle (PR #133), CF Access auth
 (PRs #168-172), Reverb publish live-proven (PRs #173-177), listing-hub merge
-(PRs #207-213), responsive shell R0 (PR #229). Test suite: 687 API / 526 web as of 2026-07-18.
+(PRs #207-213), responsive shell R0 (PR #229). Test suite: 704 API / 528 web as of 2026-07-20.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.

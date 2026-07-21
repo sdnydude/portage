@@ -10,7 +10,7 @@ import type {
   TextBlock,
 } from "@portage/shared";
 
-import { API_BASE } from "@/lib/api";
+import { api, API_BASE } from "@/lib/api";
 
 export interface StreamingBlock {
   type: "text" | "tool";
@@ -29,6 +29,7 @@ export interface PorterStreamState {
   conversationId: string | null;
   sendMessage: (message: string) => Promise<void>;
   startNewChat: () => void;
+  loadConversation: (id: string) => Promise<void>;
 }
 
 export function usePorterStream(): PorterStreamState {
@@ -188,6 +189,43 @@ export function usePorterStream(): PorterStreamState {
     streamingRef.current = [];
   }, []);
 
+  // Resume a past conversation (Phase R3). Normalizes both persisted shapes
+  // ({role,blocks} from /stream, {role,content} from /message) to RichMessage.
+  const loadConversation = useCallback(
+    async (id: string) => {
+      if (!token) return;
+      try {
+        const conv = await api<{
+          id: string;
+          messages: Array<{
+            role: string;
+            content?: string;
+            blocks?: ContentBlock[];
+          }>;
+        }>(`/porter/conversations/${id}`, { token });
+        const loaded: RichMessage[] = (conv.messages ?? []).map((m) =>
+          m.blocks
+            ? { role: m.role as RichMessage["role"], blocks: m.blocks }
+            : {
+                role: m.role as RichMessage["role"],
+                blocks: [{ type: "text", text: m.content ?? "" } as TextBlock],
+              },
+        );
+        setMessages(loaded);
+        setConversationId(id);
+        setPills([]);
+        setError(null);
+        setStreamingBlocks([]);
+        streamingRef.current = [];
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "Failed to load conversation",
+        );
+      }
+    },
+    [token],
+  );
+
   return {
     messages,
     isStreaming,
@@ -197,5 +235,6 @@ export function usePorterStream(): PorterStreamState {
     conversationId,
     sendMessage,
     startNewChat,
+    loadConversation,
   };
 }
