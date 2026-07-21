@@ -128,6 +128,25 @@ describe('Billing gate in prepare-listing', () => {
     expect(res.status).toBe(200);
   });
 
+  it('allows a beta-tester (null = unlimited limit) — live 429 repro 2026-07-21', async () => {
+    // The reserve UPDATE's ceiling is SQL `aiListingsThisMonth < ${limit}`;
+    // with limit null that comparison is NULL -> no row -> the gate read
+    // "unlimited" as "zero" and 429'd ("AI listing limit reached (null/month)").
+    // updateResult [] simulates that failed conditional reserve — an unlimited
+    // tier must never depend on it.
+    mockDbSequence(
+      [[baseItem], [], [{ ...baseUser, subscriptionTier: 'beta-tester', aiListingsThisMonth: 999, aiListingCredits: 0 }]],
+      [],
+    );
+
+    const res = await request(app)
+      .post('/items/item-1/prepare-listing')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetMarketplaces: ['ebay'] });
+
+    expect(res.status).toBe(200);
+  });
+
   it('returns 404 for missing item WITHOUT consuming a credit', async () => {
     mockDbSequence([[], [], [baseUser]]);
 

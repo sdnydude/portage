@@ -3,21 +3,24 @@ import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
 
-const { mockReverbCreateListing, mockReverbUpdateListing, mockReverbDeleteListing, mockReverbSearchCategories, ReverbAdapterMock } = vi.hoisted(() => {
+const { mockReverbCreateListing, mockReverbUpdateListing, mockReverbDeleteListing, mockReverbSearchCategories, mockReverbGetListingStatus, ReverbAdapterMock } = vi.hoisted(() => {
   const mockReverbCreateListing = vi.fn();
   const mockReverbUpdateListing = vi.fn();
   const mockReverbDeleteListing = vi.fn();
   const mockReverbSearchCategories = vi.fn();
+  const mockReverbGetListingStatus = vi.fn();
   return {
     mockReverbCreateListing,
     mockReverbUpdateListing,
     mockReverbDeleteListing,
     mockReverbSearchCategories,
+    mockReverbGetListingStatus,
     ReverbAdapterMock: vi.fn(() => ({
       createListing: mockReverbCreateListing,
       updateListing: mockReverbUpdateListing,
       deleteListing: mockReverbDeleteListing,
       searchCategories: mockReverbSearchCategories,
+      getListingStatus: mockReverbGetListingStatus,
     })),
   };
 });
@@ -133,6 +136,64 @@ describe('POST /listings — reverb live publish', () => {
       shippingRates: [{ regionCode: 'US_CON', rate: { amount: '45.00', currency: 'USD' } }],
     });
     expect(mockReverbSearchCategories).not.toHaveBeenCalled();
+  });
+
+  it('enriches shippingProfileId and localPickup from the seller profile reverbDefaultShipping', async () => {
+    mockSelectOnce([GEAR_ITEM]);
+    mockInsertReturning([{ id: 'listing-1', status: 'draft' }]);
+    mockSelectOnce([{
+      ...PROFILE,
+      reverbDefaultShipping: { shippingProfileId: '456', local: true, rates: [] },
+    }]);
+    mockSelectOnce([{ footer: null }]);
+    mockReverbCreateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'reverb',
+        price: 2500,
+        publishMode: 'live',
+        disclaimerAccepted: true,
+      });
+
+    expect(res.status).toBe(201);
+    const input = mockReverbCreateListing.mock.calls[0][0];
+    expect(input.marketplaceSpecific.shippingProfileId).toBe('456');
+    expect(input.marketplaceSpecific.localPickup).toBe(true);
+  });
+
+  it('passes the item conditionNotes through to the adapter input', async () => {
+    mockSelectOnce([{ ...GEAR_ITEM, conditionNotes: 'Fret wear on 1-3, small chip on headstock.' }]);
+    mockInsertReturning([{ id: 'listing-1', status: 'draft' }]);
+    mockSelectOnce([PROFILE]);
+    mockSelectOnce([{ footer: null }]);
+    mockReverbCreateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'reverb',
+        price: 2500,
+        publishMode: 'live',
+        disclaimerAccepted: true,
+      });
+
+    expect(res.status).toBe(201);
+    const input = mockReverbCreateListing.mock.calls[0][0];
+    expect(input.conditionNotes).toBe('Fret wear on 1-3, small chip on headstock.');
   });
 
   it('falls back to a category search when no cache exists, persists the guess, and returns a warning', async () => {
@@ -282,6 +343,41 @@ describe('POST /listings/:id/publish — reverb', () => {
     });
   });
 
+  it('passes the item conditionNotes through to the adapter on draft publish', async () => {
+    mockSelectOnce([{ id: 'listing-1', userId: 'test-user-id', itemId: ITEM_ID, marketplace: 'reverb', status: 'draft', price: 2500, currency: 'USD', marketplaceSpecificFields: null, ebaySku: null }]);
+    mockSelectOnce([{ ...GEAR_ITEM, conditionNotes: 'Tuners replaced with Grovers.' }]);
+    mockSelectOnce([PROFILE]);
+    mockSelectOnce([{ footer: null }]);
+    mockReverbCreateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(mockReverbCreateListing.mock.calls[0][0].conditionNotes).toBe('Tuners replaced with Grovers.');
+  });
+
+  it('never creates a second Reverb listing when the draft row already has a marketplaceListingId — syncs the live status instead', async () => {
+    mockSelectOnce([{ id: 'listing-1', userId: 'test-user-id', itemId: ITEM_ID, marketplace: 'reverb', status: 'draft', price: 76.08, currency: 'USD', marketplaceSpecificFields: null, ebaySku: null, marketplaceListingId: '99270095' }]);
+    mockSelectOnce([GEAR_ITEM]);
+    mockReverbGetListingStatus.mockResolvedValueOnce('active');
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(mockReverbCreateListing).not.toHaveBeenCalled();
+    expect(mockReverbGetListingStatus).toHaveBeenCalledWith('99270095');
+  });
+
   it('surfaces the category-guess warning in the publish response', async () => {
     const LISTING_ID = '00000000-0000-0000-0000-00000000000a';
     mockSelectOnce([{
@@ -320,6 +416,86 @@ describe('POST /listings/:id/publish — reverb', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.warning).toMatch(/category guessed/i);
+  });
+});
+
+describe('GET /listings — reverb async-publish status refresh', () => {
+  // Live-verified 2026-07-21: all 6 production reverb rows sat status=draft
+  // while the listings were live (4) or sold (2) on Reverb — the create
+  // response reports a non-live state and nothing ever re-checked. The list
+  // fetch is the natural sync point.
+  it('completes a parked publish on list fetch when the remote listing is still a draft (publish PUT flips it live)', async () => {
+    const staleRow = {
+      id: 'listing-1', userId: 'test-user-id', itemId: ITEM_ID, marketplace: 'reverb',
+      status: 'draft', price: 189, currency: 'USD', marketplaceListingId: '99606179',
+      publishedAt: null, itemTitle: 'Pelican Case',
+    };
+    vi.mocked(db.select)
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                  offset: vi.fn().mockResolvedValue([staleRow]),
+                }),
+              }),
+            }),
+          }),
+        }),
+      } as any)
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 1 }]),
+        }),
+      } as any);
+    // Remote is a draft: the public status read cannot see it -> 'unknown'.
+    mockReverbGetListingStatus.mockResolvedValueOnce('unknown');
+    mockReverbUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '99606179', marketplaceUrl: 'u', status: 'active' });
+
+    const res = await request(app)
+      .get('/listings')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockReverbUpdateListing).toHaveBeenCalledWith('99606179', { marketplaceSpecific: { publish: true } });
+    expect(res.body.listings[0].status).toBe('active');
+  });
+
+  it('flips a stale reverb draft row to its live remote status on list fetch', async () => {
+    const staleRow = {
+      id: 'listing-1', userId: 'test-user-id', itemId: ITEM_ID, marketplace: 'reverb',
+      status: 'draft', price: 76.08, currency: 'USD', marketplaceListingId: '99270095',
+      publishedAt: null, itemTitle: 'ESI MoCo',
+    };
+    vi.mocked(db.select)
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                  offset: vi.fn().mockResolvedValue([staleRow]),
+                }),
+              }),
+            }),
+          }),
+        }),
+      } as any)
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 1 }]),
+        }),
+      } as any);
+    mockReverbGetListingStatus.mockResolvedValueOnce('active');
+
+    const res = await request(app)
+      .get('/listings')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockReverbGetListingStatus).toHaveBeenCalledWith('99270095');
+    expect(res.body.listings[0].status).toBe('active');
   });
 });
 
@@ -448,6 +624,24 @@ describe('PATCH /listings/:id — reverb marketplace sync', () => {
 
     expect(res.status).toBe(200);
     expect(mockReverbDeleteListing).toHaveBeenCalledWith('87654321');
+  });
+});
+
+describe('DELETE /listings/:id — reverb remote-draft cleanup', () => {
+  // A reverb row can be status=draft while the listing EXISTS remotely (async
+  // publish window / remote draft). Deleting only the local row orphans the
+  // Reverb listing — found live 2026-07-21 cleaning up a repro listing.
+  it('ends the remote Reverb listing even when the local row is still draft', async () => {
+    mockSelectOnce([{ id: 'listing-1', userId: 'test-user-id', itemId: ITEM_ID, marketplace: 'reverb', status: 'draft', marketplaceListingId: '99606073' }]);
+    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockResolvedValue([]) } as any);
+    mockReverbDeleteListing.mockResolvedValueOnce(undefined);
+
+    const res = await request(app)
+      .delete('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockReverbDeleteListing).toHaveBeenCalledWith('99606073');
   });
 });
 

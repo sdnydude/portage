@@ -129,8 +129,15 @@ async function applyReverbEnrichment(
     .from(sellerProfiles)
     .where(eq(sellerProfiles.userId, userId))
     .limit(1);
-  const rates = (profile?.reverbDefaultShipping as { rates?: unknown[] } | null)?.rates;
-  if (!ms.shippingRates && rates && rates.length > 0) ms.shippingRates = rates;
+  const shipDefaults = profile?.reverbDefaultShipping as {
+    shippingProfileId?: string; rates?: unknown[]; local?: boolean;
+  } | null;
+  // Reverb-recommended: reference a Reverb-side shipping profile by id.
+  // Per-listing rates remain as the legacy fallback; local pickup rides along
+  // so a pickup-only seller can publish (Reverb requires one or the other).
+  if (!ms.shippingProfileId && shipDefaults?.shippingProfileId) ms.shippingProfileId = shipDefaults.shippingProfileId;
+  if (!ms.shippingRates && shipDefaults?.rates && shipDefaults.rates.length > 0) ms.shippingRates = shipDefaults.rates;
+  if (ms.localPickup === undefined && shipDefaults?.local !== undefined) ms.localPickup = shipDefaults.local;
   if (profile) ms.offersEnabled = profile.reverbOffersEnabled ?? true;
 
   // Never-prepared items carry no cached category. A Reverb publish without one
@@ -302,6 +309,43 @@ listingsRouter.get('/', async (req, res, next) => {
         .from(listings)
         .where(and(...conditions)),
     ]);
+
+    // Reverb flips listings live asynchronously after a publish:true create
+    // (photo ingest), so local rows can sit 'draft' while the marketplace
+    // listing is already live — or sold. The list fetch is the sync point:
+    // re-check the few stale candidates (bounded) and persist what Reverb says.
+    // Best-effort — getListingStatus never throws (collapses to 'unknown').
+    const staleReverb = results
+      .filter(l => l.marketplace === 'reverb' && l.status === 'draft' && l.marketplaceListingId)
+      .slice(0, 10);
+    if (staleReverb.length > 0) {
+      const reverbAdapter = getAdapter(userId, 'reverb');
+      await Promise.all(staleReverb.map(async (row) => {
+        let remote = await reverbAdapter.getListingStatus(row.marketplaceListingId!);
+        // 'unknown' here almost always means the listing is still a remote
+        // DRAFT (drafts are invisible to the public read). A reverb row with a
+        // marketplaceListingId only exists because a live publish was intended
+        // and parked (Reverb blocks publish until its async image ingest
+        // finishes) — so complete that intent: PUT publish on the existing
+        // listing. Harmless if the listing is gone/blocked (best-effort catch).
+        if (remote === 'unknown') {
+          try {
+            const retried = await reverbAdapter.updateListing(row.marketplaceListingId!, {
+              marketplaceSpecific: { publish: true },
+            });
+            if (retried.status === 'active') remote = 'active';
+          } catch (err) {
+            logger.info({ userId, listingId: row.id, error: (err as Error).message }, 'Reverb parked-publish retry not completed');
+          }
+        }
+        if (remote !== 'active' && remote !== 'sold') return;
+        await db.update(listings)
+          .set({ status: remote, publishedAt: row.publishedAt ?? new Date(), updatedAt: new Date() })
+          .where(and(eq(listings.id, row.id), eq(listings.userId, userId)));
+        row.status = remote;
+        logger.info({ userId, listingId: row.id, remote }, 'Reverb async publish detected — local status synced');
+      }));
+    }
 
     res.json({
       listings: results,
@@ -495,6 +539,7 @@ listingsRouter.post('/', async (req, res, next) => {
         currency: body.currency,
         category: item.category,
         condition: item.condition,
+        conditionNotes: item.conditionNotes,
         photos,
         quantity: item.quantity,
         brand: item.brand,
@@ -652,6 +697,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             price: updated.price,
             currency: updated.currency,
             condition: item.condition,
+            conditionNotes: item.conditionNotes,
             quantity: item.quantity,
             brand: item.brand,
             model: item.model,
@@ -708,6 +754,30 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
 
     const adapter = getAdapter(userId, listing.marketplace);
     const photos = (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [];
+
+    // A reverb draft row that already carries a marketplaceListingId EXISTS on
+    // Reverb — the create succeeded and the live-flip is async (photo ingest).
+    // Publishing again must never POST a second listing (double-list). If the
+    // remote listing already went live/sold, just sync the row; only a genuine
+    // remote draft proceeds below, where the publish rides a PUT (update), not
+    // a create.
+    const isExistingReverbListing = listing.marketplace === 'reverb' && !!listing.marketplaceListingId;
+    if (isExistingReverbListing) {
+      const remote = await adapter.getListingStatus(listing.marketplaceListingId!);
+      if (remote === 'active' || remote === 'sold') {
+        const [synced] = await db.update(listings)
+          .set({
+            status: remote,
+            publishedAt: listing.publishedAt ?? new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(listings.id, listing.id), eq(listings.userId, userId)))
+          .returning();
+        logger.info({ userId, listingId: listing.id, remote }, 'Reverb listing already published remotely — synced local status');
+        res.json({ ...synced, warning: remote === 'sold' ? 'This listing already sold on Reverb — nothing was re-published.' : undefined });
+        return;
+      }
+    }
 
     // Self-heal the eBay leaf category: drafts created without prepare-listing (seeded,
     // photo-first, quick-list) have no categoryId, which publish requires. Resolve it
@@ -786,13 +856,14 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       .where(eq(sellerProfiles.userId, userId))
       .limit(1);
 
-    const result = await adapter.createListing({
+    const publishInput = {
       title: item.title,
       description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(listing.marketplace)),
       price: listing.price,
       currency: listing.currency,
       category: item.category,
       condition: item.condition,
+      conditionNotes: item.conditionNotes,
       photos,
       quantity: item.quantity,
       brand: item.brand,
@@ -809,8 +880,18 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
         ? (listing.ebaySku ?? await ensureItemEbaySku(item))
         : (listing.ebaySku ?? undefined),
       // POST /:id/publish is always a live publish — state it explicitly.
-      publishMode: 'live',
-    });
+      publishMode: 'live' as const,
+    };
+
+    // Existing remote Reverb draft: push the publish onto the EXISTING listing
+    // via PUT (adapter maps marketplaceSpecific.publish to publish:"true") —
+    // POSTing a create here is what double-listed. Everything else creates.
+    const result = isExistingReverbListing
+      ? await adapter.updateListing(listing.marketplaceListingId!, {
+          ...publishInput,
+          marketplaceSpecific: { ...(publishInput.marketplaceSpecific ?? {}), publish: true },
+        })
+      : await adapter.createListing(publishInput);
 
     const [updated] = await db.update(listings)
       .set({
@@ -851,7 +932,11 @@ listingsRouter.delete('/:id', async (req, res, next) => {
 
     // Under Trade-First an eBay listing is either published (has a Trading ItemID =
     // marketplaceListingId) or a DB-only draft with nothing live to clean up.
-    if (listing.marketplaceListingId && listing.status === 'active') {
+    // Reverb differs: a draft row WITH a marketplaceListingId exists remotely
+    // (remote draft / async-publish window) — skipping the remote delete
+    // orphans a listing on Reverb that can still go live later.
+    if (listing.marketplaceListingId
+      && (listing.status === 'active' || listing.marketplace === 'reverb')) {
       try {
         const adapter = getAdapter(userId, listing.marketplace);
         await adapter.deleteListing(listing.marketplaceListingId);

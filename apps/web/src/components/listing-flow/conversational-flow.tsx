@@ -950,9 +950,9 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
                 onFieldChange={(field, value) => flow.setField(field as keyof typeof state, value as never)}
                 onPriceChange={(price) => flow.setField("price", price)}
                 onQuantityChange={(q) => flow.setField("quantity", q)}
-                onPublish={(marketplace, publishMode, aspects) => {
+                onPublish={(marketplace, publishMode, aspects, reverbCategoryUuid) => {
                   flow.setField("marketplace", marketplace);
-                  runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode, aspects });
+                  runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode, aspects, reverbCategoryUuid });
                 }}
                 isPublishing={state.publishStatus === "publishing"}
                 sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}

@@ -74,6 +74,34 @@ export function buildMarketplaceCacheEntries(
 }
 
 /**
+ * The vision prompt asks the model for Reverb categoryUuid/conditionUuid with
+ * no list of valid values, so it invents them. An invented UUID either 422s at
+ * Reverb or (when blank) falls through to the publish-time category guess.
+ * Keep an AI UUID only when it exists in the real list; otherwise resolve by
+ * name against the live condition list / category search, else blank the pair
+ * so downstream treats it as unresolved rather than trusting a hallucination.
+ */
+export function sanitizeReverbAiFields<T extends {
+  categoryUuid?: string | null; categoryName?: string | null;
+  conditionUuid?: string | null; conditionName?: string | null;
+}>(
+  ai: T,
+  validConditions: Array<{ uuid: string; displayName: string }>,
+  categoryMatches: Array<{ id: string; name: string }>,
+): T {
+  const condition = validConditions.find(c => c.uuid === ai.conditionUuid)
+    ?? validConditions.find(c => c.displayName.toLowerCase() === (ai.conditionName ?? '').toLowerCase());
+  const category = categoryMatches.find(c => c.id === ai.categoryUuid) ?? categoryMatches[0];
+  return {
+    ...ai,
+    categoryUuid: category?.id ?? '',
+    categoryName: category?.name ?? '',
+    conditionUuid: condition?.uuid ?? '',
+    conditionName: condition?.displayName ?? '',
+  };
+}
+
+/**
  * A degraded comps result means the Reverb API call itself failed — the empty
  * list is "couldn't ask", not "no comparable listings", and pricing built on
  * it deserves a seller-visible caveat.
@@ -205,7 +233,17 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     const effectiveTier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
     const limit = effectiveLimits(effectiveTier, billingUser.limitOverrides).aiListingsPerMonth;
 
-    // C2: Atomic reserve — try monthly allocation first
+    // C2: Atomic reserve — try monthly allocation first. A null limit means
+    // UNLIMITED (pro/beta tiers): it must skip the SQL ceiling entirely —
+    // `count < NULL` is NULL, so the conditional reserve matches no row and
+    // unlimited read as zero (live 429 "(null/month)" repro 2026-07-21).
+    let usedCredit = false;
+    if (limit === null) {
+      await db.update(users)
+        .set({ aiListingsThisMonth: sql`${users.aiListingsThisMonth} + 1` })
+        .where(eq(users.id, userId))
+        .returning({ aiListingsThisMonth: users.aiListingsThisMonth });
+    } else {
     const reserved = await db.update(users)
       .set({ aiListingsThisMonth: sql`${users.aiListingsThisMonth} + 1` })
       .where(and(
@@ -214,7 +252,6 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       ))
       .returning({ aiListingsThisMonth: users.aiListingsThisMonth });
 
-    let usedCredit = false;
     if (reserved.length === 0) {
       // Monthly limit hit — try credit path
       const credited = await db.update(users)
@@ -229,6 +266,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
         throw new AppError(429, 'LIMIT_REACHED', `AI listing limit reached (${limit}/month). Upgrade or buy credits.`);
       }
       usedCredit = true;
+    }
     }
     // --- End billing gate ---
 
@@ -285,6 +323,18 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
 
     const currency = profile?.defaultCurrency ?? 'USD';
 
+    // The AI must pick the Reverb category FROM Reverb's real flat list —
+    // free-text names/invented uuids don't resolve. Cached 24h, public
+    // endpoint; a fetch failure just omits the list (sanitize still guards).
+    let reverbCategories: string[] | undefined;
+    if (targetMarketplaces.includes('reverb')) {
+      try {
+        reverbCategories = (await ReverbAdapter.getFlatCategories()).map(c => c.fullName);
+      } catch (catErr) {
+        logger.warn({ userId, itemId, error: (catErr as Error).message }, 'Reverb flat-category fetch failed — AI runs without the list');
+      }
+    }
+
     let aiFields;
     try {
       aiFields = await generateListingFields({
@@ -322,6 +372,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
         packageType: profile?.defaultPackageType ?? 'box',
         currency,
       },
+      reverbCategories,
     });
     } catch (aiError) {
       // I2: Rollback reservation on AI failure — user not charged for failed calls
@@ -335,6 +386,26 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
           .where(eq(users.id, userId));
       }
       throw aiError;
+    }
+
+    // Validate the AI's Reverb uuids against the live lists BEFORE they enter
+    // the cache or the response — hallucinated uuids must never persist. On a
+    // lookup failure (e.g. Reverb not connected) blank them instead: publish
+    // will 422 with guidance rather than send an invented uuid.
+    if (aiFields.reverb) {
+      try {
+        const [reverbConditions, reverbCats] = await Promise.all([
+          ReverbAdapter.getConditions(),
+          new ReverbAdapter(userId).searchCategories(
+            aiFields.reverb.categoryName || item.category || item.title,
+          ),
+        ]);
+        aiFields.reverb = sanitizeReverbAiFields(aiFields.reverb, reverbConditions, reverbCats);
+      } catch (reverbErr) {
+        logger.warn({ userId, itemId, error: (reverbErr as Error).message }, 'Reverb uuid validation failed — blanking AI-supplied uuids');
+        aiFields.reverb = { ...aiFields.reverb, categoryUuid: '', conditionUuid: '' };
+        warnings.push('Reverb category/condition could not be validated — pick them on the listing before publishing to Reverb.');
+      }
     }
 
     const cacheEntries = buildMarketplaceCacheEntries(aiFields, categorySuggestion);

@@ -295,6 +295,10 @@ export interface ListingFieldsInput {
   // instead of the text-only fallback.
   images?: ImageInput[];
   ebayCategorySuggestion: { categoryId: string; categoryName: string } | null;
+  // Reverb's real flat-category full_names (from /categories/flat). When
+  // present the model must pick reverb.categoryName VERBATIM from this list —
+  // free-text category names (and invented uuids) don't resolve on Reverb.
+  reverbCategories?: string[];
   requiredAspects: Record<string, { required: boolean; values: string[] | null }>;
   soldComps: Array<{ title: string; price: number; condition: string; soldDate: string | null }>;
   activeComps: Array<{ title: string; price: number; condition: string }>;
@@ -409,6 +413,10 @@ export async function generateListingFields(input: ListingFieldsInput): Promise<
 ${JSON.stringify(input.scanData, null, 2)}
 
 EBAY CATEGORY SUGGESTION: ${JSON.stringify(input.ebayCategorySuggestion)}
+${input.reverbCategories?.length ? `
+REVERB CATEGORIES (when filling reverb fields, copy the single best-fitting full name from THIS LIST verbatim into reverb.categoryName — never invent a category; leave reverb.categoryUuid as ""; if nothing on the list fits, set reverb to null):
+${input.reverbCategories.join('\n')}
+` : ''}
 
 REQUIRED ITEM SPECIFICS FOR THIS CATEGORY:
 ${JSON.stringify(input.requiredAspects, null, 2)}

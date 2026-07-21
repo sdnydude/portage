@@ -65,6 +65,18 @@ describe('PATCH /seller-profile', () => {
     expect(res.status).toBe(200);
   });
 
+  it('accepts a Reverb shipping profile reference without per-listing rates', async () => {
+    mockSelectOnce([{ id: 'sp-1' }]);
+    mockUpdateReturns([{ id: 'sp-1', reverbDefaultShipping: { shippingProfileId: '456', local: false } }]);
+
+    const res = await request(app)
+      .patch('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ reverbDefaultShipping: { shippingProfileId: '456', local: false } });
+
+    expect(res.status).toBe(200);
+  });
+
   it('rejects floor >= suggest percentile sent together', async () => {
     mockSelectOnce([{ id: 'sp-1', pricingSuggestPercentile: 50, pricingFloorPercentile: 25 }]);
 

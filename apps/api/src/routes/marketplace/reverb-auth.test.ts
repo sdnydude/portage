@@ -209,3 +209,35 @@ describe('DELETE /marketplace/reverb/disconnect', () => {
     expect(whereDelete).toHaveBeenCalled();
   });
 });
+
+describe('GET /marketplace/reverb/shipping-profiles', () => {
+  it('returns the shop shipping profiles via the adapter', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const spy = vi.spyOn(ReverbAdapter.prototype, 'getShippingProfiles')
+      .mockResolvedValueOnce([{ id: '456', name: 'Pedals + small gear' }]);
+
+    const res = await request(app)
+      .get('/marketplace/reverb/shipping-profiles')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ profiles: [{ id: '456', name: 'Pedals + small gear' }] });
+    spy.mockRestore();
+  });
+});
+
+describe('GET /marketplace/reverb/categories', () => {
+  it('returns the cached flat category list for the picker', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const spy = vi.spyOn(ReverbAdapter, 'getFlatCategories')
+      .mockResolvedValueOnce([{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion' }]);
+
+    const res = await request(app)
+      .get('/marketplace/reverb/categories')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ categories: [{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion' }] });
+    spy.mockRestore();
+  });
+});
