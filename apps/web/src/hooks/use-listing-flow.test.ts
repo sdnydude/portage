@@ -219,6 +219,39 @@ describe("useListingFlow.publish — draft-fallback warning", () => {
     });
   });
 
+  it("carries a picker-chosen reverb categoryUuid into marketplaceSpecificFields", async () => {
+    let listingsBody: { marketplaceSpecificFields?: Record<string, unknown> } | undefined;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {
+      if (path === "/items/i1" && opts?.method === "PATCH") return {};
+      if (path === "/items/i1") {
+        return {
+          id: "i1", title: "Pelican Case", description: "d", category: "cases", condition: "new",
+          brand: "Pelican", model: "VCV525", features: [], quantity: 1,
+          photos: [{ url: "https://example.com/p.jpg", key: "k1" }],
+          estimatedValueRecommended: 150, price: 189,
+          weightOz: 120, lengthIn: null, widthIn: null, heightIn: null,
+          ebayPackageType: null, weightEstimated: false,
+        };
+      }
+      if (path === "/listings") {
+        listingsBody = opts?.body as typeof listingsBody;
+        return { id: "L1", status: "active" };
+      }
+      throw new Error("unavailable: " + path);
+    });
+
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => { await result.current.startFromItem("i1"); });
+    act(() => { result.current.setField("marketplace", "reverb"); });
+    await act(async () => { await result.current.publish({ reverbCategoryUuid: "b1f4ce46" }); });
+
+    expect(listingsBody?.marketplaceSpecificFields).toEqual({
+      make: "Pelican",
+      model: "VCV525",
+      categoryUuid: "b1f4ce46",
+    });
+  });
+
   it("sends only make/model for reverb — offers are profile-owned server-side", async () => {
     let listingsBody: { marketplaceSpecificFields?: Record<string, unknown> } | undefined;
     apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {

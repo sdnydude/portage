@@ -24,6 +24,101 @@ function BackHeader() {
   );
 }
 
+// Reverb blocks publish without shipping ("Please set a shipping rate or
+// enable local pickup."). Reverb's recommended setup is a Reverb-side
+// shipping profile (created at reverb.com/my/selling/shipping_rates — no
+// create API) referenced by id; this section picks the default profile
+// applied to every Reverb publish.
+function ReverbShippingDefaults({ profile, token, onSaved }: {
+  profile: SellerProfile;
+  token: string | null;
+  onSaved: (profile: SellerProfile) => void;
+}) {
+  const stored = profile.reverbDefaultShipping as { shippingProfileId?: string; local?: boolean } | null;
+  const [options, setOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [profileId, setProfileId] = useState(stored?.shippingProfileId ?? "");
+  const [local, setLocal] = useState(stored?.local ?? false);
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    api<{ profiles: Array<{ id: string; name: string }> }>("/marketplace/reverb/shipping-profiles", { token })
+      .then(data => setOptions(data.profiles ?? []))
+      .catch(() => setNote("Could not load Reverb shipping profiles — check your Reverb connection"));
+  }, [token]);
+
+  const save = async () => {
+    if (!token) return;
+    setSaving(true);
+    setNote(null);
+    try {
+      const result = await api<{ profile: SellerProfile }>("/seller-profile", {
+        method: "PATCH",
+        body: {
+          reverbDefaultShipping: !profileId && !local
+            ? null
+            : { ...(profileId ? { shippingProfileId: profileId } : {}), local },
+        },
+        token,
+      });
+      onSaved(result.profile);
+      setNote("Saved");
+      setTimeout(() => setNote(null), 2000);
+    } catch (err) {
+      setNote(err instanceof Error && err.message ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 pt-2" style={{ borderTop: "1px solid rgba(0,0,0,0.08)" }}>
+      <label className="block text-sm">
+        <span className="font-medium mb-1 block">Reverb shipping profile</span>
+        <select
+          value={profileId}
+          onChange={e => setProfileId(e.target.value)}
+          aria-label="Reverb shipping profile"
+          className="w-full rounded-lg border px-3 py-2 text-sm"
+        >
+          <option value="">None selected</option>
+          {options.map(o => (
+            <option key={o.id} value={o.id}>{o.name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-3 text-sm">
+        <input
+          type="checkbox"
+          checked={local}
+          onChange={e => setLocal(e.target.checked)}
+          className="rounded"
+        />
+        <span>Offer local pickup</span>
+      </label>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          style={{ background: "#2D5A27" }}
+        >
+          {saving ? "Saving..." : "Save shipping"}
+        </button>
+        {note && <span className="text-xs" style={{ color: "rgba(0,0,0,0.5)" }}>{note}</span>}
+      </div>
+      <span className="text-xs block" style={{ color: "rgba(0,0,0,0.45)" }}>
+        Reverb requires shipping (a profile or local pickup) to publish. Profiles are managed on{" "}
+        <a href="https://reverb.com/my/selling/shipping_rates" target="_blank" rel="noreferrer" className="underline">
+          reverb.com
+        </a>
+        {" "}and applied to every Reverb listing published from Portage.
+      </span>
+    </div>
+  );
+}
+
 export default function SellerProfilePage() {
   const { token } = useAuth();
   const [profile, setProfile] = useState<SellerProfile | null>(null);
@@ -222,6 +317,7 @@ export default function SellerProfilePage() {
           />
           <span>Accept offers on Reverb listings</span>
         </label>
+        <ReverbShippingDefaults profile={profile} token={token} onSaved={setProfile} />
       </section>
 
       <section className="rounded-xl p-4 space-y-3" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>

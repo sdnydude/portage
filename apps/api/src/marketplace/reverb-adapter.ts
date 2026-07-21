@@ -21,6 +21,17 @@ const REVERB_BASE = 'https://api.reverb.com/api';
  * wants region_code. Accept both so client-supplied API-shaped rates pass
  * through untouched.
  */
+/**
+ * Reverb's listing API has no condition-notes/condition-description field
+ * (only the main description), so seller condition notes must be folded into
+ * the description body or they silently never reach the marketplace.
+ */
+export function appendConditionNotes(description: string, notes: string | null | undefined): string {
+  const trimmed = notes?.trim();
+  if (!trimmed) return description;
+  return `${description}\n\nCondition notes: ${trimmed}`;
+}
+
 function toReverbShippingRates(rates: unknown[]): unknown[] {
   return rates.map((r) => {
     const rate = r as { regionCode?: string; region_code?: string; rate: unknown };
@@ -52,6 +63,14 @@ const CONDITIONS_TTL = 24 * 60 * 60 * 1000;
 export function clearReverbConditionsCache(): void {
   cachedConditions = null;
   conditionsCachedAt = 0;
+}
+
+let cachedCategories: Array<{ uuid: string; fullName: string }> | null = null;
+let categoriesCachedAt = 0;
+
+export function clearReverbCategoriesCache(): void {
+  cachedCategories = null;
+  categoriesCachedAt = 0;
 }
 
 export class ReverbAdapter implements MarketplaceAdapter {
@@ -109,7 +128,9 @@ export class ReverbAdapter implements MarketplaceAdapter {
       make: input.brand ?? '',
       model: input.model ?? '',
       title: input.title,
-      description: input.description,
+      // Reverb has no condition-notes field (verified against the create-listings
+      // API doc 2026-07-21) — the description is the only place they can live.
+      description: appendConditionNotes(input.description, input.conditionNotes),
       condition: { uuid: conditionUuid },
       price: { amount: String(input.price), currency: input.currency },
       has_inventory: true,
@@ -127,8 +148,25 @@ export class ReverbAdapter implements MarketplaceAdapter {
     if (specific.year) body.year = specific.year;
     if (specific.finish) body.finish = specific.finish;
     if (specific.offersEnabled !== undefined) body.offers_enabled = specific.offersEnabled;
-    if (specific.shippingRates) {
+    // Reverb-recommended shipping: reference a Reverb-side shipping profile by
+    // id (per-listing rates are discouraged and redundant when a profile wins).
+    if (specific.shippingProfileId) {
+      body.shipping_profile_id = specific.shippingProfileId;
+    } else if (specific.shippingRates) {
       body.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
+    } else if (specific.localPickup) {
+      // Local-pickup-only sellers have no rates — Reverb accepts local:true
+      // alone, and publish requires one or the other.
+      body.shipping = { local: true };
+    }
+    // Reverb blocks publish on Brand New items without a UPC ("A valid UPC/EAN
+    // must be entered in the UPC field or the 'UPC does not apply' field must
+    // be marked true for a Brand New item"). Send a real UPC when the caller
+    // has one; otherwise flag does-not-apply for new-condition items.
+    if (specific.upc) {
+      body.upc = specific.upc;
+    } else if (input.condition === 'new') {
+      body.upc_does_not_apply = 'true';
     }
 
     const data = await this.request<{ listing: { id: number; state: string; _links?: { web?: { href?: string } } } }>(
@@ -138,13 +176,37 @@ export class ReverbAdapter implements MarketplaceAdapter {
 
     logger.info({ listingId: data.listing.id }, 'Reverb listing created');
 
+    let createdSlug = stateSlug(data.listing.state);
+    let stateWarning: string | undefined;
+    // Live-verified 2026-07-21: a POST whose publish:"true" fails Reverb's
+    // publish validation still returns 201 state=draft with NO error — the
+    // listing parks in Reverb drafts silently and never goes live on its own.
+    // A follow-up PUT publish either completes the publish or 422s with the
+    // exact blockers (e.g. "Please set a shipping rate or enable local
+    // pickup.") — surface those verbatim so the seller can act.
+    if (createdSlug !== 'live') {
+      try {
+        const retry = await this.request<{ listing?: { state?: string | { slug?: string } } }>(
+          `/listings/${data.listing.id}`,
+          { method: 'PUT', body: JSON.stringify({ publish: 'true' }) },
+        );
+        createdSlug = stateSlug(retry.listing?.state) ?? createdSlug;
+        if (createdSlug !== 'live') {
+          stateWarning = `Reverb saved the listing as a draft (state: ${createdSlug ?? 'unknown'}). Publish it from your Reverb drafts once the shop requirements are met.`;
+        }
+      } catch (err) {
+        const reason = err instanceof AppError ? err.message : 'Reverb did not report a reason';
+        stateWarning = `Reverb saved the listing as a draft — it cannot go live yet. Reverb reports: ${reason}`;
+      }
+    }
+
     return {
       marketplaceListingId: String(data.listing.id),
       // _links can be absent on shape drift / review-pending responses — never
       // crash a successful publish over the URL.
       marketplaceUrl: data.listing._links?.web?.href ?? `https://reverb.com/item/${data.listing.id}`,
-      status: stateSlug(data.listing.state) === 'live' ? 'active' : 'draft',
-      warning: conditionWarning,
+      status: createdSlug === 'live' ? 'active' : 'draft',
+      warning: [conditionWarning, stateWarning].filter(Boolean).join('; ') || undefined,
     };
   }
 
@@ -152,7 +214,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
     const specific = input.marketplaceSpecific ?? {};
     const updates: Record<string, unknown> = {};
     if (input.title) updates.title = input.title;
-    if (input.description) updates.description = input.description;
+    if (input.description) updates.description = appendConditionNotes(input.description, input.conditionNotes);
     // createListing maps brand/model to make/model; update must too or an
     // item's brand/model edit never reaches the live Reverb listing.
     if (input.brand !== undefined) updates.make = input.brand;
@@ -171,11 +233,27 @@ export class ReverbAdapter implements MarketplaceAdapter {
       // DROPPED from the set lingers until its per-image DELETE (below).
       updates.photo_upload_method = 'override_position';
     }
+    // Re-publish path for a remote draft that already exists on Reverb (a
+    // Portage draft row WITH a marketplaceListingId): PUT publish on the
+    // existing listing — creating again would double-list. Publishing has the
+    // same UPC requirement as create for Brand New items.
+    if (specific.publish) {
+      updates.publish = 'true';
+      if (specific.upc) {
+        updates.upc = specific.upc;
+      } else if (input.condition === 'new') {
+        updates.upc_does_not_apply = 'true';
+      }
+    }
     if (specific.categoryUuid) updates.categories = [{ uuid: specific.categoryUuid }];
     if (specific.year) updates.year = specific.year;
     if (specific.finish) updates.finish = specific.finish;
     if (specific.offersEnabled !== undefined) updates.offers_enabled = specific.offersEnabled;
-    if (specific.shippingRates) {
+    if (specific.shippingProfileId) {
+      // Same precedence as create: a Reverb-side shipping profile id wins over
+      // per-listing rates.
+      updates.shipping_profile_id = specific.shippingProfileId;
+    } else if (specific.shippingRates) {
       updates.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
     }
 
@@ -240,7 +318,19 @@ export class ReverbAdapter implements MarketplaceAdapter {
   }
 
   async deleteListing(marketplaceListingId: string): Promise<void> {
-    await this.request(`/listings/${marketplaceListingId}`, { method: 'DELETE' });
+    // DELETE only works on drafts ("Only drafts can be deleted", live-verified
+    // 2026-07-21) — a live listing must be ENDED via the state/end call
+    // (PUT /my/listings/:id/state/end, reason not_sold). Try the draft delete
+    // first, fall back to ending.
+    try {
+      await this.request(`/listings/${marketplaceListingId}`, { method: 'DELETE' });
+    } catch (err) {
+      if (!(err instanceof AppError) || err.statusCode !== 400) throw err;
+      await this.request(`/my/listings/${marketplaceListingId}/state/end`, {
+        method: 'PUT',
+        body: JSON.stringify({ reason: 'not_sold' }),
+      });
+    }
   }
 
   async getListingStatus(marketplaceListingId: string): Promise<'active' | 'sold' | 'ended' | 'unknown'> {
@@ -304,20 +394,73 @@ export class ReverbAdapter implements MarketplaceAdapter {
     }));
   }
 
-  async searchCategories(query: string): Promise<MarketplaceCategoryResult[]> {
+  /**
+   * Shipping profiles are created manually ON Reverb
+   * (reverb.com/my/selling/shipping_rates — no create/update API) and
+   * referenced per listing via shipping_profile_id. GET /shop lists them.
+   */
+  async getShippingProfiles(): Promise<Array<{ id: string; name: string }>> {
     const data = await this.request<{
-      categories?: Array<{
-        uuid: string;
-        full_name: string;
-      }>;
-    }>(`/categories/flat?query=${encodeURIComponent(query)}`);
+      shipping_profiles?: Array<{ id: string | number; name: string }>;
+    }>('/shop');
+    return (data.shipping_profiles ?? []).map(p => ({ id: String(p.id), name: p.name }));
+  }
 
-    return (data.categories ?? []).map(cat => ({
-      id: cat.uuid,
-      name: cat.full_name,
-      path: cat.full_name.split(' > '),
-      isLeaf: true,
-    }));
+  async searchCategories(query: string): Promise<MarketplaceCategoryResult[]> {
+    // Live-verified 2026-07-21: /categories/flat IGNORES ?query= and always
+    // returns the same full list (first entry "Acoustic Guitars / 12-String"),
+    // so matching MUST happen client-side — passing the query through meant
+    // every caller took the first flat entry and mis-categorized as guitars.
+    const categories = await ReverbAdapter.getFlatCategories();
+
+    const tokens = query.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 3);
+    // Majority rule: a lone token hit out of several is noise ("Solid State
+    // Drives" matching "Electric Guitars / Solid Body" on "solid" — live repro
+    // 2026-07-21). Non-matches fall through to the route's 422 guidance.
+    const minScore = Math.ceil(tokens.length / 2);
+    return categories
+      .map(cat => ({
+        cat,
+        score: tokens.filter(t => cat.fullName.toLowerCase().includes(t)).length,
+      }))
+      .filter(({ score }) => score >= Math.max(minScore, 1))
+      // Most matched tokens first; ties break to the shortest full_name so a
+      // single-token match lands the general category, not a random deep leaf.
+      .sort((a, b) => b.score - a.score || a.cat.fullName.length - b.cat.fullName.length)
+      .slice(0, 25)
+      .map(({ cat }) => ({
+        id: cat.uuid,
+        name: cat.fullName,
+        path: cat.fullName.split(' > '),
+        isLeaf: true,
+      }));
+  }
+
+  /**
+   * Reverb's flat category list — static reference data on a PUBLIC endpoint
+   * (no auth), cached like getConditions. This is the ONLY valid source of
+   * category uuids/names; the endpoint's ?query= param is ignored by Reverb,
+   * so all matching against this list happens client-side.
+   */
+  static async getFlatCategories(): Promise<Array<{ uuid: string; fullName: string }>> {
+    if (cachedCategories && Date.now() - categoriesCachedAt < CONDITIONS_TTL) return cachedCategories;
+
+    const response = await fetch(`${REVERB_BASE}/categories/flat`, {
+      headers: { 'Accept': 'application/hal+json', 'Accept-Version': '3.0' },
+    });
+
+    if (!response.ok) {
+      throw new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb categories: ${response.status}`);
+    }
+
+    const data = await response.json() as {
+      categories: Array<{ uuid: string; full_name: string }>;
+    };
+
+    cachedCategories = data.categories.map(c => ({ uuid: c.uuid, fullName: c.full_name }));
+    categoriesCachedAt = Date.now();
+
+    return cachedCategories;
   }
 
   static async getConditions(): Promise<Array<{ uuid: string; displayName: string }>> {

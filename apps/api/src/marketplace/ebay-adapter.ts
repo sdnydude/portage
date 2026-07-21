@@ -470,7 +470,13 @@ export class EbayAdapter implements MarketplaceAdapter {
       currency: input.currency,
       quantity: input.quantity ?? 1,
       conditionId,
-      conditionDescription: specific.conditionDescription as string | undefined,
+      // Prepared (AI, user-reviewed) conditionDescription wins; the item's raw
+      // conditionNotes fill the gap on publish paths that skipped prepare —
+      // without this fallback those paths list with a blank condition note.
+      // Trading caps ConditionDescription at 1000 chars.
+      conditionDescription: (specific.conditionDescription as string | undefined)
+        || input.conditionNotes?.trim().slice(0, 1000)
+        || undefined,
       sku,
       pictureUrls: input.photos.map((p) => p.url),
       aspects: canonical,

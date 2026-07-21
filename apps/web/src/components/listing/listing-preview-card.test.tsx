@@ -7,6 +7,16 @@ const mockUseRequiredAspects = vi.fn();
 vi.mock("@/hooks/use-required-aspects", () => ({
   useRequiredAspects: () => mockUseRequiredAspects(),
 }));
+const mockUseReverbCategories = vi.fn(() => ({
+  categories: [
+    { uuid: "b1f4ce46", fullName: "Accessories / Cases and Gig Bags / Guitar Cases" },
+    { uuid: "uuid-dist", fullName: "Effects and Pedals / Distortion" },
+  ],
+  isLoading: false,
+}));
+vi.mock("@/hooks/use-reverb-categories", () => ({
+  useReverbCategories: () => mockUseReverbCategories(),
+}));
 vi.mock("./comps-pricing-widget", () => ({
   CompsPricingWidget: () => <div data-testid="comps" />,
 }));
@@ -146,5 +156,28 @@ describe("ListingPreviewCard — hero tap opens the editor", () => {
   it("without onPhotoUpdated (no editor host) the hero is not tappable and no affordance shows", () => {
     render(<ListingPreviewCard {...baseProps} onPublish={() => {}} />);
     expect(screen.queryByRole("button", { name: /edit this photo/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("ListingPreviewCard — Reverb category picker (non-gear dead-end fix)", () => {
+  beforeEach(() => {
+    mockUseRequiredAspects.mockReturnValue({ aspects: {}, isLoading: false });
+  });
+
+  // A non-gear item (isMusicGear false, reverb null) had NO way to publish to
+  // Reverb: the AI can't place it and the Reverb button was hidden entirely —
+  // dead-ending at REVERB_CATEGORY_REQUIRED from other paths. Picking a real
+  // category in the sheet unlocks the Reverb publish with that uuid.
+  it("unlocks Reverb publish for a non-gear item once a category is picked, passing the uuid to onPublish", () => {
+    const onPublish = vi.fn();
+    render(<ListingPreviewCard {...baseProps} onPublish={onPublish} />);
+
+    // Hidden while no category is chosen for a non-gear item.
+    expect(screen.queryByRole("button", { name: /publish to reverb/i })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/reverb category/i), { target: { value: "b1f4ce46" } });
+    fireEvent.click(screen.getByRole("button", { name: /publish to reverb/i }));
+
+    expect(onPublish).toHaveBeenCalledWith("reverb", "live", expect.anything(), "b1f4ce46");
   });
 });

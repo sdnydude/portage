@@ -7,6 +7,10 @@ export interface MarketplaceListingInput {
   currency: string;
   category: string;
   condition: string;
+  // Seller's condition notes from the item record. eBay maps this to
+  // ConditionDescription (when no prepared conditionDescription is present);
+  // Reverb has no such field, so the adapter appends it to the description.
+  conditionNotes?: string | null;
   photos: { url: string; isPrimary?: boolean }[];
   brand?: string;
   model?: string;

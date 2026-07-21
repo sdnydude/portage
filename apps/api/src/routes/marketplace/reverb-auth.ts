@@ -150,3 +150,29 @@ reverbAuthRouter.delete('/disconnect', async (req, res, next) => {
     next(err);
   }
 });
+
+// Reverb-side shipping profiles (created manually at
+// reverb.com/my/selling/shipping_rates — no create/update API) for the
+// seller-profile dropdown; publish references the chosen one by id.
+reverbAuthRouter.get('/shipping-profiles', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const profiles = await new ReverbAdapter(userId).getShippingProfiles();
+    res.json({ profiles });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Full flat category list (cached 24h, public Reverb endpoint) for the
+// publish-sheet category picker — the only valid source of category uuids.
+reverbAuthRouter.get('/categories', async (req, res, next) => {
+  try {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const categories = await ReverbAdapter.getFlatCategories();
+    res.json({ categories });
+  } catch (err) {
+    next(err);
+  }
+});

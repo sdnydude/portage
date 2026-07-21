@@ -22,6 +22,9 @@ export interface PublishOptions {
   ebayPreparedFields?: EbayPreparedFields | null;
   publishMode?: 'draft' | 'live';
   aspects?: Record<string, string[]>;
+  // Reverb category chosen in the publish-sheet picker — the only client-side
+  // category source for items the AI could not place (non-music-gear).
+  reverbCategoryUuid?: string;
   // Weight/dims supplied by the fill sheet on a retry after EBAY_WEIGHT_REQUIRED;
   // overrides flow state so persistence isn't subject to a setState race.
   weightDims?: {
@@ -591,6 +594,9 @@ export function useListingFlow() {
                 // permanently override the profile's reverbOffersEnabled.
                 make: s.brand,
                 model: s.model,
+                // Picker-chosen category (non-gear items the AI can't place);
+                // server enrichment still fills from the prepare cache when absent.
+                ...(options?.reverbCategoryUuid ? { categoryUuid: options.reverbCategoryUuid } : {}),
               }
             : undefined;
 
