@@ -4,8 +4,39 @@ import {
   computePricing,
   conditionNeighbors,
   reverbCompsWarning,
+  sanitizeReverbAiFields,
   EBAY_CONDITION_ORDER,
 } from './prepare-listing.js';
+
+describe('sanitizeReverbAiFields', () => {
+  // The vision prompt asks the model for Reverb categoryUuid/conditionUuid with
+  // no list of valid values — it invents them. Invented UUIDs must never reach
+  // the prepare cache: they either 422 at Reverb or fall through to the
+  // first-flat-entry guitars guess. Only UUIDs verified against the live lists
+  // survive; names resolve to real entries.
+  it('replaces hallucinated uuids with entries resolved from the real condition + category lists', () => {
+    const ai = {
+      make: 'ProCo', model: 'RAT 2', title: 'ProCo RAT 2',
+      categoryUuid: 'made-up-cat-uuid', categoryName: 'Effects and Pedals / Distortion',
+      conditionUuid: 'made-up-cond-uuid', conditionName: 'Excellent',
+      year: null, finish: null, description: 'A pedal',
+    };
+
+    const result = sanitizeReverbAiFields(
+      ai,
+      [{ uuid: 'real-cond-excellent', displayName: 'Excellent' }, { uuid: 'real-cond-good', displayName: 'Good' }],
+      [{ id: 'real-cat-distortion', name: 'Effects and Pedals / Distortion' }],
+    );
+
+    expect(result).toMatchObject({
+      categoryUuid: 'real-cat-distortion',
+      categoryName: 'Effects and Pedals / Distortion',
+      conditionUuid: 'real-cond-excellent',
+      conditionName: 'Excellent',
+      make: 'ProCo',
+    });
+  });
+});
 
 describe('buildMarketplaceCacheEntries', () => {
   it('includes a reverb cache entry when the AI produced reverb fields', () => {

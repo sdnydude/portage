@@ -397,6 +397,24 @@ describe('generateListingFields', () => {
     expect(vi.mocked(analyzeImages).mock.calls[0][0]).toEqual(images);
   });
 
+  it('injects the Reverb flat-category list into the prompt so the AI picks a real category verbatim', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    await generateListingFields({
+      ...baseInput,
+      images: [{ base64: 'b64', mediaType: 'image/jpeg' }],
+      reverbCategories: ['Effects and Pedals / Distortion', 'Pro Audio / Microphones'],
+    });
+
+    const userPrompt = vi.mocked(analyzeImages).mock.calls[0][2] as string;
+    expect(userPrompt).toContain('REVERB CATEGORIES');
+    expect(userPrompt).toContain('Effects and Pedals / Distortion');
+    expect(userPrompt).toContain('Pro Audio / Microphones');
+  });
+
   it('coerces scalar-string aspect values to string arrays', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: 'Sony', Color: ['Black'] } } }),

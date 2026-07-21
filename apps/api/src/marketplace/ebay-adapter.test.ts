@@ -220,6 +220,24 @@ describe('EbayAdapter.createListing — package weight/dimensions', () => {
   });
 });
 
+describe('EbayAdapter.createListing — condition notes fallback', () => {
+  // The item's stored conditionNotes never reached eBay on publish paths that
+  // skip prepare-listing (quick list, photo-first, seeded drafts): the builder
+  // only read marketplaceSpecific.conditionDescription, which only the AI
+  // prepare flow populates. The notes are the fallback, never the override —
+  // a prepared (user-reviewed) conditionDescription still wins.
+  it('sends item conditionNotes as ConditionDescription when no prepared conditionDescription exists', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      conditionNotes: 'Light scratches on the back panel.',
+      marketplaceSpecific: { ...tradingSetup },
+    } as any);
+    const xml = tradingXml();
+    expect(xml).toContain('<ConditionDescription>Light scratches on the back panel.</ConditionDescription>');
+  });
+});
+
 // NOTE: createListing aspect/gate coverage is being re-expressed against the Trading
 // AddFixedPriceItem XML below (ITEM-SPECIFICS-MIGRATION marker). The Inventory-API
 // product.aspects-JSON versions were removed — that behavior no longer exists.

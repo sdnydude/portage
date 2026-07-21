@@ -41,12 +41,16 @@ const updateSchema = z.object({
   ebayReturnPolicyId: z.string().nullable().optional(),
   ebayMerchantLocationKey: z.string().nullable().optional(),
   reverbOffersEnabled: z.boolean().optional(),
+  // Reverb-recommended: reference a Reverb-side shipping profile by id
+  // (created at reverb.com/my/selling/shipping_rates — not via API).
+  // Per-listing rates remain as the legacy/fallback shape.
   reverbDefaultShipping: z.object({
+    shippingProfileId: z.string().optional(),
     rates: z.array(z.object({
       regionCode: z.string(),
       rate: z.object({ amount: z.string(), currency: z.string() }),
-    })),
-    local: z.boolean(),
+    })).optional(),
+    local: z.boolean().optional(),
   }).nullable().optional(),
   shipFromAddress: z.object({
     name: z.string(),
