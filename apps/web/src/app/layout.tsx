@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Instrument_Sans, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { PorterProvider } from "@/hooks/use-porter-context";
+import { CurrentItemProvider } from "@/hooks/use-current-item";
 import { AppShell } from "@/components/layout/app-shell";
 import { BetaCta } from "@/components/beta/beta-cta";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
@@ -66,7 +68,14 @@ export default function RootLayout({
           }}
         />
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          {/* PorterProvider hoisted from (tabs) to root (Phase R3) so the
+              AppShell dock-slot shares Porter chat state on every route,
+              including non-tab routes like inventory/[id], admin, settings. */}
+          <PorterProvider>
+            <CurrentItemProvider>
+              <AppShell>{children}</AppShell>
+            </CurrentItemProvider>
+          </PorterProvider>
           <BetaCta />
         </AuthProvider>
         <ServiceWorkerRegistration />

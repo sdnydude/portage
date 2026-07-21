@@ -3,6 +3,7 @@
 import { TabBar } from "./tab-bar";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
+import { PorterDock } from "@/components/porter/porter-dock";
 import { UnreadCountProvider } from "@/hooks/use-unread-count";
 
 /**
@@ -35,7 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <main data-testid="shell-main" className="min-w-0 flex-1">
             {children}
           </main>
-          <aside data-testid="dock-slot" hidden aria-hidden="true" />
+          <PorterDock />
         </div>
       </div>
       <div className="lg:hidden">
