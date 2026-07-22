@@ -73,7 +73,10 @@ const createItemSchema = z.object({
   description: z.string().max(2000).optional(),
   category: z.string().max(255).optional(),
   condition: z.enum(validConditions).optional(),
-  conditionNotes: z.string().max(500).optional(),
+  // 2000 to match `description`. Condition notes are resale-honesty content —
+  // a tighter cap silently cut real defect disclosure from verbose refine scans
+  // and 400'd the save with an opaque "Validation failed".
+  conditionNotes: z.string().max(2000).optional(),
   brand: z.string().max(255).optional(),
   model: z.string().max(255).optional(),
   features: z.array(z.string().max(100)).max(30).optional(),

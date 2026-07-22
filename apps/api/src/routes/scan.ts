@@ -7,6 +7,7 @@ import { identifyItem, identifyItemDetailed, identifyItemsMulti, fetchPhotosAsBa
 import { prefillCandidateAspects } from '../lib/aspect-prefill.js';
 import { processImage } from '../lib/image.js';
 import { uploadImage } from '../lib/storage.js';
+import { traceRequest } from '../lib/tracing.js';
 import { AppError } from '../middleware/error.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
@@ -95,18 +96,29 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
 
     const detail = req.query.detail as string | undefined;
 
-    let identification;
-    let detailedResult;
+    let detailedResult: Awaited<ReturnType<typeof identifyItemDetailed>> | undefined;
 
-    if (detail === 'full') {
-      detailedResult = await identifyItemDetailed(imageBase64, 'image/jpeg');
-      // Best-effort: pre-fill required eBay specifics on the top candidate so the
-      // scan review screen already shows them. Never throws; non-fatal on failure.
-      detailedResult.candidates = await prefillCandidateAspects(detailedResult.candidates, imageBase64);
-      identification = detailedResult.candidates[0];
-    } else {
-      identification = await identifyItem(imageBase64, 'image/jpeg');
-    }
+    // Trace input is the scan request shape, not the photo — the base64 payload
+    // is masked out on export anyway (see tracing-config.ts).
+    const identification = await traceRequest(
+      'scan-item',
+      {
+        userId,
+        tags: ['scan', detail === 'full' ? 'detailed' : 'quick'],
+        metadata: { imageBytes: String(processed.buffer.length) },
+        input: { detail: detail === 'full' ? 'full' : 'quick' },
+      },
+      async () => {
+        if (detail === 'full') {
+          detailedResult = await identifyItemDetailed(imageBase64, 'image/jpeg');
+          // Best-effort: pre-fill required eBay specifics on the top candidate so the
+          // scan review screen already shows them. Never throws; non-fatal on failure.
+          detailedResult.candidates = await prefillCandidateAspects(detailedResult.candidates, imageBase64);
+          return detailedResult.candidates[0];
+        }
+        return identifyItem(imageBase64, 'image/jpeg');
+      },
+    );
 
     let mainImage: { key: string; url: string } | null = null;
     let thumbnailResult: { key: string; url: string } | null = null;
@@ -187,13 +199,26 @@ scanRouter.post('/refine', async (req, res, next) => {
       throw new AppError(502, 'PHOTO_FETCH_FAILED', 'Could not fetch any of the provided images');
     }
 
-    const detailedResult = await identifyItemsMulti(images);
-    // Same Phase-A prefill as POST /scan?detail=full — the refine (multi-photo)
-    // path must also fill the top candidate's required eBay specifics, or the
-    // scan review shows an empty aspect list. Best-effort, never throws; threads
-    // the first image so generateListingFields takes the vision (JSON) path.
-    detailedResult.candidates = await prefillCandidateAspects(detailedResult.candidates, images[0]?.base64);
-    const identification = detailedResult.candidates[0];
+    let detailedResult!: Awaited<ReturnType<typeof identifyItemsMulti>>;
+
+    const identification = await traceRequest(
+      'scan-refine',
+      {
+        userId,
+        tags: ['scan', 'refine'],
+        metadata: { imageCount: String(images.length) },
+        input: { imageCount: images.length },
+      },
+      async () => {
+        detailedResult = await identifyItemsMulti(images);
+        // Same Phase-A prefill as POST /scan?detail=full — the refine (multi-photo)
+        // path must also fill the top candidate's required eBay specifics, or the
+        // scan review shows an empty aspect list. Best-effort, never throws; threads
+        // the first image so generateListingFields takes the vision (JSON) path.
+        detailedResult.candidates = await prefillCandidateAspects(detailedResult.candidates, images[0]?.base64);
+        return detailedResult.candidates[0];
+      },
+    );
 
     await incrementScanCount(userId);
 

@@ -36,12 +36,18 @@ function normalizeCondition(raw: string): 'new' | 'like_new' | 'good' | 'fair' |
   return (normalized ?? 'good') as 'new' | 'like_new' | 'good' | 'fair' | 'poor';
 }
 
+/** Mirrors the `conditionNotes` cap in createItemSchema (routes/items.ts). */
+const MAX_CONDITION_NOTES = 2000;
+
 const VisionResultSchema = z.object({
   name: z.string(),
   description: z.string(),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
-  conditionNotes: z.string().nullish().transform((v) => v ?? ''),
+  // Clamped to the POST /items cap: the model treats "brief" as a suggestion,
+  // and an over-long note made the scan pipeline emit a value its own API
+  // rejects — surfacing as an opaque "Validation failed" on save.
+  conditionNotes: z.string().nullish().transform((v) => (v ?? '').slice(0, MAX_CONDITION_NOTES)),
   estimatedValueLow: z.number(),
   estimatedValueHigh: z.number(),
   brand: z.string().nullable(),
@@ -54,7 +60,10 @@ const CandidateSchema = z.object({
   description: z.string(),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
-  conditionNotes: z.string().nullish().transform((v) => v ?? ''),
+  // Clamped to the POST /items cap: the model treats "brief" as a suggestion,
+  // and an over-long note made the scan pipeline emit a value its own API
+  // rejects — surfacing as an opaque "Validation failed" on save.
+  conditionNotes: z.string().nullish().transform((v) => (v ?? '').slice(0, MAX_CONDITION_NOTES)),
   brand: z.string().nullable(),
   model: z.string().nullable(),
   mpn: z.string().nullable().optional(),
