@@ -1,3 +1,6 @@
+// Must precede every other import: it patches the Anthropic SDK and starts the
+// OpenTelemetry SDK before any client or route module is constructed.
+import { shutdownTracing } from './instrumentation.js';
 import https from 'node:https';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -7,6 +10,14 @@ import { createApp } from './app.js';
 
 const config = loadEnv();
 const app = createApp();
+
+// Docker stops the container with SIGTERM; flush queued spans before exit so a
+// deploy doesn't silently drop the traces of in-flight requests.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    void shutdownTracing().finally(() => process.exit(0));
+  });
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const certDir = resolve(__dirname, '../../../certs');

@@ -4,7 +4,9 @@ services:
     container_name: portage-db
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5436:5432"
+      # Bound to the LAN IP (not 0.0.0.0) so the Mac workstation can reach the
+      # DB directly, without exposing it on every interface the host has.
+      - "10.0.0.251:5436:5432"
     environment:
       POSTGRES_USER: portage
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portage}

@@ -2,6 +2,7 @@ import type { RecognitionCandidate } from '@portage/shared';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { generateListingFields } from './vision.js';
 import { createLogger } from './logger.js';
+import { traceStep } from './tracing.js';
 
 const logger = createLogger('aspect-prefill');
 
@@ -22,6 +23,14 @@ export async function prefillCandidateAspects(
   const top = candidates[0];
   if (!top) return candidates;
 
+  return traceStep('prefill-aspects', () => runPrefill(candidates, top, imageBase64));
+}
+
+async function runPrefill(
+  candidates: RecognitionCandidate[],
+  top: RecognitionCandidate,
+  imageBase64?: string,
+): Promise<RecognitionCandidate[]> {
   try {
     const searchQuery = [top.brand, top.model].filter(Boolean).join(' ') || top.name;
 

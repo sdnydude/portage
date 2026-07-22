@@ -259,6 +259,19 @@ describe('POST /items', () => {
     expect(res.body.title).toBe('Sony WH-1000XM4');
   });
 
+  it('accepts conditionNotes longer than the old 500-char cap', async () => {
+    // Multi-photo refine scans produce verbose condition notes; a 500-char cap
+    // 400'd the save with an opaque "Validation failed" in the UI.
+    mockInsertReturns([MOCK_ITEM]);
+
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Sony WH-1000XM4', conditionNotes: 'A'.repeat(1800) });
+
+    expect(res.status).toBe(201);
+  });
+
   it('accepts quantity and passes it to the insert', async () => {
     const valuesSpy = vi.fn().mockReturnValue({
       returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, quantity: 5 }]),
