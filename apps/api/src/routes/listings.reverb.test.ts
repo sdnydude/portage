@@ -3,8 +3,9 @@ import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
 
-const { mockReverbCreateListing, mockReverbUpdateListing, mockReverbDeleteListing, mockReverbSearchCategories, mockReverbGetListingStatus, ReverbAdapterMock } = vi.hoisted(() => {
+const { mockReverbCreateListing, mockReverbUpdateListing, mockReverbDeleteListing, mockReverbSearchCategories, mockReverbGetListingStatus, mockReverbSetBump, ReverbAdapterMock } = vi.hoisted(() => {
   const mockReverbCreateListing = vi.fn();
+  const mockReverbSetBump = vi.fn();
   const mockReverbUpdateListing = vi.fn();
   const mockReverbDeleteListing = vi.fn();
   const mockReverbSearchCategories = vi.fn();
@@ -15,12 +16,14 @@ const { mockReverbCreateListing, mockReverbUpdateListing, mockReverbDeleteListin
     mockReverbDeleteListing,
     mockReverbSearchCategories,
     mockReverbGetListingStatus,
+    mockReverbSetBump,
     ReverbAdapterMock: vi.fn(() => ({
       createListing: mockReverbCreateListing,
       updateListing: mockReverbUpdateListing,
       deleteListing: mockReverbDeleteListing,
       searchCategories: mockReverbSearchCategories,
       getListingStatus: mockReverbGetListingStatus,
+      setBump: mockReverbSetBump,
     })),
   };
 });
@@ -136,6 +139,64 @@ describe('POST /listings — reverb live publish', () => {
       shippingRates: [{ regionCode: 'US_CON', rate: { amount: '45.00', currency: 'USD' } }],
     });
     expect(mockReverbSearchCategories).not.toHaveBeenCalled();
+  });
+
+  it('applies the Reverb Bump bid after a live publish (reverbBumpBid in specifics)', async () => {
+    mockSelectOnce([GEAR_ITEM]);
+    mockInsertReturning([{ id: 'listing-1', status: 'draft' }]);
+    mockSelectOnce([PROFILE]);
+    mockSelectOnce([{ footer: null }]);
+    mockReverbCreateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+    mockReverbSetBump.mockResolvedValueOnce(undefined);
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'reverb',
+        price: 2500,
+        publishMode: 'live',
+        disclaimerAccepted: true,
+        marketplaceSpecificFields: { reverbBumpBid: 0.02 },
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockReverbSetBump).toHaveBeenCalledWith('87654321', 0.02);
+    expect(res.body.warning).toBeUndefined();
+  });
+
+  it('a failed Bump surfaces as a warning — the publish itself still succeeds', async () => {
+    mockSelectOnce([GEAR_ITEM]);
+    mockInsertReturning([{ id: 'listing-1', status: 'draft' }]);
+    mockSelectOnce([PROFILE]);
+    mockSelectOnce([{ footer: null }]);
+    mockReverbCreateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+    mockReverbSetBump.mockRejectedValueOnce(new Error('bump exploded'));
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'reverb',
+        price: 2500,
+        publishMode: 'live',
+        disclaimerAccepted: true,
+        marketplaceSpecificFields: { reverbBumpBid: 0.02 },
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('active');
+    expect(String(res.body.warning)).toMatch(/bump/i);
   });
 
   it('offersEnabledExplicit (publish-sheet toggle) overrides the profile default', async () => {
@@ -335,6 +396,30 @@ describe('POST /listings — reverb live publish', () => {
 });
 
 describe('POST /listings/:id/publish — reverb', () => {
+  it('applies stored reverbBumpBid when a draft goes live via the publish route', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', itemId: ITEM_ID, marketplace: 'reverb',
+      status: 'draft', price: 2500, currency: 'USD',
+      marketplaceSpecificFields: { reverbBumpBid: 0.015 }, ebaySku: null,
+    }]);
+    mockSelectOnce([GEAR_ITEM]);
+    mockSelectOnce([PROFILE]);
+    mockSelectOnce([{ footer: null }]);
+    mockReverbCreateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+    mockReverbSetBump.mockResolvedValueOnce(undefined);
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockReverbSetBump).toHaveBeenCalledWith('87654321', 0.015);
+  });
+
   it('enriches the draft from cache + profile exactly like the create route', async () => {
     const LISTING_ID = '00000000-0000-0000-0000-00000000000a';
     mockSelectOnce([{

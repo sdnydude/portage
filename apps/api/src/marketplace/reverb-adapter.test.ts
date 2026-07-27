@@ -55,6 +55,18 @@ afterEach(() => {
   resetEnv();
 });
 
+describe('ReverbAdapter.setBump', () => {
+  it('PUTs the bump bid to /bump/v2/bids with the numeric listing id', async () => {
+    const fetchMock = stubFetch({}, true, 200);
+    const adapter = new ReverbAdapter('user-1');
+    await adapter.setBump('15191342', 0.035);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe('https://api.reverb.com/api/bump/v2/bids');
+    expect((init as RequestInit).method).toBe('PUT');
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ products: [15191342], bid: 0.035 });
+  });
+});
+
 describe('ReverbAdapter.createListing', () => {
   it('resolves the per-user PAT via token-manager and sends it as Bearer auth', async () => {
     const fetchMock = stubFetch();

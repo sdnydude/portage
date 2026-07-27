@@ -494,6 +494,72 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
   }
 
+  /**
+   * Promoted Listings Standard (cost-per-sale): find-or-create the seller's
+   * "Portage Promoted Listings" CPS campaign, then attach the live listing as
+   * an ad at the given rate (percent of sale price, e.g. 5 → "5.0").
+   * sell.marketing is already in the OAuth consent scopes.
+   */
+  async promoteListing(marketplaceListingId: string, adRatePercent: number): Promise<void> {
+    if (!(adRatePercent >= 1 && adRatePercent <= 100)) {
+      throw new AppError(400, 'EBAY_AD_RATE_INVALID', 'Ad rate must be between 1% and 100% of the sale price.');
+    }
+    const token = await getEbayAccessToken(this.userId);
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+    const CAMPAIGN_NAME = 'Portage Promoted Listings';
+
+    const listRes = await fetch(
+      'https://api.ebay.com/sell/marketing/v1/ad_campaign?campaign_status=RUNNING&limit=100',
+      { headers },
+    );
+    if (!listRes.ok) {
+      throw new AppError(502, 'EBAY_ADS_UNAVAILABLE', `eBay Marketing API rejected the campaign lookup (${listRes.status}).`);
+    }
+    const listBody = await listRes.json() as { campaigns?: Array<{ campaignId: string; campaignName: string }> };
+    let campaignId = listBody.campaigns?.find((c) => c.campaignName === CAMPAIGN_NAME)?.campaignId;
+
+    if (!campaignId) {
+      const createRes = await fetch('https://api.ebay.com/sell/marketing/v1/ad_campaign', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          campaignName: CAMPAIGN_NAME,
+          marketplaceId: 'EBAY_US',
+          fundingStrategy: { fundingModel: 'COST_PER_SALE' },
+          startDate: new Date().toISOString(),
+        }),
+      });
+      if (!createRes.ok) {
+        throw new AppError(502, 'EBAY_ADS_UNAVAILABLE', `eBay Marketing API rejected campaign creation (${createRes.status}).`);
+      }
+      // createCampaign returns the new id in the Location header.
+      campaignId = createRes.headers.get('Location')?.split('/').pop();
+      if (!campaignId) {
+        throw new AppError(502, 'EBAY_ADS_UNAVAILABLE', 'eBay created the ad campaign but returned no campaign id.');
+      }
+    }
+
+    const adRes = await fetch(`https://api.ebay.com/sell/marketing/v1/ad_campaign/${campaignId}/ad`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        listingId: marketplaceListingId,
+        bidPercentage: adRatePercent.toFixed(1),
+      }),
+    });
+    // 409 = the listing already has an ad in this campaign — treat as success
+    // (re-publishing the same item must not fail the promote step).
+    if (!adRes.ok && adRes.status !== 409) {
+      const body = await adRes.text();
+      logger.warn({ userId: this.userId, marketplaceListingId, status: adRes.status, body }, 'eBay ad creation rejected');
+      throw new AppError(502, 'EBAY_ADS_UNAVAILABLE', `eBay rejected the ad for this listing (${adRes.status}).`);
+    }
+    logger.info({ userId: this.userId, marketplaceListingId, campaignId, adRatePercent }, 'eBay Promoted Listing ad created');
+  }
+
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
     const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const tradingInput = await this.buildTradingInput(input, sku);
