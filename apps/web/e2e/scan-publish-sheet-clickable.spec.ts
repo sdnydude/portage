@@ -34,9 +34,11 @@ test("Save & List: publish sheet buttons are clickable (action bar yields)", asy
   const token = storage.origins[0].localStorage.find(
     (e: { name: string }) => e.name === "portage_token",
   )!.value as string;
-  await page.goto("/home");
-
-  // Deterministic AI + taxonomy boundaries (POST/GET-only guards; never navigations).
+  // Deterministic AI + taxonomy boundaries (POST/GET-only guards; never
+  // navigations). Routes are registered BEFORE goto: flipping the page into
+  // interception mode mid-load aborts in-flight fetches, and one aborted
+  // /backend call cascades into a session-exchange logout on the CF-less
+  // e2e target.
   await page.route(/\/scan\/refine$/, async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     await route.fulfill({
@@ -60,6 +62,11 @@ test("Save & List: publish sheet buttons are clickable (action bar yields)", asy
     if (route.request().method() !== "GET") return route.fallback();
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ aspects: {} }) });
   });
+
+  // /inventory, not /home: a fresh user (ephemeral CI) gets the full-screen
+  // OnboardingFlow on /home, which intercepts the Scan FAB click. The TabBar
+  // (and its Scan button) mounts on every non-admin route.
+  await page.goto("/inventory");
 
   try {
     await test.step("scan to review and Save & List", async () => {
