@@ -220,7 +220,7 @@ export default function AdminUsersPage() {
       )}
 
       {showAdd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="fixed inset-0 bg-black/50" onClick={() => !addBusy && setShowAdd(false)} />
           <div className="relative bg-surface rounded-2xl border border-border p-5 w-full max-w-sm space-y-3">
             <h2 className="text-sm font-semibold text-text-primary">Add user</h2>
