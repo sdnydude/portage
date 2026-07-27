@@ -1,0 +1,65 @@
+<svg viewBox="0 0 860 560" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#26241f"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="860" height="560" rx="12" fill="#f6f4ef"/>
+  <text x="430" y="34" text-anchor="middle" font-size="18" font-weight="700" fill="#26241f">codegraph-first.sh — decision flow (PreToolUse: Bash | Grep)</text>
+
+  <rect x="330" y="54" width="200" height="40" rx="8" fill="#26241f"/>
+  <text x="430" y="79" text-anchor="middle" font-size="12" fill="#ffffff">tool call intercepted</text>
+  <line x1="430" y1="94" x2="430" y2="118" stroke="#26241f" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="300" y="120" width="260" height="42" rx="8" fill="#ffffff" stroke="#26241f"/>
+  <text x="430" y="139" text-anchor="middle" font-size="11" font-weight="600" fill="#26241f">.codegraph/ exists in project?</text>
+  <text x="430" y="154" text-anchor="middle" font-size="9" fill="#6b675e">CLAUDE_PROJECT_DIR or CWD</text>
+  <line x1="560" y1="141" x2="700" y2="141" stroke="#2d5a27" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="628" y="133" text-anchor="middle" font-size="10" fill="#2d5a27">no</text>
+  <rect x="702" y="120" width="120" height="42" rx="8" fill="#e9f2e7" stroke="#2d5a27"/>
+  <text x="762" y="145" text-anchor="middle" font-size="11" font-weight="600" fill="#2d5a27">ALLOW (exit 0)</text>
+
+  <line x1="430" y1="162" x2="430" y2="186" stroke="#26241f" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="443" y="180" font-size="10" fill="#6b675e">yes</text>
+
+  <!-- branch split -->
+  <rect x="120" y="188" width="290" height="40" rx="8" fill="#fdf3e6" stroke="#8a5a2b"/>
+  <text x="265" y="212" text-anchor="middle" font-size="11" font-weight="600" fill="#8a5a2b">Bash branch — command string</text>
+  <rect x="470" y="188" width="290" height="40" rx="8" fill="#e2eef0" stroke="#1f6e75"/>
+  <text x="615" y="212" text-anchor="middle" font-size="11" font-weight="600" fill="#15494e">Grep-tool branch — pattern/path/glob</text>
+  <line x1="380" y1="186" x2="265" y2="188" stroke="#26241f" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="480" y1="186" x2="615" y2="188" stroke="#26241f" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- Bash chain -->
+  <rect x="80" y="252" width="370" height="52" rx="8" fill="#ffffff" stroke="#8a5a2b"/>
+  <text x="265" y="272" text-anchor="middle" font-size="10.5" font-weight="600" fill="#26241f">grep / rg / ugrep / egrep / fgrep in COMMAND position?</text>
+  <text x="265" y="288" text-anchor="middle" font-size="9" fill="#6b675e">start of line, or after &amp;&amp;  ||  ;  (   — a single | pipe does NOT count</text>
+  <line x1="265" y1="228" x2="265" y2="250" stroke="#26241f" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="80" y="328" width="370" height="52" rx="8" fill="#ffffff" stroke="#8a5a2b"/>
+  <text x="265" y="348" text-anchor="middle" font-size="10.5" font-weight="600" fill="#26241f">targets source code?</text>
+  <text x="265" y="364" text-anchor="middle" font-size="9" fill="#6b675e">.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java  OR  apps/ packages/ src/ path</text>
+  <line x1="265" y1="304" x2="265" y2="326" stroke="#26241f" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="278" y="320" font-size="10" fill="#6b675e">yes</text>
+
+  <!-- Grep chain -->
+  <rect x="470" y="252" width="330" height="52" rx="8" fill="#ffffff" stroke="#1f6e75"/>
+  <text x="635" y="272" text-anchor="middle" font-size="10.5" font-weight="600" fill="#26241f">clearly non-code search?</text>
+  <text x="635" y="288" text-anchor="middle" font-size="9" fill="#6b675e">glob/type md·json·yml·css·html·txt·log — or path outside apps|packages|src</text>
+  <line x1="615" y1="228" x2="635" y2="250" stroke="#26241f" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="800" y1="278" x2="822" y2="278" stroke="#2d5a27" stroke-width="1.5"/>
+  <text x="812" y="268" text-anchor="middle" font-size="10" fill="#2d5a27">yes → ALLOW</text>
+
+  <!-- BLOCK -->
+  <rect x="250" y="416" width="360" height="66" rx="10" fill="#f8e3df" stroke="#a3311f" stroke-width="1.5"/>
+  <text x="430" y="441" text-anchor="middle" font-size="13" font-weight="700" fill="#a3311f">BLOCK — exit 2</text>
+  <text x="430" y="459" text-anchor="middle" font-size="10" fill="#7a2517">"symbol/code lookups must use codegraph_search /</text>
+  <text x="430" y="472" text-anchor="middle" font-size="10" fill="#7a2517">_callers / _callees / _impact instead of grep"</text>
+  <line x1="265" y1="380" x2="380" y2="414" stroke="#a3311f" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="300" y="402" font-size="10" fill="#a3311f">yes</text>
+  <line x1="635" y1="304" x2="480" y2="414" stroke="#a3311f" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="580" y="360" font-size="10" fill="#a3311f">no (code search)</text>
+
+  <text x="430" y="516" text-anchor="middle" font-size="10.5" fill="#6b675e">Always allowed: piped-stream filtering (docker logs | grep err), non-code files, repos without .codegraph.</text>
+  <text x="430" y="534" text-anchor="middle" font-size="10.5" fill="#6b675e">Known false-positive: prose like "; grep gate" inside a heredoc body matches the command-position regex — reword or split the command.</text>
+</svg>

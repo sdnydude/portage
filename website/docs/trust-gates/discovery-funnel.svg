@@ -1,0 +1,36 @@
+<svg viewBox="0 0 860 500" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+  <defs>
+    <marker id="arr2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#26241f"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="860" height="500" rx="12" fill="#f6f4ef"/>
+  <text x="430" y="34" text-anchor="middle" font-size="18" font-weight="700" fill="#26241f">The enforced discovery funnel — cheap indexed knowledge before expensive agents</text>
+
+  <rect x="60" y="66" width="740" height="58" rx="9" fill="#ffffff" stroke="#1f6e75"/>
+  <text x="430" y="88" text-anchor="middle" font-size="12.5" font-weight="700" fill="#15494e">1 · Registry KB   —   POST /api/kb/search</text>
+  <text x="430" y="106" text-anchor="middle" font-size="10" fill="#6b675e">prior decisions, ship runs, insights, bug fixes — "was this already built/decided?" (found the Best-Offer engine and its p25-floor design in one call)</text>
+  <line x1="430" y1="124" x2="430" y2="142" stroke="#26241f" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+  <rect x="90" y="144" width="680" height="58" rx="9" fill="#ffffff" stroke="#1f6e75"/>
+  <text x="430" y="166" text-anchor="middle" font-size="12.5" font-weight="700" fill="#15494e">2 · CodeGraph   —   codegraph_search / _callers / _callees / _impact / _node</text>
+  <text x="430" y="184" text-anchor="middle" font-size="10" fill="#6b675e">symbols: functions, methods, classes, types, routes — location + signature without reading files</text>
+  <line x1="430" y1="202" x2="430" y2="220" stroke="#26241f" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+  <rect x="120" y="222" width="620" height="58" rx="9" fill="#ffffff" stroke="#1f6e75"/>
+  <text x="430" y="244" text-anchor="middle" font-size="12.5" font-weight="700" fill="#15494e">3 · graphify wiki + auto-memory (MEMORY.md, 125 files)</text>
+  <text x="430" y="262" text-anchor="middle" font-size="10" fill="#6b675e">architecture questions, gotchas, prior session context — graphify-out/ served at :8018</text>
+  <line x1="430" y1="280" x2="430" y2="298" stroke="#26241f" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+  <rect x="150" y="300" width="560" height="58" rx="9" fill="#faf7ef" stroke="#8a5a2b"/>
+  <text x="430" y="322" text-anchor="middle" font-size="12.5" font-weight="700" fill="#8a5a2b">4 · Targeted Read of known files (≤ 3 files, known ranges)</text>
+  <text x="430" y="340" text-anchor="middle" font-size="10" fill="#6b675e">the sanctioned escape for what indexes cannot answer — e.g. interface FIELDS are not graph-indexed</text>
+  <line x1="430" y1="358" x2="430" y2="376" stroke="#26241f" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+  <rect x="180" y="378" width="500" height="72" rx="9" fill="#f8e3df" stroke="#a3311f" stroke-width="1.5"/>
+  <text x="430" y="400" text-anchor="middle" font-size="12.5" font-weight="700" fill="#a3311f">5 · Exploration agent — GATED by graph-memory-first.sh</text>
+  <text x="430" y="418" text-anchor="middle" font-size="10" fill="#7a2517">Explore · general-purpose · code-explorer · cavecrew-investigator · root-cause-analyzer</text>
+  <text x="430" y="436" text-anchor="middle" font-size="10.5" font-weight="600" fill="#7a2517">blocked unless the prompt carries  [context-checked: &lt;what was consulted and what was missing&gt;]</text>
+
+  <text x="430" y="478" text-anchor="middle" font-size="10.5" fill="#6b675e">Builders and reviewers are NOT gated — they receive targets, they don't hunt. The attestation is auditable in every dispatched prompt.</text>
+</svg>

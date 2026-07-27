@@ -1,0 +1,57 @@
+<svg viewBox="0 0 860 470" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+  <rect x="0" y="0" width="860" height="470" rx="12" fill="#f6f4ef"/>
+  <text x="430" y="36" text-anchor="middle" font-size="20" font-weight="700" fill="#26241f">Why rules drift and gates hold</text>
+  <text x="430" y="58" text-anchor="middle" font-size="12" fill="#6b675e">Instructions compete for model attention. Gates execute outside it.</text>
+
+  <!-- Attention layer -->
+  <rect x="40" y="86" width="380" height="330" rx="10" fill="#ffffff" stroke="#d8d3c8"/>
+  <text x="230" y="112" text-anchor="middle" font-size="14" font-weight="700" fill="#8a5a2b">ATTENTION LAYER — competes, drifts</text>
+
+  <rect x="64" y="130" width="332" height="44" rx="7" fill="#fdece0" stroke="#e8944a"/>
+  <text x="230" y="149" text-anchor="middle" font-size="12" font-weight="600" fill="#8a4a12">Task momentum</text>
+  <text x="230" y="165" text-anchor="middle" font-size="10" fill="#8a4a12">the error on screen beats every standing rule</text>
+
+  <rect x="64" y="182" width="332" height="44" rx="7" fill="#fdf3e6" stroke="#e8b06a"/>
+  <text x="230" y="201" text-anchor="middle" font-size="12" font-weight="600" fill="#8a5a2b">Recency</text>
+  <text x="230" y="217" text-anchor="middle" font-size="10" fill="#8a5a2b">last messages &gt;&gt; instructions loaded 200k tokens ago</text>
+
+  <rect x="64" y="234" width="332" height="44" rx="7" fill="#faf7ef" stroke="#d8c9a8"/>
+  <text x="230" y="253" text-anchor="middle" font-size="12" font-weight="600" fill="#6b5a3a">CLAUDE.md + rules + memories</text>
+  <text x="230" y="269" text-anchor="middle" font-size="10" fill="#6b5a3a">large volume dilutes per-rule salience</text>
+
+  <rect x="64" y="286" width="332" height="44" rx="7" fill="#f4f1ea" stroke="#d8d3c8"/>
+  <text x="230" y="305" text-anchor="middle" font-size="12" font-weight="600" fill="#6b675e">Per-turn KB injections</text>
+  <text x="230" y="321" text-anchor="middle" font-size="10" fill="#6b675e">exploit recency — arrive fresh every prompt</text>
+
+  <text x="230" y="366" text-anchor="middle" font-size="11" fill="#a3311f" font-weight="600">Failure mode: rule exists, task wins anyway</text>
+  <text x="230" y="384" text-anchor="middle" font-size="10" fill="#6b675e">(grep-instead-of-CodeGraph, done-without-proof,</text>
+  <text x="230" y="398" text-anchor="middle" font-size="10" fill="#6b675e">instance-fixed-class-missed — all recurred here)</text>
+
+  <!-- Machine layer -->
+  <rect x="440" y="86" width="380" height="330" rx="10" fill="#ffffff" stroke="#2d5a27"/>
+  <text x="630" y="112" text-anchor="middle" font-size="14" font-weight="700" fill="#2d5a27">MACHINE LAYER — executes, holds</text>
+
+  <rect x="464" y="130" width="332" height="52" rx="7" fill="#e9f2e7" stroke="#2d5a27"/>
+  <text x="630" y="150" text-anchor="middle" font-size="12" font-weight="600" fill="#22421d">tdd-guard  (PreToolUse: Write/Edit)</text>
+  <text x="630" y="167" text-anchor="middle" font-size="10" fill="#22421d">rejects untested implementation before the edit lands</text>
+
+  <rect x="464" y="190" width="332" height="52" rx="7" fill="#e9f2e7" stroke="#2d5a27"/>
+  <text x="630" y="210" text-anchor="middle" font-size="12" font-weight="600" fill="#22421d">codegraph-first  (PreToolUse: Bash | Grep)</text>
+  <text x="630" y="227" text-anchor="middle" font-size="10" fill="#22421d">blocks source-code grep where a .codegraph index exists</text>
+
+  <rect x="464" y="250" width="332" height="52" rx="7" fill="#e9f2e7" stroke="#2d5a27"/>
+  <text x="630" y="270" text-anchor="middle" font-size="12" font-weight="600" fill="#22421d">graph-memory-first  (PreToolUse: Agent | Task)</text>
+  <text x="630" y="287" text-anchor="middle" font-size="10" fill="#22421d">blocks exploration agents without a context-checked attestation</text>
+
+  <rect x="464" y="310" width="332" height="52" rx="7" fill="#e2eef0" stroke="#1f6e75"/>
+  <text x="630" y="330" text-anchor="middle" font-size="12" font-weight="600" fill="#15494e">tabbar-overlay-audit  (CI: Ephemeral e2e)</text>
+  <text x="630" y="347" text-anchor="middle" font-size="10" fill="#15494e">pixel-level occlusion sweep fails any regressing PR</text>
+
+  <text x="630" y="384" text-anchor="middle" font-size="11" fill="#2d5a27" font-weight="600">Property: fires whether or not the agent remembers</text>
+  <text x="630" y="400" text-anchor="middle" font-size="10" fill="#6b675e">blocked the agent 7+ times on 2026-07-27 alone</text>
+
+  <!-- arrow -->
+  <line x1="420" y1="250" x2="440" y2="250" stroke="#26241f" stroke-width="2"/>
+  <text x="430" y="238" text-anchor="middle" font-size="16" fill="#26241f">→</text>
+  <text x="430" y="444" text-anchor="middle" font-size="11" fill="#6b675e">Operating rule: must-ALWAYS-happen → hook or CI gate · must-be-remembered-NOW → per-turn injection · everything else → prose that sometimes loses</text>
+</svg>
