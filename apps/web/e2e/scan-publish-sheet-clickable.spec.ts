@@ -62,6 +62,22 @@ test("Save & List: publish sheet buttons are clickable (action bar yields)", asy
     if (route.request().method() !== "GET") return route.fallback();
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ aspects: {} }) });
   });
+  // Storage boundary too: the ephemeral CI stack has no R2 credentials, so a
+  // real POST /images 500s and the flow never leaves the capture state. A 1px
+  // data: URI keeps the run offline-deterministic.
+  const PIXEL =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  await page.route(/\/images$/, async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await route.fulfill({
+      contentType: "application/json",
+      status: 201,
+      body: JSON.stringify({
+        image: { url: PIXEL, key: "e2e-sheet-clickable-photo", width: 640, height: 640 },
+        thumbnail: { url: PIXEL, key: "e2e-sheet-clickable-thumb" },
+      }),
+    });
+  });
 
   // /inventory, not /home: a fresh user (ephemeral CI) gets the full-screen
   // OnboardingFlow on /home, which intercepts the Scan FAB click. The TabBar

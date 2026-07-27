@@ -27,7 +27,10 @@ describe('crypto', () => {
   it('throws on tampered ciphertext', () => {
     const ciphertext = encrypt('sensitive data');
     const parts = ciphertext.split(':');
-    const tampered = parts[0] + ':' + parts[1] + ':' + 'ff' + parts[2].slice(2);
+    // XOR-flip the first ciphertext byte — substituting a constant ('ff') was
+    // a no-op tamper 1 run in 256, when the real byte already was 0xff.
+    const flipped = (parseInt(parts[2].slice(0, 2), 16) ^ 0xff).toString(16).padStart(2, '0');
+    const tampered = parts[0] + ':' + parts[1] + ':' + flipped + parts[2].slice(2);
     expect(() => decrypt(tampered)).toThrow();
   });
 });
