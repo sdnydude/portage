@@ -1,0 +1,55 @@
+<svg viewBox="0 0 860 440" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+  <rect x="0" y="0" width="860" height="440" rx="12" fill="#f6f4ef"/>
+  <text x="430" y="34" text-anchor="middle" font-size="18" font-weight="700" fill="#26241f">tabbar-overlay-audit — ground truth is the tap, not the box</text>
+
+  <!-- phone left: BUG -->
+  <rect x="80" y="70" width="200" height="310" rx="18" fill="#ffffff" stroke="#26241f" stroke-width="1.5"/>
+  <text x="180" y="94" text-anchor="middle" font-size="11" font-weight="700" fill="#a3311f">BUG (z-50 tie)</text>
+  <rect x="96" y="240" width="168" height="110" rx="10" fill="#faf7ef" stroke="#d8d3c8"/>
+  <text x="180" y="262" text-anchor="middle" font-size="9.5" fill="#26241f">Delete Item?</text>
+  <rect x="106" y="300" width="70" height="26" rx="6" fill="#e8e4dc"/>
+  <text x="141" y="317" text-anchor="middle" font-size="9" fill="#6b675e">Cancel</text>
+  <rect x="184" y="300" width="70" height="26" rx="6" fill="#e46a5f"/>
+  <text x="219" y="317" text-anchor="middle" font-size="9" fill="#ffffff">Delete</text>
+  <!-- bar OVER buttons -->
+  <rect x="92" y="296" width="176" height="40" rx="14" fill="#26241f" opacity="0.88"/>
+  <circle cx="122" cy="316" r="6" fill="#8a877e"/>
+  <circle cx="152" cy="316" r="6" fill="#8a877e"/>
+  <circle cx="180" cy="316" r="9" fill="#e8620c"/>
+  <circle cx="208" cy="316" r="6" fill="#8a877e"/>
+  <circle cx="238" cy="316" r="6" fill="#8a877e"/>
+  <text x="180" y="366" text-anchor="middle" font-size="9.5" fill="#a3311f" font-weight="600">tap lands on the BAR</text>
+
+  <!-- phone right: FIXED -->
+  <rect x="330" y="70" width="200" height="310" rx="18" fill="#ffffff" stroke="#26241f" stroke-width="1.5"/>
+  <text x="430" y="94" text-anchor="middle" font-size="11" font-weight="700" fill="#2d5a27">FIXED (sheet z-[60])</text>
+  <!-- bar behind dimmed -->
+  <rect x="342" y="296" width="176" height="40" rx="14" fill="#26241f" opacity="0.25"/>
+  <rect x="346" y="230" width="168" height="120" rx="10" fill="#ffffff" stroke="#26241f"/>
+  <text x="430" y="252" text-anchor="middle" font-size="9.5" fill="#26241f">Delete Item?</text>
+  <rect x="356" y="300" width="70" height="26" rx="6" fill="#f4f1ea" stroke="#d8d3c8"/>
+  <text x="391" y="317" text-anchor="middle" font-size="9" fill="#26241f">Cancel</text>
+  <rect x="434" y="300" width="70" height="26" rx="6" fill="#e4463a"/>
+  <text x="469" y="317" text-anchor="middle" font-size="9" fill="#ffffff">Delete</text>
+  <text x="430" y="366" text-anchor="middle" font-size="9.5" fill="#2d5a27" font-weight="600">tap lands on the BUTTON</text>
+
+  <!-- method panel -->
+  <rect x="580" y="70" width="240" height="310" rx="10" fill="#ffffff" stroke="#1f6e75"/>
+  <text x="700" y="96" text-anchor="middle" font-size="12" font-weight="700" fill="#15494e">The check, per control</text>
+  <text x="596" y="124" font-size="10.5" fill="#26241f">1. center = (rect.left + w/2,</text>
+  <text x="612" y="139" font-size="10.5" fill="#26241f">rect.top + h/2)</text>
+  <text x="596" y="164" font-size="10.5" fill="#26241f">2. top = document.</text>
+  <text x="612" y="179" font-size="10.5" fill="#26241f">elementFromPoint(center)</text>
+  <text x="596" y="204" font-size="10.5" fill="#26241f">3. nav.contains(top)</text>
+  <text x="612" y="219" font-size="10.5" fill="#a3311f" font-weight="600">→ VIOLATION</text>
+  <text x="596" y="248" font-size="10" fill="#6b675e">Box intersection was rejected:</text>
+  <text x="596" y="263" font-size="10" fill="#6b675e">it false-flags dialogs correctly</text>
+  <text x="596" y="278" font-size="10" fill="#6b675e">stacked ABOVE the bar.</text>
+  <text x="596" y="306" font-size="10" fill="#26241f" font-weight="600">Coverage:</text>
+  <text x="596" y="321" font-size="10" fill="#6b675e">13 mobile routes, bottom-scrolled</text>
+  <text x="596" y="336" font-size="10" fill="#6b675e">+ dialog class (ConfirmSheet flow)</text>
+  <text x="596" y="351" font-size="10" fill="#6b675e">runs in CI (Ephemeral e2e, required)</text>
+  <text x="596" y="366" font-size="10" fill="#2d5a27" font-weight="600">red-proven before trusted</text>
+
+  <text x="430" y="416" text-anchor="middle" font-size="10.5" fill="#6b675e">Screenshots are emitted for every route on every run (test-results/proof/overlay-audit/) — proof is a byproduct of the gate, not an extra step.</text>
+</svg>

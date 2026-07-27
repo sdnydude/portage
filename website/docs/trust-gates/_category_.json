@@ -1,0 +1,8 @@
+{
+  "label": "Trust Gates",
+  "position": 95,
+  "link": {
+    "type": "generated-index",
+    "description": "The machine-enforcement layer: hooks and CI gates that make agent failure modes structurally impossible instead of behaviorally discouraged."
+  }
+}
