@@ -108,6 +108,23 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(escaped).toContain('<Value>A &amp; B</Value>');
     expect(escaped).not.toContain('Tom & Jerry');
   });
+
+  it('enables Best Offer WITHOUT an auto-accept floor when bestOfferEnabled is set (per-listing toggle)', () => {
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, bestOfferEnabled: true }, 'T');
+    expect(xml).toContain('<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>');
+    expect(xml).not.toContain('BestOfferAutoAcceptPrice');
+  });
+
+  it('emits MinimumBestOfferPrice (auto-decline floor) only when valid and Best Offer is on', () => {
+    const withMin = buildAddFixedPriceItemXml({ ...baseInput, bestOfferEnabled: true, minimumBestOfferPrice: 80 }, 'T');
+    expect(withMin).toContain('<MinimumBestOfferPrice currencyID="USD">80</MinimumBestOfferPrice>');
+    // Invalid floors (>= price) are dropped, not sent for eBay to reject.
+    const tooHigh = buildAddFixedPriceItemXml({ ...baseInput, bestOfferEnabled: true, minimumBestOfferPrice: 500 }, 'T');
+    expect(tooHigh).not.toContain('MinimumBestOfferPrice');
+    // No toggle, no auto-accept floor → min alone does not enable Best Offer.
+    const minOnly = buildAddFixedPriceItemXml({ ...baseInput, minimumBestOfferPrice: 80 }, 'T');
+    expect(minOnly).not.toContain('<BestOfferDetails>');
+  });
 });
 
 describe('validatePictureUrls — eBay hard limits pre-XML (F2)', () => {

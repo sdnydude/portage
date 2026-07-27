@@ -61,6 +61,17 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     setPrice(suggestedPrice?.toString() ?? "");
   }, [suggestedPrice]);
   const [publishNow, setPublishNow] = useState(initialPublishNow);
+  // Per-listing "Accept offers" (beta request 1ad18a5b). Untouched → nothing is
+  // sent and the server/profile defaults apply (eBay: off; Reverb: profile,
+  // default on). Only an explicit user flip rides the POST.
+  const [acceptOffers, setAcceptOffers] = useState(marketplace === "reverb");
+  const offersTouched = useRef(false);
+  const [minOffer, setMinOffer] = useState("");
+  const [autoAcceptOffer, setAutoAcceptOffer] = useState("");
+  // Marketplace switch before any interaction re-seeds the default position.
+  useEffect(() => {
+    if (!offersTouched.current) setAcceptOffers(marketplace === "reverb");
+  }, [marketplace]);
   // When not publishing now, optionally create an UNPUBLISHED eBay offer (Seller
   // Hub draft) instead of a Portage-local draft. eBay marketplace only.
   const [ebayDraft, setEbayDraft] = useState(initialEbayDraft);
@@ -83,11 +94,33 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // Single create-and-publish call; `aspects` carries seller-filled item
   // specifics on a retry after EBAY_ASPECTS_REQUIRED.
   const submitListing = async (priceNum: number, aspects?: Record<string, string[]>, suppress7d = false) => {
-    const fields: { categoryId?: string; aspects?: Record<string, string[]> } = {};
+    const fields: {
+      categoryId?: string;
+      aspects?: Record<string, string[]>;
+      bestOfferEnabled?: boolean;
+      minimumBestOfferPrice?: number;
+      bestOfferAutoAcceptPrice?: number;
+      offersEnabledExplicit?: boolean;
+    } = {};
     if (categoryId) fields.categoryId = categoryId;
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
     const effectiveAspects = aspects ?? initialAspects;
     if (effectiveAspects && Object.keys(effectiveAspects).length > 0) fields.aspects = effectiveAspects;
+    // Offers ride only on an explicit user flip — untouched keeps server/profile
+    // defaults, and pre-toggle rows keep profile-driven sync behavior.
+    if (offersTouched.current) {
+      if (marketplace === "ebay") {
+        fields.bestOfferEnabled = acceptOffers;
+        if (acceptOffers) {
+          const min = parseFloat(minOffer);
+          const auto = parseFloat(autoAcceptOffer);
+          if (min > 0) fields.minimumBestOfferPrice = min;
+          if (auto > 0) fields.bestOfferAutoAcceptPrice = auto;
+        }
+      } else {
+        fields.offersEnabledExplicit = acceptOffers;
+      }
+    }
     idempotencyKeyRef.current = scopedPublishIdempotencyKey(itemId, marketplace, idempotencyKeyRef.current);
     const res = await api<PublishResult>("/listings", {
       method: "POST",
@@ -299,6 +332,58 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
           </div>
           <span className="text-sm text-text-primary">Publish immediately</span>
         </label>
+
+        {/* Per-listing offers (beta request): eBay Best Offer with optional
+            auto-decline/auto-accept floors; Reverb offers_enabled override. */}
+        <label className="flex items-center gap-3 py-2 cursor-pointer">
+          <div
+            onClick={() => { offersTouched.current = true; setAcceptOffers(!acceptOffers); }}
+            className={`w-10 h-6 rounded-full transition-colors flex items-center ${
+              acceptOffers ? "bg-forest-green" : "bg-muted border border-border"
+            }`}
+          >
+            <div
+              className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                acceptOffers ? "translate-x-5" : "translate-x-1"
+              }`}
+            />
+          </div>
+          <span className="text-sm text-text-primary">Accept offers</span>
+        </label>
+        {acceptOffers && marketplace === "ebay" && (
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label htmlFor="min-offer" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+                Minimum offer ($)
+              </label>
+              <input
+                id="min-offer"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={minOffer}
+                onChange={(e) => setMinOffer(e.target.value)}
+                placeholder="Optional"
+                className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+              />
+            </div>
+            <div className="flex-1">
+              <label htmlFor="auto-accept-offer" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+                Auto-accept at ($)
+              </label>
+              <input
+                id="auto-accept-offer"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={autoAcceptOffer}
+                onChange={(e) => setAutoAcceptOffer(e.target.value)}
+                placeholder="Optional"
+                className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+              />
+            </div>
+          </div>
+        )}
 
         {/* eBay-draft option — only when not publishing now and on eBay. Creates an
             unpublished eBay offer (Seller Hub draft) rather than a Portage-local draft. */}

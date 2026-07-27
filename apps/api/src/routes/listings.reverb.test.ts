@@ -100,7 +100,7 @@ beforeEach(() => {
 });
 
 describe('POST /listings — reverb live publish', () => {
-  it('constructs the adapter with userId and enriches specifics from cache + profile (profile wins offersEnabled)', async () => {
+  it('constructs the adapter with userId and enriches specifics from cache + profile (profile wins raw offersEnabled)', async () => {
     mockSelectOnce([GEAR_ITEM]);                       // item lookup
     mockInsertReturning([{ id: 'listing-1', status: 'draft' }]);
     mockSelectOnce([PROFILE]);                         // enrichment profile lookup
@@ -132,10 +132,38 @@ describe('POST /listings — reverb live publish', () => {
       conditionUuid: 'rev-cond-excellent',
       year: '1979',
       finish: 'Sunburst',
-      offersEnabled: false, // profile is source of truth — client true must lose
+      offersEnabled: false, // profile owns the RAW key — user intent rides offersEnabledExplicit
       shippingRates: [{ regionCode: 'US_CON', rate: { amount: '45.00', currency: 'USD' } }],
     });
     expect(mockReverbSearchCategories).not.toHaveBeenCalled();
+  });
+
+  it('offersEnabledExplicit (publish-sheet toggle) overrides the profile default', async () => {
+    mockSelectOnce([GEAR_ITEM]);
+    mockInsertReturning([{ id: 'listing-1', status: 'draft' }]);
+    mockSelectOnce([PROFILE]);                         // profile has reverbOffersEnabled: false
+    mockSelectOnce([{ footer: null }]);
+    mockReverbCreateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'reverb',
+        price: 2500,
+        publishMode: 'live',
+        disclaimerAccepted: true,
+        marketplaceSpecificFields: { offersEnabledExplicit: true },
+      });
+
+    expect(res.status).toBe(201);
+    const input = mockReverbCreateListing.mock.calls[0][0];
+    expect(input.marketplaceSpecific.offersEnabled).toBe(true);
   });
 
   it('enriches shippingProfileId and localPickup from the seller profile reverbDefaultShipping', async () => {

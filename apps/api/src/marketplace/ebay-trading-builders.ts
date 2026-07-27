@@ -35,7 +35,11 @@ export interface TradingListingInput {
     shippingPackage?: string;
   };
   dispatchTimeMax?: number;
+  /** Per-listing "accept offers" toggle — enables Best Offer even with no floor. */
+  bestOfferEnabled?: boolean;
   bestOfferAutoAcceptPrice?: number;
+  /** Auto-DECLINE floor (offers below are rejected without seller review). */
+  minimumBestOfferPrice?: number;
   listingDuration?: string;
 }
 
@@ -112,13 +116,20 @@ function shippingPackageDetails(s: TradingListingInput['shipping']): string {
 /** Best Offer auto-accept (G9): only when floor is positive and below the BIN price. */
 function bestOfferDetails(input: TradingListingInput): string {
   const floor = input.bestOfferAutoAcceptPrice;
-  if (typeof floor !== 'number' || floor <= 0 || floor >= input.price) return '';
-  // BestOfferAutoAcceptPrice auto-ACCEPTS offers at/above the floor. (MinimumBestOfferPrice
-  // is a different field — the auto-DECLINE floor — which we deliberately do not set.)
-  return (
-    '<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>' +
-    `<ListingDetails><BestOfferAutoAcceptPrice currencyID="${input.currency}">${floor}</BestOfferAutoAcceptPrice></ListingDetails>`
-  );
+  const hasFloor = typeof floor === 'number' && floor > 0 && floor < input.price;
+  // A valid auto-accept floor implies Best Offer; the per-listing toggle
+  // (bestOfferEnabled) enables it with no floor — seller reviews every offer.
+  if (!hasFloor && !input.bestOfferEnabled) return '';
+  const enabled = '<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>';
+  const min = input.minimumBestOfferPrice;
+  const hasMin = typeof min === 'number' && min > 0 && min < input.price;
+  // BestOfferAutoAcceptPrice auto-ACCEPTS offers at/above the floor;
+  // MinimumBestOfferPrice auto-DECLINES offers below it. Both live in
+  // ListingDetails; invalid values are dropped rather than sent for rejection.
+  const details =
+    (hasFloor ? `<BestOfferAutoAcceptPrice currencyID="${input.currency}">${floor}</BestOfferAutoAcceptPrice>` : '') +
+    (hasMin ? `<MinimumBestOfferPrice currencyID="${input.currency}">${min}</MinimumBestOfferPrice>` : '');
+  return details ? `${enabled}<ListingDetails>${details}</ListingDetails>` : enabled;
 }
 
 /** Split total ounces (items store normalized oz) into eBay WeightMajor (lbs) + WeightMinor (oz). */

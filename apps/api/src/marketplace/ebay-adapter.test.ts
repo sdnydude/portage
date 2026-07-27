@@ -299,6 +299,39 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
     expect(result.warning).toMatch(/best offer/i);
   });
 
+  it('maps bestOfferEnabled + minimumBestOfferPrice from marketplaceSpecific into the Add XML', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 10 },
+    } as any);
+    const addCall = fetchMock.mock.calls.find(([u]) => isTradingCall(u));
+    const body = String((addCall![1] as RequestInit).body);
+    expect(body).toContain('<BestOfferEnabled>true</BestOfferEnabled>');
+    expect(body).toContain('<MinimumBestOfferPrice currencyID="USD">10</MinimumBestOfferPrice>');
+  });
+
+  it('downgrade-retries a toggle-only (no floor) Best Offer rejection as well', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      const body = String((opts as RequestInit).body);
+      if (body.includes('<BestOfferEnabled>true</BestOfferEnabled>')) {
+        return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></AddFixedPriceItemResponse>', { status: 200 });
+      }
+      return new Response(ADD_ITEM_OK, { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true },
+    } as any);
+    expect(calls).toBe(2);
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/best offer/i);
+  });
+
   it('does NOT retry when the rejection is unrelated to Best Offer — the real error surfaces', async () => {
     fetchMock.mockImplementation(async (url: unknown) =>
       isTradingCall(url)
