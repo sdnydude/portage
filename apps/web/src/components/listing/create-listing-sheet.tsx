@@ -168,7 +168,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   if (result) {
     const isDraft = !!result.warning || result.status !== "active";
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+      <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
         <div className="fixed inset-0 bg-black/50" onClick={onCreated} />
         <div className="relative bg-surface rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-4 p-6 space-y-4 max-h-[85dvh] overflow-y-auto text-center">
           <div
@@ -220,7 +220,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-surface rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-4 mb-0 sm:mb-0 p-6 space-y-4 max-h-[85dvh] overflow-y-auto">
         <h3 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">

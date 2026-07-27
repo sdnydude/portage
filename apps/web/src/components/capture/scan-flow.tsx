@@ -1430,29 +1430,34 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             </div>
           </div>
 
-          {/* Fixed bottom: editable price + Rescan + Save + List (extracted) */}
-          <ScanReviewActions
-            price={reviewPrice}
-            onPriceChange={setListPrice}
-            quantity={editQuantity}
-            onQuantityChange={setEditQuantity}
-            onRescan={handleRescan}
-            onSave={handleSave}
-            onSaveAndList={handleSaveAndList}
-            isSaving={isSaving}
-            isListing={isListingForSale}
-            canSave={requiredComplete}
-            saveDisabledReason={saveDisabledReason}
-            priceRequired={priceMissing}
-            canList={!aspectsBlockPublish}
-            listDisabledReason={
-              aspectsBlockPublish
-                ? missingRequired.length > 0
-                  ? `Complete ${missingRequired.length} required eBay detail${missingRequired.length === 1 ? "" : "s"} first`
-                  : "Checking eBay requirements…"
-                : null
-            }
-          />
+          {/* Fixed bottom: editable price + Rescan + Save + List (extracted).
+              Hidden once the publish-confirm sheet is up (below) — both are
+              fixed-bottom bars and this one's higher z-index otherwise covers
+              the sheet's own Cancel/Publish buttons. */}
+          {!publishItemId && (
+            <ScanReviewActions
+              price={reviewPrice}
+              onPriceChange={setListPrice}
+              quantity={editQuantity}
+              onQuantityChange={setEditQuantity}
+              onRescan={handleRescan}
+              onSave={handleSave}
+              onSaveAndList={handleSaveAndList}
+              isSaving={isSaving}
+              isListing={isListingForSale}
+              canSave={requiredComplete}
+              saveDisabledReason={saveDisabledReason}
+              priceRequired={priceMissing}
+              canList={!aspectsBlockPublish}
+              listDisabledReason={
+                aspectsBlockPublish
+                  ? missingRequired.length > 0
+                    ? `Complete ${missingRequired.length} required eBay detail${missingRequired.length === 1 ? "" : "s"} first`
+                    : "Checking eBay requirements…"
+                  : null
+              }
+            />
+          )}
         </div>
       )}
 
