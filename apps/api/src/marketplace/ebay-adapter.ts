@@ -487,6 +487,10 @@ export class EbayAdapter implements MarketplaceAdapter {
         dimensions: { length: dims!.length!, width: dims!.width!, height: dims!.height! },
       },
       bestOfferAutoAcceptPrice: (specific as Partial<EbayPreparedFields>).bestOfferAutoAcceptPrice,
+      // Per-listing "accept offers" toggle + auto-decline floor from the
+      // publish sheet (ride marketplaceSpecific; not part of prepared fields).
+      bestOfferEnabled: typeof specific.bestOfferEnabled === 'boolean' ? specific.bestOfferEnabled : undefined,
+      minimumBestOfferPrice: typeof specific.minimumBestOfferPrice === 'number' ? specific.minimumBestOfferPrice : undefined,
     };
   }
 
@@ -499,12 +503,15 @@ export class EbayAdapter implements MarketplaceAdapter {
     // Best Offer category support is not verifiable pre-flight — on a best-offer
     // rejection, retry once without it rather than failing the whole listing.
     let bestOfferDowngraded = false;
-    const BEST_OFFER_DOWNGRADE_WARNING = 'Listed without Best Offer auto-accept — eBay rejected it for this listing.';
+    const BEST_OFFER_DOWNGRADE_WARNING = 'Listed without Best Offer — eBay rejected it for this listing.';
+    const wantsBestOffer = !!(tradingInput.bestOfferAutoAcceptPrice || tradingInput.bestOfferEnabled);
     const callAdd = (withBestOffer: boolean): Promise<Record<string, unknown>> =>
       callTradingApi(
         'AddFixedPriceItem',
         buildAddFixedPriceItemXml(
-          withBestOffer ? tradingInput : { ...tradingInput, bestOfferAutoAcceptPrice: undefined },
+          withBestOffer
+            ? tradingInput
+            : { ...tradingInput, bestOfferAutoAcceptPrice: undefined, bestOfferEnabled: undefined, minimumBestOfferPrice: undefined },
           token,
         ),
         token,
@@ -514,7 +521,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     try {
       parsed = await callAdd(true);
     } catch (err) {
-      if (tradingInput.bestOfferAutoAcceptPrice && EbayAdapter.isBestOfferRejection(err)) {
+      if (wantsBestOffer && EbayAdapter.isBestOfferRejection(err)) {
         logger.warn({ userId: this.userId, sku, error: (err as Error).message }, 'eBay rejected Best Offer — retrying AddFixedPriceItem without it');
         bestOfferDowngraded = true;
         parsed = await callAdd(false);

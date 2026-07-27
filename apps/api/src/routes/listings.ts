@@ -109,8 +109,11 @@ function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): Ma
 /**
  * Reverb sibling of the eBay self-heal block: fill publish specifics from the
  * item's prepare-time cache (client-supplied keys win) and the seller profile.
- * The profile OWNS offersEnabled — the web sends a hardcoded default, never a
- * user choice, so a client value must not override profile intent.
+ * offersEnabled: the profile owns the raw key (legacy rows keep getting
+ * post-publish profile changes on sync). Per-listing user intent from the
+ * publish sheet rides a SEPARATE offersEnabledExplicit key (2026-07-27) that
+ * overrides after profile fill and persists on the stored row, so re-sync
+ * keeps honoring the seller's per-listing choice.
  */
 async function applyReverbEnrichment(
   userId: string,
@@ -139,6 +142,7 @@ async function applyReverbEnrichment(
   if (!ms.shippingRates && shipDefaults?.rates && shipDefaults.rates.length > 0) ms.shippingRates = shipDefaults.rates;
   if (ms.localPickup === undefined && shipDefaults?.local !== undefined) ms.localPickup = shipDefaults.local;
   if (profile) ms.offersEnabled = profile.reverbOffersEnabled ?? true;
+  if (typeof ms.offersEnabledExplicit === 'boolean') ms.offersEnabled = ms.offersEnabledExplicit;
 
   // Never-prepared items carry no cached category. A Reverb publish without one
   // silently lands wrong (or fails at publish) — guess via category search and

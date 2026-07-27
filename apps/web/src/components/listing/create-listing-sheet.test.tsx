@@ -184,6 +184,55 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     });
   });
 
+  it("sends bestOfferEnabled + min/auto-accept in marketplaceSpecificFields when Accept offers is toggled on (eBay)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Accept offers").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByLabelText("Minimum offer ($)"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("Auto-accept at ($)"), { target: { value: "85" } });
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown>;
+    expect(fields.bestOfferEnabled).toBe(true);
+    expect(fields.minimumBestOfferPrice).toBe(60);
+    expect(fields.bestOfferAutoAcceptPrice).toBe(85);
+  });
+
+  it("sends offersEnabledExplicit only when the Reverb toggle is touched; untouched sends no offer fields", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    // Untouched eBay draft-save → no offer keys at all (profile/server defaults own it).
+    const first = render(<CreateListingSheet itemId="i1" suggestedPrice={100} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Save Draft"));
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const untouched = (bodies[0].marketplaceSpecificFields ?? {}) as Record<string, unknown>;
+    expect(untouched.bestOfferEnabled).toBeUndefined();
+    expect(untouched.offersEnabledExplicit).toBeUndefined();
+    first.unmount();
+
+    // Reverb: toggle defaults ON; flipping it OFF sends offersEnabledExplicit: false.
+    render(<CreateListingSheet itemId="i2" suggestedPrice={100} allowedMarketplaces={["reverb"]} onCreated={vi.fn()} onClose={vi.fn()} />);
+    const toggle = screen.getByText("Accept offers").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Save Draft"));
+    await waitFor(() => expect(bodies.length).toBe(2));
+    const fields = bodies[1].marketplaceSpecificFields as Record<string, unknown>;
+    expect(fields.offersEnabledExplicit).toBe(false);
+    expect(fields.bestOfferEnabled).toBeUndefined();
+  });
+
   it("sends disclaimerAccepted on a publish-now (after accepting terms) so consent is recorded", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
