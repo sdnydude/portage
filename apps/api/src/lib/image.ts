@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import { createLogger } from './logger.js';
+import { AppError } from '../middleware/error.js';
 
 const logger = createLogger('image');
 
@@ -15,7 +16,9 @@ interface ProcessedImage {
 }
 
 export async function processImage(input: Buffer): Promise<ProcessedImage> {
-  const metadata = await sharp(input).metadata();
+  const metadata = await sharp(input).metadata().catch(() => {
+    throw new AppError(400, 'INVALID_IMAGE', 'Could not process image — the file may be corrupt or in an unsupported format.');
+  });
   logger.debug({ width: metadata.width, height: metadata.height, format: metadata.format }, 'Processing image');
 
   const image = sharp(input)
