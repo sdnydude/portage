@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { installSessionStub } from "./session-stub";
 
 // Proves the browser build sends the scoped publish idempotencyKey
 // (`${itemId}:${marketplace}:${random}`) through the CreateListingSheet path,
@@ -7,6 +8,9 @@ import { test, expect } from "@playwright/test";
 const API_BASE = process.env.E2E_API_URL ?? "https://10.0.0.251:8016";
 
 test("UI draft-save stamps the scoped idempotencyKey on the listing row", async ({ page }) => {
+  // CF-less target: the mount exchange would 401 on the prod-mode API and
+  // wipe the seeded session (the old version merely won that race).
+  await installSessionStub(page);
   // Seed a fresh item: an item that already has a listing hides the primary
   // "List on Marketplace" CTA (listing-hub cross-list demotion) and would
   // steer the sheet away from eBay.

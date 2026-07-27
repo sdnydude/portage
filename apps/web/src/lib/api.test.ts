@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { api, apiUpload } from "./api";
+import { api, apiUpload, _resetExchangeBreakerForTests } from "./api";
 
 const ok = (body: unknown) =>
   ({ ok: true, status: 200, json: async () => body }) as Response;
 
 beforeEach(() => {
+  _resetExchangeBreakerForTests();
   localStorage.clear();
 });
 

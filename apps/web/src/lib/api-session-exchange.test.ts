@@ -1,5 +1,9 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { api } from "./api";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { api, _resetExchangeBreakerForTests } from "./api";
+
+beforeEach(() => {
+  _resetExchangeBreakerForTests();
+});
 
 describe("api CF session exchange", () => {
   afterEach(() => {
