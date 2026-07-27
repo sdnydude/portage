@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import { installSessionStub } from "./session-stub";
 
 const SHOT = path.join(process.cwd(), "test-results", "proof", "sheet-clickable");
 const API_BASE = process.env.E2E_API_URL ?? "https://10.0.0.251:8016";
@@ -34,6 +35,11 @@ test("Save & List: publish sheet buttons are clickable (action bar yields)", asy
   const token = storage.origins[0].localStorage.find(
     (e: { name: string }) => e.name === "portage_token",
   )!.value as string;
+  // On a CF-less target the mount exchange 401s against the prod-mode API and
+  // wipes the seeded session — stub only that edge exchange (data calls stay
+  // real).
+  await installSessionStub(page);
+
   // Deterministic AI + taxonomy boundaries (POST/GET-only guards; never
   // navigations). Routes are registered BEFORE goto: flipping the page into
   // interception mode mid-load aborts in-flight fetches, and one aborted

@@ -155,4 +155,30 @@ describe("AuthProvider (Cloudflare Access)", () => {
 
     expect(window.location.href).toBe("/home");
   });
+
+  it("does not reload when auth:session-lost fires while already on /home (reload-loop guard)", async () => {
+    // A persistent 401/403 exchange (e.g. disabled account) used to loop:
+    // wipe → redirect to /home → remount → exchange → wipe → reload, one
+    // /auth/session hit per page load.
+    Object.defineProperty(window, "location", {
+      value: { ...originalLocation, href: "http://localhost/home", pathname: "/home" },
+      writable: true,
+      configurable: true,
+    });
+    localStorage.setItem("portage_token", "t");
+    localStorage.setItem("portage_user", JSON.stringify({ id: "u1", email: "e@x.com", subscriptionTier: "pro", role: "user" }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sessionResponse()));
+
+    render(
+      <AuthProvider>
+        <div>child</div>
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("auth:session-lost"));
+    });
+
+    expect(window.location.href).toBe("http://localhost/home");
+  });
 });

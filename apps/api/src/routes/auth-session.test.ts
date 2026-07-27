@@ -1,5 +1,7 @@
 import request from 'supertest';
+import type { Request } from 'express';
 import { createApp } from '../app.js';
+import { sessionRateLimitKey } from './auth.js';
 import { db } from '../db/index.js';
 import { verifyCfAccessJwt } from '../lib/cf-access.js';
 import { loadEnv, resetEnv } from '../lib/env.js';
@@ -257,5 +259,42 @@ describe('GET /auth/session identity edge cases', () => {
       resetEnv();
       loadEnv();
     }
+  });
+});
+
+function keyReq(overrides: Partial<{ assertion: string; ip: string }>): Request {
+  return {
+    headers: overrides.assertion ? { 'cf-access-jwt-assertion': overrides.assertion } : {},
+    ip: overrides.ip,
+  } as unknown as Request;
+}
+
+describe('sessionRateLimitKey', () => {
+  it('gives different CF assertions different buckets and the same assertion the same bucket', () => {
+    const a1 = sessionRateLimitKey(keyReq({ assertion: 'assertion-user-a', ip: '10.0.0.5' }));
+    const a1again = sessionRateLimitKey(keyReq({ assertion: 'assertion-user-a', ip: '10.0.0.9' }));
+    const b = sessionRateLimitKey(keyReq({ assertion: 'assertion-user-b', ip: '10.0.0.5' }));
+    expect(a1).toBe(a1again);
+    expect(a1).not.toBe(b);
+  });
+
+  it('keys by CF_ACCESS_DEV_EMAIL in development when no assertion is present', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.CF_ACCESS_DEV_EMAIL = 'dev@portage.app';
+    resetEnv();
+    loadEnv();
+    try {
+      expect(sessionRateLimitKey(keyReq({ ip: '10.0.0.5' }))).toBe('dev:dev@portage.app');
+    } finally {
+      process.env.NODE_ENV = 'test';
+      delete process.env.CF_ACCESS_DEV_EMAIL;
+      resetEnv();
+      loadEnv();
+    }
+  });
+
+  it('falls back to the IP outside development, and to "unknown" when req.ip is undefined', () => {
+    expect(sessionRateLimitKey(keyReq({ ip: '10.0.0.5' }))).toBe('10.0.0.5');
+    expect(sessionRateLimitKey(keyReq({}))).toBe('unknown');
   });
 });

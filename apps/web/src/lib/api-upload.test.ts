@@ -1,5 +1,9 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { apiUpload } from "./api";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { apiUpload, _resetExchangeBreakerForTests } from "./api";
+
+beforeEach(() => {
+  _resetExchangeBreakerForTests();
+});
 
 // Multipart uploads used to go through raw fetch calls with a closure token —
 // no 401 recovery, so any upload after the 15-min internal JWT expired failed

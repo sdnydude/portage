@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { api } from "./api";
+import { api, _resetExchangeBreakerForTests } from "./api";
 
 describe("api session loss", () => {
   beforeEach(() => {
+    _resetExchangeBreakerForTests();
     localStorage.setItem("portage_token", "stale-token");
     localStorage.setItem("portage_user", JSON.stringify({ id: "u1" }));
   });
