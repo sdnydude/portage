@@ -95,6 +95,11 @@ test("Accept-offers toggle rides the draft-save into the persisted listing row",
     await page.getByLabel("Minimum offer ($)").fill("70");
     await page.getByLabel("Auto-accept at ($)").fill("100");
 
+    // Advertising intent persists on the draft the same way (applied at publish).
+    const promoteToggle = page.getByText("Promote this listing", { exact: true }).locator("xpath=..").locator("div").first();
+    await promoteToggle.click();
+    await page.getByLabel("Ad rate (% of sale)").fill("5");
+
     await page.getByRole("button", { name: "Save Draft" }).click();
     await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
 
@@ -108,6 +113,7 @@ test("Accept-offers toggle rides the draft-save into the persisted listing row",
       bestOfferEnabled: true,
       minimumBestOfferPrice: 70,
       bestOfferAutoAcceptPrice: 100,
+      ebayAdRate: 5,
     });
   } finally {
     const cleanupFailures: string[] = [];

@@ -68,6 +68,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   const offersTouched = useRef(false);
   const [minOffer, setMinOffer] = useState("");
   const [autoAcceptOffer, setAutoAcceptOffer] = useState("");
+  // Advertising (beta request 55639b6e): eBay Promoted Listings ad rate /
+  // Reverb Bump bid. Off by default; nothing rides the POST until toggled.
+  const [promote, setPromote] = useState(false);
+  const [adRate, setAdRate] = useState("");
+  const [bumpBid, setBumpBid] = useState("1.5");
   // Marketplace switch before any interaction re-seeds the default position.
   useEffect(() => {
     if (!offersTouched.current) setAcceptOffers(marketplace === "reverb");
@@ -101,6 +106,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       minimumBestOfferPrice?: number;
       bestOfferAutoAcceptPrice?: number;
       offersEnabledExplicit?: boolean;
+      ebayAdRate?: number;
+      reverbBumpBid?: number;
     } = {};
     if (categoryId) fields.categoryId = categoryId;
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
@@ -119,6 +126,16 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         }
       } else {
         fields.offersEnabledExplicit = acceptOffers;
+      }
+    }
+    // Advertising rides only when the promote toggle is on with a valid rate.
+    if (promote) {
+      if (marketplace === "ebay") {
+        const rate = parseFloat(adRate);
+        if (rate > 0) fields.ebayAdRate = rate;
+      } else {
+        const bid = parseFloat(bumpBid);
+        if (bid > 0) fields.reverbBumpBid = bid / 100;
       }
     }
     idempotencyKeyRef.current = scopedPublishIdempotencyKey(itemId, marketplace, idempotencyKeyRef.current);
@@ -382,6 +399,63 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
                 className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
               />
             </div>
+          </div>
+        )}
+
+        {/* Advertising (beta request 55639b6e): eBay Promoted Listings /
+            Reverb Bump. Applied after the listing goes live; drafts store the
+            intent and apply it on publish. */}
+        <label className="flex items-center gap-3 py-2 cursor-pointer">
+          <div
+            onClick={() => setPromote(!promote)}
+            className={`w-10 h-6 rounded-full transition-colors flex items-center ${
+              promote ? "bg-forest-green" : "bg-muted border border-border"
+            }`}
+          >
+            <div
+              className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                promote ? "translate-x-5" : "translate-x-1"
+              }`}
+            />
+          </div>
+          <span className="text-sm text-text-primary">Promote this listing</span>
+        </label>
+        {promote && marketplace === "ebay" && (
+          <div>
+            <label htmlFor="ebay-ad-rate" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+              Ad rate (% of sale)
+            </label>
+            <input
+              id="ebay-ad-rate"
+              type="number"
+              inputMode="decimal"
+              min="1"
+              max="100"
+              step="0.5"
+              value={adRate}
+              onChange={(e) => setAdRate(e.target.value)}
+              placeholder="e.g. 5"
+              className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-text-secondary">Charged only when the ad leads to a sale (eBay Promoted Listings).</p>
+          </div>
+        )}
+        {promote && marketplace === "reverb" && (
+          <div>
+            <label htmlFor="reverb-bump-bid" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+              Bump bid (% of sale)
+            </label>
+            <select
+              id="reverb-bump-bid"
+              value={bumpBid}
+              onChange={(e) => setBumpBid(e.target.value)}
+              className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+            >
+              {["0.5", "1", "1.5", "2", "2.5", "3", "3.5"].map((b) => (
+                <option key={b} value={b}>{b}%</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-text-secondary">Charged only when the listing sells (Reverb Bump).</p>
           </div>
         )}
 

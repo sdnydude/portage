@@ -571,6 +571,29 @@ listingsRouter.post('/', async (req, res, next) => {
       // Keep an enrichment warning (guessed category) even when the adapter
       // itself returned none — both matter to the seller.
       adapterWarning = [adapterWarning, result.warning].filter(Boolean).join('; ') || undefined;
+
+      // Advertising (beta request 55639b6e): only after the listing is live,
+      // and never fatal — a failed promotion downgrades to a warning.
+      if (status === 'active' && result.marketplaceListingId) {
+        if (body.marketplace === 'reverb' && typeof marketplaceSpecific?.reverbBumpBid === 'number') {
+          try {
+            await (adapter as ReverbAdapter).setBump(result.marketplaceListingId, marketplaceSpecific.reverbBumpBid);
+          } catch (err) {
+            logger.warn({ userId, listingId: listing.id, error: (err as Error).message }, 'Reverb Bump failed after publish');
+            adapterWarning = [adapterWarning, 'Listed, but Reverb Bump could not be enabled — set it manually on Reverb.']
+              .filter(Boolean).join('; ');
+          }
+        }
+        if (body.marketplace === 'ebay' && typeof marketplaceSpecific?.ebayAdRate === 'number') {
+          try {
+            await (adapter as EbayAdapter).promoteListing(result.marketplaceListingId, marketplaceSpecific.ebayAdRate);
+          } catch (err) {
+            logger.warn({ userId, listingId: listing.id, error: (err as Error).message }, 'eBay ad promotion failed after publish');
+            adapterWarning = [adapterWarning, 'Listed, but the eBay ad could not be created — promote it from Seller Hub.']
+              .filter(Boolean).join('; ');
+          }
+        }
+      }
     }
 
     logger.info({ userId, listingId: listing.id, marketplace: body.marketplace, status }, 'Listing created');
@@ -914,10 +937,32 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       logger.warn({ userId, listingId: updated.id, warning: result.warning }, 'Listing publish did not go live — saved as draft');
     }
 
+    // Advertising intent stored on the draft row (beta request 55639b6e) —
+    // applied once the listing is actually live; a failure warns, never fails.
+    let adWarning: string | undefined;
+    if (result.status === 'active' && result.marketplaceListingId
+      && listing.marketplace === 'ebay' && typeof marketplaceSpecific?.ebayAdRate === 'number') {
+      try {
+        await (adapter as EbayAdapter).promoteListing(result.marketplaceListingId, marketplaceSpecific.ebayAdRate);
+      } catch (err) {
+        logger.warn({ userId, listingId: updated.id, error: (err as Error).message }, 'eBay ad promotion failed after publish');
+        adWarning = 'Listed, but the eBay ad could not be created — promote it from Seller Hub.';
+      }
+    }
+    if (result.status === 'active' && result.marketplaceListingId
+      && listing.marketplace === 'reverb' && typeof marketplaceSpecific?.reverbBumpBid === 'number') {
+      try {
+        await (adapter as ReverbAdapter).setBump(result.marketplaceListingId, marketplaceSpecific.reverbBumpBid);
+      } catch (err) {
+        logger.warn({ userId, listingId: updated.id, error: (err as Error).message }, 'Reverb Bump failed after publish');
+        adWarning = 'Listed, but Reverb Bump could not be enabled — set it manually on Reverb.';
+      }
+    }
+
     // Carry the adapter's warning (publish fell back to draft) and any
     // enrichment warning (guessed category) through to the client so a
     // non-active result is never presented as a successful publish.
-    res.json({ ...updated, warning: [enrichWarning, result.warning].filter(Boolean).join('; ') || undefined });
+    res.json({ ...updated, warning: [enrichWarning, result.warning, adWarning].filter(Boolean).join('; ') || undefined });
   } catch (err) {
     next(err);
   }

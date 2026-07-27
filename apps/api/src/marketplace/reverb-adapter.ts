@@ -114,6 +114,18 @@ export class ReverbAdapter implements MarketplaceAdapter {
     return response.json() as Promise<T>;
   }
 
+  /** Enable/update Reverb Bump on a live listing. Bid is a fraction of the
+   *  sale price (0.005–0.035 in 0.5% steps); Reverb charges only on sale. */
+  async setBump(marketplaceListingId: string, bid: number): Promise<void> {
+    if (!(bid >= 0.005 && bid <= 0.035)) {
+      throw new AppError(400, 'REVERB_BUMP_INVALID', 'Bump bid must be between 0.5% and 3.5%.');
+    }
+    await this.request('/bump/v2/bids', {
+      method: 'PUT',
+      body: JSON.stringify({ products: [Number(marketplaceListingId)], bid }),
+    });
+  }
+
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
     const specific = input.marketplaceSpecific ?? {};
     const conditionUuid = specific.conditionUuid as string

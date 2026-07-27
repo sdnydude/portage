@@ -346,6 +346,28 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
 
 });
 
+describe('EbayAdapter.promoteListing — Promoted Listings Standard', () => {
+  it('reuses an existing Portage CPS campaign and creates the ad by listing id', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    fetchMock.mockImplementation(async (url: unknown, init?: unknown) => {
+      const u = String(url);
+      calls.push({ url: u, init: init as RequestInit });
+      if (u.includes('/sell/marketing/v1/ad_campaign?')) {
+        return new Response(JSON.stringify({ campaigns: [{ campaignId: 'C123', campaignName: 'Portage Promoted Listings', fundingStrategy: { fundingModel: 'COST_PER_SALE' } }] }), { status: 200 });
+      }
+      if (u.endsWith('/sell/marketing/v1/ad_campaign/C123/ad')) {
+        return new Response(JSON.stringify({ adId: 'AD1' }), { status: 201 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    await adapter.promoteListing('307000000001', 5);
+    const adCall = calls.find((c) => c.url.endsWith('/ad_campaign/C123/ad'))!;
+    expect(adCall).toBeTruthy();
+    expect(JSON.parse(String(adCall.init!.body))).toEqual({ listingId: '307000000001', bidPercentage: '5.0' });
+  });
+});
+
 describe('EbayAdapter.createListing — publish result (Trading)', () => {
   it('returns active + the AddFixedPriceItem ItemID + SKU on a successful publish', async () => {
     const adapter = new EbayAdapter('user-1');

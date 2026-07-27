@@ -3,8 +3,9 @@ import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
 import { AppError } from '../middleware/error.js';
-const { mockCreateListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId, mockGetEbayItemVerification, mockDeleteListing, mockWithdrawOffer } = vi.hoisted(() => ({
+const { mockCreateListing, mockPromoteListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId, mockGetEbayItemVerification, mockDeleteListing, mockWithdrawOffer } = vi.hoisted(() => ({
   mockCreateListing: vi.fn(),
+  mockPromoteListing: vi.fn(),
   mockUpdateListing: vi.fn(),
   mockBulkPublishOffers: vi.fn(),
   mockResolveEbayCategoryId: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('../db/index.js', () => ({
 vi.mock('../marketplace/ebay-adapter.js', () => ({
   EbayAdapter: vi.fn(() => ({
     createListing: mockCreateListing,
+    promoteListing: mockPromoteListing,
     updateListing: mockUpdateListing,
     bulkPublishOffers: mockBulkPublishOffers,
     getEbayItemVerification: mockGetEbayItemVerification,
@@ -87,6 +89,36 @@ beforeEach(() => {
 });
 
 describe('POST /listings', () => {
+  it('promotes the live eBay listing when ebayAdRate rides marketplaceSpecificFields, and a failure only warns', async () => {
+    // Success path
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // ship-from origin
+    mockSelectOnce([]); // footer
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+    mockPromoteListing.mockResolvedValueOnce(undefined);
+    const ok = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', marketplaceSpecificFields: { ebayAdRate: 5 } });
+    expect(ok.status).toBe(201);
+    expect(mockPromoteListing).toHaveBeenCalledWith('3001', 5);
+    expect(ok.body.warning).toBeUndefined();
+
+    // Failure path: promote rejects → publish still 201 active, warning set
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]);
+    mockSelectOnce([]);
+    mockInsertCapture();
+    mockPromoteListing.mockRejectedValueOnce(new Error('ads exploded'));
+    const warned = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', marketplaceSpecificFields: { ebayAdRate: 5 } });
+    expect(warned.status).toBe(201);
+    expect(String(warned.body.warning)).toMatch(/promot/i);
+  });
+
   it('inserts the listing row BEFORE calling eBay so a crash after publish leaves no orphan (insert-first, R3)', async () => {
     mockSelectOnce([MOCK_ITEM]);
     mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
@@ -765,6 +797,33 @@ describe('POST /listings/:id/publish — seller listing footer', () => {
 });
 
 describe('POST /listings/:id/publish', () => {
+  it('applies stored ebayAdRate ad intent when a draft goes live (fire-and-warn)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      ebaySku: 'portage-sku-1',
+      marketplaceSpecificFields: { ebayAdRate: 7 },
+    }]);
+    mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'portage-sku-1' }]);
+    mockSelectOnce([]); // policy self-heal profile lookup (row carries no policy ids)
+    mockSelectOnce([]); // ship-from origin
+    mockSelectOnce([]); // footer
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+      }),
+    } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3002', status: 'active' });
+    mockPromoteListing.mockResolvedValueOnce(undefined);
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockPromoteListing).toHaveBeenCalledWith('3002', 7);
+  });
+
   it('reuses the stored ebaySku when re-publishing (no orphan)', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
