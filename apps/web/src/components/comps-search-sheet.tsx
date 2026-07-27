@@ -47,7 +47,7 @@ export function CompsSearchSheet({ onClose }: CompsSearchSheetProps) {
   const hasResults = results && (results.sold.length > 0 || results.active.length > 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end">
+    <div className="fixed inset-0 z-[60] flex items-end">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
