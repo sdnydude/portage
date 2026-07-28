@@ -53,11 +53,21 @@ A gate FP costs one reworded command; treat FPs as tuning input, not cause for d
 3. Log it (registry insight or the FP table in [Search & Discovery Gates](./search-discovery-gates.md#false-positives)).
 4. Tighten the regex only with the full pipe-test suite re-run.
 
+## proof-before-push {#proof-before-push}
+
+**File:** `~/.claude/hooks/proof-before-push.sh` · **Registration:** `hooks.PreToolUse`, matcher `Bash` (self-filters to `git push` in command position) · **Shipped:** 2026-07-27, same-day go-ahead after the proof-discipline escalation.
+
+Blocks any `git push` whose **outgoing commits** (`@{u}..HEAD`, falling back to `origin/main...HEAD`) touch UI source — `apps/web/src/**/*.tsx` (excluding `*.test.tsx`) or `globals.css` — unless at least one screenshot under `apps/web/test-results/proof/` is **newer than every pushed UI file**. The overlay audit and flow specs emit screenshots there as a byproduct, so the normal verification path satisfies the gate automatically; what the gate kills is pushing UI code that was never run.
+
+- **Waiver:** include `PROOF_WAIVED=<reason>` in the push command for genuinely non-visual changes — visible in the transcript, auditable later.
+- **Repos without `apps/web`** pass untouched; the registration deliberately has **no `if` prefix filter** (prefix matching would let compound `git commit … && git push` commands bypass it — the script self-filters instead).
+- **Verification:** 9 pipe-tested branches (fixture repo with real git state); live-fired both directions — a real unproven push blocked, a proofed push passed.
+- Known semantics: the hook sees **pre-command state** — proof created inside the same compound command as the push does not count. Produce proof, verify it, send it, *then* push.
+
 ## Adding the next gate — candidates already designed
 
 | Candidate | Layer | Status |
 |---|---|---|
-| **Screenshot-proof pre-push**: block `git push` when the diff touches `apps/web` UI files unless screenshots newer than the changes exist under `test-results/proof/` | pre-push / PreToolUse `Bash(git push*)` | Designed 2026-07-27, awaiting go-ahead |
 | Heredoc-aware rewrite of codegraph-first (strip `<<EOF` bodies before matching) | hook internals | Backlog |
 | Session-exchange storm alarm (rate-limit 429 on `/auth/session` → Prometheus alert) | monitoring | Backlog — pairs with the PR #263 fixes |
 

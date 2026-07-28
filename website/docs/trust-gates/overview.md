@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Trust Gates
 
-**The machine-enforcement layer: three PreToolUse hooks and one CI gate that make recurring agent failure modes structurally impossible instead of behaviorally discouraged.**
+**The machine-enforcement layer: four PreToolUse hooks and one CI gate that make recurring agent failure modes structurally impossible instead of behaviorally discouraged.**
 
 All four were installed or hardened on **2026-07-27**, during a single session in which every one of them subsequently blocked the agent at least once — which is the point.
 
@@ -42,6 +42,7 @@ There is no hidden priority list where anything outranks the operator's instruct
 | [codegraph-first](./search-discovery-gates.md#codegraph-first) | PreToolUse hook, global (`~/.claude/settings.json`) | `Bash` + `Grep` | Grepping source code for symbols when a CodeGraph index exists (token burn, repeated-instruction #1) | 2026-07-27 token-efficiency escalation |
 | [graph-memory-first](./search-discovery-gates.md#graph-memory-first) | PreToolUse hook, global | `Agent` / `Task` | Dispatching exploration agents blind — without consulting KB, CodeGraph, graphify, memory first | Same session, same escalation |
 | [tabbar-overlay-audit](./overlay-audit-gate.md) | CI gate (required "Ephemeral e2e" check) | Every PR to `main` | UI-occlusion regressions; "fixed the instance, missed the class"; "done" claimed without pixel-level proof | Beta report `7c9a499b` recurring after PR #262 |
+| [proof-before-push](./operations.md#proof-before-push) | PreToolUse hook, global | `Bash` (`git push`) | Pushing UI changes with no visual proof produced — "done" on green tests alone | 2026-07-27 proof-discipline escalation ("told you a hundred times") |
 
 ## Properties every gate shares
 
@@ -53,7 +54,7 @@ There is no hidden priority list where anything outranks the operator's instruct
 
 ## What remains promise-layer (known gaps)
 
-- **Screenshot-proof delivery** ("proof is delivered, not offered") is enforced only by memory + the Definition-of-Done rule. A pre-push hook — block `git push` when the diff touches `apps/web` UI files unless fresh screenshots exist under `test-results/proof/` — has been designed but not yet built.
+- **Sending the proof** remains on the agent: [proof-before-push](./operations.md#proof-before-push) mechanically requires fresh screenshots to *exist* before UI code can be pushed, but delivering them via SendUserFile is still behavioral (the block message re-states it at exactly the right moment).
 - **graph-memory-first attestation is honor-based**: the agent could write `[context-checked: ...]` without honest consultation. The marker's value is that it is *auditable in every dispatched prompt* — a vague attestation is the tell.
 - **codegraph-first false positives** (see [known FPs](./search-discovery-gates.md#false-positives)) are worked around, not yet fixed in the regex.
 
