@@ -15,6 +15,14 @@ describe('envSchema', () => {
     }
   });
 
+  it('rejects a production CF_ACCESS_AUD with only ONE audience tag (2026-07-28 outage class)', () => {
+    const result = envSchema.safeParse({ ...baseEnv, NODE_ENV: 'production', CF_ACCESS_AUD: 'a'.repeat(64) });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(JSON.stringify(result.error.flatten().fieldErrors)).toContain('CF_ACCESS_AUD');
+    }
+  });
+
   it('defaults LANGFUSE_BASE_URL to the US cloud region', () => {
     const result = envSchema.safeParse(baseEnv);
     expect(result.success).toBe(true);

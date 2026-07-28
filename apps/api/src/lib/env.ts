@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateCfAccessAud } from './cf-access-config.js';
 import dotenv from 'dotenv';
 import { resolve } from 'node:path';
 
@@ -78,14 +79,21 @@ export const envSchema = z.object({
   // Fraction of traces exported, 0..1. Full sampling until volume justifies less.
   LANGFUSE_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
 }).superRefine((value, ctx) => {
-  // /auth/session is dead without an audience — surface the misconfiguration
-  // at startup instead of 401-ing every login in production.
-  if (value.NODE_ENV === 'production' && !value.CF_ACCESS_AUD) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['CF_ACCESS_AUD'],
-      message: 'CF_ACCESS_AUD is required in production',
-    });
+  // /auth/session is dead without the right audiences — surface the
+  // misconfiguration at startup instead of 401-ing every login in production.
+  // Portage needs BOTH Access apps' tags (web + API, comma-separated): the
+  // 2026-07-28 outage was a Doppler resync leaving a single aud, so browser
+  // assertions (web-app aud) failed verify with "unexpected aud".
+  if (value.NODE_ENV === 'production') {
+    try {
+      validateCfAccessAud(value.CF_ACCESS_AUD, value.NODE_ENV);
+    } catch (err) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['CF_ACCESS_AUD'],
+        message: (err as Error).message,
+      });
+    }
   }
 });
 
