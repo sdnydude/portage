@@ -69,10 +69,17 @@ export async function traceRequest<T>(
   name: string,
   attributes: TraceAttributes,
   handler: () => Promise<T>,
+  // asType 'agent' for tool-calling loops (Porter): the most specific
+  // observation type drives Langfuse's Agent Graph and agent analytics —
+  // a generic span hides the loop structure (best-practices audit 2026-07-28).
+  opts?: { asType?: 'agent' },
 ): Promise<T> {
   const { userId, sessionId, tags, metadata, input } = attributes;
 
-  return startActiveObservation(name, async (span) => {
+  // Structural param: LangfuseSpan and LangfuseAgent share update(), but the
+  // startActiveObservation overloads bind different callback types per asType,
+  // so the call is branched below instead of passing a dynamic options object.
+  const run = async (span: { update: (data: { input?: unknown; output?: unknown }) => unknown }) => {
     if (input !== undefined) span.update({ input });
 
     // Trace name and trace-level IO are separate attributes — Langfuse does not
@@ -92,5 +99,9 @@ export async function traceRequest<T>(
     setActiveTraceIO({ input, output });
 
     return output;
-  });
+  };
+
+  return opts?.asType === 'agent'
+    ? startActiveObservation(name, run, { asType: 'agent' })
+    : startActiveObservation(name, run);
 }

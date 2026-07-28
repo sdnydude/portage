@@ -35,6 +35,21 @@ describe('trace-level attributes', () => {
   });
 });
 
+describe('traceRequest observation type', () => {
+  it("passes asType through to startActiveObservation so agent turns type as 'agent' (Agent Graph)", async () => {
+    const { startActiveObservation } = await import('@langfuse/tracing');
+    vi.mocked(startActiveObservation).mockClear();
+
+    await traceRequest('porter-chat-turn', { userId: 'u1' }, async () => 'ok', { asType: 'agent' });
+
+    expect(vi.mocked(startActiveObservation)).toHaveBeenCalledWith(
+      'porter-chat-turn',
+      expect.any(Function),
+      expect.objectContaining({ asType: 'agent' }),
+    );
+  });
+});
+
 describe('traceRequest', () => {
   it('records the handler result as the trace output', async () => {
     const updates: unknown[] = [];

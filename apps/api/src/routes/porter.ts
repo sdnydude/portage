@@ -423,6 +423,8 @@ porterRouter.post('/stream', async (req, res, next) => {
         pills = parsed.pills;
         return parsed.cleanText.trim();
       },
+      // Tool-calling loop → 'agent' observation (Agent Graph + agent analytics).
+      { asType: 'agent' },
     );
 
     if (pills.length > 0) writeSSE({ type: 'action_pills', pills });
@@ -532,6 +534,8 @@ porterRouter.post('/message', async (req, res, next) => {
         );
         return text;
       },
+      // Tool-calling loop → 'agent' observation (Agent Graph + agent analytics).
+      { asType: 'agent' },
     );
 
     history.push({ role: 'assistant', content: assistantMessage });
