@@ -496,6 +496,36 @@ export interface EbayPreparedFields {
   bestOfferAutoAcceptPrice?: number;
 }
 
+/**
+ * Per-listing eBay shipping choice (beta 17be7322), persisted verbatim under
+ * marketplaceSpecificFields.ebayShipping. Grouped so it can never collide with
+ * mergeItemShipping's flat weight/dimensions/packageType keys. Absent key =
+ * no explicit choice — the calculated-shipping defaults apply, and legacy
+ * rows keep their pre-feature behavior.
+ */
+export interface EbayListingShipping {
+  method: ShippingMethod;
+  /** Buyer-paid flat rate in listing currency; required when method='flat'. */
+  flatCost?: number;
+  /** eBay ShippingService enum value; absent → USPSPriority. */
+  service?: string;
+  /** Handling time in days → Trading DispatchTimeMax; absent → 1. */
+  handlingDays?: number;
+}
+
+/**
+ * Per-listing Reverb shipping choice, persisted verbatim under
+ * marketplaceSpecificFields.reverbShipping and applied AFTER seller-profile
+ * fill in applyReverbEnrichment (same explicit-override pattern as
+ * offersEnabledExplicit). Absent key = profile defaults keep flowing on sync.
+ */
+export interface ReverbListingShipping {
+  /** Explicit Reverb shipping-profile choice (wins over profile defaults + rates). */
+  profileId?: string;
+  /** Drop profile/rates entirely and publish shipping{local:true}. */
+  localPickupOnly?: boolean;
+}
+
 export interface ReverbPreparedFields {
   make: string;
   model: string;
