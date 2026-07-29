@@ -70,11 +70,12 @@ The vision and chat pipelines use configurable provider chains (comma-separated,
 
 | Variable | Description |
 |----------|-------------|
-| `EBAY_CLIENT_ID` | eBay app client ID |
-| `EBAY_CLIENT_SECRET` | eBay app client secret |
-| `EBAY_PROD_CLIENT_ID` / `EBAY_PROD_CLIENT_SECRET` | Production app credentials |
-| `EBAY_REDIRECT_URI` | OAuth callback URL |
-| `EBAY_SANDBOX` | `false` in production (only the literal string `false` disables sandbox — any other non-empty value enables it) |
+| `EBAY_CLIENT_ID` | eBay app client ID (sandbox keyset, `…-SBX-…`) |
+| `EBAY_CLIENT_SECRET` | eBay app client secret (sandbox keyset) |
+| `EBAY_PROD_CLIENT_ID` / `EBAY_PROD_CLIENT_SECRET` | Production keyset credentials (`…-PRD-…`) — used when `EBAY_SANDBOX=false`, falling back to the base keys if unset |
+| `EBAY_REDIRECT_URI` | **eBay RuName, NOT a URL** (e.g. `Digital_Harmony-DigitalH-click2-cefmyzh`). eBay's OAuth `redirect_uri` parameter takes the RuName registered on the active keyset; a plain callback URL here breaks connect with `invalid_request`. RuNames are keyset-specific — the prod keyset's RuName differs from the sandbox one. See [eBay OAuth environment](reference/ebay-oauth-env.md) |
+| `EBAY_RUNAME` | Sandbox keyset RuName. **Not read by any code** — kept as a reference value only |
+| `EBAY_SANDBOX` | `false` in production (only the literal string `false` disables sandbox — any other non-empty value enables it). Switches both the auth/API hosts and which keyset + RuName must be in play |
 
 ### Reverb
 
