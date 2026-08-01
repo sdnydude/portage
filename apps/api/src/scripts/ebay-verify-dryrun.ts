@@ -68,7 +68,9 @@ const sample: TradingListingInput = {
   conditionDescription: 'Light wear.',
   sku: 'PRT-DRYRUN-1',
   pictureUrls: ['https://i.ebayimg.com/images/g/placeholder/s-l1600.jpg'],
-  aspects: { Brand: ['Sennheiser'], Model: ['HD 600'], MPN: ['Does Not Apply'], Type: ['Over-Ear'] },
+  // Connectivity + Color became required for 112529 (live Ack=Failure 2026-08-01
+  // without them) — keep the sample listable so matrix failures mean SHIPPING.
+  aspects: { Brand: ['Sennheiser'], Model: ['HD 600'], MPN: ['Does Not Apply'], Type: ['Over-Ear'], Connectivity: ['Wired'], Color: ['Black'] },
   // service rides the production builder (TradingListingInput.shipping.service
   // already exists); flat/free below are script-local hypothesis swaps.
   shipping: { originPostalCode: '10001', weightMajor, weightMinor, dimensions: { length: 12, width: 9, height: 6 }, ...(service ? { service } : {}) },
