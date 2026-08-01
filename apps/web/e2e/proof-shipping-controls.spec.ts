@@ -64,4 +64,30 @@ test.describe("proof: publish-sheet shipping controls", () => {
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(SHOT_DIR, "4-reverb-pickup-only.png"), fullPage: false });
   });
+
+  test("listing-card Edit shipping opens the seeded inline editor", async ({ page }) => {
+    await page.goto("/inventory");
+    const first = page.locator('a[href^="/inventory/"]').first();
+    await expect(first).toBeVisible();
+    await first.click();
+    await page.waitForURL("**/inventory/**");
+
+    // Create a local eBay draft so the item page shows a listing card.
+    await page
+      .getByRole("button", { name: /list on marketplace|list on another marketplace/i })
+      .first()
+      .click();
+    await page.getByPlaceholder("0.00").fill("25");
+    await page.getByRole("button", { name: /^save draft$/i }).click();
+    await page.getByRole("button", { name: "Done" }).click();
+
+    const editShipping = page.getByRole("button", { name: /edit shipping/i }).first();
+    await expect(editShipping).toBeVisible();
+    await editShipping.click();
+    const method = page.locator('select[id$="shipping-method"]').last();
+    await method.selectOption("flat");
+    await page.locator('input[id$="flat-cost"]').last().fill("9.99");
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(SHOT_DIR, "5-listing-card-shipping-edit.png"), fullPage: false });
+  });
 });
