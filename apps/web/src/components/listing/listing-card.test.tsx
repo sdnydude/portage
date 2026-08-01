@@ -232,3 +232,36 @@ describe("ListingCard edit path", () => {
     expect(link).toHaveAttribute("href", "/inventory/i1/edit");
   });
 });
+
+describe("ListingCard — shipping edit (beta 17be7322)", () => {
+  it("saves ebayShipping via PATCH, client-side spreading the stored marketplaceSpecificFields", async () => {
+    const onChanged = vi.fn();
+    let patchBody: Record<string, unknown> | undefined;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: Record<string, unknown> }) => {
+      if (path === "/listings/l1" && opts?.method === "PATCH") { patchBody = opts.body; return { warning: undefined }; }
+      if (path === "/seller-profile") return { profile: {} };
+      return {};
+    });
+    render(
+      <ListingCard
+        listing={{ ...LISTING, marketplaceSpecificFields: { aspects: { Brand: ["ASUS"] }, categoryId: "177" } }}
+        token="t" onChanged={onChanged} highlight={false}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /edit shipping/i }));
+    await userEvent.selectOptions(screen.getByLabelText(/shipping method/i), "flat");
+    await userEvent.clear(screen.getByLabelText(/buyer pays/i));
+    await userEvent.type(screen.getByLabelText(/buyer pays/i), "9.99");
+    await userEvent.click(screen.getByRole("button", { name: /save shipping/i }));
+
+    await waitFor(() => expect(patchBody).toBeDefined());
+    // Route full-replaces the JSONB — the client must spread the stored keys.
+    expect(patchBody!.marketplaceSpecificFields).toEqual({
+      aspects: { Brand: ["ASUS"] },
+      categoryId: "177",
+      ebayShipping: { method: "flat", flatCost: 9.99 },
+    });
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+});

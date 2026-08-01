@@ -135,7 +135,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   // Per-listing shipping set on the review screen (beta 17be7322) — seeds the
   // publish sheet as touched. Untouched → sheet keeps its own default contract.
   const [reviewShipping, setReviewShipping] = useState<ShippingFieldsValue>(SHIPPING_FIELDS_DEFAULT);
-  const reviewShippingTouched = useRef(false);
+  // State, not a ref: the value gates the sheet's initialShipping prop during
+  // render (react-hooks/refs forbids reading refs there).
+  const [reviewShippingTouched, setReviewShippingTouched] = useState(false);
   // Seller-set sale price for the review step (null = use the resolved default).
   const [listPrice, setListPrice] = useState<number | null>(null);
   // Packaged weight (decimal lb) + dims, seeded from the AI estimate; manual
@@ -1439,7 +1441,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               <ShippingFieldsSection
                 idPrefix="scan-"
                 value={reviewShipping}
-                onChange={(v) => { reviewShippingTouched.current = true; setReviewShipping(v); }}
+                onChange={(v) => { setReviewShippingTouched(true); setReviewShipping(v); }}
               />
             </div>
           </div>
@@ -1485,7 +1487,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           categoryId={resolvedCategoryId ?? undefined}
           initialAspects={buildAspects()}
           initialEbayDraft={publishEbayDraft}
-          initialShipping={reviewShippingTouched.current ? reviewShipping : undefined}
+          initialShipping={reviewShippingTouched ? reviewShipping : undefined}
           initialPublishNow={publishNowSeed}
           onCreated={() => { setPublishItemId(null); onClose(); }}
           onClose={() => setPublishItemId(null)}
