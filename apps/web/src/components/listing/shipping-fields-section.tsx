@@ -84,6 +84,8 @@ export function ShippingFieldsSection({ value, onChange, idPrefix = "" }: Shippi
               <option value="USPSMedia">USPS Media Mail</option>
               <option value="UPSGround">UPS Ground</option>
               <option value="FedExHomeDelivery">FedEx Home Delivery</option>
+              <option value="FedEx2Day">FedEx 2Day</option>
+              <option value="UPS2ndDay">UPS 2nd Day Air</option>
             </select>
           </div>
           <div className="w-28">
