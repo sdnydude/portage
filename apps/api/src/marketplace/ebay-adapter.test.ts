@@ -826,13 +826,35 @@ describe('EbayAdapter — per-listing ebayShipping (beta 17be7322)', () => {
     expect(body).toContain('<FreeShipping>true</FreeShipping>');
   });
 
-  it('carries specific.packageType (mergeItemShipping) into ShippingPackage — was a dead-end', async () => {
+  it('translates stored Inventory package enums into Trading ShippingPackage values (raw pass-through = live error 37)', async () => {
+    // items.ebayPackageType stores Inventory-API enums (MAILING_BOX/LETTER/…);
+    // Trading takes ShippingPackageCodeType (live GeteBayDetails 2026-08-01:
+    // Letter, LargeEnvelope, PackageThickEnvelope, USPSLargePack).
+    const cases: Array<[string, string]> = [
+      ['MAILING_BOX', 'PackageThickEnvelope'],
+      ['PACKAGE_THICK_ENVELOPE', 'PackageThickEnvelope'],
+      ['LARGE_ENVELOPE', 'LargeEnvelope'],
+      ['LETTER', 'Letter'],
+      ['USPS_LARGE_PACKAGE', 'USPSLargePack'],
+      ['LARGE_PACKAGE', 'USPSLargePack'],
+    ];
+    for (const [stored, trading] of cases) {
+      fetchMock.mockClear();
+      const adapter = new EbayAdapter('user-1');
+      await adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: { ...tradingSetup, packageType: stored },
+      } as any);
+      expect(tradingXml(), stored).toContain(`<ShippingPackage>${trading}</ShippingPackage>`);
+    }
+    // Unknown value: drop it — builder default (PackageThickEnvelope) applies.
+    fetchMock.mockClear();
     const adapter = new EbayAdapter('user-1');
     await adapter.createListing({
       ...baseInput,
-      marketplaceSpecific: { ...tradingSetup, packageType: 'MailingBoxes' },
+      marketplaceSpecific: { ...tradingSetup, packageType: 'SOMETHING_NEW' },
     } as any);
-    expect(tradingXml()).toContain('<ShippingPackage>MailingBoxes</ShippingPackage>');
+    expect(tradingXml()).toContain('<ShippingPackage>PackageThickEnvelope</ShippingPackage>');
   });
 });
 

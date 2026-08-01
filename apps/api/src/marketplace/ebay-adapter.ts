@@ -69,6 +69,20 @@ export class EbayWeightRequiredError extends AppError {
   }
 }
 
+/** Stored Inventory-API package enum (items.ebayPackageType) → Trading
+ * ShippingPackageCodeType. Values live-verified via GeteBayDetails
+ * DetailName=ShippingPackageDetails (2026-08-01): Letter, LargeEnvelope,
+ * PackageThickEnvelope ("Package"), USPSLargePack ("LargePackage").
+ * LARGE_PACKAGE is a legacy stored spelling of USPS_LARGE_PACKAGE. */
+const TRADING_SHIPPING_PACKAGE: Record<string, string> = {
+  MAILING_BOX: 'PackageThickEnvelope',
+  PACKAGE_THICK_ENVELOPE: 'PackageThickEnvelope',
+  LARGE_ENVELOPE: 'LargeEnvelope',
+  LETTER: 'Letter',
+  USPS_LARGE_PACKAGE: 'USPSLargePack',
+  LARGE_PACKAGE: 'USPSLargePack',
+};
+
 const BROWSE_CONDITION_NORMALIZE: Record<string, string> = {
   'New': 'NEW',
   'New other (see details)': 'NEW',
@@ -495,10 +509,12 @@ export class EbayAdapter implements MarketplaceAdapter {
         dimensions: dimsOk
           ? { length: dims!.length!, width: dims!.width!, height: dims!.height! }
           : { length: 0, width: 0, height: 0 },
-        // mergeItemShipping puts the item's eBay package enum under packageType;
-        // the builder consumes it as shippingPackage (dead-ended before this map).
-        ...(typeof specific.packageType === 'string' && specific.packageType
-          ? { shippingPackage: specific.packageType }
+        // mergeItemShipping puts the item's stored Inventory-API package enum
+        // under packageType; Trading takes ShippingPackageCodeType, so translate
+        // (raw pass-through = live error 37, 2026-08-01). Unknown values are
+        // dropped — the builder default (PackageThickEnvelope) applies.
+        ...(typeof specific.packageType === 'string' && TRADING_SHIPPING_PACKAGE[specific.packageType]
+          ? { shippingPackage: TRADING_SHIPPING_PACKAGE[specific.packageType] }
           : {}),
         // Per-listing shipping choice (publish sheet) — absent key = legacy calculated.
         ...(ebayShipping?.method ? { method: ebayShipping.method } : {}),
