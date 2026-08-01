@@ -589,6 +589,27 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbShipping).toEqual({ profileId: "789" });
   });
 
+  it("initialShipping (scan-review ride-along) seeds the fields AND counts as touched", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(
+      <CreateListingSheet
+        itemId="i1" suggestedPrice={50}
+        initialShipping={{ method: "flat", flatCost: "7.25", service: "USPSMedia", handlingDays: "" }}
+        onCreated={vi.fn()} onClose={vi.fn()}
+      />,
+    );
+    expect((screen.getByLabelText(/shipping method/i) as HTMLSelectElement).value).toBe("flat");
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "flat", flatCost: 7.25, service: "USPSMedia",
+    });
+  });
+
   it("untouched shipping sends no ebayShipping key (server defaults stay in charge)", async () => {
     let body: Record<string, unknown> | undefined;
     h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {

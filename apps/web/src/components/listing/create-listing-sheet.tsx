@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { DisclaimerSheet } from "./disclaimer-sheet";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
+import { ShippingFieldsSection, SHIPPING_FIELDS_DEFAULT, type ShippingFieldsValue } from "./shipping-fields-section";
 
 /** POST /listings response — `warning` carries eBay's verbatim reason when a
  *  live publish fell back to a draft. */
@@ -29,6 +30,9 @@ interface CreateListingSheetProps {
   initialAspects?: Record<string, string[]>;
   /** F1: scan prefill — default the eBay-draft toggle on. */
   initialEbayDraft?: boolean;
+  /** Scan-review ride-along: seed the eBay shipping fields. A seed IS seller
+   *  intent (they set it on the review screen), so it counts as touched. */
+  initialShipping?: ShippingFieldsValue;
   /** F1: seed the publish-now toggle (e.g. seller profile default = live). */
   initialPublishNow?: boolean;
   /**
@@ -40,7 +44,7 @@ interface CreateListingSheetProps {
   onClose: () => void;
 }
 
-export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialPublishNow = false, allowedMarketplaces, onCreated, onClose }: CreateListingSheetProps) {
+export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialShipping, initialPublishNow = false, allowedMarketplaces, onCreated, onClose }: CreateListingSheetProps) {
   const { token } = useAuth();
   // F3b: within the 7-day window the terms sheet is skipped (consent still recorded).
   const { disclaimerSuppressed } = useUserPreferences();
@@ -80,11 +84,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // Per-listing shipping (beta 17be7322) — eBay only for now. Untouched sends
   // nothing: the server keeps its calculated-shipping defaults and legacy rows
   // keep profile-driven behavior (same contract as offersTouched above).
-  const [shipMethod, setShipMethod] = useState<"calculated" | "flat" | "free">("calculated");
-  const [flatCost, setFlatCost] = useState("");
-  const [shipService, setShipService] = useState("");
-  const [handlingDays, setHandlingDays] = useState("");
-  const shippingTouched = useRef(false);
+  const [shipFields, setShipFields] = useState<ShippingFieldsValue>(initialShipping ?? SHIPPING_FIELDS_DEFAULT);
+  const shippingTouched = useRef(initialShipping != null);
   // Reverb per-listing shipping: profile select ("" = seller-profile default),
   // or "pickup" for local-pickup-only. Same touched contract as eBay above.
   const [reverbProfiles, setReverbProfiles] = useState<Array<{ id: string; name: string }>>([]);
@@ -157,13 +158,13 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     // Shipping rides only on an explicit user interaction (shippingTouched) —
     // untouched keeps the server's calculated defaults.
     if (shippingTouched.current && marketplace === "ebay") {
-      const cost = parseFloat(flatCost);
-      const days = parseInt(handlingDays, 10);
+      const cost = parseFloat(shipFields.flatCost);
+      const days = parseInt(shipFields.handlingDays, 10);
       fields.ebayShipping = {
-        method: shipMethod,
-        ...(shipMethod === "flat" && cost > 0 ? { flatCost: cost } : {}),
-        ...(shipService ? { service: shipService } : {}),
-        ...(days >= 0 && handlingDays !== "" ? { handlingDays: days } : {}),
+        method: shipFields.method,
+        ...(shipFields.method === "flat" && cost > 0 ? { flatCost: cost } : {}),
+        ...(shipFields.service ? { service: shipFields.service } : {}),
+        ...(days >= 0 && shipFields.handlingDays !== "" ? { handlingDays: days } : {}),
       };
     }
     if (reverbShippingTouched.current && marketplace === "reverb" && reverbShipChoice) {
@@ -502,85 +503,13 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
           </div>
         )}
 
-        {/* Per-listing shipping (beta 17be7322) — eBay only. Service enums come
-            from the live GeteBayDetails probe (2026-08-01, PR #274), never memory. */}
+        {/* Per-listing shipping (beta 17be7322) — eBay only. Fields extracted to
+            ShippingFieldsSection so scan-review can ride along with the same UI. */}
         {marketplace === "ebay" && (
-          <div className="space-y-3">
-            <div>
-              <label htmlFor="shipping-method" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
-                Shipping method
-              </label>
-              <select
-                id="shipping-method"
-                value={shipMethod}
-                onChange={(e) => {
-                  shippingTouched.current = true;
-                  setShipMethod(e.target.value as "calculated" | "flat" | "free");
-                }}
-                className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
-              >
-                <option value="calculated">Calculated (buyer pays actual)</option>
-                <option value="flat">Flat rate</option>
-                <option value="free">Free shipping</option>
-              </select>
-            </div>
-            {shipMethod === "flat" && (
-              <div>
-                <label htmlFor="flat-cost" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
-                  Buyer pays ($)
-                </label>
-                <input
-                  id="flat-cost"
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={flatCost}
-                  onChange={(e) => { shippingTouched.current = true; setFlatCost(e.target.value); }}
-                  placeholder="e.g. 5.00"
-                  className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
-                />
-              </div>
-            )}
-            {shipMethod !== "calculated" && (
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label htmlFor="shipping-service" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
-                    Service
-                  </label>
-                  <select
-                    id="shipping-service"
-                    value={shipService}
-                    onChange={(e) => { shippingTouched.current = true; setShipService(e.target.value); }}
-                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
-                  >
-                    <option value="">USPS Priority (default)</option>
-                    <option value="USPSFirstClass">USPS First Class</option>
-                    <option value="USPSParcel">USPS Ground (Parcel Select)</option>
-                    <option value="USPSMedia">USPS Media Mail</option>
-                    <option value="UPSGround">UPS Ground</option>
-                    <option value="FedExHomeDelivery">FedEx Home Delivery</option>
-                  </select>
-                </div>
-                <div className="w-28">
-                  <label htmlFor="handling-days" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
-                    Handling (days)
-                  </label>
-                  <input
-                    id="handling-days"
-                    type="number"
-                    inputMode="numeric"
-                    min="0"
-                    max="30"
-                    value={handlingDays}
-                    onChange={(e) => { shippingTouched.current = true; setHandlingDays(e.target.value); }}
-                    placeholder="1"
-                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
+          <ShippingFieldsSection
+            value={shipFields}
+            onChange={(v) => { shippingTouched.current = true; setShipFields(v); }}
+          />
         )}
 
         {/* Reverb per-listing shipping: profile reference or local-pickup-only.

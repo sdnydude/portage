@@ -20,6 +20,7 @@ import { movePhoto } from "@/lib/photos";
 import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 import { PhotoEditPanel } from "./photo-edit-panel";
 import { CreateListingSheet } from "@/components/listing/create-listing-sheet";
+import { ShippingFieldsSection, SHIPPING_FIELDS_DEFAULT, type ShippingFieldsValue } from "@/components/listing/shipping-fields-section";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
 import {
   getAvailablePortageConditions,
@@ -131,6 +132,10 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [publishItemId, setPublishItemId] = useState<string | null>(null);
   const [publishEbayDraft, setPublishEbayDraft] = useState(false);
   const [publishNowSeed, setPublishNowSeed] = useState(false);
+  // Per-listing shipping set on the review screen (beta 17be7322) — seeds the
+  // publish sheet as touched. Untouched → sheet keeps its own default contract.
+  const [reviewShipping, setReviewShipping] = useState<ShippingFieldsValue>(SHIPPING_FIELDS_DEFAULT);
+  const reviewShippingTouched = useRef(false);
   // Seller-set sale price for the review step (null = use the resolved default).
   const [listPrice, setListPrice] = useState<number | null>(null);
   // Packaged weight (decimal lb) + dims, seeded from the AI estimate; manual
@@ -1427,6 +1432,15 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary resize-y min-h-[7rem] focus:border-border-focus focus:outline-none transition-colors"
                 />
               </div>
+
+              {/* eBay shipping ride-along (beta 17be7322): set here, seeds the
+                  publish sheet as touched. idPrefix keeps ids unique once the
+                  sheet (which renders the same section) is open. */}
+              <ShippingFieldsSection
+                idPrefix="scan-"
+                value={reviewShipping}
+                onChange={(v) => { reviewShippingTouched.current = true; setReviewShipping(v); }}
+              />
             </div>
           </div>
 
@@ -1471,6 +1485,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           categoryId={resolvedCategoryId ?? undefined}
           initialAspects={buildAspects()}
           initialEbayDraft={publishEbayDraft}
+          initialShipping={reviewShippingTouched.current ? reviewShipping : undefined}
           initialPublishNow={publishNowSeed}
           onCreated={() => { setPublishItemId(null); onClose(); }}
           onClose={() => setPublishItemId(null)}
