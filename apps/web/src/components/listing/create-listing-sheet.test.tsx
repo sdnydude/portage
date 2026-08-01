@@ -539,3 +539,45 @@ describe("CreateListingSheet — publish idempotencyKey", () => {
     expect(bodies[1].idempotencyKey).toBe(bodies[0].idempotencyKey);
   });
 });
+
+describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
+  it("shows the Shipping method control for eBay, defaulting to Calculated", () => {
+    const noop = () => {};
+    render(<CreateListingSheet itemId="i1" suggestedPrice={10} onCreated={noop} onClose={noop} />);
+    const select = screen.getByLabelText(/shipping method/i) as HTMLSelectElement;
+    expect(select.value).toBe("calculated");
+  });
+
+  it("sends ebayShipping on the POST only when touched — flat cost, service and handling ride along", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/shipping method/i), { target: { value: "flat" } });
+    fireEvent.change(screen.getByLabelText(/buyer pays/i), { target: { value: "6.50" } });
+    fireEvent.change(screen.getByLabelText(/^service$/i), { target: { value: "UPSGround" } });
+    fireEvent.change(screen.getByLabelText(/handling/i), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "flat", flatCost: 6.5, service: "UPSGround", handlingDays: 3,
+    });
+  });
+
+  it("untouched shipping sends no ebayShipping key (server defaults stay in charge)", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    const fields = body!.marketplaceSpecificFields as Record<string, unknown> | undefined;
+    expect(fields?.ebayShipping).toBeUndefined();
+  });
+});

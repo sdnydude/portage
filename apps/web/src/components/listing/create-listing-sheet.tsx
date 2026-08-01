@@ -77,6 +77,14 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   useEffect(() => {
     if (!offersTouched.current) setAcceptOffers(marketplace === "reverb");
   }, [marketplace]);
+  // Per-listing shipping (beta 17be7322) — eBay only for now. Untouched sends
+  // nothing: the server keeps its calculated-shipping defaults and legacy rows
+  // keep profile-driven behavior (same contract as offersTouched above).
+  const [shipMethod, setShipMethod] = useState<"calculated" | "flat" | "free">("calculated");
+  const [flatCost, setFlatCost] = useState("");
+  const [shipService, setShipService] = useState("");
+  const [handlingDays, setHandlingDays] = useState("");
+  const shippingTouched = useRef(false);
   // When not publishing now, optionally create an UNPUBLISHED eBay offer (Seller
   // Hub draft) instead of a Portage-local draft. eBay marketplace only.
   const [ebayDraft, setEbayDraft] = useState(initialEbayDraft);
@@ -108,6 +116,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       offersEnabledExplicit?: boolean;
       ebayAdRate?: number;
       reverbBumpBid?: number;
+      ebayShipping?: { method: string; flatCost?: number; service?: string; handlingDays?: number };
     } = {};
     if (categoryId) fields.categoryId = categoryId;
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
@@ -127,6 +136,18 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       } else {
         fields.offersEnabledExplicit = acceptOffers;
       }
+    }
+    // Shipping rides only on an explicit user interaction (shippingTouched) —
+    // untouched keeps the server's calculated defaults.
+    if (shippingTouched.current && marketplace === "ebay") {
+      const cost = parseFloat(flatCost);
+      const days = parseInt(handlingDays, 10);
+      fields.ebayShipping = {
+        method: shipMethod,
+        ...(shipMethod === "flat" && cost > 0 ? { flatCost: cost } : {}),
+        ...(shipService ? { service: shipService } : {}),
+        ...(days >= 0 && handlingDays !== "" ? { handlingDays: days } : {}),
+      };
     }
     // Advertising rides only when the promote toggle is on with a valid rate.
     if (promote) {
@@ -456,6 +477,87 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
               ))}
             </select>
             <p className="mt-1 text-xs text-text-secondary">Charged only when the listing sells (Reverb Bump).</p>
+          </div>
+        )}
+
+        {/* Per-listing shipping (beta 17be7322) — eBay only. Service enums come
+            from the live GeteBayDetails probe (2026-08-01, PR #274), never memory. */}
+        {marketplace === "ebay" && (
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="shipping-method" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+                Shipping method
+              </label>
+              <select
+                id="shipping-method"
+                value={shipMethod}
+                onChange={(e) => {
+                  shippingTouched.current = true;
+                  setShipMethod(e.target.value as "calculated" | "flat" | "free");
+                }}
+                className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+              >
+                <option value="calculated">Calculated (buyer pays actual)</option>
+                <option value="flat">Flat rate</option>
+                <option value="free">Free shipping</option>
+              </select>
+            </div>
+            {shipMethod === "flat" && (
+              <div>
+                <label htmlFor="flat-cost" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+                  Buyer pays ($)
+                </label>
+                <input
+                  id="flat-cost"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={flatCost}
+                  onChange={(e) => { shippingTouched.current = true; setFlatCost(e.target.value); }}
+                  placeholder="e.g. 5.00"
+                  className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+                />
+              </div>
+            )}
+            {shipMethod !== "calculated" && (
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label htmlFor="shipping-service" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+                    Service
+                  </label>
+                  <select
+                    id="shipping-service"
+                    value={shipService}
+                    onChange={(e) => { shippingTouched.current = true; setShipService(e.target.value); }}
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+                  >
+                    <option value="">USPS Priority (default)</option>
+                    <option value="USPSFirstClass">USPS First Class</option>
+                    <option value="USPSParcel">USPS Ground (Parcel Select)</option>
+                    <option value="USPSMedia">USPS Media Mail</option>
+                    <option value="UPSGround">UPS Ground</option>
+                    <option value="FedExHomeDelivery">FedEx Home Delivery</option>
+                  </select>
+                </div>
+                <div className="w-28">
+                  <label htmlFor="handling-days" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+                    Handling (days)
+                  </label>
+                  <input
+                    id="handling-days"
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    max="30"
+                    value={handlingDays}
+                    onChange={(e) => { shippingTouched.current = true; setHandlingDays(e.target.value); }}
+                    placeholder="1"
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
