@@ -127,6 +127,38 @@ describe('buildAddFixedPriceItemXml', () => {
   });
 });
 
+describe('inline shipping methods (beta 17be7322, shapes live-verified 2026-08-01)', () => {
+  it('method=flat emits ShippingType Flat with the buyer cost and no CalculatedShippingRate', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, shipping: { ...baseInput.shipping, method: 'flat', flatCost: 5 } },
+      'T',
+    );
+    expect(xml).toContain('<ShippingType>Flat</ShippingType>');
+    expect(xml).toContain('<ShippingServiceCost currencyID="USD">5.00</ShippingServiceCost>');
+    expect(xml).not.toContain('CalculatedShippingRate');
+  });
+
+  it('method=free emits Flat + FreeShipping true with an explicit 0.00 cost', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, shipping: { ...baseInput.shipping, method: 'free' } },
+      'T',
+    );
+    expect(xml).toContain('<ShippingType>Flat</ShippingType>');
+    expect(xml).toContain('<ShippingServiceCost currencyID="USD">0.00</ShippingServiceCost>');
+    expect(xml).toContain('<FreeShipping>true</FreeShipping>');
+    expect(xml).not.toContain('CalculatedShippingRate');
+  });
+
+  it('flat/free with zero weight omits ShippingPackageDetails; with weight keeps it', () => {
+    const zeroWeight = { ...baseInput.shipping, method: 'flat' as const, flatCost: 5, weightMajor: 0, weightMinor: 0 };
+    expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: zeroWeight }, 'T')).not.toContain('ShippingPackageDetails');
+    // Weight present → keep the package block (harmless for flat, useful data).
+    expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: { ...baseInput.shipping, method: 'flat', flatCost: 5 } }, 'T')).toContain('<ShippingPackageDetails>');
+    // Calculated always emits it, even at zero weight (required by eBay).
+    expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: { ...baseInput.shipping, weightMajor: 0, weightMinor: 0 } }, 'T')).toContain('<ShippingPackageDetails>');
+  });
+});
+
 describe('validatePictureUrls — eBay hard limits pre-XML (F2)', () => {
   it('throws a clear error above 24 picture URLs', () => {
     const urls = Array.from({ length: 25 }, (_, i) => `https://r2.example/p${i}.jpg`);

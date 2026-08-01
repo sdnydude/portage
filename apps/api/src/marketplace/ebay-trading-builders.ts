@@ -33,6 +33,10 @@ export interface TradingListingInput {
     service?: string;
     /** eBay ShippingPackage enum (required for calculated); defaults to PackageThickEnvelope. */
     shippingPackage?: string;
+    /** Shipping shape (live-verified 2026-08-01); absent = calculated (legacy). */
+    method?: 'calculated' | 'flat' | 'free';
+    /** Buyer-paid flat rate; required when method='flat'. */
+    flatCost?: number;
   };
   dispatchTimeMax?: number;
   /** Per-listing "accept offers" toggle — enables Best Offer even with no floor. */
@@ -80,8 +84,25 @@ function itemSpecifics(aspects: Record<string, string[]>): string {
 /** Inline Calculated shipping (Decision 5). Weight/dims now live in ShippingPackageDetails
  * (schema-verified — they are deprecated inside CalculatedShippingRate); this container
  * carries only the origin ZIP and the buyer-paid USPS service option. */
-function inlineShipping(s: TradingListingInput['shipping']): string {
+function inlineShipping(s: TradingListingInput['shipping'], currency: string): string {
   const service = s.service ?? 'USPSPriority';
+  const method = s.method ?? 'calculated';
+  if (method === 'flat' || method === 'free') {
+    // Live-verified shapes (2026-08-01 matrix, PR #274): Flat + ShippingServiceCost,
+    // no CalculatedShippingRate; free adds FreeShipping with an explicit 0.00 cost.
+    const cost = method === 'free' ? 0 : s.flatCost ?? 0;
+    return (
+      '<ShippingDetails>' +
+      '<ShippingType>Flat</ShippingType>' +
+      '<ShippingServiceOptions>' +
+      '<ShippingServicePriority>1</ShippingServicePriority>' +
+      `<ShippingService>${service}</ShippingService>` +
+      `<ShippingServiceCost currencyID="${currency}">${cost.toFixed(2)}</ShippingServiceCost>` +
+      (method === 'free' ? '<FreeShipping>true</FreeShipping>' : '') +
+      '</ShippingServiceOptions>' +
+      '</ShippingDetails>'
+    );
+  }
   return (
     '<ShippingDetails>' +
     '<ShippingType>Calculated</ShippingType>' +
@@ -100,6 +121,11 @@ function inlineShipping(s: TradingListingInput['shipping']): string {
  * (eBay deprecated these inside CalculatedShippingRate). MeasureType units are lbs/oz/in
  * (NOT lbs/ozs/inches). ShippingPackage is required for calculated shipping. */
 function shippingPackageDetails(s: TradingListingInput['shipping']): string {
+  // Flat/free don't need package data (live-verified --no-weight case, PR #274);
+  // omit the block when there's no real weight rather than sending zeros.
+  // Calculated always emits — eBay requires it to rate the label.
+  const method = s.method ?? 'calculated';
+  if (method !== 'calculated' && s.weightMajor === 0 && s.weightMinor === 0) return '';
   return (
     '<ShippingPackageDetails>' +
     '<MeasurementUnit>English</MeasurementUnit>' +
@@ -288,7 +314,7 @@ function itemBody(input: TradingListingInput): string {
     pictureDetails(input.pictureUrls) +
     itemSpecifics(input.aspects) +
     '<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>' +
-    inlineShipping(input.shipping) +
+    inlineShipping(input.shipping, input.currency) +
     shippingPackageDetails(input.shipping) +
     bestOfferDetails(input)
   );
