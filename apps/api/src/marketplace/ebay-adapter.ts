@@ -15,6 +15,7 @@ import type {
   CompListing,
   CompResult,
   EbayPreparedFields,
+  EbayListingShipping,
 } from '@portage/shared';
 
 const logger = createLogger('ebay-adapter');
@@ -413,7 +414,11 @@ export class EbayAdapter implements MarketplaceAdapter {
     const weightOk = typeof rawWeight?.value === 'number' && rawWeight.value > 0;
     const dims = specific.dimensions as { length?: number; width?: number; height?: number } | undefined;
     const dimsOk = !!dims && (dims.length ?? 0) > 0 && (dims.width ?? 0) > 0 && (dims.height ?? 0) > 0;
-    if (!weightOk || !dimsOk) {
+    // Weight/dims are a CALCULATED-shipping requirement (errors 25020/21915).
+    // Flat/free (per-listing ebayShipping) publish without them — the builder
+    // floors weight to 1oz so any known dimensions still carry through.
+    const shippingMethod = (specific.ebayShipping as EbayListingShipping | undefined)?.method ?? 'calculated';
+    if ((!weightOk || !dimsOk) && shippingMethod === 'calculated') {
       throw new EbayWeightRequiredError();
     }
 
@@ -461,7 +466,10 @@ export class EbayAdapter implements MarketplaceAdapter {
       if (selected) conditionId = selected.conditionId;
     }
 
-    const { weightMajor, weightMinor } = splitOunces(rawWeight!.value as number);
+    // Flat/free may have no stored weight/dims (gate skipped above) — zeros here;
+    // the builder floors weight and the dimension tags are omitted when unknown.
+    const { weightMajor, weightMinor } = splitOunces(weightOk ? (rawWeight!.value as number) : 0);
+    const ebayShipping = specific.ebayShipping as EbayListingShipping | undefined;
     return {
       title: input.title,
       description: input.description,
@@ -484,8 +492,20 @@ export class EbayAdapter implements MarketplaceAdapter {
         originPostalCode,
         weightMajor,
         weightMinor,
-        dimensions: { length: dims!.length!, width: dims!.width!, height: dims!.height! },
+        dimensions: dimsOk
+          ? { length: dims!.length!, width: dims!.width!, height: dims!.height! }
+          : { length: 0, width: 0, height: 0 },
+        // mergeItemShipping puts the item's eBay package enum under packageType;
+        // the builder consumes it as shippingPackage (dead-ended before this map).
+        ...(typeof specific.packageType === 'string' && specific.packageType
+          ? { shippingPackage: specific.packageType }
+          : {}),
+        // Per-listing shipping choice (publish sheet) — absent key = legacy calculated.
+        ...(ebayShipping?.method ? { method: ebayShipping.method } : {}),
+        ...(typeof ebayShipping?.flatCost === 'number' ? { flatCost: ebayShipping.flatCost } : {}),
+        ...(ebayShipping?.service ? { service: ebayShipping.service } : {}),
       },
+      ...(typeof ebayShipping?.handlingDays === 'number' ? { dispatchTimeMax: ebayShipping.handlingDays } : {}),
       bestOfferAutoAcceptPrice: (specific as Partial<EbayPreparedFields>).bestOfferAutoAcceptPrice,
       // Per-listing "accept offers" toggle + auto-decline floor from the
       // publish sheet (ride marketplaceSpecific; not part of prepared fields).

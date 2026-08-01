@@ -149,13 +149,24 @@ describe('inline shipping methods (beta 17be7322, shapes live-verified 2026-08-0
     expect(xml).not.toContain('CalculatedShippingRate');
   });
 
-  it('flat/free with zero weight omits ShippingPackageDetails; with weight keeps it', () => {
+  it('flat/free with zero weight keeps ShippingPackageDetails with a 1oz floor so dimensions carry', () => {
     const zeroWeight = { ...baseInput.shipping, method: 'flat' as const, flatCost: 5, weightMajor: 0, weightMinor: 0 };
-    expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: zeroWeight }, 'T')).not.toContain('ShippingPackageDetails');
-    // Weight present → keep the package block (harmless for flat, useful data).
-    expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: { ...baseInput.shipping, method: 'flat', flatCost: 5 } }, 'T')).toContain('<ShippingPackageDetails>');
-    // Calculated always emits it, even at zero weight (required by eBay).
-    expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: { ...baseInput.shipping, weightMajor: 0, weightMinor: 0 } }, 'T')).toContain('<ShippingPackageDetails>');
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, shipping: zeroWeight }, 'T');
+    expect(xml).toContain('<ShippingPackageDetails>');
+    expect(xml).toContain('<WeightMinor unit="oz">1</WeightMinor>');
+    expect(xml).toContain('<PackageLength unit="in">12</PackageLength>');
+    // Real weight passes through untouched.
+    expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: { ...baseInput.shipping, method: 'flat', flatCost: 5 } }, 'T')).toContain('<WeightMinor unit="oz">8</WeightMinor>');
+  });
+
+  it('all-zero dimensions omit the Package dimension tags (unverified shape guard) but keep the floored weight', () => {
+    const noDims = { ...baseInput.shipping, method: 'free' as const, weightMajor: 0, weightMinor: 0, dimensions: { length: 0, width: 0, height: 0 } };
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, shipping: noDims }, 'T');
+    expect(xml).toContain('<ShippingPackageDetails>');
+    expect(xml).toContain('<WeightMinor unit="oz">1</WeightMinor>');
+    expect(xml).not.toContain('<PackageDepth');
+    expect(xml).not.toContain('<PackageLength');
+    expect(xml).not.toContain('<PackageWidth');
   });
 });
 

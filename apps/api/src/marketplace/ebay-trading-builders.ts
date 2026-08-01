@@ -121,19 +121,25 @@ function inlineShipping(s: TradingListingInput['shipping'], currency: string): s
  * (eBay deprecated these inside CalculatedShippingRate). MeasureType units are lbs/oz/in
  * (NOT lbs/ozs/inches). ShippingPackage is required for calculated shipping. */
 function shippingPackageDetails(s: TradingListingInput['shipping']): string {
-  // Flat/free don't need package data (live-verified --no-weight case, PR #274);
-  // omit the block when there's no real weight rather than sending zeros.
-  // Calculated always emits — eBay requires it to rate the label.
+  // Flat/free with no stored weight: keep the block anyway (operator decision,
+  // 2026-08-01) — floor weight to 1oz so the package DIMENSIONS still reach eBay.
+  const zeroWeight = s.weightMajor === 0 && s.weightMinor === 0;
   const method = s.method ?? 'calculated';
-  if (method !== 'calculated' && s.weightMajor === 0 && s.weightMinor === 0) return '';
+  const weightMinor = method !== 'calculated' && zeroWeight ? 1 : s.weightMinor;
+  // All-zero dims (flat/free with nothing stored) — omit the dimension tags
+  // rather than send an unverified zeros shape; known dims always carry through.
+  const d = s.dimensions;
+  const hasDims = d.length > 0 || d.width > 0 || d.height > 0;
   return (
     '<ShippingPackageDetails>' +
     '<MeasurementUnit>English</MeasurementUnit>' +
-    `<PackageDepth unit="in">${s.dimensions.height}</PackageDepth>` +
-    `<PackageLength unit="in">${s.dimensions.length}</PackageLength>` +
-    `<PackageWidth unit="in">${s.dimensions.width}</PackageWidth>` +
+    (hasDims
+      ? `<PackageDepth unit="in">${d.height}</PackageDepth>` +
+        `<PackageLength unit="in">${d.length}</PackageLength>` +
+        `<PackageWidth unit="in">${d.width}</PackageWidth>`
+      : '') +
     `<WeightMajor unit="lbs">${s.weightMajor}</WeightMajor>` +
-    `<WeightMinor unit="oz">${s.weightMinor}</WeightMinor>` +
+    `<WeightMinor unit="oz">${weightMinor}</WeightMinor>` +
     `<ShippingPackage>${escapeXml(s.shippingPackage ?? 'PackageThickEnvelope')}</ShippingPackage>` +
     '</ShippingPackageDetails>'
   );

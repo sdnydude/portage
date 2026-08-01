@@ -793,6 +793,49 @@ describe('EbayAdapter.createListing — inline-shipping data guard (Trading)', (
   });
 });
 
+describe('EbayAdapter — per-listing ebayShipping (beta 17be7322)', () => {
+  it('flows specific.ebayShipping (flat) into the Trading XML: Flat type, cost, service, DispatchTimeMax', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: {
+        ...tradingSetup,
+        ebayShipping: { method: 'flat', flatCost: 6.5, service: 'UPSGround', handlingDays: 3 },
+      },
+    } as any);
+    const body = tradingXml();
+    expect(body).toContain('<ShippingType>Flat</ShippingType>');
+    expect(body).toContain('<ShippingServiceCost currencyID="USD">6.50</ShippingServiceCost>');
+    expect(body).toContain('<ShippingService>UPSGround</ShippingService>');
+    expect(body).toContain('<DispatchTimeMax>3</DispatchTimeMax>');
+    expect(body).not.toContain('CalculatedShippingRate');
+  });
+
+  it('skips the weight/dims gate for flat and free methods (calculated-only requirement)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    // No weight, no dimensions — legacy calculated path would throw EbayWeightRequiredError.
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: {
+        categoryId: '15032',
+        originPostalCode: '10001',
+        ebayShipping: { method: 'free' },
+      },
+    } as any);
+    const body = tradingXml();
+    expect(body).toContain('<FreeShipping>true</FreeShipping>');
+  });
+
+  it('carries specific.packageType (mergeItemShipping) into ShippingPackage — was a dead-end', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, packageType: 'MailingBoxes' },
+    } as any);
+    expect(tradingXml()).toContain('<ShippingPackage>MailingBoxes</ShippingPackage>');
+  });
+});
+
 describe('EbayAdapter.deleteListing — end a live listing via Trading EndFixedPriceItem', () => {
   it('calls EndFixedPriceItem with the ItemID (not an Inventory offer DELETE)', async () => {
     fetchMock.mockImplementation(async (url: unknown) =>
