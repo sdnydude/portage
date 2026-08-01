@@ -184,7 +184,7 @@ describe("HybridFlow — flat-rate shipping cost wiring (beta 17be7322)", () => 
   it("passes shippingCost to ShippingConfigCard and routes edits to setField('shippingCost')", () => {
     h.lastStep = "shipping";
     try {
-      render(<HybridFlow onClose={vi.fn()} />);
+      render(<HybridFlow />);
       expect(h.shipCardProps.shippingCost).toBe(4);
       (h.shipCardProps.onShippingCostChange as (c: number | null) => void)(6.5);
       expect(h.setField).toHaveBeenCalledWith("shippingCost", 6.5);
