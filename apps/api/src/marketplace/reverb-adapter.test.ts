@@ -430,6 +430,19 @@ describe('ReverbAdapter.updateListing — shipping profile reference', () => {
     expect(body.shipping_profile_id).toBe('456');
     expect(body.shipping).toBeUndefined();
   });
+
+  it('sends shipping {local:true} on update for a pickup-only listing (no profile, no rates) — create/update parity', async () => {
+    const fetchMock = stubFetch({ listing: { state: { slug: 'live' } } });
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.updateListing('99606134', {
+      marketplaceSpecific: { localPickup: true },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.shipping).toEqual({ local: true });
+    expect(body.shipping_profile_id).toBeUndefined();
+  });
 });
 
 describe('ReverbAdapter.updateListing — UPC on publish', () => {

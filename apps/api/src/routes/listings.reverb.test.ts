@@ -258,6 +258,54 @@ describe('POST /listings — reverb live publish', () => {
     expect(input.marketplaceSpecific.localPickup).toBe(true);
   });
 
+  it('per-listing reverbShipping overrides the profile defaults AFTER fill (offersEnabledExplicit pattern)', async () => {
+    // Profile default is profile 456; the publish sheet chose profile 789.
+    mockSelectOnce([GEAR_ITEM]);
+    mockInsertReturning([{ id: 'listing-1', status: 'draft' }]);
+    mockSelectOnce([{
+      ...PROFILE,
+      reverbDefaultShipping: { shippingProfileId: '456', local: false, rates: [{ regionCode: 'US_CON', rate: { amount: '20.00', currency: 'USD' } }] },
+    }]);
+    mockSelectOnce([{ footer: null }]);
+    mockReverbCreateListing.mockResolvedValueOnce({ marketplaceListingId: '87654321', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID, marketplace: 'reverb', price: 2500, publishMode: 'live', disclaimerAccepted: true,
+        marketplaceSpecificFields: { reverbShipping: { profileId: '789' } },
+      });
+
+    expect(res.status).toBe(201);
+    const input = mockReverbCreateListing.mock.calls[0][0];
+    expect(input.marketplaceSpecific.shippingProfileId).toBe('789');
+
+    // Pickup-only intent drops the profile/rates entirely.
+    mockSelectOnce([GEAR_ITEM]);
+    mockInsertReturning([{ id: 'listing-2', status: 'draft' }]);
+    mockSelectOnce([{
+      ...PROFILE,
+      reverbDefaultShipping: { shippingProfileId: '456', local: false, rates: [{ regionCode: 'US_CON', rate: { amount: '20.00', currency: 'USD' } }] },
+    }]);
+    mockSelectOnce([{ footer: null }]);
+    mockReverbCreateListing.mockResolvedValueOnce({ marketplaceListingId: '87654322', status: 'active' });
+
+    const res2 = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID, marketplace: 'reverb', price: 2500, publishMode: 'live', disclaimerAccepted: true,
+        marketplaceSpecificFields: { reverbShipping: { localPickupOnly: true } },
+      });
+
+    expect(res2.status).toBe(201);
+    const input2 = mockReverbCreateListing.mock.calls[1][0];
+    expect(input2.marketplaceSpecific.shippingProfileId).toBeUndefined();
+    expect(input2.marketplaceSpecific.shippingRates).toBeUndefined();
+    expect(input2.marketplaceSpecific.localPickup).toBe(true);
+  });
+
   it('passes the item conditionNotes through to the adapter input', async () => {
     mockSelectOnce([{ ...GEAR_ITEM, conditionNotes: 'Fret wear on 1-3, small chip on headstock.' }]);
     mockInsertReturning([{ id: 'listing-1', status: 'draft' }]);

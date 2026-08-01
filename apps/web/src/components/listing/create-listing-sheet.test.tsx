@@ -568,6 +568,27 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     });
   });
 
+  it("Reverb: loads shipping profiles into the select and sends reverbShipping.profileId when chosen", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/marketplace/reverb/shipping-profiles") {
+        return { profiles: [{ id: "789", name: "Guitars (US)" }] };
+      }
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    const select = (await screen.findByLabelText(/shipping profile/i)) as HTMLSelectElement;
+    await screen.findByRole("option", { name: "Guitars (US)" });
+    fireEvent.change(select, { target: { value: "789" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbShipping).toEqual({ profileId: "789" });
+  });
+
   it("untouched shipping sends no ebayShipping key (server defaults stay in charge)", async () => {
     let body: Record<string, unknown> | undefined;
     h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {

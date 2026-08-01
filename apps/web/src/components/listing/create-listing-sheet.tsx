@@ -85,6 +85,22 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   const [shipService, setShipService] = useState("");
   const [handlingDays, setHandlingDays] = useState("");
   const shippingTouched = useRef(false);
+  // Reverb per-listing shipping: profile select ("" = seller-profile default),
+  // or "pickup" for local-pickup-only. Same touched contract as eBay above.
+  const [reverbProfiles, setReverbProfiles] = useState<Array<{ id: string; name: string }>>([]);
+  const [reverbShipChoice, setReverbShipChoice] = useState("");
+  const reverbShippingTouched = useRef(false);
+  useEffect(() => {
+    if (marketplace !== "reverb" || !token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api<{ profiles: Array<{ id: string; name: string }> }>("/marketplace/reverb/shipping-profiles", { token });
+        if (!cancelled && r?.profiles) setReverbProfiles(r.profiles);
+      } catch { /* select still offers default + pickup */ }
+    })();
+    return () => { cancelled = true; };
+  }, [marketplace, token]);
   // When not publishing now, optionally create an UNPUBLISHED eBay offer (Seller
   // Hub draft) instead of a Portage-local draft. eBay marketplace only.
   const [ebayDraft, setEbayDraft] = useState(initialEbayDraft);
@@ -117,6 +133,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       ebayAdRate?: number;
       reverbBumpBid?: number;
       ebayShipping?: { method: string; flatCost?: number; service?: string; handlingDays?: number };
+      reverbShipping?: { profileId?: string; localPickupOnly?: boolean };
     } = {};
     if (categoryId) fields.categoryId = categoryId;
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
@@ -148,6 +165,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         ...(shipService ? { service: shipService } : {}),
         ...(days >= 0 && handlingDays !== "" ? { handlingDays: days } : {}),
       };
+    }
+    if (reverbShippingTouched.current && marketplace === "reverb" && reverbShipChoice) {
+      fields.reverbShipping = reverbShipChoice === "pickup"
+        ? { localPickupOnly: true }
+        : { profileId: reverbShipChoice };
     }
     // Advertising rides only when the promote toggle is on with a valid rate.
     if (promote) {
@@ -558,6 +580,28 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Reverb per-listing shipping: profile reference or local-pickup-only.
+            Untouched keeps the seller-profile default flowing on sync. */}
+        {marketplace === "reverb" && (
+          <div>
+            <label htmlFor="reverb-shipping-profile" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+              Shipping profile
+            </label>
+            <select
+              id="reverb-shipping-profile"
+              value={reverbShipChoice}
+              onChange={(e) => { reverbShippingTouched.current = true; setReverbShipChoice(e.target.value); }}
+              className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+            >
+              <option value="">Seller profile default</option>
+              {reverbProfiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+              <option value="pickup">Local pickup only</option>
+            </select>
           </div>
         )}
 

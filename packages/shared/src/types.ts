@@ -443,6 +443,9 @@ export interface SellerProfile {
 }
 
 export interface ReverbShippingDefaults {
+  /** Reverb-side shipping profile reference — wins over per-listing rates
+   *  (adapter precedence). Was read via inline casts before 2026-08-01. */
+  shippingProfileId?: string;
   rates: Array<{ regionCode: string; rate: { amount: string; currency: string } }>;
   local: boolean;
 }
