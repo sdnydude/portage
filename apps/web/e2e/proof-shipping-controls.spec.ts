@@ -32,6 +32,9 @@ test.describe("proof: publish-sheet shipping controls", () => {
     await methodSelect.selectOption("flat");
     await expect(page.locator("#flat-cost")).toBeVisible();
     await page.locator("#flat-cost").fill("6.50");
+    // 2-day expedited services present (probe-verified enums).
+    await expect(page.locator('#shipping-service option[value="FedEx2Day"]')).toHaveCount(1);
+    await expect(page.locator('#shipping-service option[value="UPS2ndDay"]')).toHaveCount(1);
     await page.locator("#shipping-service").selectOption("UPSGround");
     await page.locator("#handling-days").fill("3");
     await page.screenshot({ path: path.join(SHOT_DIR, "2-flat-cost-service-handling.png"), fullPage: false });
