@@ -357,6 +357,10 @@ export interface ListingFlowState {
 
   shippingMethod: ShippingMethod;
   shippingCost: number | null;
+  /** True once the seller explicitly set method/cost — only then does publish
+   *  emit ebayShipping (untouched keeps server defaults). Persisted so a
+   *  restored draft keeps the intent; absent on legacy drafts = untouched. */
+  shippingTouched?: boolean;
   packageSize: PackageSize;
   // weight stays decimal pounds (existing flow consumers); dimensions are inches.
   // ebayPackageType is the eBay enum (MAILING_BOX/LETTER/...), distinct from packageSize.
