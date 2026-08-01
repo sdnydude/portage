@@ -41,4 +41,27 @@ test.describe("proof: publish-sheet shipping controls", () => {
     await expect(page.locator("#shipping-service")).toBeVisible();
     await page.screenshot({ path: path.join(SHOT_DIR, "3-free-no-cost.png"), fullPage: false });
   });
+
+  test("Reverb: shipping profile select with default + pickup options", async ({ page }) => {
+    await page.goto("/inventory");
+    const first = page.locator('a[href^="/inventory/"]').first();
+    await expect(first).toBeVisible();
+    await first.click();
+    await page.waitForURL("**/inventory/**");
+    await page
+      .getByRole("button", { name: /list on marketplace|list on another marketplace/i })
+      .first()
+      .click();
+
+    await page.getByRole("button", { name: "Reverb" }).click();
+    const profileSelect = page.locator("#reverb-shipping-profile");
+    await expect(profileSelect).toBeVisible();
+    // Unconnected account: fetch fails gracefully — default + pickup remain.
+    await expect(profileSelect.locator("option")).toContainText([/seller profile default/i, /local pickup only/i]);
+    await profileSelect.selectOption("pickup");
+    // Let the marketplace-pill color transition finish before capturing.
+    await expect(page.getByRole("button", { name: "Reverb", exact: true })).toHaveClass(/bg-forest-green/);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(SHOT_DIR, "4-reverb-pickup-only.png"), fullPage: false });
+  });
 });
