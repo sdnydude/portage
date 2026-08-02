@@ -518,6 +518,9 @@ export interface EbayListingShipping {
   service?: string;
   /** Handling time in days → Trading DispatchTimeMax; absent → 1. */
   handlingDays?: number;
+  /** Offer local pickup alongside the method (add-on only — eBay rejects
+   *  pickup-only for flat/calculated, live-verified 2026-08-01). */
+  localPickup?: boolean;
 }
 
 /**

@@ -14,6 +14,9 @@ export interface ShippingFieldsValue {
   flatCost: string;
   service: string;
   handlingDays: string;
+  /** Offer local pickup alongside the method (add-on — eBay rejects
+   *  pickup-only for flat/calculated, live-verified 2026-08-01). */
+  localPickup?: boolean;
 }
 
 export const SHIPPING_FIELDS_DEFAULT: ShippingFieldsValue = {
@@ -21,6 +24,7 @@ export const SHIPPING_FIELDS_DEFAULT: ShippingFieldsValue = {
   flatCost: "",
   service: "",
   handlingDays: "",
+  localPickup: false,
 };
 
 interface ShippingFieldsSectionProps {
@@ -66,6 +70,22 @@ export function ShippingFieldsSection({ value, onChange, idPrefix = "" }: Shippi
           />
         </div>
       )}
+      {/* Local pickup add-on — same toggle pattern as the sheet's other switches. */}
+      <label className="flex items-center gap-3 py-1 cursor-pointer">
+        <div
+          onClick={() => onChange({ ...value, localPickup: !value.localPickup })}
+          className={`w-10 h-6 rounded-full transition-colors flex items-center ${
+            value.localPickup ? "bg-forest-green" : "bg-muted border border-border"
+          }`}
+        >
+          <div
+            className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+              value.localPickup ? "translate-x-5" : "translate-x-1"
+            }`}
+          />
+        </div>
+        <span className="text-sm text-text-primary">Offer local pickup</span>
+      </label>
       {value.method !== "calculated" && (
         <div className="flex gap-3">
           <div className="flex-1">

@@ -176,3 +176,42 @@ reverbAuthRouter.get('/categories', async (req, res, next) => {
     next(err);
   }
 });
+
+// Taxonomy cascade level 1: the 14 Product Type roots (served from the same
+// cached flat list — no extra Reverb call).
+reverbAuthRouter.get('/product-types', async (req, res, next) => {
+  try {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const productTypes = await ReverbAdapter.getProductTypes();
+    res.json({ productTypes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Pre-publish category preview: the SAME majority-token first-match the
+// publish-time enrichment guess (applyReverbEnrichment) would use — lets the
+// sheet show the category that will actually publish before it happens.
+reverbAuthRouter.get('/category-suggestion', async (req, res, next) => {
+  try {
+    const { q } = z.object({ q: z.string().min(1) }).parse(req.query);
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const matches = await new ReverbAdapter(req.user!.sub).searchCategories(q);
+    res.json({ suggestion: matches[0] ? { uuid: matches[0].id, fullName: matches[0].name } : null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Taxonomy cascade levels 2+: direct children of any node (?parent=<uuid>).
+// Parent/child derivation is leaf-name-safe (leaf names may contain " / ").
+reverbAuthRouter.get('/subcategories', async (req, res, next) => {
+  try {
+    const { parent } = z.object({ parent: z.string().min(1) }).parse(req.query);
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const subcategories = await ReverbAdapter.getCategoryChildren(parent);
+    res.json({ subcategories });
+  } catch (err) {
+    next(err);
+  }
+});
