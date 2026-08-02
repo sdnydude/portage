@@ -68,6 +68,30 @@ test.describe("proof: publish-sheet shipping controls", () => {
     await page.screenshot({ path: path.join(SHOT_DIR, "4-reverb-pickup-only.png"), fullPage: false });
   });
 
+  test("Reverb category cascade: product types load live; picking one reveals subcategories", async ({ page }) => {
+    await page.goto("/inventory");
+    const first = page.locator('a[href^="/inventory/"]').first();
+    await expect(first).toBeVisible();
+    await first.click();
+    await page.waitForURL("**/inventory/**");
+    await page
+      .getByRole("button", { name: /list on marketplace|list on another marketplace/i })
+      .first()
+      .click();
+    await page.getByRole("button", { name: "Reverb" }).click();
+
+    const productType = page.locator("#reverb-cat-0");
+    await expect(productType).toBeVisible();
+    // Live public taxonomy: the 14 roots (+ default option).
+    await expect(productType.locator("option")).toHaveCount(15);
+    await productType.selectOption({ label: "Effects and Pedals" });
+    const sub1 = page.locator("#reverb-cat-1");
+    await expect(sub1).toBeVisible();
+    await sub1.selectOption({ label: "Distortion" });
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(SHOT_DIR, "6-reverb-category-cascade.png"), fullPage: false });
+  });
+
   test("listing-card Edit shipping opens the seeded inline editor", async ({ page }) => {
     await page.goto("/inventory");
     const first = page.locator('a[href^="/inventory/"]').first();
