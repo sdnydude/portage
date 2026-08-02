@@ -610,6 +610,22 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     });
   });
 
+  it("Local pickup toggle rides the POST as ebayShipping.localPickup", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    const toggle = screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "calculated", localPickup: true,
+    });
+  });
+
   it("untouched shipping sends no ebayShipping key (server defaults stay in charge)", async () => {
     let body: Record<string, unknown> | undefined;
     h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {

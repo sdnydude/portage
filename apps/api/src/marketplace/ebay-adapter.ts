@@ -520,6 +520,7 @@ export class EbayAdapter implements MarketplaceAdapter {
         ...(ebayShipping?.method ? { method: ebayShipping.method } : {}),
         ...(typeof ebayShipping?.flatCost === 'number' ? { flatCost: ebayShipping.flatCost } : {}),
         ...(ebayShipping?.service ? { service: ebayShipping.service } : {}),
+        ...(ebayShipping?.localPickup ? { pickupOffered: true } : {}),
       },
       ...(typeof ebayShipping?.handlingDays === 'number' ? { dispatchTimeMax: ebayShipping.handlingDays } : {}),
       bestOfferAutoAcceptPrice: (specific as Partial<EbayPreparedFields>).bestOfferAutoAcceptPrice,

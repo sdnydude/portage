@@ -35,6 +35,8 @@ test.describe("proof: publish-sheet shipping controls", () => {
     // 2-day expedited services present (probe-verified enums).
     await expect(page.locator('#shipping-service option[value="FedEx2Day"]')).toHaveCount(1);
     await expect(page.locator('#shipping-service option[value="UPS2ndDay"]')).toHaveCount(1);
+    // Local pickup add-on toggle present; flip it on for the capture.
+    await page.getByText(/offer local pickup/i).click();
     await page.locator("#shipping-service").selectOption("UPSGround");
     await page.locator("#handling-days").fill("3");
     await page.screenshot({ path: path.join(SHOT_DIR, "2-flat-cost-service-handling.png"), fullPage: false });

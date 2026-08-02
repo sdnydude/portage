@@ -811,6 +811,20 @@ describe('EbayAdapter — per-listing ebayShipping (beta 17be7322)', () => {
     expect(body).not.toContain('CalculatedShippingRate');
   });
 
+  it('ebayShipping.localPickup adds the Pickup service option alongside the method', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: {
+        ...tradingSetup,
+        ebayShipping: { method: 'calculated', localPickup: true },
+      },
+    } as any);
+    const body = tradingXml();
+    expect(body).toContain('<ShippingService>Pickup</ShippingService>');
+    expect(body).toContain('<ShippingType>Calculated</ShippingType>');
+  });
+
   it('skips the weight/dims gate for flat and free methods (calculated-only requirement)', async () => {
     const adapter = new EbayAdapter('user-1');
     // No weight, no dimensions — legacy calculated path would throw EbayWeightRequiredError.
