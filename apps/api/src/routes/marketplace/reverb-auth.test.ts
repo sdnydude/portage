@@ -230,14 +230,14 @@ describe('GET /marketplace/reverb/categories', () => {
   it('returns the cached flat category list for the picker', async () => {
     const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
     const spy = vi.spyOn(ReverbAdapter, 'getFlatCategories')
-      .mockResolvedValueOnce([{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion' }]);
+      .mockResolvedValueOnce([{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'root-fx', listable: true }]);
 
     const res = await request(app)
       .get('/marketplace/reverb/categories')
       .set('Authorization', `Bearer ${authToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ categories: [{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion' }] });
+    expect(res.body).toEqual({ categories: [{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'root-fx', listable: true }] });
     spy.mockRestore();
   });
 });
