@@ -176,3 +176,28 @@ reverbAuthRouter.get('/categories', async (req, res, next) => {
     next(err);
   }
 });
+
+// Taxonomy cascade level 1: the 14 Product Type roots (served from the same
+// cached flat list — no extra Reverb call).
+reverbAuthRouter.get('/product-types', async (req, res, next) => {
+  try {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const productTypes = await ReverbAdapter.getProductTypes();
+    res.json({ productTypes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Taxonomy cascade levels 2+: direct children of any node (?parent=<uuid>).
+// Parent/child derivation is leaf-name-safe (leaf names may contain " / ").
+reverbAuthRouter.get('/subcategories', async (req, res, next) => {
+  try {
+    const { parent } = z.object({ parent: z.string().min(1) }).parse(req.query);
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const subcategories = await ReverbAdapter.getCategoryChildren(parent);
+    res.json({ subcategories });
+  } catch (err) {
+    next(err);
+  }
+});

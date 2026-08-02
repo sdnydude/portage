@@ -813,11 +813,56 @@ describe('ReverbAdapter.getFlatCategories', () => {
     const second = await ReverbAdapter.getFlatCategories();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(first).toEqual(second);
-    expect(first[0]).toEqual({ uuid: 'u1', fullName: 'Effects and Pedals / Distortion' });
+    expect(first[0]).toEqual({
+      uuid: 'u1', fullName: 'Effects and Pedals / Distortion',
+      // Hierarchy fields default sanely when the payload omits them.
+      name: 'Distortion', rootUuid: '', listable: true,
+    });
 
     clearReverbCategoriesCache();
     await ReverbAdapter.getFlatCategories();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('getProductTypes returns only the 14 root entries (fullName === name)', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'root-fx', full_name: 'Effects and Pedals', name: 'Effects and Pedals', root_uuid: 'root-fx', listable: true },
+        { uuid: 'u1', full_name: 'Effects and Pedals / Distortion', name: 'Distortion', root_uuid: 'root-fx', listable: true },
+        { uuid: 'root-keys', full_name: 'Keyboards and Synths', name: 'Keyboards and Synths', root_uuid: 'root-keys', listable: true },
+      ],
+    });
+    const roots = await ReverbAdapter.getProductTypes();
+    expect(roots.map(r => r.uuid)).toEqual(['root-fx', 'root-keys']);
+  });
+
+  it('getCategoryChildren returns DIRECT children only, safe for leaf names containing " / "', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'root-keys', full_name: 'Keyboards and Synths', name: 'Keyboards and Synths', root_uuid: 'root-keys', listable: true },
+        { uuid: 'u-acc', full_name: 'Keyboards and Synths / Keyboard and Synth Accessories', name: 'Keyboard and Synth Accessories', root_uuid: 'root-keys', listable: true },
+        { uuid: 'u-mod', full_name: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories', name: 'Modular Synth Accessories', root_uuid: 'root-keys', listable: true },
+        // Leaf whose NAME contains " / " — must be a child of u-mod, not split apart.
+        { uuid: 'u-split', full_name: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs', name: 'Modular Synth Splitters / Hubs', root_uuid: 'root-keys', listable: true },
+      ],
+    });
+    expect((await ReverbAdapter.getCategoryChildren('root-keys')).map(c => c.uuid)).toEqual(['u-acc']);
+    expect((await ReverbAdapter.getCategoryChildren('u-mod')).map(c => c.uuid)).toEqual(['u-split']);
+    expect(await ReverbAdapter.getCategoryChildren('u-split')).toEqual([]);
+  });
+
+  it('retains the hierarchy fields (name, rootUuid, listable) — cascades need them', async () => {
+    stubFetch({
+      categories: [{
+        uuid: 'u1', full_name: 'Effects and Pedals / Distortion', name: 'Distortion',
+        root_uuid: 'root-fx', listable: true,
+      }],
+    });
+    const [cat] = await ReverbAdapter.getFlatCategories();
+    expect(cat).toEqual({
+      uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion',
+      rootUuid: 'root-fx', listable: true,
+    });
   });
 });
 

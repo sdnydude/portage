@@ -65,7 +65,14 @@ export function clearReverbConditionsCache(): void {
   conditionsCachedAt = 0;
 }
 
-let cachedCategories: Array<{ uuid: string; fullName: string }> | null = null;
+export interface ReverbFlatCategory {
+  uuid: string;
+  fullName: string;
+  name: string;
+  rootUuid: string;
+  listable: boolean;
+}
+let cachedCategories: ReverbFlatCategory[] | null = null;
 let categoriesCachedAt = 0;
 
 export function clearReverbCategoriesCache(): void {
@@ -457,7 +464,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
    * category uuids/names; the endpoint's ?query= param is ignored by Reverb,
    * so all matching against this list happens client-side.
    */
-  static async getFlatCategories(): Promise<Array<{ uuid: string; fullName: string }>> {
+  static async getFlatCategories(): Promise<ReverbFlatCategory[]> {
     if (cachedCategories && Date.now() - categoriesCachedAt < CONDITIONS_TTL) return cachedCategories;
 
     const response = await fetch(`${REVERB_BASE}/categories/flat`, {
@@ -469,13 +476,40 @@ export class ReverbAdapter implements MarketplaceAdapter {
     }
 
     const data = await response.json() as {
-      categories: Array<{ uuid: string; full_name: string }>;
+      categories: Array<{ uuid: string; full_name: string; name?: string; root_uuid?: string; listable?: boolean }>;
     };
 
-    cachedCategories = data.categories.map(c => ({ uuid: c.uuid, fullName: c.full_name }));
+    // Keep the hierarchy fields — Product Type → subcategory cascades need
+    // name/rootUuid/listable, and leaf names can legitimately contain " / "
+    // ("Modular Synth Splitters / Hubs"), so `name` is the ONLY safe way to
+    // split full_name into ancestors + leaf.
+    cachedCategories = data.categories.map(c => ({
+      uuid: c.uuid,
+      fullName: c.full_name,
+      name: c.name ?? c.full_name.split(' / ').pop() ?? c.full_name,
+      rootUuid: c.root_uuid ?? '',
+      listable: c.listable ?? true,
+    }));
     categoriesCachedAt = Date.now();
 
     return cachedCategories;
+  }
+
+  /** The 14 taxonomy roots — Reverb's Product Type axis. Root entries are the
+   *  flat rows whose fullName equals their own name. */
+  static async getProductTypes(): Promise<ReverbFlatCategory[]> {
+    const cats = await ReverbAdapter.getFlatCategories();
+    return cats.filter(c => c.fullName === c.name);
+  }
+
+  /** Direct children of a taxonomy node. Parent/child derived by prefix:
+   *  child.fullName === parent.fullName + ' / ' + child.name — anchored on the
+   *  API's own `name` field because leaf names can contain " / " themselves. */
+  static async getCategoryChildren(parentUuid: string): Promise<ReverbFlatCategory[]> {
+    const cats = await ReverbAdapter.getFlatCategories();
+    const parent = cats.find(c => c.uuid === parentUuid);
+    if (!parent) return [];
+    return cats.filter(c => c.uuid !== parent.uuid && c.fullName === `${parent.fullName} / ${c.name}`);
   }
 
   static async getConditions(): Promise<Array<{ uuid: string; displayName: string }>> {
