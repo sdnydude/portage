@@ -423,7 +423,7 @@ ${JSON.stringify(input.scanData, null, 2)}
 
 EBAY CATEGORY SUGGESTION: ${JSON.stringify(input.ebayCategorySuggestion)}
 ${input.reverbCategories?.length ? `
-REVERB CATEGORIES (when filling reverb fields, copy the single best-fitting full name from THIS LIST verbatim into reverb.categoryName — never invent a category; leave reverb.categoryUuid as ""; if nothing on the list fits, set reverb to null):
+REVERB CATEGORIES (when filling reverb fields, copy the single best-fitting full name from THIS LIST verbatim into reverb.categoryName — never invent a category; leave reverb.categoryUuid as ""; if nothing on the list fits, set reverb to null. Paths use " / " between levels: pick the DEEPEST path that confidently fits the item — prefer "Effects and Pedals / Distortion" over "Effects and Pedals"; when unsure between sibling subcategories, choose their parent path instead):
 ${input.reverbCategories.join('\n')}
 ` : ''}
 

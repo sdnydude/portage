@@ -429,6 +429,20 @@ describe('generateListingFields', () => {
     expect(userPrompt).toContain('Pro Audio / Microphones');
   });
 
+  it('instructs the AI to pick the DEEPEST fitting category path (cascade resolution)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+    await generateListingFields({
+      ...baseInput,
+      images: [{ base64: 'b64', mediaType: 'image/jpeg' }],
+      reverbCategories: ['Effects and Pedals', 'Effects and Pedals / Distortion'],
+    });
+    const userPrompt = vi.mocked(analyzeImages).mock.calls[0][2] as string;
+    expect(userPrompt).toMatch(/DEEPEST/);
+  });
+
   it('coerces scalar-string aspect values to string arrays', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: 'Sony', Color: ['Black'] } } }),

@@ -5,6 +5,8 @@ import {
   conditionNeighbors,
   reverbCompsWarning,
   sanitizeReverbAiFields,
+  resolveReverbCategoryChoice,
+  validateReverbAiFields,
   EBAY_CONDITION_ORDER,
 } from './prepare-listing.js';
 
@@ -35,6 +37,49 @@ describe('sanitizeReverbAiFields', () => {
       conditionName: 'Excellent',
       make: 'ProCo',
     });
+  });
+});
+
+describe('resolveReverbCategoryChoice', () => {
+  it('exact-matches the AI-chosen full name (case-insensitive), requires listable, handles slash-leaf names', () => {
+    const cats = [
+      { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'r-fx', listable: true },
+      { uuid: 'u-dead', fullName: 'Effects and Pedals / Discontinued', name: 'Discontinued', rootUuid: 'r-fx', listable: false },
+      { uuid: 'u-split', fullName: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs', name: 'Modular Synth Splitters / Hubs', rootUuid: 'r-keys', listable: true },
+    ];
+    expect(resolveReverbCategoryChoice('effects and pedals / distortion', cats))
+      .toEqual({ uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion' });
+    // Non-listable nodes never resolve — the AI must not pin an unlistable category.
+    expect(resolveReverbCategoryChoice('Effects and Pedals / Discontinued', cats)).toBeNull();
+    // Leaf names containing " / " resolve verbatim (no naive path splitting).
+    expect(resolveReverbCategoryChoice('Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs', cats))
+      .toEqual({ uuid: 'u-split', fullName: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs' });
+    expect(resolveReverbCategoryChoice('Invented / Category', cats)).toBeNull();
+  });
+});
+
+describe('validateReverbAiFields', () => {
+  it('resolves via verbatim flat-list match WITHOUT token search; falls back to searchCategories otherwise', async () => {
+    const { ReverbAdapter } = await import('../marketplace/reverb-adapter.js');
+    const flatSpy = vi.spyOn(ReverbAdapter, 'getFlatCategories').mockResolvedValue([
+      { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'r-fx', listable: true },
+    ]);
+    const condSpy = vi.spyOn(ReverbAdapter, 'getConditions').mockResolvedValue([
+      { uuid: 'cond-exc', displayName: 'Excellent' },
+    ]);
+    const searchSpy = vi.spyOn(ReverbAdapter.prototype, 'searchCategories')
+      .mockResolvedValue([{ id: 'u-token', name: 'Pro Audio / Microphones', path: [], isLeaf: true }]);
+
+    const ai = { categoryUuid: '', categoryName: 'Effects and Pedals / Distortion', conditionUuid: '', conditionName: 'Excellent' };
+    const exact = await validateReverbAiFields('user-1', ai, 'fallback label');
+    expect(exact.categoryUuid).toBe('u-dist');
+    expect(searchSpy).not.toHaveBeenCalled();
+
+    const miss = await validateReverbAiFields('user-1', { ...ai, categoryName: 'Something Paraphrased' }, 'fallback label');
+    expect(miss.categoryUuid).toBe('u-token');
+    expect(searchSpy).toHaveBeenCalledWith('Something Paraphrased');
+
+    flatSpy.mockRestore(); condSpy.mockRestore(); searchSpy.mockRestore();
   });
 });
 

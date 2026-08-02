@@ -82,6 +82,44 @@ export function buildMarketplaceCacheEntries(
  * name against the live condition list / category search, else blank the pair
  * so downstream treats it as unresolved rather than trusting a hallucination.
  */
+/**
+ * Exact-match the AI's verbatim category choice against the live flat list.
+ * Case-insensitive on the FULL name (leaf names may contain " / ", so no path
+ * splitting), and only listable nodes resolve. Null = no verbatim match — the
+ * caller may fall back to token search, but never silently to a first entry.
+ */
+export function resolveReverbCategoryChoice(
+  chosenName: string | null | undefined,
+  cats: Array<{ uuid: string; fullName: string; listable: boolean }>,
+): { uuid: string; fullName: string } | null {
+  const wanted = chosenName?.trim().toLowerCase();
+  if (!wanted) return null;
+  const hit = cats.find(c => c.listable && c.fullName.toLowerCase() === wanted);
+  return hit ? { uuid: hit.uuid, fullName: hit.fullName } : null;
+}
+
+/**
+ * Full Reverb AI-field validation: conditions + flat list fetched once,
+ * verbatim (exact, listable) category match preferred — the prompt asks for a
+ * verbatim full name, so a hit IS the resolution and the majority-token search
+ * only backstops a paraphrased/truncated answer. Throws on lookup failure —
+ * the route's catch blanks the uuids with a warning.
+ */
+export async function validateReverbAiFields<T extends {
+  categoryUuid?: string | null; categoryName?: string | null;
+  conditionUuid?: string | null; conditionName?: string | null;
+}>(userId: string, ai: T, fallbackLabel: string): Promise<T> {
+  const [reverbConditions, flatCats] = await Promise.all([
+    ReverbAdapter.getConditions(),
+    ReverbAdapter.getFlatCategories(),
+  ]);
+  const exact = resolveReverbCategoryChoice(ai.categoryName, flatCats);
+  const categoryMatches = exact
+    ? [{ id: exact.uuid, name: exact.fullName }]
+    : await new ReverbAdapter(userId).searchCategories(ai.categoryName || fallbackLabel);
+  return sanitizeReverbAiFields(ai, reverbConditions, categoryMatches);
+}
+
 export function sanitizeReverbAiFields<T extends {
   categoryUuid?: string | null; categoryName?: string | null;
   conditionUuid?: string | null; conditionName?: string | null;
@@ -415,13 +453,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     // will 422 with guidance rather than send an invented uuid.
     if (aiFields.reverb) {
       try {
-        const [reverbConditions, reverbCats] = await Promise.all([
-          ReverbAdapter.getConditions(),
-          new ReverbAdapter(userId).searchCategories(
-            aiFields.reverb.categoryName || item.category || item.title,
-          ),
-        ]);
-        aiFields.reverb = sanitizeReverbAiFields(aiFields.reverb, reverbConditions, reverbCats);
+        aiFields.reverb = await validateReverbAiFields(userId, aiFields.reverb, item.category || item.title);
       } catch (reverbErr) {
         logger.warn({ userId, itemId, error: (reverbErr as Error).message }, 'Reverb uuid validation failed — blanking AI-supplied uuids');
         aiFields.reverb = { ...aiFields.reverb, categoryUuid: '', conditionUuid: '' };
