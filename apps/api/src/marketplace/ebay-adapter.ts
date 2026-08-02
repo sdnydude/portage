@@ -432,8 +432,19 @@ export class EbayAdapter implements MarketplaceAdapter {
     // Flat/free (per-listing ebayShipping) publish without them — the builder
     // floors weight to 1oz so any known dimensions still carry through.
     const shippingMethod = (specific.ebayShipping as EbayListingShipping | undefined)?.method ?? 'calculated';
-    if ((!weightOk || !dimsOk) && shippingMethod === 'calculated') {
+    // Symmetric with the builder: anything that is not explicitly flat/free
+    // serializes as Calculated XML, so it needs weight/dims — an unknown
+    // method value must not slip past the gate (schema is an open record).
+    if ((!weightOk || !dimsOk) && shippingMethod !== 'flat' && shippingMethod !== 'free') {
       throw new EbayWeightRequiredError();
+    }
+    // Flat without a positive buyer cost would publish a $0.00 "Flat" listing
+    // indistinguishable from free shipping — fail loud instead.
+    if (shippingMethod === 'flat') {
+      const flatCost = (specific.ebayShipping as EbayListingShipping | undefined)?.flatCost;
+      if (!(typeof flatCost === 'number' && flatCost > 0)) {
+        throw new AppError(400, 'EBAY_FLAT_COST_REQUIRED', 'Flat-rate shipping needs a buyer cost above $0 — enter the rate or switch to free shipping.');
+      }
     }
 
     // MPN mirrors into aspects; a branded item with no real part number gets eBay's

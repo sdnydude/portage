@@ -1239,6 +1239,27 @@ describe('PATCH /listings/:id — price change syncs to the live eBay listing', 
     expect(inputArg.marketplaceSpecific?.weight, 'weight must be sent on update or eBay rejects with 25020').toBeDefined();
   });
 
+  it('self-heals a missing categoryId before the sync (leaf-category 400 on price edit)', async () => {
+    // Rows published outside the scan flow store no categoryId — without the
+    // heal, buildTradingInput throws EBAY_CATEGORY_REQUIRED on every price edit.
+    mockResolveEbayCategoryId.mockResolvedValueOnce({ categoryId: '33034', categoryName: 'Electric Guitars', newlyResolved: true });
+    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebaySku: 'PRT-000009', currency: 'USD' }]);
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebaySku: 'PRT-000009', price: 162, currency: 'USD', itemId: ITEM_ID, marketplaceSpecificFields: null }]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+    mockSelectOnce([{ ...MOCK_ITEM, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectOnce([]); // footer
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307022414462', status: 'active' });
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 162 });
+
+    expect(res.status).toBe(200);
+    const [, inputArg] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
+    expect(inputArg.marketplaceSpecific?.categoryId).toBe('33034');
+  });
+
   it('stored ebayShipping survives a price-change sync (revise must not fall back to calculated)', async () => {
     const ebayShipping = { method: 'flat', flatCost: 6.5, service: 'UPSGround' };
     mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebaySku: 'PRT-000009', currency: 'USD' }]);

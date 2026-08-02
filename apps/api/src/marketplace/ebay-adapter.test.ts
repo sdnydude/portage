@@ -1102,3 +1102,31 @@ describe('EbayAdapter.getOrders — marketplace fees', () => {
     expect(orders[0].marketplaceFees).toBe(0);
   });
 });
+
+describe('EbayAdapter — ebayShipping hardening (review findings 2026-08-02)', () => {
+  it('an unknown shipping method still requires weight/dims (falls back to Calculated XML)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: {
+          categoryId: '15032', originPostalCode: '10001',
+          ebayShipping: { method: 'expedited' }, // not a real method — schema is open
+        },
+      } as any),
+    ).rejects.toBeInstanceOf(EbayWeightRequiredError);
+  });
+});
+
+describe('EbayAdapter — flat shipping requires a positive cost', () => {
+  it('rejects method=flat without flatCost — a $0.00 "Flat" listing masquerades as free', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: { ...tradingSetup, ebayShipping: { method: 'flat' } },
+      } as any),
+    ).rejects.toMatchObject({ code: 'EBAY_FLAT_COST_REQUIRED' });
+    expect(fetchMock.mock.calls.find(([u]) => isTradingCall(u))).toBeUndefined();
+  });
+});
