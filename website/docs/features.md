@@ -158,6 +158,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 |---------|--------|-------------|
 | eBay OAuth2 | Shipped | Full auth code grant flow with encrypted token storage |
 | eBay Trading API Listings | Shipped | Full listing lifecycle (add/revise/end) with inline shipping terms — no Business Policies required |
+| Per-Listing Shipping Controls | Shipped | eBay calculated/flat/free + service/handling/local-pickup, Reverb profile & pickup overrides — on the publish sheet, scan review, and listing cards ([reference](/docs/reference/shipping-controls)) |
 | eBay Comps (Browse API) | Shipped | Sold + active comparable search with stats |
 | eBay Taxonomy | Shipped | Category suggestion from item metadata |
 | eBay Buyer Messaging | Shipped | Inbox sync, conversation threads, reply via Trading API |

@@ -38,6 +38,8 @@ Auth flows (OAuth for eBay, token-paste for Reverb) live in dedicated route file
 
 `MarketplaceListingInput` is the normalized listing payload every adapter accepts: title, description, price + currency, category, condition, photos (with an `isPrimary` flag), optional brand/model/features, quantity, `publishMode: 'draft' | 'live'`, shipping weight + unit, and a `marketplaceSpecific: Record<string, unknown>` escape hatch for adapter-only fields. Adapters return `MarketplaceListingResult`: the `marketplaceListingId`, an optional `marketplaceUrl`, a `status` of `'active' | 'draft' | 'pending'`, and an optional non-fatal `warning`.
 
+Two typed keys ride the `marketplaceSpecific` escape hatch for per-listing shipping intent (PR #274): `ebayShipping` (`EbayListingShipping` — method/flatCost/service/handlingDays/localPickup) and `reverbShipping` (`ReverbListingShipping` — profileId/localPickupOnly, applied after the seller-profile fill so an explicit choice wins). Shapes, precedence, and live-verification evidence: [Per-Listing Shipping Controls](/docs/reference/shipping-controls).
+
 One field is a known trap — **`mpn` is the Manufacturer Part Number, a real part/SKU number, never the model name**. eBay's BrandMPN rule (error 25002) rejects a model name submitted as MPN, which is why the contract keeps `model` and `mpn` as separate fields (when no real MPN exists, the eBay adapter sends the "Does Not Apply" sentinel).
 
 ## eBay
