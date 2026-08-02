@@ -37,6 +37,9 @@ export interface TradingListingInput {
     method?: 'calculated' | 'flat' | 'free';
     /** Buyer-paid flat rate; required when method='flat'. */
     flatCost?: number;
+    /** Offer local pickup ALONGSIDE the method (add-on only — pickup-only is
+     *  illegal on eBay, live-verified 2026-08-01). */
+    pickupOffered?: boolean;
   };
   dispatchTimeMax?: number;
   /** Per-listing "accept offers" toggle — enables Best Offer even with no floor. */
@@ -87,6 +90,11 @@ function itemSpecifics(aspects: Record<string, string[]>): string {
 function inlineShipping(s: TradingListingInput['shipping'], currency: string): string {
   const service = s.service ?? 'USPSPriority';
   const method = s.method ?? 'calculated';
+  // Local pickup rides as a SECOND service option next to the real method —
+  // add-on only; pickup-only is rejected by eBay (live-verified 2026-08-01).
+  const pickupOption = s.pickupOffered
+    ? '<ShippingServiceOptions><ShippingServicePriority>2</ShippingServicePriority><ShippingService>Pickup</ShippingService></ShippingServiceOptions>'
+    : '';
   if (method === 'flat' || method === 'free') {
     // Live-verified shapes (2026-08-01 matrix, PR #274): Flat + ShippingServiceCost,
     // no CalculatedShippingRate; free adds FreeShipping with an explicit 0.00 cost.
@@ -100,6 +108,7 @@ function inlineShipping(s: TradingListingInput['shipping'], currency: string): s
       `<ShippingServiceCost currencyID="${currency}">${cost.toFixed(2)}</ShippingServiceCost>` +
       (method === 'free' ? '<FreeShipping>true</FreeShipping>' : '') +
       '</ShippingServiceOptions>' +
+      pickupOption +
       '</ShippingDetails>'
     );
   }
@@ -113,6 +122,7 @@ function inlineShipping(s: TradingListingInput['shipping'], currency: string): s
     '<ShippingServicePriority>1</ShippingServicePriority>' +
     `<ShippingService>${service}</ShippingService>` +
     '</ShippingServiceOptions>' +
+    pickupOption +
     '</ShippingDetails>'
   );
 }

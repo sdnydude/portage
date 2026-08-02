@@ -35,8 +35,15 @@ test.describe("proof: publish-sheet shipping controls", () => {
     // 2-day expedited services present (probe-verified enums).
     await expect(page.locator('#shipping-service option[value="FedEx2Day"]')).toHaveCount(1);
     await expect(page.locator('#shipping-service option[value="UPS2ndDay"]')).toHaveCount(1);
+    // Local pickup add-on toggle present; flip it on for the capture and
+    // ASSERT the on-state (a silent no-op click would fake the proof).
+    const pickupTrack = page.locator('label:has-text("Offer local pickup") > div').first();
+    await pickupTrack.click();
+    await expect(pickupTrack).toHaveClass(/bg-forest-green/);
     await page.locator("#shipping-service").selectOption("UPSGround");
     await page.locator("#handling-days").fill("3");
+    // Re-assert right before capture: the flag must survive the later edits.
+    await expect(pickupTrack).toHaveClass(/bg-forest-green/);
     await page.screenshot({ path: path.join(SHOT_DIR, "2-flat-cost-service-handling.png"), fullPage: false });
 
     await methodSelect.selectOption("free");

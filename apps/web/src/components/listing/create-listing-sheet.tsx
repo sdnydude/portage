@@ -173,7 +173,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       offersEnabledExplicit?: boolean;
       ebayAdRate?: number;
       reverbBumpBid?: number;
-      ebayShipping?: { method: string; flatCost?: number; service?: string; handlingDays?: number };
+      ebayShipping?: { method: string; flatCost?: number; service?: string; handlingDays?: number; localPickup?: boolean };
       reverbShipping?: { profileId?: string; localPickupOnly?: boolean };
       categoryUuid?: string;
     } = {};
@@ -206,6 +206,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         ...(shipFields.method === "flat" && cost > 0 ? { flatCost: cost } : {}),
         ...(shipFields.service ? { service: shipFields.service } : {}),
         ...(days >= 0 && shipFields.handlingDays !== "" ? { handlingDays: days } : {}),
+        ...(shipFields.localPickup ? { localPickup: true } : {}),
       };
     }
     if (reverbShippingTouched.current && marketplace === "reverb" && (reverbLocalPickup || reverbShipChoice)) {
