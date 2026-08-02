@@ -257,6 +257,12 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       setError("Enter a valid price");
       return;
     }
+    // Server rejects flat-with-no-cost (EBAY_FLAT_COST_REQUIRED) — catch it
+    // here with the same message so the seller never round-trips for it.
+    if (marketplace === "ebay" && shippingTouched.current && shipFields.method === "flat" && !(parseFloat(shipFields.flatCost) > 0)) {
+      setError("Flat-rate shipping needs a buyer cost above $0 — enter the rate or switch to free shipping.");
+      return;
+    }
 
     setIsCreating(true);
     setError(null);

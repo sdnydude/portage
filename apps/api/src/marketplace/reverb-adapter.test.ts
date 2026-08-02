@@ -940,3 +940,21 @@ describe('ReverbAdapter.searchComps', () => {
     expect(result.listings).toHaveLength(2);
   });
 });
+
+describe('ReverbAdapter.searchCategories — leaf-safe path derivation', () => {
+  it('does not over-split a leaf name containing " / " (review finding)', async () => {
+    stubFetch({
+      categories: [{
+        uuid: 'u-split',
+        full_name: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs',
+        name: 'Modular Synth Splitters / Hubs',
+        root_uuid: 'r-keys', listable: true,
+      }],
+    });
+    const adapter = new ReverbAdapter('user-1');
+    const [hit] = await adapter.searchCategories('modular synth splitters hubs accessories');
+    expect(hit.path).toEqual([
+      'Keyboards and Synths', 'Keyboard and Synth Accessories', 'Modular Synth Accessories', 'Modular Synth Splitters / Hubs',
+    ]);
+  });
+});

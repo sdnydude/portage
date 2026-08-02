@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const h = vi.hoisted(() => ({
@@ -51,12 +51,13 @@ vi.mock("@/hooks/use-listings", () => ({
   useListings: () => ({ listings: mockListings, isLoading: mockListingsLoading, error: mockListingsError, refetch: refetchListingsMock, createListing: vi.fn() }),
 }));
 vi.mock("@/components/capture/photo-gallery-strip", () => ({
-  PhotoGalleryStrip: ({ onDelete, onAddPhotos }: { onDelete?: (i: number) => void; onAddPhotos?: (files: File[]) => void }) => (
+  PhotoGalleryStrip: ({ onDelete, onAddPhotos, onEditPhoto }: { onDelete?: (i: number) => void; onAddPhotos?: (files: File[]) => void; onEditPhoto?: (i: number) => void }) => (
     <>
       <button onClick={() => onDelete?.(0)}>strip-delete</button>
       <button onClick={() => onAddPhotos?.([new File(["x"], "x.jpg", { type: "image/jpeg" })])}>
         strip-add
       </button>
+      <button onClick={() => onEditPhoto?.(0)}>strip-edit</button>
     </>
   ),
 }));
@@ -197,5 +198,27 @@ describe("ItemDetail (prop-driven)", () => {
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
     expect(h.deleteItem).toHaveBeenCalled();
     expect(onDeleted).toHaveBeenCalled();
+  });
+});
+
+describe("ItemDetail — photo save serialization (Reverb-published race)", () => {
+  it("a second accept while the save PATCH is in flight must not fire a second PATCH", async () => {
+    h.item.photos = [{ url: "https://img/k0.jpg", key: "K0", isPrimary: true }];
+    h.enhanceResult = { image: { key: "K1", url: "https://img/k1.jpg", width: 100, height: 100, size: 1000 } };
+    // Reverb-published items make PATCH /items slow — never resolve here.
+    h.updateItem.mockClear();
+    h.updateItem.mockReturnValue(new Promise(() => {}));
+    try {
+      render(<ItemDetail itemId="i1" />);
+      fireEvent.click(screen.getByText("strip-edit"));
+      const accept = screen.getByRole("button", { name: /use this photo/i });
+      fireEvent.click(accept);
+      fireEvent.click(accept); // impatient double-tap during the slow Reverb sync
+      expect(h.updateItem).toHaveBeenCalledTimes(1);
+    } finally {
+      h.enhanceResult = null;
+      h.updateItem.mockResolvedValue({});
+      h.item.photos = [];
+    }
   });
 });

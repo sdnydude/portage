@@ -781,3 +781,19 @@ describe("CreateListingSheet — offers touched is per-marketplace (review findi
     expect(fields?.offersEnabledExplicit).toBeUndefined();
   });
 });
+
+describe("CreateListingSheet — flat rate requires a cost (review finding)", () => {
+  it("blocks the save with an error when method=flat and no buyer cost is entered", async () => {
+    let posted = false;
+    h.apiMock.mockImplementation(async (path: unknown) => {
+      const p = String(path ?? "");
+      if (p === "/listings") { posted = true; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/shipping method/i), { target: { value: "flat" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    expect(await screen.findByText(/flat-rate shipping needs a buyer cost/i)).toBeInTheDocument();
+    expect(posted).toBe(false);
+  });
+});

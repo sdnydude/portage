@@ -453,7 +453,12 @@ export class ReverbAdapter implements MarketplaceAdapter {
       .map(({ cat }) => ({
         id: cat.uuid,
         name: cat.fullName,
-        path: cat.fullName.split(' / '),
+        // Leaf-safe path: strip the API's own leaf name, split only the ancestor
+      // prefix (leaf names may themselves contain " / ").
+      path: [
+        ...cat.fullName.slice(0, cat.fullName.length - cat.name.length).replace(/ \/ $/, '').split(' / ').filter(Boolean),
+        cat.name,
+      ],
         isLeaf: true,
       }));
   }
