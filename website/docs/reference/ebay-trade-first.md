@@ -75,6 +75,12 @@ Add/Revise payload includes:
   (inches) that calculated shipping requires
 - `DispatchTimeMax` (default 1)
 
+Since 2026-08-01 (PR #274) calculated is only the **default**: a per-listing
+`ebayShipping` choice can switch the payload to flat-rate or free shipping,
+override the service and handling time, and add a local-pickup option — all
+live-verified shapes. See
+[Per-Listing Shipping Controls](/docs/reference/shipping-controls).
+
 Because the terms are inline, the old "set up four eBay Business Policies before
 your first listing" gate no longer exists. What replaces it are two pre-flight
 guards in `buildTradingInput()` (`ebay-adapter.ts`): a missing ship-from ZIP throws
