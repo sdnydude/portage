@@ -278,3 +278,25 @@ describe('GET /marketplace/reverb/subcategories', () => {
     spy.mockRestore();
   });
 });
+
+describe('GET /marketplace/reverb/category-suggestion', () => {
+  it('returns the same first-match the publish-time enrichment guess would use; null when nothing matches', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const spy = vi.spyOn(ReverbAdapter.prototype, 'searchCategories')
+      .mockResolvedValueOnce([{ id: 'u-dist', name: 'Effects and Pedals / Distortion', path: ['Effects and Pedals', 'Distortion'], isLeaf: true }])
+      .mockResolvedValueOnce([]);
+
+    const hit = await request(app)
+      .get('/marketplace/reverb/category-suggestion?q=distortion%20pedal')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(hit.status).toBe(200);
+    expect(hit.body).toEqual({ suggestion: { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion' } });
+
+    const miss = await request(app)
+      .get('/marketplace/reverb/category-suggestion?q=vintage%20film%20camera')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(miss.status).toBe(200);
+    expect(miss.body).toEqual({ suggestion: null });
+    spy.mockRestore();
+  });
+});

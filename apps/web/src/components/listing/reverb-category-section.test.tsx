@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({ apiMock: vi.fn() }));
 vi.mock("@/lib/api", () => ({ api: h.apiMock, ApiError: class extends Error {} }));
@@ -17,6 +17,29 @@ describe("ReverbCategorySection", () => {
     render(<ReverbCategorySection value={null} onChange={vi.fn()} token="t" />);
     expect(await screen.findByRole("option", { name: "Effects and Pedals" })).toBeInTheDocument();
     expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("");
+  });
+
+  it("hydrates the selects from a seeded value — the AI category shows AS the selection, not a default", async () => {
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (path === "/marketplace/reverb/subcategories?parent=root-fx") {
+        return { subcategories: [{ uuid: "u-dist", fullName: "Effects and Pedals / Distortion", name: "Distortion", rootUuid: "root-fx", listable: true }] };
+      }
+      if (path.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      return {};
+    });
+    render(
+      <ReverbCategorySection
+        value={{ uuid: "u-dist", fullName: "Effects and Pedals / Distortion" }}
+        onChange={vi.fn()} token="t"
+      />,
+    );
+    await waitFor(() => {
+      expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("root-fx");
+    });
+    expect((screen.getByLabelText(/subcategory 1/i) as HTMLSelectElement).value).toBe("u-dist");
   });
 
   it("drills down: picking a product type reports it, loads children, and picking a child deepens the choice", async () => {

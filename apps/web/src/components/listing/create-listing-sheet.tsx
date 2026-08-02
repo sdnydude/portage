@@ -96,6 +96,30 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // Reverb category cascade — an explicit pick overrides server enrichment
   // (AI/prepare-cache/profile); null = untouched, nothing sent.
   const [reverbCategory, setReverbCategory] = useState<{ uuid: string; fullName: string } | null>(null);
+  // Pre-seed with the category that WILL publish (operator feedback 2026-08-02):
+  // prepare-cache first, else the same first-match the publish-time enrichment
+  // guess uses (GET /category-suggestion) — never an unexplained blank default.
+  useEffect(() => {
+    if (marketplace !== "reverb" || !token || reverbCategory) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const item = await api<{ title?: string; category?: string; marketplaceData?: { reverb?: { categoryUuid?: string | null; categoryName?: string | null } } }>(`/items/${itemId}`, { token });
+        if (cancelled) return;
+        const cached = item?.marketplaceData?.reverb;
+        if (cached?.categoryUuid) {
+          setReverbCategory({ uuid: cached.categoryUuid, fullName: cached.categoryName ?? "" });
+          return;
+        }
+        const q = item?.category || item?.title;
+        if (!q) return;
+        const r = await api<{ suggestion: { uuid: string; fullName: string } | null }>(`/marketplace/reverb/category-suggestion?q=${encodeURIComponent(q)}`, { token });
+        if (!cancelled && r?.suggestion) setReverbCategory(r.suggestion);
+      } catch { /* cascade stays on defaults; enrichment still guesses at publish */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketplace, token, itemId]);
   useEffect(() => {
     if (marketplace !== "reverb" || !token) return;
     let cancelled = false;

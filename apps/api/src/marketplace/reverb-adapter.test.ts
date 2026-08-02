@@ -762,6 +762,17 @@ describe('ReverbAdapter.searchCategories', () => {
     expect(await adapter.searchCategories('solid state drives')).toEqual([]);
   });
 
+  it('derives path segments with the real " / " separator (was split on " > " — always 1 element)', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'uuid-distortion', full_name: 'Effects and Pedals / Distortion' },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+    const [result] = await adapter.searchCategories('distortion pedals effects');
+    expect(result.path).toEqual(['Effects and Pedals', 'Distortion']);
+  });
+
   it('returns [] when nothing matches so the route 422 guard fires instead of a blind first-entry guess', async () => {
     stubFetch({
       categories: [

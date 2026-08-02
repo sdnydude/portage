@@ -689,3 +689,33 @@ describe("CreateListingSheet — Reverb bump rate input", () => {
     expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbBumpBid).toBeCloseTo(0.022);
   });
 });
+
+describe("CreateListingSheet — Reverb category pre-seed", () => {
+  it("seeds the cascade with the category that will publish: item cache first, suggestion fallback", async () => {
+    h.apiMock.mockImplementation(async (path: unknown) => {
+      const p = String(path ?? "");
+      if (p === "/items/i1") {
+        return { id: "i1", title: "ProCo RAT 2", category: "pedals", marketplaceData: {} }; // no reverb cache
+      }
+      if (p.startsWith("/marketplace/reverb/category-suggestion")) {
+        return { suggestion: { uuid: "u-dist", fullName: "Effects and Pedals / Distortion" } };
+      }
+      if (p === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p === "/marketplace/reverb/subcategories?parent=root-fx") {
+        return { subcategories: [{ uuid: "u-dist", fullName: "Effects and Pedals / Distortion", name: "Distortion", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    // The cascade hydrates to the suggested category — not an unexplained default.
+    await waitFor(() => {
+      expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("root-fx");
+    });
+    expect((screen.getByLabelText(/subcategory 1/i) as HTMLSelectElement).value).toBe("u-dist");
+  });
+});

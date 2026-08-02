@@ -453,7 +453,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
       .map(({ cat }) => ({
         id: cat.uuid,
         name: cat.fullName,
-        path: cat.fullName.split(' > '),
+        path: cat.fullName.split(' / '),
         isLeaf: true,
       }));
   }

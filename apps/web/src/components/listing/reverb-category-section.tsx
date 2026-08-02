@@ -50,6 +50,35 @@ export function ReverbCategorySection({ value, onChange, token, idPrefix = "" }:
     return () => { cancelled = true; };
   }, [token]);
 
+  // Hydrate the cascade from a seeded value (AI/prepare-cache category): walk
+  // the tree level by level, matching each ancestor by fullName prefix — the
+  // seeded category shows AS the selection, not as an unexplained default.
+  useEffect(() => {
+    if (!value || !token || roots.length === 0) return;
+    const deepestNow = path[path.length - 1];
+    if (deepestNow?.uuid === value.uuid) return; // already in sync
+    let cancelled = false;
+    (async () => {
+      const chain: ReverbCategoryNode[] = [];
+      let pool = roots;
+      // Walk down until we land on the value's node (fullName anchored — leaf
+      // names may contain " / ", so prefix-match on candidates' own fullName).
+      for (let guard = 0; guard < 6 && pool.length > 0; guard++) {
+        const next = pool.find((c) =>
+          c.fullName === value.fullName || value.fullName.startsWith(`${c.fullName} / `));
+        if (!next) break;
+        chain.push(next);
+        if (next.fullName === value.fullName) break;
+        pool = await loadChildren(next.uuid);
+      }
+      if (!cancelled && chain.length > 0 && chain[chain.length - 1].fullName === value.fullName) {
+        setPath(chain);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value?.uuid, roots, token]);
+
   const loadChildren = async (uuid: string) => {
     if (childrenByUuid[uuid]) return childrenByUuid[uuid];
     try {
