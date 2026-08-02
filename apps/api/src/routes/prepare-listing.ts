@@ -105,24 +105,67 @@ export function resolveReverbCategoryChoice(
  * only backstops a paraphrased/truncated answer. Throws on lookup failure —
  * the route's catch blanks the uuids with a warning.
  */
+/**
+ * Semantic backstop for the category guess: score categories by DISTINCTIVE
+ * query tokens (title + category, >3 chars, minus stopwords) hitting the
+ * category's LEAF name — generic shared words (guitar/effects/pedals) rank a
+ * pitch shifter into "Guitar Synths" under plain token counting (live defect
+ * 2026-08-02); leaf hits carry the meaning. Ties break toward more total
+ * full-name hits, then the deeper path. Null when no leaf token hits at all.
+ */
+const REVERB_QUERY_STOPWORDS = new Set(['other', 'effects', 'pedals', 'pedal', 'guitar', 'guitars', 'and', 'the', 'with', 'for']);
+export function pickReverbCategoryByLeafTokens(
+  title: string | null | undefined,
+  category: string | null | undefined,
+  cats: Array<{ uuid: string; fullName: string; name: string; listable: boolean }>,
+): { uuid: string; fullName: string } | null {
+  const tokens = `${title ?? ''} ${category ?? ''}`.toLowerCase().split(/[^a-z0-9]+/)
+    .filter(t => t.length > 3 && !REVERB_QUERY_STOPWORDS.has(t));
+  if (tokens.length === 0) return null;
+  let best: { uuid: string; fullName: string } | null = null;
+  let bestScore = 0; let bestTotal = 0; let bestDepth = 0;
+  for (const c of cats) {
+    if (!c.listable) continue;
+    const leaf = c.name.toLowerCase();
+    const full = c.fullName.toLowerCase();
+    const leafHits = tokens.filter(t => leaf.includes(t)).length;
+    if (leafHits === 0) continue;
+    const totalHits = tokens.filter(t => full.includes(t)).length;
+    const depth = c.fullName.split(' / ').length;
+    if (leafHits > bestScore
+      || (leafHits === bestScore && totalHits > bestTotal)
+      || (leafHits === bestScore && totalHits === bestTotal && depth > bestDepth)) {
+      best = { uuid: c.uuid, fullName: c.fullName };
+      bestScore = leafHits; bestTotal = totalHits; bestDepth = depth;
+    }
+  }
+  return best;
+}
+
 export async function validateReverbAiFields<T extends {
   categoryUuid?: string | null; categoryName?: string | null;
   conditionUuid?: string | null; conditionName?: string | null;
-}>(userId: string, ai: T, fallbackLabel: string): Promise<T> {
+}>(userId: string, ai: T, item: { title?: string | null; category?: string | null }): Promise<T> {
   const [reverbConditions, flatCats] = await Promise.all([
     ReverbAdapter.getConditions(),
     ReverbAdapter.getFlatCategories(),
   ]);
-  const exact = resolveReverbCategoryChoice(ai.categoryName, flatCats);
-  const categoryMatches = exact
-    ? [{ id: exact.uuid, name: exact.fullName }]
-    : await new ReverbAdapter(userId).searchCategories(ai.categoryName || fallbackLabel);
+  // Resolution order: verbatim AI choice → leaf-token semantic pick (title
+  // carries the distinctive words) → majority token search as last resort.
+  const resolved = resolveReverbCategoryChoice(ai.categoryName, flatCats)
+    ?? pickReverbCategoryByLeafTokens(item.title, item.category, flatCats);
+  const categoryMatches = resolved
+    ? [{ id: resolved.uuid, name: resolved.fullName }]
+    : await new ReverbAdapter(userId).searchCategories(
+        ai.categoryName || item.category || item.title || '',
+      );
   return sanitizeReverbAiFields(ai, reverbConditions, categoryMatches);
 }
 
 export function sanitizeReverbAiFields<T extends {
   categoryUuid?: string | null; categoryName?: string | null;
   conditionUuid?: string | null; conditionName?: string | null;
+  finish?: string | null; year?: string | null;
 }>(
   ai: T,
   validConditions: Array<{ uuid: string; displayName: string }>,
@@ -131,8 +174,17 @@ export function sanitizeReverbAiFields<T extends {
   const condition = validConditions.find(c => c.uuid === ai.conditionUuid)
     ?? validConditions.find(c => c.displayName.toLowerCase() === (ai.conditionName ?? '').toLowerCase());
   const category = categoryMatches.find(c => c.id === ai.categoryUuid) ?? categoryMatches[0];
+  // Hygiene on free-text attributes: a malformed model response can leak JSON
+  // fragments into them (live 2026-08-02: finish = '} "pitch"'). A finish is a
+  // short plain phrase; a year is a 4-digit 19xx/20xx.
+  const finish = ai.finish && ai.finish.length <= 40 && !/[{}[\]":\\]/.test(ai.finish)
+    ? ai.finish
+    : null;
+  const year = ai.year && /^(19|20)\d{2}$/.test(ai.year.trim()) ? ai.year.trim() : null;
   return {
     ...ai,
+    finish,
+    year,
     categoryUuid: category?.id ?? '',
     categoryName: category?.name ?? '',
     conditionUuid: condition?.uuid ?? '',
@@ -453,7 +505,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     // will 422 with guidance rather than send an invented uuid.
     if (aiFields.reverb) {
       try {
-        aiFields.reverb = await validateReverbAiFields(userId, aiFields.reverb, item.category || item.title);
+        aiFields.reverb = await validateReverbAiFields(userId, aiFields.reverb, { title: item.title, category: item.category });
       } catch (reverbErr) {
         logger.warn({ userId, itemId, error: (reverbErr as Error).message }, 'Reverb uuid validation failed — blanking AI-supplied uuids');
         aiFields.reverb = { ...aiFields.reverb, categoryUuid: '', conditionUuid: '' };
