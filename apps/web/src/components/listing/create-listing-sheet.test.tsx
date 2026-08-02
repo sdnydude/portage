@@ -626,6 +626,27 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     });
   });
 
+  it("pickup toggle survives later shipping edits (service/handling) — no stale-state clobber", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/shipping method/i), { target: { value: "flat" } });
+    fireEvent.change(screen.getByLabelText(/buyer pays/i), { target: { value: "6.50" } });
+    const toggle = screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    // Later edits must not drop the flag.
+    fireEvent.change(screen.getByLabelText(/^service$/i), { target: { value: "UPSGround" } });
+    fireEvent.change(screen.getByLabelText(/handling/i), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "flat", flatCost: 6.5, service: "UPSGround", handlingDays: 3, localPickup: true,
+    });
+  });
+
   it("untouched shipping sends no ebayShipping key (server defaults stay in charge)", async () => {
     let body: Record<string, unknown> | undefined;
     h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
