@@ -35,6 +35,8 @@ Directories mirror feature areas, not component types:
 | `listing/` | ListingCard, ListingPreviewCard, CompsPricingWidget, CreateListingSheet, BulkListingBar |
 | `inventory/` | ItemCard, SearchBar, ViewControls, BulkActionBar |
 | `layout/` | AppShell (route-aware responsive shell), Sidebar (desktop/iPad collapsible nav rail), TopBar (desktop header), PageHeader (sticky top, mobile), TabBar (floating glass bottom nav + scan FAB) |
+| `workbench/` | R2 desktop drag-drop ingest — DesktopIngestPanel, DropZone, IngestQueue |
+| `porter/` | R3 Porter dock — PorterDock, conversation-history UI |
 | `image/` | BeforeAfterSlider |
 | `onboarding/` | OnboardingFlow (5-step first-run carousel) |
 | `celebration/` | SoldCelebration |
@@ -88,6 +90,8 @@ All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. K
 | `useOnboarding` | Onboarding completion state |
 | `useExport` | Data export (CSV download) |
 | `useBulkSelect` | Multi-select state for bulk actions |
+| `usePhotoDrag` | Touch-capable long-press drag reorder for photo grids/strips |
+| `useDesktopIngest` | R2 desktop drag-drop file ingest + queue state |
 
 ## Listing Flow Modes
 
