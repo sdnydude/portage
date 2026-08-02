@@ -209,7 +209,7 @@ describe("ItemDetail — photo save serialization (Reverb-published race)", () =
     h.updateItem.mockClear();
     h.updateItem.mockReturnValue(new Promise(() => {}));
     try {
-      render(<ItemDetail itemId="i1" />);
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
       fireEvent.click(screen.getByText("strip-edit"));
       const accept = screen.getByRole("button", { name: /use this photo/i });
       fireEvent.click(accept);
