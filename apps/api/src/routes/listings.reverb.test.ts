@@ -752,6 +752,49 @@ describe('PATCH /listings/:id — reverb marketplace sync', () => {
     });
   });
 
+  it('omits photos from the Reverb sync on a price-only listing edit (this route never changes photos)', async () => {
+    const LISTING_ID = '00000000-0000-0000-0000-00000000000c';
+    mockSelectOnce([{
+      id: LISTING_ID,
+      userId: 'test-user-id',
+      itemId: ITEM_ID,
+      marketplace: 'reverb',
+      status: 'active',
+      marketplaceListingId: '87654321',
+      price: 2500,
+      currency: 'USD',
+      marketplaceSpecificFields: null,
+      ebaySku: null,
+    }]);
+    const listingUpdateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{
+          id: LISTING_ID, userId: 'test-user-id', itemId: ITEM_ID, marketplace: 'reverb',
+          status: 'active', marketplaceListingId: '87654321', price: 2200, currency: 'USD',
+          marketplaceSpecificFields: null, ebaySku: null,
+        }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValueOnce({ set: listingUpdateSet } as any);
+    mockSelectOnce([GEAR_ITEM]);                       // item lookup for sync
+    mockSelectOnce([{ footer: null, shipFromAddress: null }]); // footer/shipFrom profile row
+    mockSelectOnce([PROFILE]);                         // enrichment profile lookup
+    mockReverbUpdateListing.mockResolvedValueOnce({
+      marketplaceListingId: '87654321',
+      marketplaceUrl: 'https://reverb.com/item/87654321',
+      status: 'active',
+    });
+
+    const res = await request(app)
+      .patch(`/listings/${LISTING_ID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 2200 });
+
+    expect(res.status).toBe(200);
+    const input = mockReverbUpdateListing.mock.calls[0][1];
+    expect(input.photos).toBeUndefined();
+  });
+
   it('archiving an active reverb listing ends it on Reverb via deleteListing', async () => {
     const LISTING_ID = '00000000-0000-0000-0000-00000000000d';
     mockSelectOnce([{

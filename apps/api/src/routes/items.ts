@@ -10,7 +10,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
-import { mergeItemShipping, mergeItemAspects, applyShipFromOrigin } from './listings.js';
+import { mergeItemShipping, mergeItemAspects, applyShipFromOrigin, applyReverbEnrichment } from './listings.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
 import type { MarketplaceData } from '@portage/shared';
 import { MAX_PHOTOS_PER_ITEM } from '@portage/shared';
@@ -588,7 +588,20 @@ itemsRouter.patch('/:id', async (req, res, next) => {
             if (syncResult.warning) syncWarnings.push(`ebay: ${syncResult.warning}`);
           } else {
             const adapter = new ReverbAdapter(userId);
-            await adapter.updateListing(syncId, {
+            // Enrichment parity with the listings.ts sync path: the LIVE profile
+            // owns offersEnabled and shipping defaults, so a Settings change
+            // after publish propagates on item edits too. Best-effort — Reverb's
+            // PUT is partial, so a failed enrichment (no profile row, category
+            // lookup down) must not block syncing the edited fields themselves.
+            let reverbSpecific = listed.marketplaceSpecificFields as Record<string, unknown> | undefined;
+            try {
+              const enriched = await applyReverbEnrichment(userId, updated, adapter, reverbSpecific);
+              reverbSpecific = enriched.specific;
+              if (enriched.warning) syncWarnings.push(`reverb: ${enriched.warning}`);
+            } catch (enrichErr) {
+              logger.warn({ itemId: updated.id, syncId, error: (enrichErr as Error).message }, 'Reverb enrichment failed on item-edit sync — syncing with stored specifics');
+            }
+            const syncResult = await adapter.updateListing(syncId, {
               title: updated.title,
               description: updated.description,
               price: updated.price ?? undefined,
@@ -597,11 +610,18 @@ itemsRouter.patch('/:id', async (req, res, next) => {
               quantity: updated.quantity,
               brand: updated.brand,
               model: updated.model,
-              photos: (updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
-              // Publish-time specifics as stored (conditionUuid/categoryUuid/
-              // shippingRates) — no eBay aspect/shipping merging.
-              marketplaceSpecific: listed.marketplaceSpecificFields as Record<string, unknown> | undefined,
+              // Photo diff: Reverb photo updates cost a PUT + GET /images + one
+              // DELETE per removed photo, so only send photos when this PATCH
+              // actually changed them — omitted photos leave the live set alone.
+              photos: body.photos !== undefined ? ((updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? []) : undefined,
+              // Publish-time specifics enriched from the item cache + live
+              // profile (falls back to stored on enrichment failure) — no eBay
+              // aspect/shipping merging.
+              marketplaceSpecific: reverbSpecific,
             });
+            // Parity with the eBay branch: adapter result warnings (terminal
+            // state, stale-photo cleanup) belong to the user, not the void.
+            if (syncResult.warning) syncWarnings.push(`reverb: ${syncResult.warning}`);
           }
         } catch (err) {
           // One failed row must not block syncing the others.

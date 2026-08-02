@@ -115,7 +115,7 @@ function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): Ma
  * overrides after profile fill and persists on the stored row, so re-sync
  * keeps honoring the seller's per-listing choice.
  */
-async function applyReverbEnrichment(
+export async function applyReverbEnrichment(
   userId: string,
   item: { id: string; title: string; category: string | null; marketplaceData: unknown },
   adapter: MarketplaceAdapter,
@@ -745,7 +745,11 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             quantity: item.quantity,
             brand: item.brand,
             model: item.model,
-            photos: (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
+            // This route never edits photos. Reverb photo updates cost a PUT +
+            // GET /images + per-photo DELETEs, so omit them there entirely —
+            // the live set stays as-is. eBay's full-body revise still needs the
+            // current photos inline (one XML call, no extra cost).
+            photos: updated.marketplace === 'reverb' ? undefined : ((item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? []),
             features: item.features as string[],
             ebaySku: updated.ebaySku ?? undefined,
             marketplaceSpecific: syncSpecific,
@@ -760,7 +764,12 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             logger.warn({ listingId: updated.id, marketplace: updated.marketplace }, 'Update saved locally — marketplace is parked, no sync');
             warning = `Saved locally — ${updated.marketplace} sync is not supported in this release`;
           } else if (err instanceof AppError) {
-            throw err;
+            // P0 soft-warn contract (2026-08-02, parity with items.ts): the
+            // local write already landed, so a marketplace failure must report
+            // "saved locally, sync failed + why" — throwing here told the
+            // client nothing saved when the change is persisted.
+            logger.warn({ listingId: updated.id, code: err.code, error: err.message }, 'Marketplace sync failed after local save');
+            warning = `Saved locally but failed to sync to ${updated.marketplace} — ${err.message}`;
           } else {
             logger.warn({ listingId: updated.id, error: (err as Error).message }, 'Failed to sync update to marketplace');
             warning = 'Saved locally but failed to sync to marketplace';

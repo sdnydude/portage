@@ -1138,6 +1138,34 @@ describe('PATCH /listings/:id', () => {
     expect(res.body.warning).toMatch(/best offer/i);
   });
 
+  it('saves locally with a warning when the marketplace sync fails with an AppError (P0 soft-warn contract)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
+    mockUpdateListing.mockRejectedValueOnce(new AppError(400, 'EBAY_API_ERROR', 'A valid eBay leaf category is required.'));
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.price).toBe(179); // local save landed
+    expect(res.body.warning).toMatch(/leaf category/i);
+  });
+
   it('syncs full item fields to eBay including ebaySku', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',

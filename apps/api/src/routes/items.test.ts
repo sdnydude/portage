@@ -778,6 +778,60 @@ describe('PATCH /items/:id — adapter revise warnings propagate (F1)', () => {
   });
 });
 
+describe('PATCH /items/:id — Reverb revise warnings propagate (P0)', () => {
+  it('surfaces a Reverb adapter result warning (e.g. terminal-state) in syncWarnings instead of discarding it', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T3' }]);
+    mockSelectReturnOnce([{ marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: { conditionUuid: 'cu-1', categoryUuid: 'cat-1' }, currency: 'USD' }]);
+    mockReverbUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '87654321', status: 'active', warning: 'Listing is sold on Reverb — the update was accepted but the listing is no longer for sale' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'T3' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.syncWarnings?.some((w: string) => /reverb.*sold on Reverb/i.test(w))).toBe(true);
+  });
+});
+
+describe('PATCH /items/:id — Reverb photo diff (P0)', () => {
+  it('omits photos from the Reverb revise when the PATCH did not change photos (skips the stale-image sweep)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T4', photos: [{ url: 'https://r2.example/a.jpg', key: 'ka' }] }]);
+    mockSelectReturnOnce([{ marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: { conditionUuid: 'cu-1', categoryUuid: 'cat-1' }, currency: 'USD' }]);
+    mockReverbUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '87654321', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'T4' });
+
+    expect(res.status).toBe(200);
+    const [, input] = mockReverbUpdateListing.mock.calls[0] as [string, { photos?: unknown }];
+    expect(input.photos).toBeUndefined();
+  });
+});
+
+describe('PATCH /items/:id — Reverb enrichment parity (P0)', () => {
+  it('applies applyReverbEnrichment on item-edit sync so a live profile offersEnabled change reaches Reverb', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T5' }]);
+    mockSelectReturnOnce([{ marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: { conditionUuid: 'cu-1', categoryUuid: 'cat-1' }, currency: 'USD' }]);
+    mockSelectReturnOnce([{ userId: 'test-user-id', reverbOffersEnabled: false, reverbDefaultShipping: null }]); // seller profile (enrichment)
+    mockReverbUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '87654321', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'T5' });
+
+    expect(res.status).toBe(200);
+    const [, input] = mockReverbUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
+    expect(input.marketplaceSpecific?.offersEnabled).toBe(false);
+  });
+});
+
 describe('PATCH /items/:id — eBay picture URL budget warning (F2)', () => {
   it('warns when total photo URL length exceeds the eBay 3975-char PictureURL budget', async () => {
     mockSelectReturnOnce([{ id: 'item-1' }]);
