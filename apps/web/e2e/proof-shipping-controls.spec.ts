@@ -59,9 +59,13 @@ test.describe("proof: publish-sheet shipping controls", () => {
     await page.getByRole("button", { name: "Reverb" }).click();
     const profileSelect = page.locator("#reverb-shipping-profile");
     await expect(profileSelect).toBeVisible();
-    // Unconnected account: fetch fails gracefully — default + pickup remain.
-    await expect(profileSelect.locator("option")).toContainText([/seller profile default/i, /local pickup only/i]);
-    await profileSelect.selectOption("pickup");
+    // Unconnected account: fetch fails gracefully — the default remains.
+    await expect(profileSelect.locator("option")).toContainText([/seller profile default/i]);
+    // Pickup is a TOGGLE (operator correction 2026-08-02), not a select option.
+    await expect(profileSelect.locator('option:has-text("Local pickup only")')).toHaveCount(0);
+    const pickupToggle = page.locator('label:has-text("Local pickup only") > div').first();
+    await pickupToggle.click();
+    await expect(pickupToggle).toHaveClass(/bg-forest-green/);
     // Let the marketplace-pill color transition finish before capturing.
     await expect(page.getByRole("button", { name: "Reverb", exact: true })).toHaveClass(/bg-forest-green/);
     await page.waitForTimeout(300);

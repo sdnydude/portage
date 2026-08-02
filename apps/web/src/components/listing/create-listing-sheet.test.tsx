@@ -568,6 +568,26 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     });
   });
 
+  it("Reverb: Local-pickup-only is a TOGGLE (not a select option) and rides the POST as localPickupOnly", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/marketplace/reverb/shipping-profiles") return { profiles: [{ id: "789", name: "Guitars (US)" }] };
+      if (path === "/marketplace/reverb/product-types") return { productTypes: [] };
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    await screen.findByLabelText(/shipping profile/i);
+    // No pickup entry in the pull-down anymore.
+    expect(screen.queryByRole("option", { name: /local pickup only/i })).toBeNull();
+    const toggle = screen.getByText(/local pickup only/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbShipping).toEqual({ localPickupOnly: true });
+  });
+
   it("Reverb: loads shipping profiles into the select and sends reverbShipping.profileId when chosen", async () => {
     let body: Record<string, unknown> | undefined;
     h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
@@ -643,5 +663,29 @@ describe("CreateListingSheet — Reverb category cascade", () => {
     fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
     await waitFor(() => expect(body).toBeDefined());
     expect((body!.marketplaceSpecificFields as Record<string, unknown>).categoryUuid).toBe("root-fx");
+  });
+});
+
+describe("CreateListingSheet — Reverb bump rate input", () => {
+  it("bump rate is a user-typed field (not a popup menu) and rides the POST as a fraction", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/marketplace/reverb/product-types") return { productTypes: [] };
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    const promoteToggle = screen.getByText(/promote this listing/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(promoteToggle);
+
+    const bump = screen.getByLabelText(/bump bid/i) as HTMLInputElement;
+    expect(bump.tagName).toBe("INPUT");
+    fireEvent.change(bump, { target: { value: "2.2" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbBumpBid).toBeCloseTo(0.022);
   });
 });

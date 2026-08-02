@@ -91,6 +91,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // or "pickup" for local-pickup-only. Same touched contract as eBay above.
   const [reverbProfiles, setReverbProfiles] = useState<Array<{ id: string; name: string }>>([]);
   const [reverbShipChoice, setReverbShipChoice] = useState("");
+  const [reverbLocalPickup, setReverbLocalPickup] = useState(false);
   const reverbShippingTouched = useRef(false);
   // Reverb category cascade — an explicit pick overrides server enrichment
   // (AI/prepare-cache/profile); null = untouched, nothing sent.
@@ -172,8 +173,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         ...(days >= 0 && shipFields.handlingDays !== "" ? { handlingDays: days } : {}),
       };
     }
-    if (reverbShippingTouched.current && marketplace === "reverb" && reverbShipChoice) {
-      fields.reverbShipping = reverbShipChoice === "pickup"
+    if (reverbShippingTouched.current && marketplace === "reverb" && (reverbLocalPickup || reverbShipChoice)) {
+      fields.reverbShipping = reverbLocalPickup
         ? { localPickupOnly: true }
         : { profileId: reverbShipChoice };
     }
@@ -499,16 +500,18 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
             <label htmlFor="reverb-bump-bid" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
               Bump bid (% of sale)
             </label>
-            <select
+            <input
               id="reverb-bump-bid"
+              type="number"
+              inputMode="decimal"
+              min="0.5"
+              max="3.5"
+              step="0.1"
               value={bumpBid}
               onChange={(e) => setBumpBid(e.target.value)}
+              placeholder="0.5 – 3.5"
               className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
-            >
-              {["0.5", "1", "1.5", "2", "2.5", "3", "3.5"].map((b) => (
-                <option key={b} value={b}>{b}%</option>
-              ))}
-            </select>
+            />
             <p className="mt-1 text-xs text-text-secondary">Charged only when the listing sells (Reverb Bump).</p>
           </div>
         )}
@@ -542,8 +545,24 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
               {reverbProfiles.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
-              <option value="pickup">Local pickup only</option>
             </select>
+            {/* Pickup intent is a panel toggle (operator correction 2026-08-02),
+                matching the other switches — it wins over the profile select. */}
+            <label className="flex items-center gap-3 py-2 mt-1 cursor-pointer">
+              <div
+                onClick={() => { reverbShippingTouched.current = true; setReverbLocalPickup(!reverbLocalPickup); }}
+                className={`w-10 h-6 rounded-full transition-colors flex items-center ${
+                  reverbLocalPickup ? "bg-forest-green" : "bg-muted border border-border"
+                }`}
+              >
+                <div
+                  className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                    reverbLocalPickup ? "translate-x-5" : "translate-x-1"
+                  }`}
+                />
+              </div>
+              <span className="text-sm text-text-primary">Local pickup only</span>
+            </label>
           </div>
         )}
 
