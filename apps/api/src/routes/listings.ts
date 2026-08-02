@@ -143,6 +143,16 @@ async function applyReverbEnrichment(
   if (ms.localPickup === undefined && shipDefaults?.local !== undefined) ms.localPickup = shipDefaults.local;
   if (profile) ms.offersEnabled = profile.reverbOffersEnabled ?? true;
   if (typeof ms.offersEnabledExplicit === 'boolean') ms.offersEnabled = ms.offersEnabledExplicit;
+  // Per-listing shipping intent (publish sheet) — applied AFTER the profile
+  // fill so an explicit choice always wins, same pattern as offersEnabledExplicit.
+  const reverbShipping = ms.reverbShipping as { profileId?: string; localPickupOnly?: boolean } | undefined;
+  if (reverbShipping?.localPickupOnly) {
+    delete ms.shippingProfileId;
+    delete ms.shippingRates;
+    ms.localPickup = true;
+  } else if (reverbShipping?.profileId) {
+    ms.shippingProfileId = reverbShipping.profileId;
+  }
 
   // Never-prepared items carry no cached category. A Reverb publish without one
   // silently lands wrong (or fails at publish) — guess via category search and

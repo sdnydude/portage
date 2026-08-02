@@ -127,6 +127,49 @@ describe('buildAddFixedPriceItemXml', () => {
   });
 });
 
+describe('inline shipping methods (beta 17be7322, shapes live-verified 2026-08-01)', () => {
+  it('method=flat emits ShippingType Flat with the buyer cost and no CalculatedShippingRate', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, shipping: { ...baseInput.shipping, method: 'flat', flatCost: 5 } },
+      'T',
+    );
+    expect(xml).toContain('<ShippingType>Flat</ShippingType>');
+    expect(xml).toContain('<ShippingServiceCost currencyID="USD">5.00</ShippingServiceCost>');
+    expect(xml).not.toContain('CalculatedShippingRate');
+  });
+
+  it('method=free emits Flat + FreeShipping true with an explicit 0.00 cost', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, shipping: { ...baseInput.shipping, method: 'free' } },
+      'T',
+    );
+    expect(xml).toContain('<ShippingType>Flat</ShippingType>');
+    expect(xml).toContain('<ShippingServiceCost currencyID="USD">0.00</ShippingServiceCost>');
+    expect(xml).toContain('<FreeShipping>true</FreeShipping>');
+    expect(xml).not.toContain('CalculatedShippingRate');
+  });
+
+  it('flat/free with zero weight keeps ShippingPackageDetails with a 1oz floor so dimensions carry', () => {
+    const zeroWeight = { ...baseInput.shipping, method: 'flat' as const, flatCost: 5, weightMajor: 0, weightMinor: 0 };
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, shipping: zeroWeight }, 'T');
+    expect(xml).toContain('<ShippingPackageDetails>');
+    expect(xml).toContain('<WeightMinor unit="oz">1</WeightMinor>');
+    expect(xml).toContain('<PackageLength unit="in">12</PackageLength>');
+    // Real weight passes through untouched.
+    expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: { ...baseInput.shipping, method: 'flat', flatCost: 5 } }, 'T')).toContain('<WeightMinor unit="oz">8</WeightMinor>');
+  });
+
+  it('all-zero dimensions omit the Package dimension tags (unverified shape guard) but keep the floored weight', () => {
+    const noDims = { ...baseInput.shipping, method: 'free' as const, weightMajor: 0, weightMinor: 0, dimensions: { length: 0, width: 0, height: 0 } };
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, shipping: noDims }, 'T');
+    expect(xml).toContain('<ShippingPackageDetails>');
+    expect(xml).toContain('<WeightMinor unit="oz">1</WeightMinor>');
+    expect(xml).not.toContain('<PackageDepth');
+    expect(xml).not.toContain('<PackageLength');
+    expect(xml).not.toContain('<PackageWidth');
+  });
+});
+
 describe('validatePictureUrls — eBay hard limits pre-XML (F2)', () => {
   it('throws a clear error above 24 picture URLs', () => {
     const urls = Array.from({ length: 25 }, (_, i) => `https://r2.example/p${i}.jpg`);

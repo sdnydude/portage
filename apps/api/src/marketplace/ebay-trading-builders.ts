@@ -33,6 +33,10 @@ export interface TradingListingInput {
     service?: string;
     /** eBay ShippingPackage enum (required for calculated); defaults to PackageThickEnvelope. */
     shippingPackage?: string;
+    /** Shipping shape (live-verified 2026-08-01); absent = calculated (legacy). */
+    method?: 'calculated' | 'flat' | 'free';
+    /** Buyer-paid flat rate; required when method='flat'. */
+    flatCost?: number;
   };
   dispatchTimeMax?: number;
   /** Per-listing "accept offers" toggle — enables Best Offer even with no floor. */
@@ -80,8 +84,25 @@ function itemSpecifics(aspects: Record<string, string[]>): string {
 /** Inline Calculated shipping (Decision 5). Weight/dims now live in ShippingPackageDetails
  * (schema-verified — they are deprecated inside CalculatedShippingRate); this container
  * carries only the origin ZIP and the buyer-paid USPS service option. */
-function inlineShipping(s: TradingListingInput['shipping']): string {
+function inlineShipping(s: TradingListingInput['shipping'], currency: string): string {
   const service = s.service ?? 'USPSPriority';
+  const method = s.method ?? 'calculated';
+  if (method === 'flat' || method === 'free') {
+    // Live-verified shapes (2026-08-01 matrix, PR #274): Flat + ShippingServiceCost,
+    // no CalculatedShippingRate; free adds FreeShipping with an explicit 0.00 cost.
+    const cost = method === 'free' ? 0 : s.flatCost ?? 0;
+    return (
+      '<ShippingDetails>' +
+      '<ShippingType>Flat</ShippingType>' +
+      '<ShippingServiceOptions>' +
+      '<ShippingServicePriority>1</ShippingServicePriority>' +
+      `<ShippingService>${service}</ShippingService>` +
+      `<ShippingServiceCost currencyID="${currency}">${cost.toFixed(2)}</ShippingServiceCost>` +
+      (method === 'free' ? '<FreeShipping>true</FreeShipping>' : '') +
+      '</ShippingServiceOptions>' +
+      '</ShippingDetails>'
+    );
+  }
   return (
     '<ShippingDetails>' +
     '<ShippingType>Calculated</ShippingType>' +
@@ -100,14 +121,25 @@ function inlineShipping(s: TradingListingInput['shipping']): string {
  * (eBay deprecated these inside CalculatedShippingRate). MeasureType units are lbs/oz/in
  * (NOT lbs/ozs/inches). ShippingPackage is required for calculated shipping. */
 function shippingPackageDetails(s: TradingListingInput['shipping']): string {
+  // Flat/free with no stored weight: keep the block anyway (operator decision,
+  // 2026-08-01) — floor weight to 1oz so the package DIMENSIONS still reach eBay.
+  const zeroWeight = s.weightMajor === 0 && s.weightMinor === 0;
+  const method = s.method ?? 'calculated';
+  const weightMinor = method !== 'calculated' && zeroWeight ? 1 : s.weightMinor;
+  // All-zero dims (flat/free with nothing stored) — omit the dimension tags
+  // rather than send an unverified zeros shape; known dims always carry through.
+  const d = s.dimensions;
+  const hasDims = d.length > 0 || d.width > 0 || d.height > 0;
   return (
     '<ShippingPackageDetails>' +
     '<MeasurementUnit>English</MeasurementUnit>' +
-    `<PackageDepth unit="in">${s.dimensions.height}</PackageDepth>` +
-    `<PackageLength unit="in">${s.dimensions.length}</PackageLength>` +
-    `<PackageWidth unit="in">${s.dimensions.width}</PackageWidth>` +
+    (hasDims
+      ? `<PackageDepth unit="in">${d.height}</PackageDepth>` +
+        `<PackageLength unit="in">${d.length}</PackageLength>` +
+        `<PackageWidth unit="in">${d.width}</PackageWidth>`
+      : '') +
     `<WeightMajor unit="lbs">${s.weightMajor}</WeightMajor>` +
-    `<WeightMinor unit="oz">${s.weightMinor}</WeightMinor>` +
+    `<WeightMinor unit="oz">${weightMinor}</WeightMinor>` +
     `<ShippingPackage>${escapeXml(s.shippingPackage ?? 'PackageThickEnvelope')}</ShippingPackage>` +
     '</ShippingPackageDetails>'
   );
@@ -288,7 +320,7 @@ function itemBody(input: TradingListingInput): string {
     pictureDetails(input.pictureUrls) +
     itemSpecifics(input.aspects) +
     '<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>' +
-    inlineShipping(input.shipping) +
+    inlineShipping(input.shipping, input.currency) +
     shippingPackageDetails(input.shipping) +
     bestOfferDetails(input)
   );

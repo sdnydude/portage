@@ -105,7 +105,10 @@ export function useListingFlow() {
 
   const setField = useCallback(<K extends keyof ListingFlowState>(key: K, value: ListingFlowState[K]) => {
     setState(prev => {
-      const next = { ...prev, [key]: value };
+      // Shipping keys are only set from user controls (ShippingConfigCard pills /
+      // cost input) — an explicit set records intent so publish emits ebayShipping.
+      const touched = key === 'shippingMethod' || key === 'shippingCost' ? { shippingTouched: true } : {};
+      const next = { ...prev, [key]: value, ...touched };
       triggerAutoSave(next);
       return next;
     });
@@ -576,6 +579,16 @@ export function useListingFlow() {
       // — otherwise they were silently dropped and the publish re-demanded them.
       // categoryId is self-healed server-side from item.marketplaceData.
       const ebaySpecific: Record<string, unknown> = ebayPreparedFields ? { ...ebayPreparedFields } : {};
+      // Per-listing shipping (beta 17be7322): only an explicit seller choice
+      // (shippingTouched) rides the publish — untouched keeps server defaults.
+      if (s.shippingTouched && s.marketplace === 'ebay') {
+        ebaySpecific.ebayShipping = {
+          method: s.shippingMethod,
+          ...(s.shippingMethod === 'flat' && s.shippingCost != null && s.shippingCost > 0
+            ? { flatCost: s.shippingCost }
+            : {}),
+        };
+      }
       if (options?.aspects) {
         ebaySpecific.aspects = {
           ...((ebaySpecific.aspects as Record<string, string[]> | undefined) ?? {}),

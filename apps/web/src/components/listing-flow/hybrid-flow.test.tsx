@@ -11,6 +11,8 @@ const h = vi.hoisted(() => ({
   prepError: null as string | null,
   prepDataNull: false,
   cardProps: {} as Record<string, unknown>,
+  shipCardProps: {} as Record<string, unknown>,
+  setField: vi.fn(),
   compactMode: false,
   lastStep: "confirmed",
 }));
@@ -29,7 +31,8 @@ const flowState = {
   quantity: 1,
   price: 100,
   marketplace: "ebay",
-  shippingMethod: "",
+  shippingMethod: "flat",
+  shippingCost: 4,
   pricingStrategy: null,
   publishStatus: "idle",
   listingId: null,
@@ -48,7 +51,7 @@ vi.mock("@/hooks/use-listing-flow", () => ({
     error: null,
     clearError: vi.fn(),
     saveWarning: false,
-    setField: vi.fn(),
+    setField: h.setField,
     startFromPhoto: vi.fn(),
     startFromItem: vi.fn(),
     confirmRecognition: vi.fn(),
@@ -99,7 +102,12 @@ vi.mock("./fee-estimate", () => ({ FeeEstimate: () => null }));
 vi.mock("./publish-success", () => ({ PublishSuccess: () => null }));
 vi.mock("../listing/aspect-fill-sheet", () => ({ AspectFillSheet: () => null }));
 vi.mock("../listing/weight-fill-sheet", () => ({ WeightFillSheet: () => null }));
-vi.mock("./shipping-config-card", () => ({ ShippingConfigCard: () => null }));
+vi.mock("./shipping-config-card", () => ({
+  ShippingConfigCard: (props: Record<string, unknown>) => {
+    h.shipCardProps = props;
+    return null;
+  },
+}));
 vi.mock("./pricing-strategy-picker", () => ({ PricingStrategyPicker: () => null }));
 vi.mock("./photo-capture-overlay", () => ({ PhotoCaptureOverlay: () => null }));
 
@@ -168,6 +176,20 @@ describe("HybridFlow — prepare failure surface", () => {
     } finally {
       h.prepError = null;
       h.prepDataNull = false;
+    }
+  });
+});
+
+describe("HybridFlow — flat-rate shipping cost wiring (beta 17be7322)", () => {
+  it("passes shippingCost to ShippingConfigCard and routes edits to setField('shippingCost')", () => {
+    h.lastStep = "shipping";
+    try {
+      render(<HybridFlow />);
+      expect(h.shipCardProps.shippingCost).toBe(4);
+      (h.shipCardProps.onShippingCostChange as (c: number | null) => void)(6.5);
+      expect(h.setField).toHaveBeenCalledWith("shippingCost", 6.5);
+    } finally {
+      h.lastStep = "confirmed";
     }
   });
 });

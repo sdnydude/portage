@@ -745,6 +745,8 @@ function ChatMode({
                 ebayPackageType: state.ebayPackageType,
               }}
               weightEstimated={state.weightEstimated}
+              shippingCost={state.shippingCost}
+              onShippingCostChange={(c) => setField("shippingCost", c)}
               onPackageSizeChange={(s) => setField("packageSize", s)}
               onWeightDimsChange={updateWeightDims}
               onShippingMethodChange={(m) => setField("shippingMethod", m)}
@@ -1111,6 +1113,8 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
             ebayPackageType: state.ebayPackageType,
           }}
           weightEstimated={state.weightEstimated}
+          shippingCost={state.shippingCost}
+          onShippingCostChange={(c) => setField("shippingCost", c)}
           onPackageSizeChange={(s) => setField("packageSize", s)}
           onWeightDimsChange={updateWeightDims}
           onShippingMethodChange={(m) => setField("shippingMethod", m)}

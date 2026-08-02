@@ -89,6 +89,27 @@ beforeEach(() => {
 });
 
 describe('POST /listings', () => {
+  it('passes marketplaceSpecificFields.ebayShipping through to the eBay adapter intact', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // ship-from origin
+    mockSelectOnce([]); // footer
+    mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live',
+        marketplaceSpecificFields: { ebayShipping: { method: 'flat', flatCost: 6.5, service: 'UPSGround', handlingDays: 3 } },
+      });
+    expect(res.status).toBe(201);
+    expect(mockCreateListing).toHaveBeenCalledWith(expect.objectContaining({
+      marketplaceSpecific: expect.objectContaining({
+        ebayShipping: { method: 'flat', flatCost: 6.5, service: 'UPSGround', handlingDays: 3 },
+      }),
+    }));
+  });
+
   it('promotes the live eBay listing when ebayAdRate rides marketplaceSpecificFields, and a failure only warns', async () => {
     // Success path
     mockSelectOnce([MOCK_ITEM]);
@@ -1216,6 +1237,25 @@ describe('PATCH /listings/:id — price change syncs to the live eBay listing', 
     expect(res.status).toBe(200);
     const [, inputArg] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
     expect(inputArg.marketplaceSpecific?.weight, 'weight must be sent on update or eBay rejects with 25020').toBeDefined();
+  });
+
+  it('stored ebayShipping survives a price-change sync (revise must not fall back to calculated)', async () => {
+    const ebayShipping = { method: 'flat', flatCost: 6.5, service: 'UPSGround' };
+    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebaySku: 'PRT-000009', currency: 'USD' }]);
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebaySku: 'PRT-000009', price: 162, currency: 'USD', itemId: ITEM_ID, marketplaceSpecificFields: { ebayShipping } }]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+    mockSelectOnce([{ ...MOCK_ITEM, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectOnce([]); // footer
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307022414462', status: 'active' });
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 162 });
+
+    expect(res.status).toBe(200);
+    const [, inputArg] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
+    expect(inputArg.marketplaceSpecific?.ebayShipping).toEqual(ebayShipping);
   });
 });
 

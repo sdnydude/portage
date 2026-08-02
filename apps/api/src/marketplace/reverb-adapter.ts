@@ -267,6 +267,9 @@ export class ReverbAdapter implements MarketplaceAdapter {
       updates.shipping_profile_id = specific.shippingProfileId;
     } else if (specific.shippingRates) {
       updates.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
+    } else if (specific.localPickup) {
+      // Pickup-only parity with create: no profile, no rates — local:true alone.
+      updates.shipping = { local: true };
     }
 
     const data = await this.request<{ listing?: { state?: string | { slug?: string } } }>(`/listings/${marketplaceListingId}`, {

@@ -9,6 +9,7 @@ import { marketplaceItemUrl } from "@/lib/marketplace-urls";
 import { formatCurrency, formatMarketplace } from "@/lib/format";
 import { parsePriceInput } from "@/lib/price";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
+import { ShippingFieldsSection, SHIPPING_FIELDS_DEFAULT, type ShippingFieldsValue } from "./shipping-fields-section";
 import { WeightFillSheet } from "./weight-fill-sheet";
 import type { WeightDimsValue } from "./weight-dims-inputs";
 import { ConfirmSheet } from "@/components/ui/confirm-sheet";
@@ -95,6 +96,55 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
   const [aspectMissing, setAspectMissing] = useState<AspectRequirement[] | null>(null);
   const [aspectSaving, setAspectSaving] = useState(false);
   const [aspectError, setAspectError] = useState<string | null>(null);
+  // Shipping edit (beta 17be7322): inline editor seeded from the stored
+  // ebayShipping. PATCH full-replaces marketplaceSpecificFields server-side,
+  // so save must client-side spread the stored keys (aspect-merge pattern).
+  const [editingShipping, setEditingShipping] = useState(false);
+  const [shipFields, setShipFields] = useState<ShippingFieldsValue>(SHIPPING_FIELDS_DEFAULT);
+  const [shippingSaving, setShippingSaving] = useState(false);
+
+  const handleOpenShipping = () => {
+    const stored = ((listing.marketplaceSpecificFields ?? {}) as Record<string, unknown>).ebayShipping as
+      | { method?: string; flatCost?: number; service?: string; handlingDays?: number }
+      | undefined;
+    setShipFields({
+      method: (stored?.method as ShippingFieldsValue["method"]) ?? "calculated",
+      flatCost: stored?.flatCost != null ? String(stored.flatCost) : "",
+      service: stored?.service ?? "",
+      handlingDays: stored?.handlingDays != null ? String(stored.handlingDays) : "",
+    });
+    setEditingShipping(true);
+  };
+
+  const handleSaveShipping = async () => {
+    if (!token) return;
+    setShippingSaving(true);
+    setActionError(null);
+    setActionWarning(null);
+    try {
+      const cost = parseFloat(shipFields.flatCost);
+      const days = parseInt(shipFields.handlingDays, 10);
+      const ebayShipping = {
+        method: shipFields.method,
+        ...(shipFields.method === "flat" && cost > 0 ? { flatCost: cost } : {}),
+        ...(shipFields.service ? { service: shipFields.service } : {}),
+        ...(days >= 0 && shipFields.handlingDays !== "" ? { handlingDays: days } : {}),
+      };
+      const existing = (listing.marketplaceSpecificFields ?? {}) as Record<string, unknown>;
+      const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}`, {
+        method: "PATCH",
+        token,
+        body: { marketplaceSpecificFields: { ...existing, ebayShipping } },
+      });
+      if (updated.warning) setActionWarning(updated.warning);
+      setEditingShipping(false);
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed to save shipping");
+    } finally {
+      setShippingSaving(false);
+    }
+  };
   const [weightMissing, setWeightMissing] = useState(false);
   const [weightSaving, setWeightSaving] = useState(false);
   const [weightError, setWeightError] = useState<string | null>(null);
@@ -340,6 +390,35 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
         >
           Edit title &amp; description
         </a>
+      )}
+      {/* Shipping edit — eBay only (Reverb shipping is profile-driven). */}
+      {listing.marketplace === "ebay" && listing.status !== "sold" && !editingShipping && (
+        <button
+          onClick={handleOpenShipping}
+          className="mt-1 ml-3 text-xs text-text-secondary underline underline-offset-2"
+        >
+          Edit shipping
+        </button>
+      )}
+      {editingShipping && (
+        <div className="mt-2 space-y-3 border border-border rounded-xl p-3">
+          <ShippingFieldsSection idPrefix={`card-${listing.id}-`} value={shipFields} onChange={setShipFields} />
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveShipping}
+              disabled={shippingSaving}
+              className="px-3 py-1.5 rounded-lg bg-forest-green text-white text-sm font-medium disabled:opacity-50"
+            >
+              {shippingSaving ? "Saving..." : "Save shipping"}
+            </button>
+            <button
+              onClick={() => { setEditingShipping(false); setActionError(null); }}
+              className="px-2 py-1.5 text-sm text-text-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
       {actionError && (
         <div className="mt-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-2 text-sm text-red-700 dark:text-red-300">

@@ -524,6 +524,23 @@ describe("ScanFlow review wiring", () => {
     expect(apiMock.mock.calls.some(([p]) => p === "/listings")).toBe(false);
   });
 
+  it("review shipping fields ride into the confirm sheet as a touched seed", async () => {
+    await renderInReview();
+
+    // Set shipping on the REVIEW screen (the ride-along section).
+    fireEvent.change(screen.getByLabelText(/shipping method/i), { target: { value: "flat" } });
+    fireEvent.change(screen.getByLabelText(/buyer pays/i), { target: { value: "8.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
+
+    await vi.waitFor(() => expect(apiMock.mock.calls.some(([p]) => p === "/items")).toBe(true));
+    expect(await screen.findByText("Create Listing")).toBeInTheDocument();
+    // Both the review section and the sheet's section are on screen; the sheet's
+    // copy must arrive SEEDED with the review choice (calculated = seed lost).
+    const selects = screen.getAllByLabelText(/shipping method/i) as HTMLSelectElement[];
+    expect(selects).toHaveLength(2);
+    expect(selects.map((s) => s.value)).toEqual(["flat", "flat"]);
+  });
+
   it("opens the confirm sheet with a price provenance hint (estimate fallback)", async () => {
     await renderInReview();
     fireEvent.click(screen.getByRole("button", { name: "Save & List" }));

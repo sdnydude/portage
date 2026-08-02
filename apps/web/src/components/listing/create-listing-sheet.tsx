@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { DisclaimerSheet } from "./disclaimer-sheet";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
+import { ShippingFieldsSection, SHIPPING_FIELDS_DEFAULT, type ShippingFieldsValue } from "./shipping-fields-section";
 
 /** POST /listings response — `warning` carries eBay's verbatim reason when a
  *  live publish fell back to a draft. */
@@ -29,6 +30,9 @@ interface CreateListingSheetProps {
   initialAspects?: Record<string, string[]>;
   /** F1: scan prefill — default the eBay-draft toggle on. */
   initialEbayDraft?: boolean;
+  /** Scan-review ride-along: seed the eBay shipping fields. A seed IS seller
+   *  intent (they set it on the review screen), so it counts as touched. */
+  initialShipping?: ShippingFieldsValue;
   /** F1: seed the publish-now toggle (e.g. seller profile default = live). */
   initialPublishNow?: boolean;
   /**
@@ -40,7 +44,7 @@ interface CreateListingSheetProps {
   onClose: () => void;
 }
 
-export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialPublishNow = false, allowedMarketplaces, onCreated, onClose }: CreateListingSheetProps) {
+export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialShipping, initialPublishNow = false, allowedMarketplaces, onCreated, onClose }: CreateListingSheetProps) {
   const { token } = useAuth();
   // F3b: within the 7-day window the terms sheet is skipped (consent still recorded).
   const { disclaimerSuppressed } = useUserPreferences();
@@ -77,6 +81,27 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   useEffect(() => {
     if (!offersTouched.current) setAcceptOffers(marketplace === "reverb");
   }, [marketplace]);
+  // Per-listing shipping (beta 17be7322) — eBay only for now. Untouched sends
+  // nothing: the server keeps its calculated-shipping defaults and legacy rows
+  // keep profile-driven behavior (same contract as offersTouched above).
+  const [shipFields, setShipFields] = useState<ShippingFieldsValue>(initialShipping ?? SHIPPING_FIELDS_DEFAULT);
+  const shippingTouched = useRef(initialShipping != null);
+  // Reverb per-listing shipping: profile select ("" = seller-profile default),
+  // or "pickup" for local-pickup-only. Same touched contract as eBay above.
+  const [reverbProfiles, setReverbProfiles] = useState<Array<{ id: string; name: string }>>([]);
+  const [reverbShipChoice, setReverbShipChoice] = useState("");
+  const reverbShippingTouched = useRef(false);
+  useEffect(() => {
+    if (marketplace !== "reverb" || !token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api<{ profiles: Array<{ id: string; name: string }> }>("/marketplace/reverb/shipping-profiles", { token });
+        if (!cancelled && r?.profiles) setReverbProfiles(r.profiles);
+      } catch { /* select still offers default + pickup */ }
+    })();
+    return () => { cancelled = true; };
+  }, [marketplace, token]);
   // When not publishing now, optionally create an UNPUBLISHED eBay offer (Seller
   // Hub draft) instead of a Portage-local draft. eBay marketplace only.
   const [ebayDraft, setEbayDraft] = useState(initialEbayDraft);
@@ -108,6 +133,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       offersEnabledExplicit?: boolean;
       ebayAdRate?: number;
       reverbBumpBid?: number;
+      ebayShipping?: { method: string; flatCost?: number; service?: string; handlingDays?: number };
+      reverbShipping?: { profileId?: string; localPickupOnly?: boolean };
     } = {};
     if (categoryId) fields.categoryId = categoryId;
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
@@ -127,6 +154,23 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       } else {
         fields.offersEnabledExplicit = acceptOffers;
       }
+    }
+    // Shipping rides only on an explicit user interaction (shippingTouched) —
+    // untouched keeps the server's calculated defaults.
+    if (shippingTouched.current && marketplace === "ebay") {
+      const cost = parseFloat(shipFields.flatCost);
+      const days = parseInt(shipFields.handlingDays, 10);
+      fields.ebayShipping = {
+        method: shipFields.method,
+        ...(shipFields.method === "flat" && cost > 0 ? { flatCost: cost } : {}),
+        ...(shipFields.service ? { service: shipFields.service } : {}),
+        ...(days >= 0 && shipFields.handlingDays !== "" ? { handlingDays: days } : {}),
+      };
+    }
+    if (reverbShippingTouched.current && marketplace === "reverb" && reverbShipChoice) {
+      fields.reverbShipping = reverbShipChoice === "pickup"
+        ? { localPickupOnly: true }
+        : { profileId: reverbShipChoice };
     }
     // Advertising rides only when the promote toggle is on with a valid rate.
     if (promote) {
@@ -456,6 +500,37 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
               ))}
             </select>
             <p className="mt-1 text-xs text-text-secondary">Charged only when the listing sells (Reverb Bump).</p>
+          </div>
+        )}
+
+        {/* Per-listing shipping (beta 17be7322) — eBay only. Fields extracted to
+            ShippingFieldsSection so scan-review can ride along with the same UI. */}
+        {marketplace === "ebay" && (
+          <ShippingFieldsSection
+            value={shipFields}
+            onChange={(v) => { shippingTouched.current = true; setShipFields(v); }}
+          />
+        )}
+
+        {/* Reverb per-listing shipping: profile reference or local-pickup-only.
+            Untouched keeps the seller-profile default flowing on sync. */}
+        {marketplace === "reverb" && (
+          <div>
+            <label htmlFor="reverb-shipping-profile" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+              Shipping profile
+            </label>
+            <select
+              id="reverb-shipping-profile"
+              value={reverbShipChoice}
+              onChange={(e) => { reverbShippingTouched.current = true; setReverbShipChoice(e.target.value); }}
+              className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+            >
+              <option value="">Seller profile default</option>
+              {reverbProfiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+              <option value="pickup">Local pickup only</option>
+            </select>
           </div>
         )}
 
