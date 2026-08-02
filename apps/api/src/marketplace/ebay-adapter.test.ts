@@ -811,6 +811,20 @@ describe('EbayAdapter — per-listing ebayShipping (beta 17be7322)', () => {
     expect(body).not.toContain('CalculatedShippingRate');
   });
 
+  it('ebayShipping.localPickup adds the Pickup service option alongside the method', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: {
+        ...tradingSetup,
+        ebayShipping: { method: 'calculated', localPickup: true },
+      },
+    } as any);
+    const body = tradingXml();
+    expect(body).toContain('<ShippingService>Pickup</ShippingService>');
+    expect(body).toContain('<ShippingType>Calculated</ShippingType>');
+  });
+
   it('skips the weight/dims gate for flat and free methods (calculated-only requirement)', async () => {
     const adapter = new EbayAdapter('user-1');
     // No weight, no dimensions — legacy calculated path would throw EbayWeightRequiredError.
@@ -1086,5 +1100,33 @@ describe('EbayAdapter.getOrders — marketplace fees', () => {
     const orders = await adapter.getOrders();
 
     expect(orders[0].marketplaceFees).toBe(0);
+  });
+});
+
+describe('EbayAdapter — ebayShipping hardening (review findings 2026-08-02)', () => {
+  it('an unknown shipping method still requires weight/dims (falls back to Calculated XML)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: {
+          categoryId: '15032', originPostalCode: '10001',
+          ebayShipping: { method: 'expedited' }, // not a real method — schema is open
+        },
+      } as any),
+    ).rejects.toBeInstanceOf(EbayWeightRequiredError);
+  });
+});
+
+describe('EbayAdapter — flat shipping requires a positive cost', () => {
+  it('rejects method=flat without flatCost — a $0.00 "Flat" listing masquerades as free', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: { ...tradingSetup, ebayShipping: { method: 'flat' } },
+      } as any),
+    ).rejects.toMatchObject({ code: 'EBAY_FLAT_COST_REQUIRED' });
+    expect(fetchMock.mock.calls.find(([u]) => isTradingCall(u))).toBeUndefined();
   });
 });

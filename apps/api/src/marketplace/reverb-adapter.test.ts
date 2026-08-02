@@ -762,6 +762,17 @@ describe('ReverbAdapter.searchCategories', () => {
     expect(await adapter.searchCategories('solid state drives')).toEqual([]);
   });
 
+  it('derives path segments with the real " / " separator (was split on " > " — always 1 element)', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'uuid-distortion', full_name: 'Effects and Pedals / Distortion' },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+    const [result] = await adapter.searchCategories('distortion pedals effects');
+    expect(result.path).toEqual(['Effects and Pedals', 'Distortion']);
+  });
+
   it('returns [] when nothing matches so the route 422 guard fires instead of a blind first-entry guess', async () => {
     stubFetch({
       categories: [
@@ -813,11 +824,56 @@ describe('ReverbAdapter.getFlatCategories', () => {
     const second = await ReverbAdapter.getFlatCategories();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(first).toEqual(second);
-    expect(first[0]).toEqual({ uuid: 'u1', fullName: 'Effects and Pedals / Distortion' });
+    expect(first[0]).toEqual({
+      uuid: 'u1', fullName: 'Effects and Pedals / Distortion',
+      // Hierarchy fields default sanely when the payload omits them.
+      name: 'Distortion', rootUuid: '', listable: true,
+    });
 
     clearReverbCategoriesCache();
     await ReverbAdapter.getFlatCategories();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('getProductTypes returns only the 14 root entries (fullName === name)', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'root-fx', full_name: 'Effects and Pedals', name: 'Effects and Pedals', root_uuid: 'root-fx', listable: true },
+        { uuid: 'u1', full_name: 'Effects and Pedals / Distortion', name: 'Distortion', root_uuid: 'root-fx', listable: true },
+        { uuid: 'root-keys', full_name: 'Keyboards and Synths', name: 'Keyboards and Synths', root_uuid: 'root-keys', listable: true },
+      ],
+    });
+    const roots = await ReverbAdapter.getProductTypes();
+    expect(roots.map(r => r.uuid)).toEqual(['root-fx', 'root-keys']);
+  });
+
+  it('getCategoryChildren returns DIRECT children only, safe for leaf names containing " / "', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'root-keys', full_name: 'Keyboards and Synths', name: 'Keyboards and Synths', root_uuid: 'root-keys', listable: true },
+        { uuid: 'u-acc', full_name: 'Keyboards and Synths / Keyboard and Synth Accessories', name: 'Keyboard and Synth Accessories', root_uuid: 'root-keys', listable: true },
+        { uuid: 'u-mod', full_name: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories', name: 'Modular Synth Accessories', root_uuid: 'root-keys', listable: true },
+        // Leaf whose NAME contains " / " — must be a child of u-mod, not split apart.
+        { uuid: 'u-split', full_name: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs', name: 'Modular Synth Splitters / Hubs', root_uuid: 'root-keys', listable: true },
+      ],
+    });
+    expect((await ReverbAdapter.getCategoryChildren('root-keys')).map(c => c.uuid)).toEqual(['u-acc']);
+    expect((await ReverbAdapter.getCategoryChildren('u-mod')).map(c => c.uuid)).toEqual(['u-split']);
+    expect(await ReverbAdapter.getCategoryChildren('u-split')).toEqual([]);
+  });
+
+  it('retains the hierarchy fields (name, rootUuid, listable) — cascades need them', async () => {
+    stubFetch({
+      categories: [{
+        uuid: 'u1', full_name: 'Effects and Pedals / Distortion', name: 'Distortion',
+        root_uuid: 'root-fx', listable: true,
+      }],
+    });
+    const [cat] = await ReverbAdapter.getFlatCategories();
+    expect(cat).toEqual({
+      uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion',
+      rootUuid: 'root-fx', listable: true,
+    });
   });
 });
 
@@ -882,5 +938,23 @@ describe('ReverbAdapter.searchComps', () => {
     expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer global-service-token');
     expect(result.stats).toEqual({ median: 1250, avg: 1250, sampleSize: 2 });
     expect(result.listings).toHaveLength(2);
+  });
+});
+
+describe('ReverbAdapter.searchCategories — leaf-safe path derivation', () => {
+  it('does not over-split a leaf name containing " / " (review finding)', async () => {
+    stubFetch({
+      categories: [{
+        uuid: 'u-split',
+        full_name: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs',
+        name: 'Modular Synth Splitters / Hubs',
+        root_uuid: 'r-keys', listable: true,
+      }],
+    });
+    const adapter = new ReverbAdapter('user-1');
+    const [hit] = await adapter.searchCategories('modular synth splitters hubs accessories');
+    expect(hit.path).toEqual([
+      'Keyboards and Synths', 'Keyboard and Synth Accessories', 'Modular Synth Accessories', 'Modular Synth Splitters / Hubs',
+    ]);
   });
 });

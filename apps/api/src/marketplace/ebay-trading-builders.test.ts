@@ -159,6 +159,18 @@ describe('inline shipping methods (beta 17be7322, shapes live-verified 2026-08-0
     expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: { ...baseInput.shipping, method: 'flat', flatCost: 5 } }, 'T')).toContain('<WeightMinor unit="oz">8</WeightMinor>');
   });
 
+  it('pickupOffered appends the Pickup service as a second option — add-on only (pickup-only is illegal, live-verified)', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, shipping: { ...baseInput.shipping, pickupOffered: true } },
+      'T',
+    );
+    expect(xml).toContain('<ShippingServiceOptions><ShippingServicePriority>2</ShippingServicePriority><ShippingService>Pickup</ShippingService></ShippingServiceOptions>');
+    // The primary service option is still there (eBay requires a real service).
+    expect(xml).toContain('<ShippingService>USPSPriority</ShippingService>');
+    // Off/absent → no Pickup option.
+    expect(buildAddFixedPriceItemXml(baseInput, 'T')).not.toContain('<ShippingService>Pickup</ShippingService>');
+  });
+
   it('all-zero dimensions omit the Package dimension tags (unverified shape guard) but keep the floored weight', () => {
     const noDims = { ...baseInput.shipping, method: 'free' as const, weightMajor: 0, weightMinor: 0, dimensions: { length: 0, width: 0, height: 0 } };
     const xml = buildAddFixedPriceItemXml({ ...baseInput, shipping: noDims }, 'T');

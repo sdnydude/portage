@@ -35,8 +35,15 @@ test.describe("proof: publish-sheet shipping controls", () => {
     // 2-day expedited services present (probe-verified enums).
     await expect(page.locator('#shipping-service option[value="FedEx2Day"]')).toHaveCount(1);
     await expect(page.locator('#shipping-service option[value="UPS2ndDay"]')).toHaveCount(1);
+    // Local pickup add-on toggle present; flip it on for the capture and
+    // ASSERT the on-state (a silent no-op click would fake the proof).
+    const pickupTrack = page.locator('label:has-text("Offer local pickup") > div').first();
+    await pickupTrack.click();
+    await expect(pickupTrack).toHaveClass(/bg-forest-green/);
     await page.locator("#shipping-service").selectOption("UPSGround");
     await page.locator("#handling-days").fill("3");
+    // Re-assert right before capture: the flag must survive the later edits.
+    await expect(pickupTrack).toHaveClass(/bg-forest-green/);
     await page.screenshot({ path: path.join(SHOT_DIR, "2-flat-cost-service-handling.png"), fullPage: false });
 
     await methodSelect.selectOption("free");
@@ -59,13 +66,41 @@ test.describe("proof: publish-sheet shipping controls", () => {
     await page.getByRole("button", { name: "Reverb" }).click();
     const profileSelect = page.locator("#reverb-shipping-profile");
     await expect(profileSelect).toBeVisible();
-    // Unconnected account: fetch fails gracefully — default + pickup remain.
-    await expect(profileSelect.locator("option")).toContainText([/seller profile default/i, /local pickup only/i]);
-    await profileSelect.selectOption("pickup");
+    // Unconnected account: fetch fails gracefully — the default remains.
+    await expect(profileSelect.locator("option")).toContainText([/seller profile default/i]);
+    // Pickup is a TOGGLE (operator correction 2026-08-02), not a select option.
+    await expect(profileSelect.locator('option:has-text("Local pickup only")')).toHaveCount(0);
+    const pickupToggle = page.locator('label:has-text("Local pickup only") > div').first();
+    await pickupToggle.click();
+    await expect(pickupToggle).toHaveClass(/bg-forest-green/);
     // Let the marketplace-pill color transition finish before capturing.
     await expect(page.getByRole("button", { name: "Reverb", exact: true })).toHaveClass(/bg-forest-green/);
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(SHOT_DIR, "4-reverb-pickup-only.png"), fullPage: false });
+  });
+
+  test("Reverb category cascade: product types load live; picking one reveals subcategories", async ({ page }) => {
+    await page.goto("/inventory");
+    const first = page.locator('a[href^="/inventory/"]').first();
+    await expect(first).toBeVisible();
+    await first.click();
+    await page.waitForURL("**/inventory/**");
+    await page
+      .getByRole("button", { name: /list on marketplace|list on another marketplace/i })
+      .first()
+      .click();
+    await page.getByRole("button", { name: "Reverb" }).click();
+
+    const productType = page.locator("#reverb-cat-0");
+    await expect(productType).toBeVisible();
+    // Live public taxonomy: the 14 roots (+ default option).
+    await expect(productType.locator("option")).toHaveCount(15);
+    await productType.selectOption({ label: "Effects and Pedals" });
+    const sub1 = page.locator("#reverb-cat-1");
+    await expect(sub1).toBeVisible();
+    await sub1.selectOption({ label: "Distortion" });
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(SHOT_DIR, "6-reverb-category-cascade.png"), fullPage: false });
   });
 
   test("listing-card Edit shipping opens the seeded inline editor", async ({ page }) => {

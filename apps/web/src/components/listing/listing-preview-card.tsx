@@ -8,7 +8,8 @@ import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
 import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
 import { useRequiredAspects } from "@/hooks/use-required-aspects";
-import { useReverbCategories } from "@/hooks/use-reverb-categories";
+import { ReverbCategorySection } from "./reverb-category-section";
+import { useAuth } from "@/hooks/use-auth";
 import type { PreparedListingData } from "@portage/shared";
 
 interface ListingPreviewCardProps {
@@ -86,8 +87,14 @@ export function ListingPreviewCard({
   // prepare cache. Non-gear items the AI could not place get no category and
   // used to dead-end at REVERB_CATEGORY_REQUIRED with no way to pick one —
   // this picker (real flat-list uuids) unlocks the Reverb publish for them.
-  const { categories: reverbCategories } = useReverbCategories();
-  const [reverbCategoryId, setReverbCategoryId] = useState(data.reverb?.categoryUuid ?? "");
+  const { token } = useAuth();
+  // AI-resolved category (validated at prepare) seeds the cascade breadcrumb.
+  const [reverbCategory, setReverbCategory] = useState<{ uuid: string; fullName: string } | null>(
+    data.reverb?.categoryUuid
+      ? { uuid: data.reverb.categoryUuid, fullName: data.reverb.categoryName ?? "" }
+      : null,
+  );
+  const reverbCategoryId = reverbCategory?.uuid ?? "";
   const canPublishReverb = data.isMusicGear || !!reverbCategoryId;
 
   // Seed from the AI-prepared values when the prepared category changes.
@@ -357,20 +364,10 @@ export function ListingPreviewCard({
             </div>
           )}
 
-          <label className="block text-sm mb-3">
-            <span className="font-medium mb-1 block">Reverb category</span>
-            <select
-              value={reverbCategoryId}
-              onChange={e => setReverbCategoryId(e.target.value)}
-              aria-label="Reverb category"
-              className="w-full rounded-lg border px-3 py-2 text-sm"
-            >
-              <option value="">{data.isMusicGear ? "AI-selected (change if wrong)" : "Select to enable Reverb"}</option>
-              {reverbCategories.map(c => (
-                <option key={c.uuid} value={c.uuid}>{c.fullName}</option>
-              ))}
-            </select>
-          </label>
+          <div className="mb-3">
+            <span className="font-medium mb-1 block text-sm">Reverb category</span>
+            <ReverbCategorySection value={reverbCategory} onChange={setReverbCategory} token={token} idPrefix="preview-" />
+          </div>
 
           {!sellerProfileComplete && (
             <a

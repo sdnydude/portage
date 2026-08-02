@@ -714,6 +714,13 @@ listingsRouter.patch('/:id', async (req, res, next) => {
           // mergeItemShipping too (not just aspects): a published eBay update must
           // re-send the package weight/dims or eBay rejects it (error 25020).
           let syncSpecific = mergeItemAspects(item, mergeItemShipping(item, updated.marketplaceSpecificFields as Record<string, unknown> | undefined));
+          // Self-heal a missing leaf category (parity with items.ts edit-sync):
+          // rows published outside the scan flow store no categoryId, so without
+          // this every price edit dies at buildTradingInput's EBAY_CATEGORY_REQUIRED.
+          if (updated.marketplace === 'ebay' && (!syncSpecific.categoryId || syncSpecific.categoryId === '99')) {
+            const cat = await resolveEbayCategoryId(syncSpecific, item);
+            if (cat.categoryId) syncSpecific = { ...syncSpecific, categoryId: cat.categoryId };
+          }
           // A Trade-First content revise rebuilds the full Trading item body, which
           // needs the ship-from origin ZIP for inline calculated shipping — same
           // requirement as publish. Fill it from the seller profile when absent.

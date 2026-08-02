@@ -568,6 +568,26 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     });
   });
 
+  it("Reverb: Local-pickup-only is a TOGGLE (not a select option) and rides the POST as localPickupOnly", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/marketplace/reverb/shipping-profiles") return { profiles: [{ id: "789", name: "Guitars (US)" }] };
+      if (path === "/marketplace/reverb/product-types") return { productTypes: [] };
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    await screen.findByLabelText(/shipping profile/i);
+    // No pickup entry in the pull-down anymore.
+    expect(screen.queryByRole("option", { name: /local pickup only/i })).toBeNull();
+    const toggle = screen.getByText(/local pickup only/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbShipping).toEqual({ localPickupOnly: true });
+  });
+
   it("Reverb: loads shipping profiles into the select and sends reverbShipping.profileId when chosen", async () => {
     let body: Record<string, unknown> | undefined;
     h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
@@ -610,6 +630,43 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     });
   });
 
+  it("Local pickup toggle rides the POST as ebayShipping.localPickup", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    const toggle = screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "calculated", localPickup: true,
+    });
+  });
+
+  it("pickup toggle survives later shipping edits (service/handling) — no stale-state clobber", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/shipping method/i), { target: { value: "flat" } });
+    fireEvent.change(screen.getByLabelText(/buyer pays/i), { target: { value: "6.50" } });
+    const toggle = screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    // Later edits must not drop the flag.
+    fireEvent.change(screen.getByLabelText(/^service$/i), { target: { value: "UPSGround" } });
+    fireEvent.change(screen.getByLabelText(/handling/i), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "flat", flatCost: 6.5, service: "UPSGround", handlingDays: 3, localPickup: true,
+    });
+  });
+
   it("untouched shipping sends no ebayShipping key (server defaults stay in charge)", async () => {
     let body: Record<string, unknown> | undefined;
     h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
@@ -621,5 +678,159 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     await waitFor(() => expect(body).toBeDefined());
     const fields = body!.marketplaceSpecificFields as Record<string, unknown> | undefined;
     expect(fields?.ebayShipping).toBeUndefined();
+  });
+});
+
+describe("CreateListingSheet — Reverb category cascade", () => {
+  it("sends the chosen category as marketplaceSpecificFields.categoryUuid on a Reverb POST", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    fireEvent.change(await screen.findByLabelText(/product type/i), { target: { value: "root-fx" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).categoryUuid).toBe("root-fx");
+  });
+});
+
+describe("CreateListingSheet — Reverb bump rate input", () => {
+  it("bump rate is a user-typed field (not a popup menu) and rides the POST as a fraction", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/marketplace/reverb/product-types") return { productTypes: [] };
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    const promoteToggle = screen.getByText(/promote this listing/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(promoteToggle);
+
+    const bump = screen.getByLabelText(/bump bid/i) as HTMLInputElement;
+    expect(bump.tagName).toBe("INPUT");
+    fireEvent.change(bump, { target: { value: "2.2" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbBumpBid).toBeCloseTo(0.022);
+  });
+});
+
+describe("CreateListingSheet — Reverb category pre-seed", () => {
+  it("seeds the cascade with the category that will publish: item cache first, suggestion fallback", async () => {
+    h.apiMock.mockImplementation(async (path: unknown) => {
+      const p = String(path ?? "");
+      if (p === "/items/i1") {
+        return { id: "i1", title: "ProCo RAT 2", category: "pedals", marketplaceData: {} }; // no reverb cache
+      }
+      if (p.startsWith("/marketplace/reverb/category-suggestion")) {
+        return { suggestion: { uuid: "u-dist", fullName: "Effects and Pedals / Distortion" } };
+      }
+      if (p === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p === "/marketplace/reverb/subcategories?parent=root-fx") {
+        return { subcategories: [{ uuid: "u-dist", fullName: "Effects and Pedals / Distortion", name: "Distortion", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    // The cascade hydrates to the suggested category — not an unexplained default.
+    await waitFor(() => {
+      expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("root-fx");
+    });
+    expect((screen.getByLabelText(/subcategory 1/i) as HTMLSelectElement).value).toBe("u-dist");
+  });
+});
+
+describe("CreateListingSheet — review findings (2026-08-02)", () => {
+  it("does NOT re-seed a category the seller explicitly reset after toggling marketplaces away and back", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/items/i1") return { id: "i1", title: "ProCo RAT 2", category: "pedals", marketplaceData: {} };
+      if (p.startsWith("/marketplace/reverb/category-suggestion")) {
+        return { suggestion: { uuid: "u-dist", fullName: "Effects and Pedals / Distortion" } };
+      }
+      if (p === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p === "/marketplace/reverb/subcategories?parent=root-fx") {
+        return { subcategories: [{ uuid: "u-dist", fullName: "Effects and Pedals / Distortion", name: "Distortion", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    await waitFor(() => {
+      expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("root-fx");
+    });
+    // Seller explicitly resets to the default…
+    fireEvent.change(screen.getByLabelText(/product type/i), { target: { value: "" } });
+    // …then flips to eBay and back to Reverb.
+    fireEvent.click(screen.getByRole("button", { name: "eBay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    await screen.findByLabelText(/shipping profile/i);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    // The rejected seed must NOT ride the POST.
+    expect((body!.marketplaceSpecificFields as Record<string, unknown> | undefined)?.categoryUuid).toBeUndefined();
+  });
+});
+
+describe("CreateListingSheet — offers touched is per-marketplace (review finding)", () => {
+  it("an eBay offers touch must NOT ride a later Reverb POST as offersEnabledExplicit", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/marketplace/reverb/product-types") return { productTypes: [] };
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    // On eBay (default): flip Accept offers on, then off — touched, value false.
+    const toggle = screen.getByText("Accept offers").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    // Switch to Reverb (whose default is offers ON) and save without touching offers.
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    const fields = body!.marketplaceSpecificFields as Record<string, unknown> | undefined;
+    expect(fields?.offersEnabledExplicit).toBeUndefined();
+  });
+});
+
+describe("CreateListingSheet — flat rate requires a cost (review finding)", () => {
+  it("blocks the save with an error when method=flat and no buyer cost is entered", async () => {
+    let posted = false;
+    h.apiMock.mockImplementation(async (path: unknown) => {
+      const p = String(path ?? "");
+      if (p === "/listings") { posted = true; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/shipping method/i), { target: { value: "flat" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    expect(await screen.findByText(/flat-rate shipping needs a buyer cost/i)).toBeInTheDocument();
+    expect(posted).toBe(false);
   });
 });
