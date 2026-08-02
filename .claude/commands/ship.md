@@ -1,6 +1,8 @@
-# /ship — Full Feature Shipping Workflow
+# /ship — Full Feature Shipping Workflow (with Dev Tools)
 
 You are running a 7-phase workflow to take a feature from idea to merged PR. This is the DHG AI Factory's production shipping process. Every phase builds on the previous one and carries context forward — do NOT re-explore or re-ask what was already established.
+
+**v3 additions:** tdd-guard (TDD enforcement hooks), AgentShield (security audit), claudekit (project health), ccpm (spec-driven PM) are integrated into the workflow.
 
 The user may have provided a feature description: $ARGUMENTS
 
@@ -31,8 +33,8 @@ These come from CLAUDE.md and .claude/rules/. The /ship workflow enforces them s
 - **No silent refactors.** Every change has operational rationale.
 - **No completion claims without fresh verification evidence.** Red flags: "should", "probably", "seems to".
 - **Never commit secrets.** No .env values, no API keys, no passwords in any file.
-- **LangGraph is the sole orchestration platform.** Do not build on legacy agents.
 - **Version planning files before overwriting.**
+- **tdd-guard is active.** The tdd-guard plugin enforces test-first development via PreToolUse hooks. When TDD is enabled (Phase 3 decision), write tests before implementation — tdd-guard will block code edits that lack corresponding tests.
 
 ---
 
@@ -42,16 +44,11 @@ These come from CLAUDE.md and .claude/rules/. The /ship workflow enforces them s
 
 1. Read CLAUDE.md to load full project context (architecture, known issues, tech stack).
 
-2. **Feasibility check.** Before any design work, check if this feature conflicts with known critical issues:
-   - C1: Port 8011 conflict (orchestrator vs registry-api)
-   - C2: Web-UI cannot reach LangGraph (no integration code)
-   - C3: LangGraph network isolation (wrong registry URL, separate Docker network)
-   - C4: Infisical crash-looping
-   - C5: Hardcoded IPs in web-ui
-   - C7: No CI/CD
-   - C8: Minimal test coverage
-   - C10: Loki has no log ingestion
-   If conflicts exist, flag them immediately: "This feature touches [issue]. Here's how we handle it: [approach]."
+2. **Feasibility check.** Before any design work, verify the feature doesn't conflict with existing architecture. Check:
+   - Port conflicts with existing services (see CLAUDE.md port table)
+   - Docker network/container conflicts
+   - Database schema impacts
+   - Marketplace API limitations
 
 3. **Divergent thinking.** Before converging on approaches, explicitly explore non-obvious alternatives. Ask: "What if we did this completely differently?" Consider unconventional patterns, existing tools that might already solve this, or simpler reframings of the problem. Then converge.
 
@@ -105,12 +102,12 @@ spec: [approved spec content]
 2. When agents return, synthesize into a **file map**:
    ```
    Files to modify:
-     - path/to/file.py (what it does, what changes)
+     - path/to/file.ts (what it does, what changes)
    Files to reuse:
-     - path/to/util.py (function X does what we need)
+     - path/to/util.ts (function X does what we need)
    Files affected:
      - docker-compose.override.yml (needs new env var)
-     - tests/test_x.py (needs new test case)
+     - tests/test_x.ts (needs new test case)
    ```
 
 3. Flag anything surprising: "Expected X but found Y. This changes the approach because..."
@@ -134,28 +131,20 @@ Update `.claude/ship-state.md`: add file map, patterns found, surprises.
    - **Do:** What to implement — include function signatures, SQL queries, and any logic where multiple valid implementations exist. If the builder would have to make a design decision during implementation, the code goes in the plan.
    - **Verify:** How to prove it works (command to run, output to expect)
    - **Risk:** low / medium / high + blast radius (local / service / cross-service)
-   - **Rollback:** For tasks that touch shared state (DB, config, Docker), include the rollback command (e.g., `git revert <commit>`, `DROP COLUMN`, `docker compose up -d <previous-image>`)
+   - **Rollback:** For tasks that touch shared state (DB, config, Docker), include the rollback command
 
    Example:
    ```
-   Task 3: Add GET /sessions/stats/overview endpoint
-     Files: services/session-logger/main.py
-     Do: Add endpoint with this implementation:
-       @app.get("/sessions/stats/overview")
-       def stats_overview():
-           # SQL:
-           # SELECT count(*) as total_sessions FROM session_logs;
-           # SELECT count(*) as total_chunks FROM session_chunks;
-           # SELECT min(created_at), max(created_at) FROM session_logs;
-           # SELECT count(*) FILTER (WHERE embedding IS NOT NULL) * 100.0 / count(*)
-           #   FROM session_chunks;
-           # Return StatsOverview response model
-     Verify: curl -s http://localhost:8009/sessions/stats/overview | python3 -m json.tool
-     Risk: low (local — new read-only endpoint, no existing behavior changed)
-     Rollback: git revert <commit> (no shared state touched)
+   Task 3: Add GET /messages/unread-count endpoint
+     Files: apps/api/src/routes/messages.ts
+     Do: Add endpoint that counts inbound messages with null readAt
+     Test: apps/api/src/routes/messages.test.ts — "returns unread count"
+     Verify: npm run test:api -- --grep "unread count"
+     Risk: low (local — new read-only endpoint)
+     Rollback: git revert <commit>
    ```
 
-3. **Deploy order (multi-service only).** If tasks span multiple services, specify the rebuild/restart order and why. Which service must be healthy before the next is rebuilt?
+3. **Deploy order (multi-service only).** If tasks span multiple services, specify the rebuild/restart order and why.
 
 4. **Order tasks by dependency.** Independent tasks can be marked as parallelizable.
 
@@ -163,9 +152,9 @@ Update `.claude/ship-state.md`: add file map, patterns found, surprises.
 
 6. Apply DRY, YAGNI. If something already exists in the codebase (found in Phase 2), reuse it. Do not build what you found.
 
-7. **Chunk review (>5 tasks).** If the plan has more than 5 tasks, present them in groups of 3 for review. Get approval per chunk before showing the next. Do not present all tasks at once.
+7. **Chunk review (>5 tasks).** If the plan has more than 5 tasks, present them in groups of 3 for review. Get approval per chunk before showing the next.
 
-8. **TDD decision.** Ask: "Do you want TDD for this feature?" If yes, Phase 4 writes tests before implementation for each task.
+8. **TDD decision.** Ask: "Do you want TDD for this feature?" If yes, Phase 4 writes tests before implementation for each task. Note: **tdd-guard hooks are active** and will enforce test-first ordering when TDD is enabled.
 
 **HARD GATE:** Present the plan (or final chunk) and wait for user approval. Do not proceed to Phase 4 without explicit "go", "approved", "build it", or similar.
 
@@ -181,32 +170,35 @@ Update `.claude/ship-state.md`: add full plan, TDD decision, deploy order.
 
 **Goal:** Execute the plan. Follow it exactly. Commit after each task.
 
-1. **Branch check.** Run `git branch --show-current`. If on `master` or `main`, stop and ask: "You're on master. Create a feature branch, or proceed on master?" Do not proceed without explicit answer.
+1. **Branch check.** Run `git branch --show-current`. If on `main`, stop and ask: "You're on main. Create a feature branch, or proceed on main?" Do not proceed without explicit answer.
 
-2. **Create TodoWrite tasks** for each plan item. This provides persistent in-session state that survives context compression.
+2. **Pre-build health check.** Run `claudekit doctor` to validate project hook/command configuration before building. Fix any issues flagged.
 
-3. For each task in the plan:
+3. **Create TodoWrite tasks** for each plan item. This provides persistent in-session state that survives context compression.
+
+4. For each task in the plan:
    a. Announce: **"Task N/total: [description]"**
    b. Read the files listed in the task (view before edit — always)
-   c. Implement exactly what the plan says
-   d. Run the verification command from the plan
-   e. If verification passes, commit with a descriptive message
-   f. If verification fails, diagnose (one fix per hypothesis), fix, re-verify
-   g. **Debugging escalation:** If verification fails twice (two hypotheses tested and failed), stop. State the problem clearly, form ranked hypotheses, and present them to Stephen before attempting a third fix. Invoke the systematic-debugging protocol.
-   h. If tests exist for the affected code, run them. Report result.
-   i. Update TodoWrite task status and `.claude/ship-state.md` with progress.
+   c. If TDD is enabled: write the test first, run it (expect failure), then implement. tdd-guard enforces this ordering via PreToolUse hooks.
+   d. Implement exactly what the plan says
+   e. Run the verification command from the plan
+   f. If verification passes, commit with a descriptive message
+   g. If verification fails, diagnose (one fix per hypothesis), fix, re-verify
+   h. **Debugging escalation:** If verification fails twice (two hypotheses tested and failed), stop. State the problem clearly, form ranked hypotheses, and present them to Stephen before attempting a third fix. Invoke the systematic-debugging protocol.
+   i. If tests exist for the affected code, run them. Report result.
+   j. Update TodoWrite task status and `.claude/ship-state.md` with progress.
 
-4. **Scope creep guard.** When discovering an unrelated issue during build (e.g., "this file also has a bug in line 200"):
+5. **Scope creep guard.** When discovering an unrelated issue during build:
    - **Unrelated issues:** Log to the **defer list** in `.claude/ship-state.md`. Do NOT fix. Do NOT stop to ask. Log it and keep building.
-   - **Related blockers** (e.g., "the table I need doesn't exist"): Stop and ask Stephen. This is not scope creep — it's a blocker.
+   - **Related blockers:** Stop and ask Stephen. This is not scope creep — it's a blocker.
 
-5. **Parallel execution.** If the plan marked tasks as parallelizable, dispatch them as parallel agents using the Agent tool. Each agent gets: the task description, file paths, verification command, and the instruction "commit when done."
+6. **Parallel execution.** If the plan marked tasks as parallelizable, dispatch them as parallel agents using the Agent tool. Each agent gets: the task description, file paths, verification command, and the instruction "commit when done."
 
-6. **Subagent reconciliation.** After parallel agents return, diff their changes against each other. Look for logical conflicts: duplicate functions, inconsistent naming, overlapping concerns — not just merge conflicts. If conflicts exist, resolve them before proceeding.
+7. **Subagent reconciliation.** After parallel agents return, diff their changes against each other. Look for logical conflicts: duplicate functions, inconsistent naming, overlapping concerns — not just merge conflicts. If conflicts exist, resolve them before proceeding.
 
-7. **Stop when blocked.** If something unexpected happens, do not guess or force through. State what's wrong and ask the user.
+8. **Stop when blocked.** If something unexpected happens, do not guess or force through. State what's wrong and ask the user.
 
-8. After all tasks complete, show a summary:
+9. After all tasks complete, show a summary:
    ```
    Built: N/N tasks complete
    Commits: [list of commit messages]
@@ -228,40 +220,58 @@ Update `.claude/ship-state.md`: mark all tasks complete, list commits.
 
 This phase exists because "it should work" is not verification. Run every check fresh.
 
-1. **Run the full test suite** (if tests exist):
+1. **Run the full test suite:**
    ```bash
-   pytest / npm test / whatever applies
+   npm run test:api
    ```
    Show the full output. Do not summarize. If tests fail, fix them before proceeding.
 
-2. **Verify each task's verification command** from the plan. Run them all again, fresh. Show output.
+2. **Type check all workspaces:**
+   ```bash
+   npm run typecheck
+   ```
 
-3. **Health check affected services:**
-   - `docker ps` — all relevant containers healthy?
+3. **Lint check:**
+   ```bash
+   npm run lint
+   ```
+
+4. **Verify each task's verification command** from the plan. Run them all again, fresh. Show output.
+
+5. **Health check affected services:**
+   - `docker compose ps` — all relevant containers healthy?
    - `curl` health endpoints — responding?
    - Any database changes applied correctly?
 
-4. **Regression check.** Did existing functionality break? Spot-check endpoints/features that existed before this work.
-
-5. **Performance baseline.** For each new endpoint, capture response time:
+6. **AgentShield security scan.** Run the security audit on the project config:
    ```bash
-   curl -s -o /dev/null -w "%{time_total}" http://localhost:<port>/<endpoint>
+   npx ecc-agentshield scan
    ```
-   Record these baselines for future comparison.
+   Review findings. If any new Critical or High findings were **introduced by this feature** (compare against the baseline of 40 existing findings), fix them before proceeding. Pre-existing findings are acceptable.
 
-6. **Meta-verify ship-state.md.** Quick check: does the state file accurately reflect the current reality? Tasks completed, commits made, verification results. If it's stale or inaccurate, update it.
+7. **Regression check.** Did existing functionality break? Spot-check endpoints/features that existed before this work.
 
-7. **State the verdict with evidence:**
-   - "All N verification commands pass. Output: [shown above]"
-   - "Tests: X/Y pass. Failures: [list with details]"
-   - "Services: all healthy. Evidence: [docker ps output]"
-   - "Performance baselines: [endpoint: Xms, endpoint: Yms]"
+8. **Performance baseline.** For each new endpoint, capture response time:
+   ```bash
+   curl -s -o /dev/null -w "%{time_total}" http://10.0.0.251:8016/<endpoint>
+   ```
 
-   If anything fails, go back to Phase 4 for that specific task. Do not proceed to review with known failures.
+9. **Meta-verify ship-state.md.** Quick check: does the state file accurately reflect current reality?
+
+10. **State the verdict with evidence:**
+    - "All N verification commands pass. Output: [shown above]"
+    - "Tests: X/Y pass."
+    - "Typecheck: pass/fail."
+    - "Lint: clean/N errors."
+    - "AgentShield: no new findings / N new findings [details]."
+    - "Services: all healthy."
+    - "Performance baselines: [endpoint: Xms]"
+
+    If anything fails, go back to Phase 4 for that specific task.
 
 **Output:** Verification evidence showing everything works.
 
-Update `.claude/ship-state.md`: add all verification results and performance baselines.
+Update `.claude/ship-state.md`: add all verification results.
 
 > **Phase 5 complete. All checks pass. Continue to Phase 6 (Review)?**
 
@@ -283,31 +293,29 @@ Update `.claude/ship-state.md`: add all verification results and performance bas
    | code-simplifier | Unnecessary complexity, duplication, readability issues |
 
 2. **Grep-based silent-failure scan** (runs in parallel with agents). Fast first pass:
-   - `except.*pass` or bare `except:` with no re-raise
-   - Empty `catch {}` blocks
-   - `return None` after error conditions
-   - `# TODO` or `# FIXME` in new code
+   - `catch` blocks with no re-throw or error handling
+   - `return null` or `return undefined` after error conditions
+   - `// TODO` or `// FIXME` in new code
 
-3. **Unify agent findings.** When agents return, synthesize into a single prioritized recommendation. If agents conflict (e.g., code-simplifier says "remove this" but code-reviewer says "this follows project patterns"), resolve the conflict and present the unified recommendation with reasoning. Stephen gets a clean view, not 6 competing reports.
+3. **Unify agent findings.** When agents return, synthesize into a single prioritized recommendation. If agents conflict, resolve the conflict and present the unified recommendation with reasoning. Stephen gets a clean view, not 6 competing reports.
 
 4. **Test coverage check.** For each new function added, verify a test exists. If not, flag as Important severity: "Function X is untested."
 
-5. **DHG-specific checks:**
-   - Docker: Does this need a new container? Network membership correct? Port conflict with anything in CLAUDE.md's port table?
-   - Database: Migration needed? Backward compatible? ON DELETE behavior correct?
+5. **Portage-specific checks:**
+   - Docker: Does this need a new container? Port conflict with the port table in CLAUDE.md?
+   - Database: Schema push needed? Backward compatible?
    - CLAUDE.md compliance: Does the change align with documented architecture?
-   - Brand: If UI work, does it use semantic tokens (not raw hex)?
+   - Design system: If UI work, does it use semantic tokens from the design system?
 
 6. **CLAUDE.md update check.** If new ports, services, endpoints, or architecture changes were made, draft the CLAUDE.md update. Do not apply yet — present for approval in Phase 7.
 
 7. **Observability check.** If new endpoints were added:
    - Do they have Prometheus counters/histograms? If not, flag as Important.
-   - Are they included in a Grafana dashboard? If not, note it.
-   - Are they covered by an Alertmanager rule? If not, note it.
+   - Are they covered in admin panel? If not, note it.
 
 8. **Severity classification:**
    - **Critical** — blocks shipping (security vulnerability, data loss risk, broken functionality)
-   - **Important** — should fix before merge (code quality, missing validation, config concern, untested functions, missing observability)
+   - **Important** — should fix before merge (code quality, missing validation, untested functions)
    - **Minor** — note for later (style nit, optimization opportunity)
 
 9. **Fix-and-re-verify loop.** For each Critical and Important issue:
@@ -348,18 +356,16 @@ Update `.claude/ship-state.md`: add review findings, resolutions, and any approv
      - Spec: [light/detailed, N iterations]
      - Plan: [N tasks, TDD: yes/no]
      - Build: [N commits]
-     - Verify: [all checks pass, performance baselines]
+     - Verify: [all checks pass, AgentShield baseline]
      - Review: [N issues found and fixed, agents used]
 
      ## Test plan
      - [ ] [verification steps someone else can follow]
 
-     ## Monitor
-     - Dashboard: [Grafana dashboard URL or name]
-     - Key metric: [what to watch]
-     - Alert threshold: [what value means rollback]
-     - Alert rule: [exists / needs creation]
-     - Watch period: [how long to monitor after merge]
+     ## Dev tool results
+     - tdd-guard: [active/inactive, enforcement events]
+     - AgentShield: [grade, new findings vs baseline]
+     - claudekit doctor: [pass/issues]
 
      ## Risk
      [blast radius: local/service/cross-service]
@@ -370,16 +376,16 @@ Update `.claude/ship-state.md`: add review findings, resolutions, and any approv
      - [what] in [where] — [why it matters] — [suggested priority]
      ```
 
-4. **Present defer list.** Show the full defer list from Phase 4. Everything discovered but intentionally not fixed, formatted as actionable items. This is the seed for the next `/ship` run.
+4. **Present defer list.** Show the full defer list from Phase 4. Everything discovered but intentionally not fixed, formatted as actionable items.
 
-5. **Log to session-logger.** Submit a summary of this workflow:
+5. **Registry capture.** Post the ship session to the registry:
    ```bash
-   curl -s -X POST http://localhost:8009/sessions/ingest-log \
-     -H "Content-Type: application/json" \
-     -d '{"hostname":"g700data1","username":"swebber64","raw_log":"[summary of phases, tasks, decisions, PR URL]"}'
+   ~/.claude/scripts/post-ship-session.sh '<JSON payload>'
    ```
 
-6. **Finalize `.claude/ship-state.md`:**
+6. **Ship-log entry.** Generate a Docusaurus ship-log page at `website/docs/ship-log/NNN-<slug>.md` with frontmatter matching existing entries.
+
+7. **Finalize `.claude/ship-state.md`:**
    ```
    status: complete
    pr: [PR URL]
@@ -387,7 +393,7 @@ Update `.claude/ship-state.md`: add review findings, resolutions, and any approv
    ```
    Do not delete the file — it serves as a record of the last ship run.
 
-7. **Present the PR URL** to the user.
+8. **Present the PR URL** to the user.
 
 > **Shipped. PR: [URL]**
 
@@ -404,6 +410,18 @@ The user can say these at any time:
 
 ---
 
+## Dev Tools Reference
+
+| Tool | Integrated At | What It Does |
+|------|--------------|--------------|
+| **tdd-guard** | Phase 3 (TDD decision), Phase 4 (build enforcement) | PreToolUse hooks block code edits without corresponding tests when TDD is enabled |
+| **AgentShield** | Phase 5 (verify) | Security audit of `.claude/` config — catches permission gaps, secret exposure, hook issues |
+| **claudekit** | Phase 4 (pre-build health check) | Validates project hook/command configuration |
+| **ccpm** | On-demand | Spec-driven PM skill — PRDs, epics, GitHub issue sync. Invoke with `/ccpm` if the feature warrants formal PM tracking |
+
+---
+
 ## Version History
-- **v1** (2026-03-13): Initial 7-phase workflow. Saved as `ship_v1.md`.
+- **v1** (2026-03-13): Initial 7-phase workflow.
 - **v2** (2026-03-13): Full capability restoration + 14 additions. Restored: spec iterations, divergent thinking, 6 review agents, code in plans, chunk review, TodoWrite, subagent reconciliation. Added: resume detection, state persistence, scope creep guard, rollback fields, debugging escalation, complexity-conditional spec, architecture step, TDD toggle, CLAUDE.md update check, observability check, deploy order, post-merge monitoring, performance baselines, actionable monitor section.
+- **v3** (2026-05-24): Dev tools integration. Added: tdd-guard enforcement (Phase 3-4), AgentShield security scan (Phase 5), claudekit doctor pre-build check (Phase 4), ccpm on-demand reference. Removed: stale LangGraph/Infisical references. Updated: Portage-specific checks replace generic DHG checks. Added: registry capture and ship-log generation to Phase 7. Added: dev tool results section in PR template.

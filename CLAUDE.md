@@ -46,7 +46,7 @@ Cloudflare Access is the identity provider — no password. `GET /auth/session` 
 Shared TypeScript interface in `packages/shared/src/marketplace.ts`. Three adapters:
 - **eBay:** OAuth2 auth code grant. Listing lifecycle runs on the **Trading API** (Trade-First, PR #133, live-proven): AddFixedPriceItem / ReviseFixedPriceItem / ReviseInventoryStatus / EndFixedPriceItem / GetItem, inline shipping terms — no Business Policies, no Inventory-API offers (`ebayOfferId` removed from the adapter interface; DB column inert). Insert-first idempotency on publish (`listings.idempotency_key`). Fulfillment API for orders, Taxonomy API for categories/aspects
 - **Etsy:** PARKED 2026-07-09 (tag `etsy-parked-2026-07`) pending API key approval — adapter/auth routes/UI removed; DB enum value remains, inert
-- **Reverb:** Publish path shipped + live-proven (PRs #173-#177, 2026-07-08): per-user PAT token auth, comps search, create/update listing — real Reverb listing published (draft state pending Reverb shop account setup: shipping/policies/address)
+- **Reverb:** Publish path shipped + live-proven (PRs #173-#177, 2026-07-08): per-user PAT token auth, comps search, create/update listing — listings live and sold on the real shop since 2026-07-13
 
 Marketplace tokens encrypted at rest with AES-256-GCM.
 
@@ -180,12 +180,20 @@ Domain values: `api`, `web`, `shared`, `infra`, `registry`, `ops`.
 
 ## Progress
 
-Original roadmap essentially complete — a 2026-07-17 recount found the docs/TODO.md ledger lists 49 numbered task lines (task #53 reused twice; #22, #26, #28–#31 never on the ledger): 48 complete, 1 superseded (carrier APIs); the old 50/52-vs-51/52 figures used a 52-task denominator the ledger doesn't support. Integration testing, tunnel-config versioning, and Reverb OAuth resolution closed 2026-07-09. A separate Responsive UI Program (R0-R4, approved 2026-07-15) was added after this count and isn't folded into it — R0 shipped (PR #229), R1 desktop workbench shipped (PR #237, merged 2026-07-17, 15-finding adversarial fix round). See `docs/TODO.md` for the live backlog and in-flight branches.
+Original roadmap essentially complete — a 2026-07-17 recount found the docs/TODO.md ledger lists 49 numbered task lines (task #53 reused twice; #22, #26, #28–#31 never on the ledger): 48 complete, 1 superseded (carrier APIs); the old 50/52-vs-51/52 figures used a 52-task denominator the ledger doesn't support. Integration testing, tunnel-config versioning, and Reverb OAuth resolution closed 2026-07-09. A separate Responsive UI Program (R0-R4, approved 2026-07-15) was added after this count and isn't folded into it — R0 shipped (PR #229), R1 desktop workbench shipped (PR #237, merged 2026-07-17, 15-finding adversarial fix round), R2 (desktop drag-drop ingest) + R3 (Porter dock) shipped (PR #252, merged 2026-07-21) — docs/TODO.md checkboxes for R2/R3 lag the actual merged state. See `docs/TODO.md` for the live backlog and in-flight branches.
 
 **Done:** see docs/TODO.md and website/docs/ship-log/ for the full change
 history. Highlights: eBay Trade-First lifecycle (PR #133), CF Access auth
 (PRs #168-172), Reverb publish live-proven (PRs #173-177), listing-hub merge
-(PRs #207-213), responsive shell R0 (PR #229). Test suite: 704 API / 528 web as of 2026-07-20.
+(PRs #207-213), responsive shell R0-R3 (PRs #229, #237, #252), Reverb audit
+batch (PR #251), Langfuse LLM tracing (PR #253), DB loopback-bind hardening
+(PR #256), dependency audit pass (PR #257, 15 vulns/5 high → 8 moderate/0 high),
+beta bug batch + auth-exchange hardening (PRs #262-263), accept-offers +
+advertising toggles (PRs #264-265), TabBar overlay fix + audit gate (PR #266),
+Trust Gates enforcement docs + proof-before-push hook (PRs #267-268),
+CF_ACCESS_AUD login-outage fix + boot guard (PR #269), Langfuse Porter
+agent-observation typing (PR #270).
+Test suite: 768 API / 580 web as of 2026-08-01.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
