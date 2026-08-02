@@ -50,6 +50,18 @@ export function ReverbCategorySection({ value, onChange, token, idPrefix = "" }:
     return () => { cancelled = true; };
   }, [token]);
 
+  const loadChildren = async (uuid: string) => {
+    if (childrenByUuid[uuid]) return childrenByUuid[uuid];
+    try {
+      const r = await api<{ subcategories: ReverbCategoryNode[] }>(`/marketplace/reverb/subcategories?parent=${encodeURIComponent(uuid)}`, { token: token! });
+      const kids = r?.subcategories ?? [];
+      setChildrenByUuid((prev) => ({ ...prev, [uuid]: kids }));
+      return kids;
+    } catch {
+      return [];
+    }
+  };
+
   // Hydrate the cascade from a seeded value (AI/prepare-cache category): walk
   // the tree level by level, matching each ancestor by fullName prefix — the
   // seeded category shows AS the selection, not as an unexplained default.
@@ -78,18 +90,6 @@ export function ReverbCategorySection({ value, onChange, token, idPrefix = "" }:
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value?.uuid, roots, token]);
-
-  const loadChildren = async (uuid: string) => {
-    if (childrenByUuid[uuid]) return childrenByUuid[uuid];
-    try {
-      const r = await api<{ subcategories: ReverbCategoryNode[] }>(`/marketplace/reverb/subcategories?parent=${encodeURIComponent(uuid)}`, { token: token! });
-      const kids = r?.subcategories ?? [];
-      setChildrenByUuid((prev) => ({ ...prev, [uuid]: kids }));
-      return kids;
-    } catch {
-      return [];
-    }
-  };
 
   const pickAt = async (level: number, uuid: string) => {
     if (!uuid) {
