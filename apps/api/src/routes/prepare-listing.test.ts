@@ -5,6 +5,9 @@ import {
   conditionNeighbors,
   reverbCompsWarning,
   sanitizeReverbAiFields,
+  resolveReverbCategoryChoice,
+  validateReverbAiFields,
+  pickReverbCategoryByLeafTokens,
   EBAY_CONDITION_ORDER,
 } from './prepare-listing.js';
 
@@ -35,6 +38,114 @@ describe('sanitizeReverbAiFields', () => {
       conditionName: 'Excellent',
       make: 'ProCo',
     });
+  });
+});
+
+describe('resolveReverbCategoryChoice', () => {
+  it('exact-matches the AI-chosen full name (case-insensitive), requires listable, handles slash-leaf names', () => {
+    const cats = [
+      { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'r-fx', listable: true },
+      { uuid: 'u-dead', fullName: 'Effects and Pedals / Discontinued', name: 'Discontinued', rootUuid: 'r-fx', listable: false },
+      { uuid: 'u-split', fullName: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs', name: 'Modular Synth Splitters / Hubs', rootUuid: 'r-keys', listable: true },
+    ];
+    expect(resolveReverbCategoryChoice('effects and pedals / distortion', cats))
+      .toEqual({ uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion' });
+    // Non-listable nodes never resolve — the AI must not pin an unlistable category.
+    expect(resolveReverbCategoryChoice('Effects and Pedals / Discontinued', cats)).toBeNull();
+    // Leaf names containing " / " resolve verbatim (no naive path splitting).
+    expect(resolveReverbCategoryChoice('Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs', cats))
+      .toEqual({ uuid: 'u-split', fullName: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs' });
+    expect(resolveReverbCategoryChoice('Invented / Category', cats)).toBeNull();
+  });
+});
+
+describe('sanitizeReverbAiFields — finish/year hygiene', () => {
+  it('blanks JSON-junk finishes and non-year years (live defect: finish = \'} "pitch"\')', () => {
+    const dirty = {
+      categoryUuid: 'u1', categoryName: 'Effects and Pedals / Octave and Pitch',
+      conditionUuid: 'c1', conditionName: 'Excellent',
+      finish: '} "pitch"', year: 'unknown',
+    };
+    const clean = sanitizeReverbAiFields(
+      dirty,
+      [{ uuid: 'c1', displayName: 'Excellent' }],
+      [{ id: 'u1', name: 'Effects and Pedals / Octave and Pitch' }],
+    );
+    expect(clean.finish).toBeNull();
+    expect(clean.year).toBeNull();
+    // Plausible values pass through untouched.
+    const ok = sanitizeReverbAiFields(
+      { ...dirty, finish: 'Sunburst', year: '1979' },
+      [{ uuid: 'c1', displayName: 'Excellent' }],
+      [{ id: 'u1', name: 'Effects and Pedals / Octave and Pitch' }],
+    );
+    expect(ok.finish).toBe('Sunburst');
+    expect(ok.year).toBe('1979');
+  });
+});
+
+describe('pickReverbCategoryByLeafTokens', () => {
+  it('live defect (Donner pitch shifter → Guitar Synths): title leaf-tokens beat generic shared words', () => {
+    const cats = [
+      { uuid: 'u-synth', fullName: 'Effects and Pedals / Guitar Synths', name: 'Guitar Synths', rootUuid: 'r-fx', listable: true },
+      { uuid: 'u-octave', fullName: 'Effects and Pedals / Octave and Pitch', name: 'Octave and Pitch', rootUuid: 'r-fx', listable: true },
+      { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'r-fx', listable: true },
+    ];
+    const pick = pickReverbCategoryByLeafTokens(
+      'Donner Harmonic Square Pitch Shifter Pedal',
+      'Other Guitar Effects Pedals',
+      cats,
+    );
+    expect(pick).toEqual({ uuid: 'u-octave', fullName: 'Effects and Pedals / Octave and Pitch' });
+    // Nothing distinctive → null (caller falls back to the majority search).
+    expect(pickReverbCategoryByLeafTokens('Mystery Object', 'Stuff', cats)).toBeNull();
+  });
+});
+
+describe('validateReverbAiFields', () => {
+  it('resolves via verbatim flat-list match WITHOUT token search; falls back to searchCategories otherwise', async () => {
+    const { ReverbAdapter } = await import('../marketplace/reverb-adapter.js');
+    const flatSpy = vi.spyOn(ReverbAdapter, 'getFlatCategories').mockResolvedValue([
+      { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'r-fx', listable: true },
+    ]);
+    const condSpy = vi.spyOn(ReverbAdapter, 'getConditions').mockResolvedValue([
+      { uuid: 'cond-exc', displayName: 'Excellent' },
+    ]);
+    const searchSpy = vi.spyOn(ReverbAdapter.prototype, 'searchCategories')
+      .mockResolvedValue([{ id: 'u-token', name: 'Pro Audio / Microphones', path: [], isLeaf: true }]);
+
+    const ai = { categoryUuid: '', categoryName: 'Effects and Pedals / Distortion', conditionUuid: '', conditionName: 'Excellent' };
+    const exact = await validateReverbAiFields('user-1', ai, { title: 'ProCo RAT 2', category: 'pedals' });
+    expect(exact.categoryUuid).toBe('u-dist');
+    expect(searchSpy).not.toHaveBeenCalled();
+
+    // No verbatim match AND no distinctive leaf-token hit → majority search.
+    const miss = await validateReverbAiFields('user-1', { ...ai, categoryName: 'Something Paraphrased' }, { title: 'Mystery Object', category: 'Stuff' });
+    expect(miss.categoryUuid).toBe('u-token');
+    expect(searchSpy).toHaveBeenCalledWith('Something Paraphrased');
+
+    flatSpy.mockRestore(); condSpy.mockRestore(); searchSpy.mockRestore();
+  });
+
+  it('prefers the leaf-token semantic pick over the majority search when the verbatim match misses', async () => {
+    const { ReverbAdapter } = await import('../marketplace/reverb-adapter.js');
+    const flatSpy = vi.spyOn(ReverbAdapter, 'getFlatCategories').mockResolvedValue([
+      { uuid: 'u-synth', fullName: 'Effects and Pedals / Guitar Synths', name: 'Guitar Synths', rootUuid: 'r-fx', listable: true },
+      { uuid: 'u-octave', fullName: 'Effects and Pedals / Octave and Pitch', name: 'Octave and Pitch', rootUuid: 'r-fx', listable: true },
+    ]);
+    const condSpy = vi.spyOn(ReverbAdapter, 'getConditions').mockResolvedValue([]);
+    const searchSpy = vi.spyOn(ReverbAdapter.prototype, 'searchCategories')
+      .mockResolvedValue([{ id: 'u-synth', name: 'Effects and Pedals / Guitar Synths', path: [], isLeaf: true }]);
+
+    const out = await validateReverbAiFields(
+      'user-1',
+      { categoryUuid: '', categoryName: 'Pitch Shifter Pedals', conditionUuid: '', conditionName: '' },
+      { title: 'Donner Harmonic Square Pitch Shifter Pedal', category: 'Other Guitar Effects Pedals' },
+    );
+    expect(out.categoryUuid).toBe('u-octave');
+    expect(searchSpy).not.toHaveBeenCalled();
+
+    flatSpy.mockRestore(); condSpy.mockRestore(); searchSpy.mockRestore();
   });
 });
 

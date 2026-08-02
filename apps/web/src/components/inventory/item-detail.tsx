@@ -69,10 +69,17 @@ export function ItemDetail({
   const [isRotating, setIsRotating] = useState(false);
   const [showListingSheet, setShowListingSheet] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  // True while a photo-save PATCH is in flight — on a Reverb-published item
+  // that PATCH runs a synchronous marketplace photo re-sync and takes seconds;
+  // tools/accepts must serialize behind it (photo-race review, 2026-08-02).
+  const [isSavingPhoto, setIsSavingPhoto] = useState(false);
+  // Ref twin for same-tick reentrancy (a double-tap lands before the state
+  // commit); state drives the UI, the ref drives the guard.
+  const isSavingPhotoRef = useRef(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(itemId);
-  const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
+  const isToolProcessing = isRotating || isEnhancing || isRemovingBg || isSavingPhoto;
 
   // Optimistic photo order: live drag moves update pendingPhotos instantly;
   // ONE coalesced PATCH commits on release (adversarial-review fix — a PATCH
@@ -93,7 +100,11 @@ export function ItemDetail({
   const applyToPhoto = useCallback(
     (target: { key?: string }, fallbackIndex: number, patch: Partial<ItemPhoto>): ItemPhoto[] | null => {
       const base = photosRef.current;
-      const idx = target.key ? base.findIndex((p) => p.key === target.key) : fallbackIndex;
+      // Prefer the stable key; fall back to the index slot when the key is
+      // gone — tool saves ROTATE keys (enhance/rotate mint new R2 objects), and
+      // reorders never change keys, so the slot is still the right target.
+      const byKey = target.key ? base.findIndex((p) => p.key === target.key) : -1;
+      const idx = byKey >= 0 ? byKey : fallbackIndex;
       if (idx < 0 || !base[idx]) return null;
       return base.map((p, i) => (i === idx ? { ...p, ...patch } : p));
     },
@@ -266,8 +277,10 @@ export function ItemDetail({
 
   const handleSaveEditedPhoto = useCallback(
     async (newUrl: string, newKey?: string) => {
-      if (!item) return;
-      const target = (item.photos ?? [])[photoIndex];
+      if (!item || isSavingPhotoRef.current) return;
+      // Anchor on the DISPLAYED array (pendingPhotos-aware) — item.photos can
+      // lag it during a reorder commit, which mis-anchored the write.
+      const target = photosRef.current[photoIndex];
       if (!target) return;
       const updatedPhotos = applyToPhoto(target, photoIndex, {
         url: newUrl,
@@ -275,8 +288,14 @@ export function ItemDetail({
       });
       if (!updatedPhotos) {
         setUploadError("Photo changed while editing — please retry.");
+        // Clear the stale before/after preview too, or "retry" re-offers the
+        // same doomed accept forever.
+        resetEnhance();
+        resetBgRemoval();
         return;
       }
+      isSavingPhotoRef.current = true;
+      setIsSavingPhoto(true);
       try {
         await updateItem({ photos: updatedPhotos });
       } catch (err) {
@@ -285,6 +304,8 @@ export function ItemDetail({
         setUploadError(err instanceof Error ? err.message : "Failed to save edited photo");
         return;
       } finally {
+        isSavingPhotoRef.current = false;
+        setIsSavingPhoto(false);
         resetEnhance();
         resetBgRemoval();
       }
@@ -295,9 +316,8 @@ export function ItemDetail({
   // Rotate persists immediately (same UX as scan-flow): the server writes a
   // new R2 image, then the item's photo entry is updated via PATCH.
   const handleRotate = useCallback(async () => {
-    const itemPhotos = item?.photos ?? [];
-    const photo = itemPhotos[photoIndex];
-    if (!token || isRotating || isEnhancing || !photo) return;
+    const photo = photosRef.current[photoIndex];
+    if (!token || isToolProcessing || !photo) return;
     setIsRotating(true);
     setUploadError(null);
     try {
@@ -323,9 +343,8 @@ export function ItemDetail({
 
   const handleCropApply = useCallback(
     async (crop: { x: number; y: number; width: number; height: number }) => {
-      const itemPhotos = item?.photos ?? [];
-      const photo = itemPhotos[photoIndex];
-      if (!token || !photo) return;
+      const photo = photosRef.current[photoIndex];
+      if (!token || isSavingPhoto || !photo) return;
       setUploadError(null);
       try {
         const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/crop", {
@@ -352,9 +371,8 @@ export function ItemDetail({
 
   const handleExposureApply = useCallback(
     async (ev: number) => {
-      const itemPhotos = item?.photos ?? [];
-      const photo = itemPhotos[photoIndex];
-      if (!token || !photo) return;
+      const photo = photosRef.current[photoIndex];
+      if (!token || isSavingPhoto || !photo) return;
       setUploadError(null);
       try {
         const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/exposure", {

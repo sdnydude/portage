@@ -7,16 +7,16 @@ const mockUseRequiredAspects = vi.fn();
 vi.mock("@/hooks/use-required-aspects", () => ({
   useRequiredAspects: () => mockUseRequiredAspects(),
 }));
-const mockUseReverbCategories = vi.fn(() => ({
-  categories: [
-    { uuid: "b1f4ce46", fullName: "Accessories / Cases and Gig Bags / Guitar Cases" },
-    { uuid: "uuid-dist", fullName: "Effects and Pedals / Distortion" },
-  ],
-  isLoading: false,
-}));
-vi.mock("@/hooks/use-reverb-categories", () => ({
-  useReverbCategories: () => mockUseReverbCategories(),
-}));
+vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ token: "t" }) }));
+const apiMock = vi.fn(async (path: unknown) => {
+  const p = String(path ?? "");
+  if (p === "/marketplace/reverb/product-types") {
+    return { productTypes: [{ uuid: "b1f4ce46", fullName: "Accessories", name: "Accessories", rootUuid: "b1f4ce46", listable: true }] };
+  }
+  if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+  return {};
+});
+vi.mock("@/lib/api", () => ({ api: (path: unknown) => apiMock(path), ApiError: class extends Error {} }));
 vi.mock("./comps-pricing-widget", () => ({
   CompsPricingWidget: () => <div data-testid="comps" />,
 }));
@@ -165,17 +165,16 @@ describe("ListingPreviewCard — Reverb category picker (non-gear dead-end fix)"
   });
 
   // A non-gear item (isMusicGear false, reverb null) had NO way to publish to
-  // Reverb: the AI can't place it and the Reverb button was hidden entirely —
-  // dead-ending at REVERB_CATEGORY_REQUIRED from other paths. Picking a real
-  // category in the sheet unlocks the Reverb publish with that uuid.
-  it("unlocks Reverb publish for a non-gear item once a category is picked, passing the uuid to onPublish", () => {
+  // Reverb — the cascade (Product Type → subcategories) replaces the old flat
+  // 320-option select; the deepest pick unlocks the Reverb publish with its uuid.
+  it("unlocks Reverb publish for a non-gear item via the cascade, passing the picked uuid to onPublish", async () => {
     const onPublish = vi.fn();
     render(<ListingPreviewCard {...baseProps} onPublish={onPublish} />);
 
     // Hidden while no category is chosen for a non-gear item.
     expect(screen.queryByRole("button", { name: /publish to reverb/i })).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(/reverb category/i), { target: { value: "b1f4ce46" } });
+    fireEvent.change(await screen.findByLabelText(/product type/i), { target: { value: "b1f4ce46" } });
     fireEvent.click(screen.getByRole("button", { name: /publish to reverb/i }));
 
     expect(onPublish).toHaveBeenCalledWith("reverb", "live", expect.anything(), "b1f4ce46");
