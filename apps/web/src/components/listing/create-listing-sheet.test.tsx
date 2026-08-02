@@ -719,3 +719,65 @@ describe("CreateListingSheet — Reverb category pre-seed", () => {
     expect((screen.getByLabelText(/subcategory 1/i) as HTMLSelectElement).value).toBe("u-dist");
   });
 });
+
+describe("CreateListingSheet — review findings (2026-08-02)", () => {
+  it("does NOT re-seed a category the seller explicitly reset after toggling marketplaces away and back", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/items/i1") return { id: "i1", title: "ProCo RAT 2", category: "pedals", marketplaceData: {} };
+      if (p.startsWith("/marketplace/reverb/category-suggestion")) {
+        return { suggestion: { uuid: "u-dist", fullName: "Effects and Pedals / Distortion" } };
+      }
+      if (p === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p === "/marketplace/reverb/subcategories?parent=root-fx") {
+        return { subcategories: [{ uuid: "u-dist", fullName: "Effects and Pedals / Distortion", name: "Distortion", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    await waitFor(() => {
+      expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("root-fx");
+    });
+    // Seller explicitly resets to the default…
+    fireEvent.change(screen.getByLabelText(/product type/i), { target: { value: "" } });
+    // …then flips to eBay and back to Reverb.
+    fireEvent.click(screen.getByRole("button", { name: "eBay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    await screen.findByLabelText(/shipping profile/i);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    // The rejected seed must NOT ride the POST.
+    expect((body!.marketplaceSpecificFields as Record<string, unknown> | undefined)?.categoryUuid).toBeUndefined();
+  });
+});
+
+describe("CreateListingSheet — offers touched is per-marketplace (review finding)", () => {
+  it("an eBay offers touch must NOT ride a later Reverb POST as offersEnabledExplicit", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/marketplace/reverb/product-types") return { productTypes: [] };
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    // On eBay (default): flip Accept offers on, then off — touched, value false.
+    const toggle = screen.getByText("Accept offers").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    // Switch to Reverb (whose default is offers ON) and save without touching offers.
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    const fields = body!.marketplaceSpecificFields as Record<string, unknown> | undefined;
+    expect(fields?.offersEnabledExplicit).toBeUndefined();
+  });
+});

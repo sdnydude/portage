@@ -70,7 +70,10 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // sent and the server/profile defaults apply (eBay: off; Reverb: profile,
   // default on). Only an explicit user flip rides the POST.
   const [acceptOffers, setAcceptOffers] = useState(marketplace === "reverb");
-  const offersTouched = useRef(false);
+  // Touched PER MARKETPLACE (review finding 2026-08-02): an eBay flip must not
+  // ride a later Reverb POST as offersEnabledExplicit (or vice versa) — same
+  // separation the shipping refs already have.
+  const offersTouched = useRef<{ ebay: boolean; reverb: boolean }>({ ebay: false, reverb: false });
   const [minOffer, setMinOffer] = useState("");
   const [autoAcceptOffer, setAutoAcceptOffer] = useState("");
   // Advertising (beta request 55639b6e): eBay Promoted Listings ad rate /
@@ -80,7 +83,9 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   const [bumpBid, setBumpBid] = useState("1.5");
   // Marketplace switch before any interaction re-seeds the default position.
   useEffect(() => {
-    if (!offersTouched.current) setAcceptOffers(marketplace === "reverb");
+    // Re-seed the default whenever THIS marketplace's toggle is untouched.
+    if (!offersTouched.current[marketplace]) setAcceptOffers(marketplace === "reverb");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketplace]);
   // Per-listing shipping (beta 17be7322) — eBay only for now. Untouched sends
   // nothing: the server keeps its calculated-shipping defaults and legacy rows
@@ -99,8 +104,14 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // Pre-seed with the category that WILL publish (operator feedback 2026-08-02):
   // prepare-cache first, else the same first-match the publish-time enrichment
   // guess uses (GET /category-suggestion) — never an unexplained blank default.
+  // One seed attempt per sheet instance: a seller's explicit reset to the
+  // default must survive marketplace toggles (review finding 2026-08-02) —
+  // reverbCategory truthiness alone can't distinguish "never seeded" from
+  // "seeded then deliberately cleared".
+  const reverbSeedAttempted = useRef(false);
   useEffect(() => {
-    if (marketplace !== "reverb" || !token || reverbCategory) return;
+    if (marketplace !== "reverb" || !token || reverbCategory || reverbSeedAttempted.current) return;
+    reverbSeedAttempted.current = true;
     let cancelled = false;
     (async () => {
       try {
@@ -172,7 +183,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     if (effectiveAspects && Object.keys(effectiveAspects).length > 0) fields.aspects = effectiveAspects;
     // Offers ride only on an explicit user flip — untouched keeps server/profile
     // defaults, and pre-toggle rows keep profile-driven sync behavior.
-    if (offersTouched.current) {
+    if (offersTouched.current[marketplace]) {
       if (marketplace === "ebay") {
         fields.bestOfferEnabled = acceptOffers;
         if (acceptOffers) {
@@ -433,7 +444,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
             auto-decline/auto-accept floors; Reverb offers_enabled override. */}
         <label className="flex items-center gap-3 py-2 cursor-pointer">
           <div
-            onClick={() => { offersTouched.current = true; setAcceptOffers(!acceptOffers); }}
+            onClick={() => { offersTouched.current[marketplace] = true; setAcceptOffers(!acceptOffers); }}
             className={`w-10 h-6 rounded-full transition-colors flex items-center ${
               acceptOffers ? "bg-forest-green" : "bg-muted border border-border"
             }`}
