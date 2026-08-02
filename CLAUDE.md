@@ -193,7 +193,7 @@ advertising toggles (PRs #264-265), TabBar overlay fix + audit gate (PR #266),
 Trust Gates enforcement docs + proof-before-push hook (PRs #267-268),
 CF_ACCESS_AUD login-outage fix + boot guard (PR #269), Langfuse Porter
 agent-observation typing (PR #270).
-Test suite: 768 API / 580 web as of 2026-08-01.
+Test suite: 785 API / 590 web as of 2026-08-02.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
