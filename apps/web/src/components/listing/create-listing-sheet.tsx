@@ -10,6 +10,7 @@ import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { DisclaimerSheet } from "./disclaimer-sheet";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 import { ShippingFieldsSection, SHIPPING_FIELDS_DEFAULT, type ShippingFieldsValue } from "./shipping-fields-section";
+import { ReverbCategorySection } from "./reverb-category-section";
 
 /** POST /listings response — `warning` carries eBay's verbatim reason when a
  *  live publish fell back to a draft. */
@@ -91,6 +92,9 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   const [reverbProfiles, setReverbProfiles] = useState<Array<{ id: string; name: string }>>([]);
   const [reverbShipChoice, setReverbShipChoice] = useState("");
   const reverbShippingTouched = useRef(false);
+  // Reverb category cascade — an explicit pick overrides server enrichment
+  // (AI/prepare-cache/profile); null = untouched, nothing sent.
+  const [reverbCategory, setReverbCategory] = useState<{ uuid: string; fullName: string } | null>(null);
   useEffect(() => {
     if (marketplace !== "reverb" || !token) return;
     let cancelled = false;
@@ -135,6 +139,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       reverbBumpBid?: number;
       ebayShipping?: { method: string; flatCost?: number; service?: string; handlingDays?: number };
       reverbShipping?: { profileId?: string; localPickupOnly?: boolean };
+      categoryUuid?: string;
     } = {};
     if (categoryId) fields.categoryId = categoryId;
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
@@ -171,6 +176,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       fields.reverbShipping = reverbShipChoice === "pickup"
         ? { localPickupOnly: true }
         : { profileId: reverbShipChoice };
+    }
+    // Explicit cascade pick wins over server enrichment (applyReverbEnrichment
+    // only fills categoryUuid when absent).
+    if (marketplace === "reverb" && reverbCategory) {
+      fields.categoryUuid = reverbCategory.uuid;
     }
     // Advertising rides only when the promote toggle is on with a valid rate.
     if (promote) {
@@ -514,6 +524,9 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
 
         {/* Reverb per-listing shipping: profile reference or local-pickup-only.
             Untouched keeps the seller-profile default flowing on sync. */}
+        {marketplace === "reverb" && (
+          <ReverbCategorySection value={reverbCategory} onChange={setReverbCategory} token={token} />
+        )}
         {marketplace === "reverb" && (
           <div>
             <label htmlFor="reverb-shipping-profile" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">

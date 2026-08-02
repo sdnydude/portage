@@ -1,0 +1,53 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+
+const h = vi.hoisted(() => ({ apiMock: vi.fn() }));
+vi.mock("@/lib/api", () => ({ api: h.apiMock, ApiError: class extends Error {} }));
+
+import { ReverbCategorySection } from "./reverb-category-section";
+
+describe("ReverbCategorySection", () => {
+  it("loads the Product Type roots into the first cascade level", async () => {
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      return {};
+    });
+    render(<ReverbCategorySection value={null} onChange={vi.fn()} token="t" />);
+    expect(await screen.findByRole("option", { name: "Effects and Pedals" })).toBeInTheDocument();
+    expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("");
+  });
+
+  it("drills down: picking a product type reports it, loads children, and picking a child deepens the choice", async () => {
+    const onChange = vi.fn();
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (path === "/marketplace/reverb/subcategories?parent=root-fx") {
+        return { subcategories: [
+          { uuid: "u-dist", fullName: "Effects and Pedals / Distortion", name: "Distortion", rootUuid: "root-fx", listable: true },
+          { uuid: "u-dead", fullName: "Effects and Pedals / Discontinued", name: "Discontinued", rootUuid: "root-fx", listable: false },
+        ] };
+      }
+      if (path.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      return {};
+    });
+    render(<ReverbCategorySection value={null} onChange={onChange} token="t" />);
+    await screen.findByRole("option", { name: "Effects and Pedals" });
+
+    fireEvent.change(screen.getByLabelText(/product type/i), { target: { value: "root-fx" } });
+    expect(onChange).toHaveBeenLastCalledWith({ uuid: "root-fx", fullName: "Effects and Pedals" });
+
+    // Children load into Subcategory 1 — non-listable nodes are not offered.
+    const sub1 = (await screen.findByLabelText(/subcategory 1/i)) as HTMLSelectElement;
+    expect(screen.queryByRole("option", { name: "Discontinued" })).toBeNull();
+    fireEvent.change(sub1, { target: { value: "u-dist" } });
+    expect(onChange).toHaveBeenLastCalledWith({ uuid: "u-dist", fullName: "Effects and Pedals / Distortion" });
+
+    // Stepping back to "(stop here)" reverts the choice to the parent.
+    fireEvent.change(sub1, { target: { value: "" } });
+    expect(onChange).toHaveBeenLastCalledWith({ uuid: "root-fx", fullName: "Effects and Pedals" });
+  });
+});

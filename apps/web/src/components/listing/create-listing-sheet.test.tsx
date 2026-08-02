@@ -623,3 +623,25 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     expect(fields?.ebayShipping).toBeUndefined();
   });
 });
+
+describe("CreateListingSheet — Reverb category cascade", () => {
+  it("sends the chosen category as marketplaceSpecificFields.categoryUuid on a Reverb POST", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    fireEvent.change(await screen.findByLabelText(/product type/i), { target: { value: "root-fx" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).categoryUuid).toBe("root-fx");
+  });
+});
