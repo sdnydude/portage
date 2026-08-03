@@ -227,6 +227,32 @@ describe('processDueSyncJobs', () => {
   });
 });
 
+describe('processDueSyncJobs — Best Offer conflict is terminal (BO-3)', () => {
+  it('fails the job immediately on BEST_OFFER_CONFLICT — a deterministic conflict must not burn 5 backoff retries', async () => {
+    mockSelectChainOnce([JOB]);          // due query
+    const returningSpy = vi.fn().mockResolvedValue([{ ...JOB, status: 'running' }]);
+    const whereSpy = vi.fn().mockReturnValue({ returning: returningSpy });
+    const setSpy = vi.fn().mockReturnValue({ where: whereSpy });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectChainOnce([ITEM_ROW]);     // item load
+    mockSelectChainOnce([LISTING_ROW]);  // listing load
+    const conflict = Object.assign(new Error('price at or below thresholds'), { name: 'AppError', statusCode: 422, code: 'BEST_OFFER_CONFLICT' });
+    Object.setPrototypeOf(conflict, (await import("../middleware/error.js")).AppError.prototype);
+    mockSyncItemListingRow.mockRejectedValueOnce(conflict);
+
+    await processDueSyncJobs();
+
+    const failedCall = setSpy.mock.calls.map(c => c[0] as Record<string, unknown>)
+      .find(v => v.status === 'failed');
+    expect(failedCall).toBeDefined();
+    expect(failedCall!.lastError).toMatch(/thresholds/);
+    // No backoff reschedule: nothing set back to pending with attempts
+    const backoffCall = setSpy.mock.calls.map(c => c[0] as Record<string, unknown>)
+      .find(v => v.status === 'pending' && 'attempts' in v);
+    expect(backoffCall).toBeUndefined();
+  });
+});
+
 describe('processDueSyncJobs — re-entrancy (audit M6)', () => {
   it('a second call while one is in flight is a no-op — overlapping ticks must not double-claim', async () => {
     let resolveSelect!: (rows: unknown[]) => void;

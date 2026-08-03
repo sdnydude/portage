@@ -5,6 +5,7 @@ import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
+import { BestOfferFloorNote } from "./best-offer-floor-note";
 import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
 import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { formatCondition } from "@/lib/format";
@@ -1201,6 +1202,8 @@ export function ReviewPhase({
   reorderPhotos,
   commitPhotoOrder,
   removePhoto,
+  preparedFloor,
+  onClearFloor,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   setField: ReturnType<typeof useListingFlow>["setField"];
@@ -1209,6 +1212,9 @@ export function ReviewPhase({
   reorderPhotos?: ReturnType<typeof useListingFlow>["reorderPhotos"];
   commitPhotoOrder?: ReturnType<typeof useListingFlow>["commitPhotoOrder"];
   removePhoto?: ReturnType<typeof useListingFlow>["removePhoto"];
+  /** BO-5: AI-prepared auto-accept floor — shown before publish, removable. */
+  preparedFloor?: number;
+  onClearFloor?: () => void;
 }) {
   const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
   const photoEdit = usePhotoEdit(state.photos, updatePhoto);
@@ -1223,6 +1229,12 @@ export function ReviewPhase({
     ebay: "#E53238",
     reverb: "#0D6EFD",
   };
+
+  const floorNote = typeof preparedFloor === "number" && onClearFloor ? (
+    <div style={{ margin: "0 0 10px" }}>
+      <BestOfferFloorNote floor={preparedFloor} onClear={onClearFloor} />
+    </div>
+  ) : null;
 
   const rows = [
     { label: "TITLE", value: state.title },
@@ -1267,6 +1279,7 @@ export function ReviewPhase({
           gap: 16,
         }}
       >
+        {floorNote}
         {/* Price */}
         {state.price && (
           <div
@@ -1651,9 +1664,21 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     }
   }, [publish]);
 
+  // BO-5: an AI-prepared auto-accept floor must be SEEN before it publishes.
+  const [floorCleared, setFloorCleared] = useState(false);
+  // A removed floor applies to THIS item only (CodeRabbit): the next
+  // listing's prepared floor must be visible again.
+  useEffect(() => { setFloorCleared(false); }, [state.inventoryItemId]);
+  const preparedFloor = state.marketplace === "ebay" && !floorCleared
+    ? (prepareListing.data?.ebay as { bestOfferAutoAcceptPrice?: number } | null | undefined)?.bestOfferAutoAcceptPrice
+    : undefined;
   const handlePublish = useCallback((publishMode: "draft" | "live") => {
-    runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
-  }, [runPublish, prepareListing.data]);
+    const prepared = prepareListing.data?.ebay ?? null;
+    runPublish({
+      ebayPreparedFields: floorCleared && prepared ? { ...prepared, bestOfferAutoAcceptPrice: undefined } : prepared,
+      publishMode,
+    });
+  }, [runPublish, prepareListing.data, floorCleared]);
 
   const handleListAnother = useCallback(() => {
     reset();
@@ -1748,6 +1773,8 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
               reorderPhotos={flow.reorderPhotos}
               commitPhotoOrder={flow.commitPhotoOrder}
               removePhoto={flow.removePhoto}
+              preparedFloor={preparedFloor}
+              onClearFloor={() => setFloorCleared(true)}
             />
             {publishError && (
               <div

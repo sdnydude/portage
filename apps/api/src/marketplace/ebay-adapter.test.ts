@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
+import { AppError } from '../middleware/error.js';
 import { resolveEbayCondition, resolveEbayConditionId, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError, clearEbayTaxonomyCaches } from './ebay-adapter.js';
 
 vi.mock('./token-manager.js', () => ({
@@ -330,6 +331,24 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
     expect(calls).toBe(2);
     expect(result.status).toBe('active');
     expect(result.warning).toMatch(/best offer/i);
+  });
+
+  it('surfaces a threshold-conflict code at publish as 422 BEST_OFFER_CONFLICT — config is never silently dropped (BO-2)', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></AddFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 500 },
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+    expect(calls).toBe(1); // no downgrade — the seller fixes the numbers
   });
 
   it('does NOT retry when the rejection is unrelated to Best Offer — the real error surfaces', async () => {
@@ -693,6 +712,22 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
     expect(body).not.toContain('<Title>'); // not a full content revise
   });
 
+  it('the ReviseInventoryStatus fast path surfaces stored-threshold conflicts as typed 422s too (CodeRabbit)', async () => {
+    // eBay validates a price change against thresholds STORED on the live
+    // listing even on the fast path — the typed contract must hold there.
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url)
+        ? new Response('<ReviseInventoryStatusResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></ReviseInventoryStatusResponse>', { status: 200 })
+        : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307034606520', {
+      price: 199, currency: 'USD',
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+  });
+
   it('a content edit (title) goes through ReviseFixedPriceItem with the full item body', async () => {
     fetchMock.mockImplementation(async (url: unknown) =>
       isTradingCall(url) ? new Response(reviseOk('ReviseFixedPriceItem'), { status: 200 }) : new Response('{}', { status: 200 }));
@@ -753,108 +788,125 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
     expect(String((call?.[1] as RequestInit).body)).toContain('<ConditionID>3000</ConditionID>'); // not 5000
   });
 
-  it('retries the revise without Best Offer when eBay rejects it, and surfaces a downgrade warning', async () => {
+  it('surfaces a category-level Best Offer rejection as 422 BEST_OFFER_UNSUPPORTED — no downgrade retry on updates (BO-2)', async () => {
     let calls = 0;
-    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+    fetchMock.mockImplementation(async (url: unknown) => {
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
       calls++;
-      // Match the VALUE tag only — the retry now carries a DeletedField entry
-      // that contains the same field name.
-      if (String((opts as RequestInit).body).includes('<BestOfferAutoAcceptPrice currencyID')) {
-        return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
-      }
-      return new Response(reviseOk('ReviseFixedPriceItem'), { status: 200 });
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
     });
     const adapter = new EbayAdapter('user-1');
-    const result = await adapter.updateListing('307034606520', {
+    const err = await adapter.updateListing('307034606520', {
       ...baseInput, title: 'New', ebaySku: 'PRT-000016',
       marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 18 },
-    } as any);
+    } as any).catch((e: unknown) => e);
 
-    expect(calls).toBe(2);
-    expect(result.status).toBe('active');
-    expect(result.warning).toMatch(/best offer/i);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).statusCode).toBe(422);
+    expect((err as AppError).code).toBe('BEST_OFFER_UNSUPPORTED');
+    expect(calls).toBe(1); // the seller decides — never auto-stripped on an update
   });
 });
 
 describe('EbayAdapter.updateListing — stored Best Offer threshold vs lowered price (23004)', () => {
-  it('retries with DeletedField entries — omission keeps the on-listing threshold, only deletion clears it', async () => {
+  it('surfaces 23004 from STORED thresholds as 422 BEST_OFFER_CONFLICT — no DeletedField retry (BO-2, supersedes PR #285)', async () => {
     let calls = 0;
-    let secondBody = '';
-    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+    fetchMock.mockImplementation(async (url: unknown) => {
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
       calls++;
-      const body = String((opts as RequestInit).body);
-      if (!body.includes('DeletedField')) {
-        // Live repro: price lowered to the stored auto-accept amount — eBay
-        // validates the STORED threshold even when the revise omits the tag.
-        return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><LongMessage>The Best Offer Auto Accept Price must be less than the Buy It Now price.</LongMessage><ErrorCode>23004</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
-      }
-      secondBody = body;
-      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><ItemID>307102403404</ItemID></ReviseFixedPriceItemResponse>', { status: 200 });
+      // Live repro: price lowered to the stored auto-accept amount — eBay
+      // validates the STORED threshold even when the revise omits the tag.
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><LongMessage>The Best Offer Auto Accept Price must be less than the Buy It Now price.</LongMessage><ErrorCode>23004</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
     });
     const adapter = new EbayAdapter('user-1');
-    const result = await adapter.updateListing('307102403404', {
+    const err = await adapter.updateListing('307102403404', {
       ...baseInput, price: 25, ebaySku: 'PRT-000016',
-      // Stored specifics from publish time: auto-accept EQUAL to the new price.
       marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 25, minimumBestOfferPrice: 20 },
-    } as any);
+    } as any).catch((e: unknown) => e);
 
-    expect(calls).toBe(2);
-    expect(secondBody).toContain('<DeletedField>Item.ListingDetails.BestOfferAutoAcceptPrice</DeletedField>');
-    expect(secondBody).toContain('<DeletedField>Item.ListingDetails.MinimumBestOfferPrice</DeletedField>');
-    expect(result.status).toBe('active');
-    expect(result.warning).toMatch(/best offer/i);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+    expect((err as AppError).message).toMatch(/25.*20|20.*25/); // both numbers surfaced
+    expect(calls).toBe(1); // seller thresholds never deleted to force the edit
   });
 });
 
-describe('EbayAdapter.updateListing — category-level Best Offer rejection (audit C3)', () => {
-  it('clears BestOfferEnabled on the downgrade retry so a category that rejects Best Offer outright still accepts the revise', async () => {
+describe('EbayAdapter.updateListing — Best Offer threshold conflict (BO-2)', () => {
+  it('surfaces eBay 22003/23004 as a typed 422 BEST_OFFER_CONFLICT with the stored thresholds, and never retries with deletion', async () => {
     let calls = 0;
-    let secondBody = '';
-    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+    fetchMock.mockImplementation(async (url: unknown) => {
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
       calls++;
-      const body = String((opts as RequestInit).body);
-      // Category rejects Best Offer as a feature — ANY body still carrying the
-      // toggle fails, thresholds deleted or not.
-      if (body.includes('<BestOfferEnabled>true</BestOfferEnabled>')) {
-        return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
-      }
-      secondBody = body;
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Auto decline amount cannot be greater than or equal to the Buy It Now price.</ShortMessage><ErrorCode>22003</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307100136291', {
+      ...baseInput, price: 199, title: 'New', ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 199, bestOfferAutoAcceptPrice: 209 },
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).statusCode).toBe(422);
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+    expect((err as AppError).message).toMatch(/209|199/); // actionable: carries the conflicting numbers
+    expect(calls).toBe(1); // no deletion retry — user config is never destroyed
+  });
+});
+
+describe('EbayAdapter.getEbayItemVerification — Best Offer read-back (BO-3)', () => {
+  it('forwards the live Best Offer state from GetItem for the conflict-time heal', async () => {
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url)
+        ? new Response('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item><ItemID>307100024169</ItemID><BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails><ListingDetails><BestOfferAutoAcceptPrice currencyID="USD">269.0</BestOfferAutoAcceptPrice><MinimumBestOfferPrice currencyID="USD">249.0</MinimumBestOfferPrice></ListingDetails></Item></GetItemResponse>', { status: 200 })
+        : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+    const v = await adapter.getEbayItemVerification('307100024169');
+
+    expect(v.found).toBe(true);
+    expect(v.bestOfferEnabled).toBe(true);
+    expect(v.bestOfferAutoAcceptPrice).toBe(269);
+    expect(v.minimumBestOfferPrice).toBe(249);
+  });
+});
+
+describe('EbayAdapter.updateListing — explicit Best Offer disable (BO-4)', () => {
+  it('bestOfferEnabled === false sends BestOfferEnabled false plus DeletedField for both thresholds on the FIRST call — the only deletion path, driven by seller intent', async () => {
+    let body = '';
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      body = String((opts as RequestInit).body);
       return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>', { status: 200 });
     });
     const adapter = new EbayAdapter('user-1');
-    const result = await adapter.updateListing('307102403404', {
+    const result = await adapter.updateListing('307034606520', {
       ...baseInput, title: 'New', ebaySku: 'PRT-000016',
-      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 25 },
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: false },
     } as any);
 
-    expect(calls).toBe(2);
-    expect(secondBody).not.toContain('<BestOfferEnabled>true</BestOfferEnabled>');
     expect(result.status).toBe('active');
-    expect(result.warning).toMatch(/best offer/i);
+    expect(body).toContain('<BestOfferEnabled>false</BestOfferEnabled>');
+    expect(body).toContain('<DeletedField>Item.ListingDetails.BestOfferAutoAcceptPrice</DeletedField>');
+    expect(body).toContain('<DeletedField>Item.ListingDetails.MinimumBestOfferPrice</DeletedField>');
   });
+});
 
-  it('downgrade-retries a floor-only config (enabled + minimum, no auto-accept) too — audit M1', async () => {
+describe('EbayAdapter.updateListing — category-level rejection, floor-only config (BO-2)', () => {
+  it('classifies a floor-only config (enabled + minimum, no auto-accept) as BEST_OFFER_UNSUPPORTED too — no retry', async () => {
     let calls = 0;
-    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+    fetchMock.mockImplementation(async (url: unknown) => {
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
       calls++;
-      if (String((opts as RequestInit).body).includes('<BestOfferEnabled>true</BestOfferEnabled>')) {
-        return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
-      }
-      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>', { status: 200 });
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
     });
     const adapter = new EbayAdapter('user-1');
-    const result = await adapter.updateListing('307102403404', {
+    const err = await adapter.updateListing('307102403404', {
       ...baseInput, title: 'New', ebaySku: 'PRT-000016',
       marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 20 },
-    } as any);
+    } as any).catch((e: unknown) => e);
 
-    expect(calls).toBe(2);
-    expect(result.status).toBe('active');
-    expect(result.warning).toMatch(/best offer/i);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('BEST_OFFER_UNSUPPORTED');
+    expect(calls).toBe(1);
   });
 });
 

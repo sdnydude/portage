@@ -4,6 +4,7 @@ import { syncJobs, items, listings, marketplaceSyncLog } from '../db/schema.js';
 import { createLogger } from './logger.js';
 import { syncItemListingRow, type ItemSyncSource, type ItemSyncTarget } from './marketplace-sync.js';
 import { logSyncAttempt } from './sync-log.js';
+import { AppError } from '../middleware/error.js';
 
 const logger = createLogger('sync-worker');
 
@@ -223,6 +224,25 @@ async function processDueSyncJobsInner(limit: number): Promise<void> {
       });
     } catch (err) {
       logger.warn({ jobId: job.id, listingId: job.listingId, error: (err as Error).message }, 'sync job failed');
+      // BO-3: a Best Offer conflict is deterministic — retries cannot fix a
+      // price-vs-threshold collision, so terminal-fail immediately instead of
+      // burning the 5-attempt backoff (~15 min of misleading "Syncing…").
+      if (err instanceof AppError && (err.code === 'BEST_OFFER_CONFLICT' || err.code === 'BEST_OFFER_UNSUPPORTED')) {
+        await db.update(syncJobs)
+          .set({ status: 'failed', lastError: err.message, updatedAt: new Date() })
+          .where(eq(syncJobs.id, job.id));
+        void logSyncAttempt({
+          userId: job.userId,
+          itemId: job.itemId,
+          listingId: job.listingId,
+          marketplace: logMarketplace,
+          trigger: job.trigger,
+          status: 'failure',
+          message: err.message,
+          durationMs: Date.now() - startedAt,
+        });
+        continue;
+      }
       const attempts = job.attempts + 1;
       // Exponential backoff (30s * 2^n), capped by MAX_ATTEMPTS → failed.
       await db.update(syncJobs)

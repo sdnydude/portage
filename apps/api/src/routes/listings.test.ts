@@ -110,6 +110,23 @@ describe('POST /listings', () => {
     }));
   });
 
+  it('rejects publish with Best Offer thresholds at/above the price — 422 before any adapter call, never a silent drop (BO-3)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live',
+        marketplaceSpecificFields: { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 220 },
+      });
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('BEST_OFFER_CONFLICT');
+    expect(res.body.error).toMatch(/220.*199|199.*220/);
+    expect(mockCreateListing).not.toHaveBeenCalled();
+  });
+
   it('promotes the live eBay listing when ebayAdRate rides marketplaceSpecificFields, and a failure only warns', async () => {
     // Success path
     mockSelectOnce([MOCK_ITEM]);
@@ -904,6 +921,26 @@ describe('POST /listings/:id/publish — seller listing footer', () => {
   });
 });
 
+describe('POST /listings/:id/publish — Best Offer pre-flight (BO-3)', () => {
+  it('rejects publishing a draft whose stored thresholds sit at/above its price — 422, no adapter call', async () => {
+    const LID = '00000000-0000-0000-0000-0000000000d5';
+    mockSelectOnce([{
+      id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'draft', marketplaceListingId: null, ebaySku: null,
+      price: 145, currency: 'USD', itemId: ITEM_ID,
+      marketplaceSpecificFields: { categoryId: '175669', bestOfferEnabled: true, bestOfferAutoAcceptPrice: 220, minimumBestOfferPrice: 220 },
+    }]);
+    mockSelectOnce([MOCK_ITEM]); // item
+
+    const res = await request(app)
+      .post(`/listings/${LID}/publish`)
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('BEST_OFFER_CONFLICT');
+    expect(mockCreateListing).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /listings/:id/publish', () => {
   it('applies stored ebayAdRate ad intent when a draft goes live (fire-and-warn)', async () => {
     mockSelectOnce([{
@@ -1497,6 +1534,121 @@ describe('PATCH /listings/:id — price change syncs to the live eBay listing', 
     expect(res.status).toBe(200);
     const [, inputArg] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
     expect(inputArg.marketplaceSpecific?.ebayShipping).toEqual(ebayShipping);
+  });
+});
+
+describe('PATCH /listings/:id — marketplaceSpecificFields server-side merge (BO-3)', () => {
+  const LID = '00000000-0000-0000-0000-0000000000d3';
+
+  it('shallow-merges into the stored fields and treats null as delete — a partial update cannot clobber siblings', async () => {
+    mockSelectOnce([{
+      id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'draft', marketplaceListingId: null, ebaySku: null, currency: 'USD',
+      marketplaceSpecificFields: { categoryId: '175669', ebayShipping: { method: 'flat' }, bestOfferAutoAcceptPrice: 269 },
+    }]);
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, marketplace: 'ebay', status: 'draft', marketplaceListingId: null, price: 199, currency: 'USD', itemId: ITEM_ID }]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ marketplaceSpecificFields: { bestOfferEnabled: true, minimumBestOfferPrice: 150, bestOfferAutoAcceptPrice: null } });
+
+    expect(res.status).toBe(200);
+    const setArg = (setMock.mock.calls[0] as unknown[])[0] as { marketplaceSpecificFields: Record<string, unknown> };
+    expect(setArg.marketplaceSpecificFields).toEqual({
+      categoryId: '175669',
+      ebayShipping: { method: 'flat' },
+      bestOfferEnabled: true,
+      minimumBestOfferPrice: 150,
+      // bestOfferAutoAcceptPrice deleted via the null sentinel
+    });
+  });
+});
+
+describe('PATCH /listings/:id — Best Offer pre-flight (BO-3)', () => {
+  const LID = '00000000-0000-0000-0000-0000000000d4';
+
+  it('rejects a price at/below the thresholds with 422 BEFORE saving — heal confirms the conflict against live eBay first', async () => {
+    mockSelectOnce([{
+      id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307100136291', ebaySku: 'PRT-000009', currency: 'USD',
+      marketplaceSpecificFields: { categoryId: '175669', bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199 },
+    }]);
+    // Live eBay agrees with the stored copy — genuine conflict, not drift.
+    mockGetEbayItemVerification.mockResolvedValueOnce({
+      found: true, sku: 'PRT-000009', aspects: {}, mpn: null, brand: null, status: 'Active', listingId: '307100136291', price: '219',
+      bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199,
+    });
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{}]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 199 });
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('BEST_OFFER_CONFLICT');
+    expect(res.body.error).toMatch(/209|199/); // the seller sees the numbers
+    expect(setMock).not.toHaveBeenCalled();          // nothing saved
+    expect(mockUpdateListing).not.toHaveBeenCalled(); // no revise attempted
+  });
+
+  it('persists the healed thresholds even when the edit is still rejected — stale local config never lingers (CodeRabbit)', async () => {
+    mockSelectOnce([{
+      id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307100136291', ebaySku: 'PRT-000009', currency: 'USD',
+      marketplaceSpecificFields: { categoryId: '175669', bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199 },
+    }]);
+    // Live eBay disagrees with the stored copy but STILL conflicts with $199.
+    mockGetEbayItemVerification.mockResolvedValueOnce({
+      found: true, sku: 'PRT-000009', aspects: {}, mpn: null, brand: null, status: 'Active', listingId: '307100136291', price: '219',
+      bestOfferEnabled: true, bestOfferAutoAcceptPrice: 205, minimumBestOfferPrice: 195,
+    });
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{}]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 199 });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/205|195/); // conflict reported against the LIVE numbers
+    // The heal itself is persisted so the DB matches eBay for the next edit.
+    const healWrite = setMock.mock.calls.map((c) => (c as unknown[])[0] as { marketplaceSpecificFields?: Record<string, unknown> })
+      .find((a) => a.marketplaceSpecificFields?.bestOfferAutoAcceptPrice === 205);
+    expect(healWrite).toBeDefined();
+  });
+
+  it('heals stripped thresholds from live eBay and lets the edit proceed — the healed state is persisted', async () => {
+    mockSelectOnce([{
+      id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307100024169', ebaySku: 'PRT-000009', currency: 'USD',
+      // DB kept thresholds that eBay lost (the old deletion bug): local says conflict, live says clear.
+      marketplaceSpecificFields: { categoryId: '175669', bestOfferEnabled: true, bestOfferAutoAcceptPrice: 269, minimumBestOfferPrice: 249 },
+    }]);
+    mockGetEbayItemVerification.mockResolvedValueOnce({
+      found: true, sku: 'PRT-000009', aspects: {}, mpn: null, brand: null, status: 'Active', listingId: '307100024169', price: '250',
+      bestOfferEnabled: true, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null,
+    });
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, marketplace: 'ebay', status: 'active', marketplaceListingId: '307100024169', ebaySku: 'PRT-000009', price: 245, currency: 'USD', itemId: ITEM_ID, marketplaceSpecificFields: { categoryId: '175669', bestOfferEnabled: true } }]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+    mockSelectOnce([{ ...MOCK_ITEM, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]); // item for sync
+    mockSelectOnce([]); // footer
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307100024169', status: 'active' });
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 245 });
+
+    expect(res.status).toBe(200);
+    const setArg = (setMock.mock.calls[0] as unknown[])[0] as { marketplaceSpecificFields?: Record<string, unknown> };
+    expect(setArg.marketplaceSpecificFields).toBeDefined(); // healed copy persisted
+    expect(setArg.marketplaceSpecificFields?.bestOfferAutoAcceptPrice).toBeUndefined();
+    expect(setArg.marketplaceSpecificFields?.minimumBestOfferPrice).toBeUndefined();
+    expect(mockUpdateListing).toHaveBeenCalledTimes(1); // edit went through
+    // Audit #2: a heal is never silent — the seller sees that Portage
+    // refreshed the offer settings from eBay.
+    expect(res.body.warning).toMatch(/best offer/i);
   });
 });
 

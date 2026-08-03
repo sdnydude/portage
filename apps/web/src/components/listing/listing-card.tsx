@@ -70,6 +70,22 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
   const [editedPrice, setEditedPrice] = useState(String(listing.price));
   const [isSaving, setIsSaving] = useState(false);
   const priceDirty = editingPrice && editedPrice !== String(listing.price);
+  // Best Offer (BO-5): price + thresholds are interdependent on eBay, so the
+  // price editor carries the offer fields — one edit fixes both. Seeded from
+  // the stored config on open; only sent when touched (server merges).
+  const [boFields, setBoFields] = useState({ enabled: false, autoAccept: "", minimum: "" });
+  const [boTouched, setBoTouched] = useState(false);
+  const isEbay = listing.marketplace === "ebay";
+
+  const seedBoFields = () => {
+    const stored = (listing.marketplaceSpecificFields ?? {}) as Record<string, unknown>;
+    setBoFields({
+      enabled: stored.bestOfferEnabled === true,
+      autoAccept: typeof stored.bestOfferAutoAcceptPrice === "number" ? String(stored.bestOfferAutoAcceptPrice) : "",
+      minimum: typeof stored.minimumBestOfferPrice === "number" ? String(stored.minimumBestOfferPrice) : "",
+    });
+    setBoTouched(false);
+  };
 
   const handleSavePrice = async () => {
     if (!token) return;
@@ -83,10 +99,25 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
     setActionError(null);
     setActionWarning(null);
     try {
+      // BO-5: touched offer fields ride the same PATCH — the server merges
+      // (null deletes a key), so only Best Offer keys are sent, never a
+      // client-side spread of the whole specifics object. Turning offers off
+      // sends the explicit disable triple — the only path that clears
+      // thresholds, by seller intent.
+      const num = (s: string): number | null => (s.trim() === "" ? null : parseFloat(s));
+      const boPayload = !isEbay || !boTouched ? {} : {
+        marketplaceSpecificFields: boFields.enabled
+          ? {
+              bestOfferEnabled: true,
+              bestOfferAutoAcceptPrice: num(boFields.autoAccept),
+              minimumBestOfferPrice: num(boFields.minimum),
+            }
+          : { bestOfferEnabled: false, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null },
+      };
       const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}`, {
         method: "PATCH",
         token,
-        body: { price: parsedPrice },
+        body: { price: parsedPrice, ...boPayload },
       });
       if (updated.warning) setActionWarning(updated.warning);
       setEditingPrice(false);
@@ -355,35 +386,77 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       )}
       <div className="mt-2 flex items-center justify-between">
         {editingPrice ? (
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
-              <input
-                aria-label="Price"
-                type="number"
-                inputMode="decimal"
-                value={editedPrice}
-                onChange={(e) => setEditedPrice(e.target.value)}
-                className="w-28 pl-6 pr-2 py-1.5 rounded-lg border border-border bg-background text-sm text-text-primary"
-              />
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
+                <input
+                  aria-label="Price"
+                  type="number"
+                  inputMode="decimal"
+                  value={editedPrice}
+                  onChange={(e) => setEditedPrice(e.target.value)}
+                  className="w-28 pl-6 pr-2 py-1.5 rounded-lg border border-border bg-background text-sm text-text-primary"
+                />
+              </div>
+              <button
+                onClick={handleSavePrice}
+                disabled={isSaving}
+                className="px-3 py-1.5 rounded-lg bg-forest-green text-white text-sm font-medium disabled:opacity-50"
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={() => {
+                  // No re-seed needed: opening the editor always seeds fresh.
+                  setEditingPrice(false);
+                  setActionError(null);
+                }}
+                className="px-2 py-1.5 text-sm text-text-secondary"
+              >
+                Cancel
+              </button>
             </div>
-            <button
-              onClick={handleSavePrice}
-              disabled={isSaving}
-              className="px-3 py-1.5 rounded-lg bg-forest-green text-white text-sm font-medium disabled:opacity-50"
-            >
-              {isSaving ? "Saving..." : "Save"}
-            </button>
-            <button
-              onClick={() => {
-                // No re-seed needed: opening the editor always seeds fresh.
-                setEditingPrice(false);
-                setActionError(null);
-              }}
-              className="px-2 py-1.5 text-sm text-text-secondary"
-            >
-              Cancel
-            </button>
+            {/* Best Offer rides the price editor (BO-5): eBay validates
+                thresholds against the price, so they change together. */}
+            {isEbay && (
+              <div className="flex flex-col gap-1.5">
+                <label className="flex items-center gap-2 text-xs text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={boFields.enabled}
+                    onChange={(e) => { setBoFields((f) => ({ ...f, enabled: e.target.checked })); setBoTouched(true); }}
+                  />
+                  Accept offers
+                </label>
+                {boFields.enabled && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-text-secondary">
+                      Auto-accept $
+                      <input
+                        aria-label="Auto-accept price"
+                        type="number"
+                        inputMode="decimal"
+                        value={boFields.autoAccept}
+                        onChange={(e) => { setBoFields((f) => ({ ...f, autoAccept: e.target.value })); setBoTouched(true); }}
+                        className="ml-1 w-20 px-2 py-1 rounded-lg border border-border bg-background text-sm text-text-primary"
+                      />
+                    </label>
+                    <label className="text-xs text-text-secondary">
+                      Minimum offer $
+                      <input
+                        aria-label="Minimum offer price"
+                        type="number"
+                        inputMode="decimal"
+                        value={boFields.minimum}
+                        onChange={(e) => { setBoFields((f) => ({ ...f, minimum: e.target.value })); setBoTouched(true); }}
+                        className="ml-1 w-20 px-2 py-1 rounded-lg border border-border bg-background text-sm text-text-primary"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <span className="flex items-center gap-1.5 text-base font-semibold text-text-primary">
@@ -393,6 +466,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
                 aria-label="Edit price"
                 onClick={() => {
                   setEditedPrice(String(listing.price));
+                  seedBoFields();
                   setEditingPrice(true);
                 }}
                 className="p-1 text-text-secondary hover:text-text-primary"

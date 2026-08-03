@@ -1,4 +1,5 @@
 import { AppError } from '../middleware/error.js';
+import { createLogger } from '../lib/logger.js';
 /**
  * Trading API XML builders for the listing lifecycle (Trade-First refactor, Option B).
  * Pure functions: typed input → request XML. Terms INLINE (Decision 5):
@@ -6,6 +7,8 @@ import { AppError } from '../middleware/error.js';
  * buyer-paid USPS. ConditionID numeric (N2). Account must be opted OUT of Business Policies.
  */
 import { escapeXml } from './ebay-trading-client.js';
+
+const logger = createLogger('ebay-trading-builders');
 
 const XML_DECL = '<?xml version="1.0" encoding="utf-8"?>';
 const NS = 'urn:ebay:apis:eBLBaseComponents';
@@ -163,6 +166,13 @@ function shippingPackageDetails(s: TradingListingInput['shipping']): string {
 
 /** Best Offer auto-accept (G9): only when floor is positive and below the BIN price. */
 function bestOfferDetails(input: TradingListingInput): string {
+  // Explicit disable (BO-4): seller turned Best Offer off — the only path
+  // that clears live state. Revise omission would keep eBay's stored value,
+  // so the toggle-off must be sent explicitly (thresholds are cleared by the
+  // DeletedField entries the caller sets alongside this flag).
+  if (input.bestOfferEnabled === false) {
+    return '<BestOfferDetails><BestOfferEnabled>false</BestOfferEnabled></BestOfferDetails>';
+  }
   const floor = input.bestOfferAutoAcceptPrice;
   const hasFloor = typeof floor === 'number' && floor > 0 && floor < input.price;
   // A valid auto-accept floor implies Best Offer; the per-listing toggle
@@ -171,6 +181,12 @@ function bestOfferDetails(input: TradingListingInput): string {
   const enabled = '<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>';
   const min = input.minimumBestOfferPrice;
   const hasMin = typeof min === 'number' && min > 0 && min < input.price;
+  // Defense-in-depth only (BO-3): the route pre-flight rejects invalid
+  // thresholds with a 422 before any build. Reaching this drop means a
+  // caller bypassed validation — never silent, always logged.
+  if ((typeof floor === 'number' && !hasFloor) || (typeof min === 'number' && !hasMin)) {
+    logger.warn({ price: input.price, bestOfferAutoAcceptPrice: floor, minimumBestOfferPrice: min }, 'Invalid Best Offer threshold reached the XML builder — dropped defensively; pre-flight should have rejected this');
+  }
   // BestOfferAutoAcceptPrice auto-ACCEPTS offers at/above the floor;
   // MinimumBestOfferPrice auto-DECLINES offers below it. Both live in
   // ListingDetails; invalid values are dropped rather than sent for rejection.
@@ -226,14 +242,28 @@ export interface GetItemVerification {
   price: string | null;
   title: string | null;
   photos: string[];
+  // Live Best Offer state (BO-3) — feeds the conflict-time heal. Parsed from
+  // Item.BestOfferDetails / Item.ListingDetails; shape inferred from the
+  // StartPrice attr-or-scalar pattern, live-verification pending.
+  bestOfferEnabled: boolean | null;
+  bestOfferAutoAcceptPrice: number | null;
+  minimumBestOfferPrice: number | null;
 }
 
 /** Read back the live item state from a GetItem response: item specifics (aspects),
  * Brand/MPN, ListingStatus, ItemID and price. Used by the F-GATE verification route. */
 export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification {
-  const empty: GetItemVerification = { found: false, sku: null, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, title: null, photos: [] };
+  const empty: GetItemVerification = { found: false, sku: null, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, title: null, photos: [], bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null };
   const item = getPath(parsed, ['GetItemResponse', 'Item']) as Record<string, unknown> | undefined;
   if (!item) return empty;
+
+  // Attr-or-scalar money value ({ '@_currencyID', '#text' } or bare) → number.
+  const moneyNum = (raw: unknown): number | null => {
+    if (raw == null) return null;
+    const text = typeof raw === 'object' ? (raw as Record<string, unknown>)['#text'] : raw;
+    const n = Number(text);
+    return Number.isFinite(n) ? n : null;
+  };
 
   const aspects: Record<string, string[]> = {};
   const nvlRaw = getPath(item, ['ItemSpecifics', 'NameValueList']);
@@ -277,6 +307,12 @@ export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification
     price,
     title: item.Title != null ? String(item.Title) : null,
     photos,
+    bestOfferEnabled: (() => {
+      const raw = getPath(item, ['BestOfferDetails', 'BestOfferEnabled']);
+      return raw == null ? null : String(raw) === 'true';
+    })(),
+    bestOfferAutoAcceptPrice: moneyNum(getPath(item, ['ListingDetails', 'BestOfferAutoAcceptPrice'])),
+    minimumBestOfferPrice: moneyNum(getPath(item, ['ListingDetails', 'MinimumBestOfferPrice'])),
   };
 }
 

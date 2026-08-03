@@ -3,7 +3,11 @@ import { computePriceBands } from '../lib/pricing.js';
 import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
-import { callTradingApi } from './ebay-trading-client.js';
+import { callTradingApi, EbayTradingError } from './ebay-trading-client.js';
+
+// Stable eBay Trading codes for price-vs-threshold conflicts (BO-2):
+// 22003 = auto-decline amount >= Buy It Now price, 23004 = auto-accept >= price.
+const BEST_OFFER_THRESHOLD_CODES = new Set([22003, 23004]);
 import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml, buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
 import { EBAY_USER_AGENT } from './ebay-constants.js';
 import type {
@@ -237,6 +241,10 @@ export interface EbayItemVerification {
   listingId: string | null;
   /** The live StartPrice on eBay, or null. */
   price: string | null;
+  /** Live Best Offer state (BO-3) — feeds the conflict-time threshold heal. */
+  bestOfferEnabled: boolean | null;
+  bestOfferAutoAcceptPrice: number | null;
+  minimumBestOfferPrice: number | null;
 }
 
 /**
@@ -511,7 +519,9 @@ export class EbayAdapter implements MarketplaceAdapter {
         || input.conditionNotes?.trim().slice(0, 1000)
         || undefined,
       sku,
-      pictureUrls: input.photos.map((p) => p.url),
+      // Partial updates (e.g. price + Best Offer fields) can reach the full
+      // revise with no photos — omitted PictureDetails keeps eBay's pictures.
+      pictureUrls: (input.photos ?? []).map((p) => p.url),
       aspects: canonical,
       shipping: {
         originPostalCode,
@@ -539,6 +549,17 @@ export class EbayAdapter implements MarketplaceAdapter {
       // publish sheet (ride marketplaceSpecific; not part of prepared fields).
       bestOfferEnabled: typeof specific.bestOfferEnabled === 'boolean' ? specific.bestOfferEnabled : undefined,
       minimumBestOfferPrice: typeof specific.minimumBestOfferPrice === 'number' ? specific.minimumBestOfferPrice : undefined,
+      // Explicit disable (BO-4): toggle-off is the ONLY path that clears the
+      // stored thresholds on the live listing — seller intent, never auto.
+      // MUST spread LAST: object literals apply later keys last, so the
+      // threshold mappings above would otherwise resurrect the stored values
+      // (audit finding #3, 2026-08-03).
+      ...(specific.bestOfferEnabled === false ? {
+        bestOfferAutoAcceptPrice: undefined,
+        minimumBestOfferPrice: undefined,
+        deleteBestOfferAutoAcceptPrice: true,
+        deleteMinimumBestOfferPrice: true,
+      } : {}),
     };
   }
 
@@ -635,6 +656,15 @@ export class EbayAdapter implements MarketplaceAdapter {
     try {
       parsed = await callAdd(true);
     } catch (err) {
+      // BO-2: a threshold conflict at publish means the seller's numbers are
+      // wrong for this price — surface them; silently dropping the config
+      // (the old behavior) is forbidden. Only the category-unsupported case
+      // (prose match, no stable eBay id) keeps the warn-downgrade at create —
+      // operator decision 2026-08-03.
+      if (err instanceof EbayTradingError && err.errorCodes.some((c) => BEST_OFFER_THRESHOLD_CODES.has(c))) {
+        throw new AppError(422, 'BEST_OFFER_CONFLICT',
+          `The Best Offer settings conflict with the price $${tradingInput.price} — both thresholds must be below the price. eBay said: ${(err as Error).message}`);
+      }
       if (wantsBestOffer && EbayAdapter.isBestOfferRejection(err)) {
         logger.warn({ userId: this.userId, sku, error: (err as Error).message }, 'eBay rejected Best Offer — retrying AddFixedPriceItem without it');
         bestOfferDowngraded = true;
@@ -673,19 +703,34 @@ export class EbayAdapter implements MarketplaceAdapter {
       input.title || input.description || input.photos || input.brand || input.model || input.mpn ||
       input.condition || input.features ||
       specific.aspects || specific.weight || specific.dimensions || specific.categoryId ||
-      specific.conditionId || specific.condition || specific.conditionDescription,
+      specific.conditionId || specific.condition || specific.conditionDescription ||
+      // Best Offer fields live in the full item body — the fast path would
+      // silently drop them (CodeRabbit, BO-6 audit defense-in-depth).
+      specific.bestOfferEnabled !== undefined || specific.bestOfferAutoAcceptPrice !== undefined ||
+      specific.minimumBestOfferPrice !== undefined,
     );
 
     if (!hasContentChange && (input.price !== undefined || input.quantity !== undefined)) {
-      await callTradingApi(
-        'ReviseInventoryStatus',
-        buildReviseInventoryStatusXml(
-          marketplaceListingId,
-          { price: input.price, quantity: input.quantity, currency: input.currency ?? 'USD' },
+      try {
+        await callTradingApi(
+          'ReviseInventoryStatus',
+          buildReviseInventoryStatusXml(
+            marketplaceListingId,
+            { price: input.price, quantity: input.quantity, currency: input.currency ?? 'USD' },
+            token,
+          ),
           token,
-        ),
-        token,
-      );
+        );
+      } catch (err) {
+        // eBay validates a price change against thresholds STORED on the live
+        // listing even here — same typed contract as the full revise
+        // (CodeRabbit, BO-6). Never a retry, never a deletion.
+        if (err instanceof EbayTradingError && err.errorCodes.some((c) => BEST_OFFER_THRESHOLD_CODES.has(c))) {
+          throw new AppError(422, 'BEST_OFFER_CONFLICT',
+            `The price $${input.price} is at or below this listing's Best Offer settings on eBay — adjust the offer thresholds together with the price. eBay said: ${(err as Error).message}`);
+        }
+        throw err;
+      }
       logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay price/qty revised via ReviseInventoryStatus');
       return { marketplaceListingId, marketplaceUrl, status: 'active' };
     }
@@ -694,63 +739,55 @@ export class EbayAdapter implements MarketplaceAdapter {
     // SKU is only re-sent when the caller supplies one, so a revise never rewrites it.
     const tradingInput = await this.buildTradingInput(input as MarketplaceListingInput, input.ebaySku);
 
-    // Best Offer category support isn't verifiable pre-flight — on a best-offer
-    // rejection, retry the revise once without it rather than failing the whole edit.
-    let bestOfferDowngraded = false;
-    const BEST_OFFER_DOWNGRADE_WARNING = 'Updated without Best Offer auto-accept — eBay rejected it for this listing.';
-
     // Zero-photo item: eBay's Revise treats an omitted PictureDetails as
     // "keep the existing pictures". Refusing outright would starve every
     // other field (price, title) of sync for such items — proceed, keep
     // eBay's pictures, and surface the divergence as a warning instead.
     const photosEmpty = tradingInput.pictureUrls.length === 0;
     const EMPTY_PHOTOS_WARNING = 'Item has no photos — the eBay listing keeps its existing pictures until you add one.';
-    const callRevise = (withBestOffer: boolean): Promise<Record<string, unknown>> =>
-      callTradingApi(
+
+    // BO-2: updates never downgrade-retry. The seller's Best Offer
+    // configuration is authoritative — any rejection surfaces as a typed
+    // 422 the seller resolves; nothing is deleted or stripped to force the
+    // edit through. (createListing keeps its warn-downgrade for the
+    // category-unsupported case at first publish only — operator decision
+    // 2026-08-03.)
+    const wantsBestOffer = !!(tradingInput.bestOfferAutoAcceptPrice || tradingInput.bestOfferEnabled);
+    try {
+      await callTradingApi(
         'ReviseFixedPriceItem',
         buildReviseFixedPriceItemXml(
           marketplaceListingId,
-          {
-            // Downgrade retry must DELETE the thresholds, not merely omit
-            // them: Revise omission keeps the values stored on the live
-            // listing, so a price lowered to/below a stored auto-accept
-            // amount re-fails with 23004 until the field is deleted.
-            ...(withBestOffer ? tradingInput : {
-              ...tradingInput,
-              // Clear the toggle too (parity with createListing) — a category
-              // that rejects Best Offer outright fails on BestOfferEnabled
-              // alone, thresholds deleted or not.
-              bestOfferEnabled: undefined,
-              bestOfferAutoAcceptPrice: undefined,
-              minimumBestOfferPrice: undefined,
-              deleteBestOfferAutoAcceptPrice: true,
-              deleteMinimumBestOfferPrice: true,
-            }),
-            ...(photosEmpty ? { allowEmptyPictures: true } : {}),
-          },
+          { ...tradingInput, ...(photosEmpty ? { allowEmptyPictures: true } : {}) },
           token,
         ),
         token,
       );
-
-    // Same gate as createListing (audit M1): floor-only configs — enabled +
-    // minimum with no auto-accept — must downgrade-retry too.
-    const wantsBestOffer = !!(tradingInput.bestOfferAutoAcceptPrice || tradingInput.bestOfferEnabled);
-    try {
-      await callRevise(true);
     } catch (err) {
-      if (wantsBestOffer && EbayAdapter.isBestOfferRejection(err)) {
-        logger.warn({ userId: this.userId, itemId: marketplaceListingId, error: (err as Error).message }, 'eBay rejected Best Offer — retrying ReviseFixedPriceItem without it');
-        bestOfferDowngraded = true;
-        await callRevise(false);
-      } else {
-        throw err;
+      // Threshold conflicts: stable codes 22003 (auto-decline) / 23004
+      // (auto-accept), both observed live 2026-08-03. These can fire from
+      // thresholds STORED on the live listing even when this revise sent
+      // none — surface the numbers, never delete-and-retry.
+      if (err instanceof EbayTradingError && err.errorCodes.some((c) => BEST_OFFER_THRESHOLD_CODES.has(c))) {
+        const parts = [
+          ...(tradingInput.bestOfferAutoAcceptPrice !== undefined ? [`auto-accept $${tradingInput.bestOfferAutoAcceptPrice}`] : []),
+          ...(tradingInput.minimumBestOfferPrice !== undefined ? [`minimum offer $${tradingInput.minimumBestOfferPrice}`] : []),
+        ];
+        const configured = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+        throw new AppError(422, 'BEST_OFFER_CONFLICT',
+          `The price $${tradingInput.price} is at or below this listing's Best Offer settings${configured} — adjust the offer thresholds together with the price. eBay said: ${(err as Error).message}`);
       }
+      // Category-level rejection (prose only — eBay has no stable id): the
+      // seller turns offers off; the app never strips them on an update.
+      if (wantsBestOffer && EbayAdapter.isBestOfferRejection(err)) {
+        throw new AppError(422, 'BEST_OFFER_UNSUPPORTED',
+          'eBay does not allow Best Offer in this listing\'s category — turn off offers for this listing, then save again.');
+      }
+      throw err;
     }
 
     logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay listing revised via ReviseFixedPriceItem');
     const warnings = [
-      ...(bestOfferDowngraded ? [BEST_OFFER_DOWNGRADE_WARNING] : []),
       ...(photosEmpty ? [EMPTY_PHOTOS_WARNING] : []),
     ];
     return {
@@ -795,9 +832,9 @@ export class EbayAdapter implements MarketplaceAdapter {
       const token = await getEbayAccessToken(this.userId);
       const parsed = await callTradingApi('GetItem', buildGetItemXml(itemId, token), token);
       const v = parseGetItemVerification(parsed);
-      return { sku: v.sku, found: v.found, aspects: v.aspects, mpn: v.mpn, brand: v.brand, status: v.status, listingId: v.listingId, price: v.price };
+      return { sku: v.sku, found: v.found, aspects: v.aspects, mpn: v.mpn, brand: v.brand, status: v.status, listingId: v.listingId, price: v.price, bestOfferEnabled: v.bestOfferEnabled, bestOfferAutoAcceptPrice: v.bestOfferAutoAcceptPrice, minimumBestOfferPrice: v.minimumBestOfferPrice };
     } catch {
-      return { sku: null, found: false, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null };
+      return { sku: null, found: false, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null };
     }
   }
 

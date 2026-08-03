@@ -13,6 +13,7 @@ import { ListingPreviewCard } from "../listing/listing-preview-card";
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
 import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
+import { BestOfferFloorNote } from "./best-offer-floor-note";
 import { ShippingConfigCard } from "./shipping-config-card";
 import { PricingStrategyPicker } from "./pricing-strategy-picker";
 import { PhotoCaptureOverlay } from "./photo-capture-overlay";
@@ -474,10 +475,25 @@ function ChatMode({
     }
   };
 
+  // BO-5: an AI-prepared auto-accept floor must be SEEN before it publishes.
+  // "Remove" strips it from every publish path below; seller intent wins.
+  const [floorCleared, setFloorCleared] = useState(false);
+  // A removed floor applies to THIS item only (CodeRabbit): the next
+  // listing's prepared floor must be visible again.
+  useEffect(() => { setFloorCleared(false); }, [state.inventoryItemId]);
+  const preparedFloor = state.marketplace === "ebay" && !floorCleared
+    ? (prepareListing.data?.ebay as { bestOfferAutoAcceptPrice?: number } | null | undefined)?.bestOfferAutoAcceptPrice
+    : undefined;
+  const effectivePreparedEbay = () => {
+    const prepared = prepareListing.data?.ebay ?? null;
+    if (!prepared || !floorCleared) return prepared;
+    return { ...prepared, bestOfferAutoAcceptPrice: undefined };
+  };
+
   // Fallback Review pill (shown when no AI-prepared card). Pass the same context
   // as the ListingPreviewCard path so eBay prepared fields + publishMode aren't
   // dropped — this pill has no draft/live toggle, so live is the intended mode.
-  const handlePublish = () => runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode: "live" });
+  const handlePublish = () => runPublish({ ebayPreparedFields: effectivePreparedEbay(), publishMode: "live" });
 
   const candidate = state.recognition.candidates[state.recognition.selectedIndex];
   const primaryPhoto = state.photos[state.primaryPhotoIndex];
@@ -511,6 +527,10 @@ function ChatMode({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, paddingBottom: 24 }}>
       <style>{`@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }`}</style>
+
+      {typeof preparedFloor === "number" && (
+        <BestOfferFloorNote floor={preparedFloor} onClear={() => setFloorCleared(true)} />
+      )}
 
       {/* ── Idle prompt ── */}
       {showIdle && (
@@ -796,7 +816,7 @@ function ChatMode({
             onQuantityChange={(q) => setField("quantity", q)}
             onPublish={(marketplace, publishMode, aspects, reverbCategoryUuid) => {
               setField("marketplace", marketplace);
-              runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode, aspects, reverbCategoryUuid });
+              runPublish({ ebayPreparedFields: effectivePreparedEbay(), publishMode, aspects, reverbCategoryUuid });
             }}
             isPublishing={state.publishStatus === "publishing"}
             sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}

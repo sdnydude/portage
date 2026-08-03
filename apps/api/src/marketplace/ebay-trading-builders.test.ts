@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+const { mockBuilderWarn } = vi.hoisted(() => ({ mockBuilderWarn: vi.fn() }));
+vi.mock('../lib/logger.js', () => ({
+  createLogger: () => ({ warn: mockBuilderWarn, info: vi.fn(), debug: vi.fn(), error: vi.fn() }),
+}));
 import {
   buildAddFixedPriceItemXml,
   buildVerifyAddFixedPriceItemXml,
@@ -305,6 +309,14 @@ describe('parseGetItemStatus', () => {
   });
 });
 
+describe('bestOfferDetails defensive drop (BO-3)', () => {
+  it('warn-logs when an invalid floor is dropped at the builder — pre-flight should make this unreachable', () => {
+    mockBuilderWarn.mockClear();
+    buildAddFixedPriceItemXml({ ...baseInput, price: 199, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 220 }, 'tok');
+    expect(mockBuilderWarn).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('parseGetItemVerification', () => {
   it('reads aspects, MPN, Brand, status, ItemID and price from a GetItem response', () => {
     const parsed = {
@@ -329,6 +341,23 @@ describe('parseGetItemVerification', () => {
     expect(v.aspects.MPN).toEqual(['HD600']);
     expect(v.mpn).toBe('HD600');
     expect(v.brand).toBe('Sennheiser');
+  });
+
+  it('reads live Best Offer state — enabled flag + both thresholds, attr-or-scalar (BO-3)', () => {
+    const parsed = {
+      GetItemResponse: { Item: {
+        ItemID: '307100024169',
+        BestOfferDetails: { BestOfferEnabled: 'true' },
+        ListingDetails: {
+          BestOfferAutoAcceptPrice: { '@_currencyID': 'USD', '#text': 269 },
+          MinimumBestOfferPrice: 249,
+        },
+      } },
+    };
+    const v = parseGetItemVerification(parsed);
+    expect(v.bestOfferEnabled).toBe(true);
+    expect(v.bestOfferAutoAcceptPrice).toBe(269);
+    expect(v.minimumBestOfferPrice).toBe(249);
   });
 
   it('returns found:false with null fields when the response carries no Item', () => {
