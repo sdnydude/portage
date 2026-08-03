@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { items, listings, sellerProfiles, marketplaceSyncLog } from './schema.js';
+import { items, listings, sellerProfiles, marketplaceSyncLog, syncJobs } from './schema.js';
 
 // In a schema-push workflow with no migration files, these shape assertions are
 // the only guard against accidental column drift. They cover the four columns
@@ -68,5 +68,22 @@ describe('schema — marketplace_sync_log (sync refactor P1)', () => {
     expect(marketplaceSyncLog.errors.notNull).toBe(false);
     expect(marketplaceSyncLog.durationMs.notNull).toBe(false);
     expect(marketplaceSyncLog.createdAt.notNull).toBe(true);
+  });
+});
+
+// P2 of the sync refactor: the outbox. PATCH paths enqueue; the in-process
+// worker claims due jobs and executes via syncItemListingRow.
+describe('schema — sync_jobs outbox (sync refactor P2)', () => {
+  it('defines syncJobs with claimable status, retry bookkeeping, and CASCADE listing/item links', () => {
+    expect(syncJobs.userId.notNull).toBe(true);
+    expect(syncJobs.itemId.notNull).toBe(true);      // worker re-reads the item — job is a pointer, not a snapshot
+    expect(syncJobs.listingId.notNull).toBe(true);   // one job per listing row; coalesced on enqueue
+    expect(syncJobs.marketplace.notNull).toBe(true);
+    expect(syncJobs.trigger.notNull).toBe(true);
+    expect(syncJobs.status.notNull).toBe(true);      // pending | running | success | failed
+    expect(syncJobs.attempts.notNull).toBe(true);
+    expect(syncJobs.nextRunAt.notNull).toBe(true);
+    expect(syncJobs.includePhotos.notNull).toBe(true); // photo diff flag survives the queue hop
+    expect(syncJobs.lastError.notNull).toBe(false);
   });
 });

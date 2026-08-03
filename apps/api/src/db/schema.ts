@@ -20,6 +20,7 @@ export const packageTypeEnum = pgEnum('package_type', ['box', 'envelope', 'poly_
 export const messageDirectionEnum = pgEnum('message_direction', ['inbound', 'outbound']);
 export const syncStatusEnum = pgEnum('sync_status', ['success', 'failure']);
 export const syncTriggerEnum = pgEnum('sync_trigger', ['item_edit', 'listing_edit', 'photo', 'publish', 'mass_sync']);
+export const syncJobStatusEnum = pgEnum('sync_job_status', ['pending', 'running', 'success', 'failed']);
 export const messageTypeEnum = pgEnum('message_type', ['asq', 'rtq', 'aaq']);
 
 export const users = pgTable('users', {
@@ -380,4 +381,29 @@ export const marketplaceSyncLog = pgTable('marketplace_sync_log', {
 }, (t) => [
   index('idx_sync_log_user_created').on(t.userId, t.createdAt),
   index('idx_sync_log_listing_id').on(t.listingId),
+]);
+
+// Outbox for marketplace edit-sync (sync refactor P2). A job is a POINTER
+// (item + listing ids), not a field snapshot — the worker re-reads current
+// rows at run time, so rapid successive edits coalesce naturally and the
+// newest state always wins. Enqueue deletes pending siblings per listing.
+export const syncJobs = pgTable('sync_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  itemId: uuid('item_id').notNull().references(() => items.id, { onDelete: 'cascade' }),
+  listingId: uuid('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  marketplace: marketplaceEnum('marketplace').notNull(),
+  trigger: syncTriggerEnum('trigger').notNull(),
+  status: syncJobStatusEnum('status').notNull().default('pending'),
+  // Photo diff flag: true only when the triggering edit changed photos, so
+  // the worker knows whether to pay Reverb's photo-sweep cost.
+  includePhotos: boolean('include_photos').notNull().default(false),
+  attempts: integer('attempts').notNull().default(0),
+  nextRunAt: timestamp('next_run_at').notNull().defaultNow(),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_sync_jobs_due').on(t.status, t.nextRunAt),
+  index('idx_sync_jobs_listing_id').on(t.listingId),
 ]);
