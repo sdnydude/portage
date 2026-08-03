@@ -495,6 +495,27 @@ describe('PATCH /items/:id', () => {
     expect(res.body.syncWarnings?.some((w: string) => /could not be queued/.test(w))).toBe(true);
   });
 
+  it('warns with the numbers when a new item price conflicts with a listing\'s Best Offer thresholds — 200, item saved, job still queued (BO-3)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, price: 199 }]);
+    mockSelectReturnOnce([{
+      id: 'row-e1', marketplace: 'ebay', status: 'active', marketplaceListingId: '307100136291', ebaySku: 'PRT-X', currency: 'USD',
+      marketplaceSpecificFields: { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209 },
+    }]);
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 199 });
+
+    expect(res.status).toBe(200); // the item is a local fact across marketplaces — never blocked
+    expect(res.body.syncWarnings?.join(' ')).toMatch(/209/);
+    expect(valuesSpy).toHaveBeenCalled(); // job still enqueued — worker terminal-fails with the durable record
+  });
+
   it('does not leak raw database error text into syncWarnings on enqueue failure (audit m2)', async () => {
     mockSelectReturnOnce([{ id: 'item-1' }]); // existence
     mockUpdateReturns([{ ...MOCK_ITEM, title: 'Saved' }]);

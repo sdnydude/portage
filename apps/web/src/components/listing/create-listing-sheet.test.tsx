@@ -206,6 +206,25 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     expect(fields.bestOfferAutoAcceptPrice).toBe(85);
   });
 
+  it("seeds visible Best Offer fields from initialBestOffer so an AI-prepared floor is seen, not invisible config (BO-5)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} initialBestOffer={{ bestOfferAutoAcceptPrice: 85 }} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    // The seed is visible in the sheet, not just riding the POST silently.
+    expect(screen.getByLabelText("Auto-accept at ($)")).toHaveValue(85);
+
+    fireEvent.click(screen.getByText("Save Draft"));
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown>;
+    expect(fields.bestOfferEnabled).toBe(true);
+    expect(fields.bestOfferAutoAcceptPrice).toBe(85);
+  });
+
   it("sends offersEnabledExplicit only when the Reverb toggle is touched; untouched sends no offer fields", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {

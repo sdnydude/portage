@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   prepare: vi.fn(),
   prepError: null as string | null,
   prepDataNull: false,
+  prepEbay: null as Record<string, unknown> | null,
   cardProps: {} as Record<string, unknown>,
   shipCardProps: {} as Record<string, unknown>,
   setField: vi.fn(),
@@ -77,7 +78,7 @@ vi.mock("@/hooks/use-prepare-listing", () => ({
       model: "AE-1",
       pricing: { suggested: 100, low: 80, high: 120, currency: "USD", confidence: "high", basedOn: 3, conditionMatch: "exact" },
       comps: { ebay: null, reverb: null },
-      ebay: null,
+      ebay: h.prepEbay,
       reverb: null,
       isMusicGear: false,
       aiConfidence: 0.9,
@@ -112,6 +113,16 @@ vi.mock("./pricing-strategy-picker", () => ({ PricingStrategyPicker: () => null 
 vi.mock("./photo-capture-overlay", () => ({ PhotoCaptureOverlay: () => null }));
 
 import { HybridFlow } from "./hybrid-flow";
+
+describe("HybridFlow — AI-prepared Best Offer floor is visible (BO-5)", () => {
+  it("renders the prepared auto-accept floor so it never publishes unseen", () => {
+    h.prepEbay = { bestOfferAutoAcceptPrice: 85, weight: { value: 16, unit: "OUNCE" }, dimensions: { length: 8, width: 6, height: 4 }, packageType: null, categoryId: "175669" };
+    render(<HybridFlow />);
+    expect(screen.getByText(/\$85/)).toBeInTheDocument();
+    expect(screen.getByText(/auto-accept/i)).toBeInTheDocument();
+    h.prepEbay = null;
+  });
+});
 
 describe("HybridFlow — photo editing wiring (S2.5-8)", () => {
   it("passes the flow's updatePhoto to ListingPreviewCard so editor tools persist into flow state", () => {

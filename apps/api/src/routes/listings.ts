@@ -10,6 +10,7 @@ import { CURRENT_DISCLAIMER_VERSION } from '@portage/shared';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
+import { validateBestOfferThresholds, healBestOfferFromLive } from '../lib/best-offer.js';
 import { ensureItemEbaySku } from '../marketplace/ebay-sku.js';
 import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
 import { applyFooter, descriptionLimitFor } from '../lib/footer.js';
@@ -437,6 +438,14 @@ listingsRouter.post('/', async (req, res, next) => {
     // a local draft (N1) — no marketplace call.
     const shouldPublish = body.publishMode === 'live' || (body.publishMode === undefined && body.publishImmediately);
 
+    // BO-3 pre-flight at create: thresholds at/above the price used to be
+    // silently dropped by the XML builder — configured functionality
+    // discarded without a word. Reject with the numbers instead.
+    if (body.marketplace === 'ebay' && body.marketplaceSpecificFields) {
+      const boCheck = validateBestOfferThresholds(body.price, body.marketplaceSpecificFields as { bestOfferAutoAcceptPrice?: number; minimumBestOfferPrice?: number });
+      if (!boCheck.ok) throw new AppError(422, 'BEST_OFFER_CONFLICT', boCheck.message);
+    }
+
     // R3 insert-first: persist the row BEFORE any eBay call so a crash/throw between
     // the AddFixedPriceItem 200 and the DB write cannot orphan a live listing. The row
     // starts as a draft with a null marketplaceListingId and an idempotency key; a
@@ -716,7 +725,43 @@ listingsRouter.patch('/:id', async (req, res, next) => {
     } = {};
     if (body.price !== undefined) updates.price = body.price;
     if (body.status !== undefined) updates.status = body.status;
-    if (body.marketplaceSpecificFields !== undefined) updates.marketplaceSpecificFields = body.marketplaceSpecificFields;
+    if (body.marketplaceSpecificFields !== undefined) {
+      // BO-3: shallow-merge into the stored specifics; a null value deletes
+      // its key. Wholesale replace forced clients to read-spread the whole
+      // object (lost-update risk), and the Best Offer UI needs an explicit
+      // "clear this threshold" affordance.
+      const stored = (existing.marketplaceSpecificFields as Record<string, unknown> | null) ?? {};
+      const merged = { ...stored };
+      for (const [k, v] of Object.entries(body.marketplaceSpecificFields)) {
+        if (v === null) delete merged[k];
+        else merged[k] = v;
+      }
+      updates.marketplaceSpecificFields = merged;
+    }
+
+    // BO-3 pre-flight: a price at/below the listing's Best Offer thresholds
+    // can never sync — reject BEFORE saving so the local price never
+    // diverges from eBay. On a local conflict the thresholds are first
+    // healed from the live listing (eBay owns Best Offer truth; the stored
+    // copy may be stale or phantom), then re-checked. One GetItem, conflict
+    // path only. The seller fixes price + thresholds in one edit.
+    const effectivePrice = body.price ?? existing.price;
+    if (existing.marketplace === 'ebay' && existing.marketplaceListingId && effectivePrice != null
+        && (body.price !== undefined || body.marketplaceSpecificFields !== undefined) && body.status !== 'archived') {
+      let effectiveSpecific = (updates.marketplaceSpecificFields
+        ?? existing.marketplaceSpecificFields ?? {}) as Record<string, unknown>;
+      let check = validateBestOfferThresholds(Number(effectivePrice), effectiveSpecific);
+      if (!check.ok) {
+        const adapter = getAdapter(userId, 'ebay') as EbayAdapter;
+        const healResult = await healBestOfferFromLive(adapter, existing.marketplaceListingId, effectiveSpecific);
+        if (healResult.healed) {
+          effectiveSpecific = healResult.specific;
+          updates.marketplaceSpecificFields = healResult.specific;
+        }
+        check = validateBestOfferThresholds(Number(effectivePrice), effectiveSpecific);
+        if (!check.ok) throw new AppError(422, 'BEST_OFFER_CONFLICT', check.message);
+      }
+    }
 
     const [updated] = await db.update(listings)
       .set({ ...updates, updatedAt: new Date() })
@@ -859,6 +904,14 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
       .limit(1);
 
     if (!item) throw new AppError(404, 'NOT_FOUND', 'Associated item not found');
+
+    // BO-3 pre-flight: same gate as POST /listings — a draft whose stored
+    // thresholds conflict with its price must be fixed, never silently
+    // published without the seller's offer settings.
+    if (listing.marketplace === 'ebay' && listing.marketplaceSpecificFields) {
+      const boCheck = validateBestOfferThresholds(Number(listing.price), listing.marketplaceSpecificFields as { bestOfferAutoAcceptPrice?: number; minimumBestOfferPrice?: number });
+      if (!boCheck.ok) throw new AppError(422, 'BEST_OFFER_CONFLICT', boCheck.message);
+    }
 
     const adapter = getAdapter(userId, listing.marketplace);
     const photos = (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [];

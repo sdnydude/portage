@@ -10,6 +10,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { enqueueItemSync } from '../lib/sync-worker.js';
+import { validateBestOfferThresholds } from '../lib/best-offer.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
 import type { MarketplaceData } from '@portage/shared';
 import { MAX_PHOTOS_PER_ITEM } from '@portage/shared';
@@ -560,6 +561,16 @@ itemsRouter.patch('/:id', async (req, res, next) => {
         // revisable via the same PUT — so Reverb syncs on listingId alone.
         if (!syncId) continue;
         if (listed.marketplace === 'ebay' && listed.status !== 'active') continue;
+        // BO-3: an item price at/below a listing's Best Offer thresholds will
+        // deterministically fail the sync. The item save is never blocked (it
+        // spans marketplaces) — warn with the numbers here, and let the job
+        // terminal-fail in the worker for the durable record + badge.
+        if (body.price !== undefined && listed.marketplace === 'ebay') {
+          const boCheck = validateBestOfferThresholds(body.price, (listed.marketplaceSpecificFields ?? {}) as { bestOfferAutoAcceptPrice?: number; minimumBestOfferPrice?: number });
+          if (!boCheck.ok) {
+            syncWarnings.push(`ebay: listing ${syncId} — ${boCheck.message}`);
+          }
+        }
         try {
           await enqueueItemSync({
             userId,

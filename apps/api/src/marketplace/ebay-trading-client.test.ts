@@ -78,6 +78,16 @@ describe('ebay-trading-client', () => {
         .rejects.toThrow('Auth token invalid');
     });
 
+    it('failure errors carry stable eBay ErrorCodes for typed handling upstream (BO-1)', async () => {
+      mockFetch.mockReturnValue(xmlResponse(
+        '<ReviseFixedPriceItemResponse><Ack>Failure</Ack><Errors><ShortMessage>Auto decline amount cannot be greater than or equal to the Buy It Now price.</ShortMessage><ErrorCode>22003</ErrorCode></Errors><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></ReviseFixedPriceItemResponse>'
+      ));
+
+      const err = await callTradingApi('ReviseFixedPriceItem', '<Req/>', 'token').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect((err as { errorCodes?: number[] }).errorCodes).toEqual([22003, 23004]);
+    });
+
     it('throws on HTTP error', async () => {
       mockFetch.mockReturnValue(xmlResponse('<Error/>', 500));
 

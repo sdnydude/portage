@@ -34,6 +34,10 @@ interface CreateListingSheetProps {
   /** Scan-review ride-along: seed the eBay shipping fields. A seed IS seller
    *  intent (they set it on the review screen), so it counts as touched. */
   initialShipping?: ShippingFieldsValue;
+  /** BO-5: seed the eBay Best Offer fields VISIBLY (e.g. an AI-prepared
+   *  auto-accept floor) — a value the seller sees and can change, never
+   *  invisible config riding the POST. Counts as touched, like shipping. */
+  initialBestOffer?: { bestOfferAutoAcceptPrice?: number; minimumBestOfferPrice?: number };
   /** F1: seed the publish-now toggle (e.g. seller profile default = live). */
   initialPublishNow?: boolean;
   /**
@@ -45,7 +49,7 @@ interface CreateListingSheetProps {
   onClose: () => void;
 }
 
-export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialShipping, initialPublishNow = false, allowedMarketplaces, onCreated, onClose }: CreateListingSheetProps) {
+export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialShipping, initialBestOffer, initialPublishNow = false, allowedMarketplaces, onCreated, onClose }: CreateListingSheetProps) {
   const { token } = useAuth();
   // F3b: within the 7-day window the terms sheet is skipped (consent still recorded).
   const { disclaimerSuppressed } = useUserPreferences();
@@ -69,13 +73,14 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // Per-listing "Accept offers" (beta request 1ad18a5b). Untouched → nothing is
   // sent and the server/profile defaults apply (eBay: off; Reverb: profile,
   // default on). Only an explicit user flip rides the POST.
-  const [acceptOffers, setAcceptOffers] = useState(marketplace === "reverb");
+  const [acceptOffers, setAcceptOffers] = useState(marketplace === "reverb" || initialBestOffer != null);
   // Touched PER MARKETPLACE (review finding 2026-08-02): an eBay flip must not
   // ride a later Reverb POST as offersEnabledExplicit (or vice versa) — same
-  // separation the shipping refs already have.
-  const offersTouched = useRef<{ ebay: boolean; reverb: boolean }>({ ebay: false, reverb: false });
-  const [minOffer, setMinOffer] = useState("");
-  const [autoAcceptOffer, setAutoAcceptOffer] = useState("");
+  // separation the shipping refs already have. An initialBestOffer seed counts
+  // as touched (BO-5, same contract as initialShipping).
+  const offersTouched = useRef<{ ebay: boolean; reverb: boolean }>({ ebay: initialBestOffer != null, reverb: false });
+  const [minOffer, setMinOffer] = useState(initialBestOffer?.minimumBestOfferPrice != null ? String(initialBestOffer.minimumBestOfferPrice) : "");
+  const [autoAcceptOffer, setAutoAcceptOffer] = useState(initialBestOffer?.bestOfferAutoAcceptPrice != null ? String(initialBestOffer.bestOfferAutoAcceptPrice) : "");
   // Advertising (beta request 55639b6e): eBay Promoted Listings ad rate /
   // Reverb Bump bid. Off by default; nothing rides the POST until toggled.
   const [promote, setPromote] = useState(false);

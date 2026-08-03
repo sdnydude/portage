@@ -198,6 +198,72 @@ describe("ListingCard actions", () => {
   });
 });
 
+describe("ListingCard — Best Offer edit (BO-5)", () => {
+  const BO_LISTING = {
+    ...LISTING,
+    marketplaceSpecificFields: { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199 },
+  };
+
+  it("shows Best Offer fields pre-filled from the stored config when editing the price of an eBay listing", async () => {
+    const user = userEvent.setup();
+    render(<ListingCard listing={BO_LISTING} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+
+    expect(screen.getByLabelText(/auto-accept/i)).toHaveValue(209);
+    expect(screen.getByLabelText(/minimum offer/i)).toHaveValue(199);
+  });
+
+  it("saves edited thresholds with the price — cleared field rides as null so the server deletes it", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string) =>
+      path === "/seller-profile" ? { profile: {} } : { id: "l1" });
+    render(<ListingCard listing={BO_LISTING} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    const accept = screen.getByLabelText(/auto-accept/i);
+    await user.clear(accept);
+    await user.type(accept, "180");
+    const min = screen.getByLabelText(/minimum offer/i);
+    await user.clear(min); // cleared → null → server deletes the key
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      const patch = apiMock.mock.calls.find(([p, opts]) => p === "/listings/l1" && (opts as { method?: string })?.method === "PATCH");
+      expect(patch).toBeDefined();
+      const body = (patch![1] as { body: Record<string, unknown> }).body;
+      expect(body.price).toBe(1200);
+      expect(body.marketplaceSpecificFields).toEqual({
+        bestOfferEnabled: true,
+        bestOfferAutoAcceptPrice: 180,
+        minimumBestOfferPrice: null,
+      });
+    });
+  });
+
+  it("turning offers off sends the explicit disable triple — the only path that clears thresholds", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string) =>
+      path === "/seller-profile" ? { profile: {} } : { id: "l1" });
+    render(<ListingCard listing={BO_LISTING} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    await user.click(screen.getByLabelText(/accept offers/i)); // uncheck
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      const patch = apiMock.mock.calls.find(([p, opts]) => p === "/listings/l1" && (opts as { method?: string })?.method === "PATCH");
+      expect(patch).toBeDefined();
+      const body = (patch![1] as { body: Record<string, unknown> }).body;
+      expect(body.marketplaceSpecificFields).toEqual({
+        bestOfferEnabled: false,
+        bestOfferAutoAcceptPrice: null,
+        minimumBestOfferPrice: null,
+      });
+    });
+  });
+});
+
 describe("ListingCard GTC date (ported from listings/[id]/gtc-date.test.tsx)", () => {
   it("shows the auto-end date when the seller has GTC auto-end on", async () => {
     apiMock.mockImplementation(async (path: string) =>

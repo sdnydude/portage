@@ -17,6 +17,7 @@ import { WeightDimsInputs, type WeightDimsChange } from "../listing/weight-dims-
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
 import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
+import { BestOfferFloorNote } from "./best-offer-floor-note";
 import type { ListingFlowState } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -752,12 +753,24 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
     }
   }, [flow]);
 
+  // BO-5: an AI-prepared auto-accept floor must be SEEN before it publishes.
+  // "Remove" strips it from every publish path below; seller intent wins.
+  const [floorCleared, setFloorCleared] = useState(false);
+  const preparedFloor = state.marketplace === "ebay" && !floorCleared
+    ? (prepareListing.data?.ebay as { bestOfferAutoAcceptPrice?: number } | null | undefined)?.bestOfferAutoAcceptPrice
+    : undefined;
+  const effectivePreparedEbay = useCallback(() => {
+    const prepared = prepareListing.data?.ebay ?? null;
+    if (!prepared || !floorCleared) return prepared;
+    return { ...prepared, bestOfferAutoAcceptPrice: undefined };
+  }, [prepareListing.data, floorCleared]);
+
   // Chat "Publish" pill (primary CTA) + Review fallback. Pass eBay prepared
   // fields + publishMode so they aren't dropped on this path; no draft/live
   // toggle here, so live is the intended mode (matches prior behavior).
   const handlePublish = useCallback(
-    () => runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode: "live" }),
-    [runPublish, prepareListing.data],
+    () => runPublish({ ebayPreparedFields: effectivePreparedEbay(), publishMode: "live" }),
+    [runPublish, effectivePreparedEbay],
   );
 
   // Derive the effective lastStep (merging hook's lastStep with local flags)
@@ -952,7 +965,7 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
                 onQuantityChange={(q) => flow.setField("quantity", q)}
                 onPublish={(marketplace, publishMode, aspects, reverbCategoryUuid) => {
                   flow.setField("marketplace", marketplace);
-                  runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode, aspects, reverbCategoryUuid });
+                  runPublish({ ebayPreparedFields: effectivePreparedEbay(), publishMode, aspects, reverbCategoryUuid });
                 }}
                 isPublishing={state.publishStatus === "publishing"}
                 sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
@@ -977,6 +990,13 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
             >
               Publishing your listing...
             </div>
+          </div>
+        )}
+
+        {/* BO-5: AI-prepared auto-accept floor, visible before publish */}
+        {typeof preparedFloor === "number" && (
+          <div className="mb-3">
+            <BestOfferFloorNote floor={preparedFloor} onClear={() => setFloorCleared(true)} />
           </div>
         )}
 

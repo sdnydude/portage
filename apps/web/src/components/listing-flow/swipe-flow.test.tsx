@@ -24,6 +24,26 @@ const state = {
   marketplace: "ebay",
 } as never;
 
+describe("SwipeFlow ReviewPhase — AI-prepared Best Offer floor is visible (BO-5)", () => {
+  it("renders the prepared auto-accept floor and clears it via Remove", () => {
+    const onClearFloor = vi.fn();
+    render(
+      <ReviewPhase
+        state={state}
+        setField={vi.fn()}
+        onPublish={vi.fn()}
+        updatePhoto={vi.fn()}
+        preparedFloor={85}
+        onClearFloor={onClearFloor}
+      />,
+    );
+
+    expect(screen.getByText(/\$85/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /remove/i }));
+    expect(onClearFloor).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("SwipeFlow ReviewPhase — photo gallery strip + editor overlay (S2.5-9)", () => {
   it("replaces the dumb photo strip with the gallery strip; tapping a thumb opens the editor", () => {
     render(
