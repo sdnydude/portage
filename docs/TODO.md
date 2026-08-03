@@ -369,6 +369,42 @@ Sequencing note (resolved): the onboarding-expansion ship (plan `docs/superpower
 
 ---
 
+## Marketplace Sync Program (plan approved 2026-08-03, whats-next_v4 / reverb-sync-doc.md)
+
+### Shipped
+- [x] P0 contract unification — warnings surfaced, shared enrichment, soft-warn, photo diff (PR #283, e6c2e16)
+- [x] P1 durable sync log — marketplace_sync_log + writes + GET /sync-log (PR #283, c618da7)
+- [x] P2 outbox worker — sync_jobs + in-process worker + PATCH /items enqueue flip (PR #283, aeffe24)
+- [x] P3 UI truth surface — badges, retry, /settings/sync-log, More link (PR #283, f07e6fd)
+- [x] CodeRabbit round — stale-running recovery, includePhotos coalescing, etsy guard, conditionNotes, log warnings (PR #283, fdc28c9)
+- [x] eBay 23004 hotfix — DeletedField clears Best Offer thresholds on downgrade retry (PR #285)
+
+### P4 — approved deferrals (operator, 2026-08-03)
+- [ ] SKU-based reconcile + "Sync all" mass-resync button (single-flight, worker-driven, slow drip per Reverb ToS)
+- [ ] Per-field sync settings; global Auto-Sync / Auto-Publish toggles
+- [ ] Reverb → Portage inventory pull
+- [ ] Reverb order sync + tracking push
+- [ ] Retire item-detail photo-save UI mutex after #283 soaks (added post-approval, disclosed)
+- [ ] CLAUDE.md trio refresh — 19 tables, current test counts, sync architecture (added post-approval, disclosed)
+
+### Gaps from Reverb-doc re-read (2026-08-03) — NOT yet approved as deferrals
+- [ ] Order → cross-marketplace inventory decrement push
+- [ ] Refund → inventory increment push
+
+### Adversarial audit findings (2026-08-03 session audit — fix batch)
+- [ ] CRITICAL: listings.ts PATCH/publish syncs bypass sync_jobs — badge shows stale Synced after a price-edit sync failure (status endpoint must also read marketplace_sync_log, or listings.ts must write job-status rows)
+- [ ] MAJOR: enqueueItemSync delete+insert race → duplicate pending jobs (transaction or partial unique index on listing_id WHERE pending)
+- [ ] MAJOR: use-sync-status stale in-flight poll response can overwrite optimistic retry state and kill the poll loop (request versioning / AbortController)
+- [ ] MAJOR: /sync-log/retry lacks the items.ts status guard — retry possible on sold/archived listings
+- [ ] MAJOR: processDueSyncJobs has no re-entrancy guard — >5s jobs overlap ticks, defeating slow-drip
+- [ ] MINOR: worker target-vanished branch marks success with no sync-log row
+- [ ] MINOR: raw DB error text leaks into items PATCH syncWarnings on enqueue failure
+- [ ] MINOR: sync_jobs/marketplace_sync_log unbounded growth — retention sweep + latest-row window query for /status
+- [ ] MINOR: listingIds not UUID-validated (500 instead of 400 on garbage)
+- [ ] MINOR: /status ORDER BY updatedAt needs id tiebreaker
+
+---
+
 ## Summary
 
 | Phase | Open items | Est |
@@ -381,6 +417,7 @@ Sequencing note (resolved): the onboarding-expansion ship (plan `docs/superpower
 | 6 — Feature completeness | notifications, dashboard trends, photo persistence, eBay listing reconciliation (4) | ~18h |
 | 7 — Quality & hardening | pagination, runner hardening (2) — integration testing, tunnel config, CORS all closed 2026-07-09 | ~5h |
 | Responsive UI Program | R0 shipped (PR #229) · R1 in flight (PR #237) · R2–R4 queued | — |
+| Marketplace Sync Program | P0–P3 + review + 23004 hotfix shipped (PRs #283/#285) · P4 deferred · audit fix batch open (1 crit/4 major/5 minor) | — |
 | ~~Voice-audit sweep~~ | DELETED — evaluator verified A1–A8 all already fixed on main (2026-07-01) | — |
 | Completed (all time) | 48 roadmap tasks + 8 major ships May 26→Jul 1 (PRs #73/#74/#79/#84/#94/#125/#133/#139) | — |
 | Superseded | Task 21 carrier APIs → redirect-to-eBay (stub deleted in W4) | — |

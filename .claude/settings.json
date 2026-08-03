@@ -71,6 +71,16 @@
             "type": "command",
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/enforce-frontend-e2e.sh",
             "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/deferral-gate.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/git-gate.sh",
+            "timeout": 5
           }
         ]
       },
