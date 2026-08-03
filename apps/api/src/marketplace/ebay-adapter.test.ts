@@ -808,6 +808,56 @@ describe('EbayAdapter.updateListing — stored Best Offer threshold vs lowered p
   });
 });
 
+describe('EbayAdapter.updateListing — category-level Best Offer rejection (audit C3)', () => {
+  it('clears BestOfferEnabled on the downgrade retry so a category that rejects Best Offer outright still accepts the revise', async () => {
+    let calls = 0;
+    let secondBody = '';
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      const body = String((opts as RequestInit).body);
+      // Category rejects Best Offer as a feature — ANY body still carrying the
+      // toggle fails, thresholds deleted or not.
+      if (body.includes('<BestOfferEnabled>true</BestOfferEnabled>')) {
+        return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+      }
+      secondBody = body;
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.updateListing('307102403404', {
+      ...baseInput, title: 'New', ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 25 },
+    } as any);
+
+    expect(calls).toBe(2);
+    expect(secondBody).not.toContain('<BestOfferEnabled>true</BestOfferEnabled>');
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/best offer/i);
+  });
+
+  it('downgrade-retries a floor-only config (enabled + minimum, no auto-accept) too — audit M1', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      if (String((opts as RequestInit).body).includes('<BestOfferEnabled>true</BestOfferEnabled>')) {
+        return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+      }
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.updateListing('307102403404', {
+      ...baseInput, title: 'New', ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 20 },
+    } as any);
+
+    expect(calls).toBe(2);
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/best offer/i);
+  });
+});
+
 describe('EbayAdapter.createListing — inline-shipping data guard (Trading)', () => {
   it('throws EbayWeightRequiredError when weight or dims are missing/zero, before any AddFixedPriceItem call', async () => {
     const adapter = new EbayAdapter('user-1');

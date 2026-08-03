@@ -107,6 +107,9 @@ export async function syncItemListingRow(
       if (enriched.warning) warnings.push(`reverb: ${enriched.warning}`);
     } catch (enrichErr) {
       logger.warn({ itemId: item.id, syncId, error: (enrichErr as Error).message }, 'Reverb enrichment failed on item-edit sync — syncing with stored specifics');
+      // Audit M9: without this, seller-profile drift (offers/shipping
+      // defaults) fails to propagate with zero signal anywhere.
+      warnings.push('reverb: seller-profile enrichment failed — synced with stored settings, offers/shipping defaults may be stale');
     }
     const syncResult = await adapter.updateListing(syncId, {
       title: item.title,

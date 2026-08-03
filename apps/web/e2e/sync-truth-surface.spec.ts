@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 
 /**
@@ -27,11 +27,19 @@ const SEED_MESSAGE = "Reverb 422: shipping required (e2e seed)";
 const DB_CONTAINER = process.env.E2E_DB_CONTAINER ?? "portage-e2e-db-1";
 const E2E_USER_EMAIL = process.env.E2E_USER_EMAIL ?? "e2e@portage.app";
 
+// Argument-array exec (audit m7): no shell, so env-sourced values can never
+// become shell syntax on the self-hosted runner.
 function psql(sql: string): string {
-  return execSync(
-    `docker exec ${DB_CONTAINER} psql -U portage -d portage -t -A -c "${sql.replace(/"/g, '\\"')}"`,
+  return execFileSync(
+    "docker",
+    ["exec", DB_CONTAINER, "psql", "-U", "portage", "-d", "portage", "-t", "-A", "-c", sql],
     { encoding: "utf8" },
   ).trim();
+}
+
+// SQL string-literal escape for env-sourced values (audit m7).
+function sqlLit(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function cleanup() {
@@ -42,7 +50,7 @@ function cleanup() {
 }
 
 test.beforeAll(() => {
-  const userId = psql(`SELECT id FROM users WHERE email = '${E2E_USER_EMAIL}' LIMIT 1`);
+  const userId = psql(`SELECT id FROM users WHERE email = ${sqlLit(E2E_USER_EMAIL)} LIMIT 1`);
   expect(userId, `${E2E_USER_EMAIL} must exist (auth.setup's session exchange provisions it)`).toBeTruthy();
   cleanup(); // idempotent re-runs
   psql(`INSERT INTO items (id, user_id, title, description, category, condition, quantity)

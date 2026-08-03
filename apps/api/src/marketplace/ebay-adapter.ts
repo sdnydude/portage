@@ -717,6 +717,10 @@ export class EbayAdapter implements MarketplaceAdapter {
             // amount re-fails with 23004 until the field is deleted.
             ...(withBestOffer ? tradingInput : {
               ...tradingInput,
+              // Clear the toggle too (parity with createListing) — a category
+              // that rejects Best Offer outright fails on BestOfferEnabled
+              // alone, thresholds deleted or not.
+              bestOfferEnabled: undefined,
               bestOfferAutoAcceptPrice: undefined,
               minimumBestOfferPrice: undefined,
               deleteBestOfferAutoAcceptPrice: true,
@@ -729,10 +733,13 @@ export class EbayAdapter implements MarketplaceAdapter {
         token,
       );
 
+    // Same gate as createListing (audit M1): floor-only configs — enabled +
+    // minimum with no auto-accept — must downgrade-retry too.
+    const wantsBestOffer = !!(tradingInput.bestOfferAutoAcceptPrice || tradingInput.bestOfferEnabled);
     try {
       await callRevise(true);
     } catch (err) {
-      if (tradingInput.bestOfferAutoAcceptPrice && EbayAdapter.isBestOfferRejection(err)) {
+      if (wantsBestOffer && EbayAdapter.isBestOfferRejection(err)) {
         logger.warn({ userId: this.userId, itemId: marketplaceListingId, error: (err as Error).message }, 'eBay rejected Best Offer — retrying ReviseFixedPriceItem without it');
         bestOfferDowngraded = true;
         await callRevise(false);

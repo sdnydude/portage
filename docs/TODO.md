@@ -392,16 +392,29 @@ Sequencing note (resolved): the onboarding-expansion ship (plan `docs/superpower
 - [ ] Refund → inventory increment push
 
 ### Adversarial audit findings (2026-08-03 session audit — fix batch)
-- [ ] CRITICAL: listings.ts PATCH/publish syncs bypass sync_jobs — badge shows stale Synced after a price-edit sync failure (status endpoint must also read marketplace_sync_log, or listings.ts must write job-status rows)
-- [ ] MAJOR: enqueueItemSync delete+insert race → duplicate pending jobs (transaction or partial unique index on listing_id WHERE pending)
-- [ ] MAJOR: use-sync-status stale in-flight poll response can overwrite optimistic retry state and kill the poll loop (request versioning / AbortController)
-- [ ] MAJOR: /sync-log/retry lacks the items.ts status guard — retry possible on sold/archived listings
-- [ ] MAJOR: processDueSyncJobs has no re-entrancy guard — >5s jobs overlap ticks, defeating slow-drip
-- [ ] MINOR: worker target-vanished branch marks success with no sync-log row
-- [ ] MINOR: raw DB error text leaks into items PATCH syncWarnings on enqueue failure
-- [ ] MINOR: sync_jobs/marketplace_sync_log unbounded growth — retention sweep + latest-row window query for /status
-- [ ] MINOR: listingIds not UUID-validated (500 instead of 400 on garbage)
-- [ ] MINOR: /status ORDER BY updatedAt needs id tiebreaker
+
+Fixed in the fix/sync-audit-batch PR (test-first, 831 API / 600 web green):
+
+- [x] CRITICAL C1: listings.ts PATCH/publish syncs bypass sync_jobs — /status now merges marketplace_sync_log
+- [x] CRITICAL C2 (re-audit): newest-job-wins badge hid a terminally failed photo job behind a later photo-less success — unresolved-failure scope logic added
+- [x] CRITICAL C3 (re-audit): #285 downgrade retry kept BestOfferEnabled — now cleared (createListing parity)
+- [x] MAJOR M1 (re-audit): update-path retry gate missed floor-only Best Offer configs — wantsBestOffer gate
+- [x] MAJOR M3: enqueueItemSync delete+insert race — wrapped in db.transaction
+- [x] MAJOR M4: use-sync-status stale in-flight poll overwrote optimistic retry state — request versioning
+- [x] MAJOR M5: /sync-log/retry lacked the items.ts status guard — mirrored (active/draft, eBay active-only)
+- [x] MAJOR M6: processDueSyncJobs re-entrancy guard added
+- [x] MAJOR M7 (re-audit): worker now hard-fails jobs whose item/listing userId mismatches job.userId
+- [x] MAJOR M8 (re-audit): POST /sync-log/retry rate-limited (10 / 5 min per user)
+- [x] MAJOR M9 (re-audit): swallowed Reverb enrichment failure now surfaces a warning
+- [x] MINOR m1: target-vanished branch now writes a sync-log row
+- [x] MINOR m2: raw DB error text no longer leaks into items PATCH syncWarnings
+- [x] MINOR m3: 30-day retention sweep (boot + daily) bounds both sync tables; window query superseded — C2 needs full per-listing history, retention bounds the scan instead
+- [x] MINOR m4: listingIds UUID-validated (400 on garbage)
+- [x] MINOR m5: /status ORDER BY id tiebreaker (both sources)
+- [x] MINOR m6 (re-audit): log rows record fresh listing.marketplace, not the enqueue-time snapshot
+- [x] MINOR m7 (re-audit): e2e psql() switched to execFileSync arg array + SQL-literal escape
+- [x] MINOR m8 (re-audit): per-tick 10-min stale-running sweep (recovery no longer boot-only)
+- [ ] MAJOR M2 (re-audit, OPERATOR-GATED): DeletedField XML placement live verification — one real ReviseFixedPriceItem against stored Best-Offer thresholds, then annotate builder live-verified
 
 ---
 
