@@ -762,7 +762,17 @@ listingsRouter.patch('/:id', async (req, res, next) => {
           warning = 'Best Offer settings were out of date and refreshed from your live eBay listing.';
         }
         check = validateBestOfferThresholds(Number(effectivePrice), effectiveSpecific);
-        if (!check.ok) throw new AppError(422, 'BEST_OFFER_CONFLICT', check.message);
+        if (!check.ok) {
+          // Persist the heal before rejecting (CodeRabbit): the DB must match
+          // eBay for the next edit even though THIS edit is refused — stale
+          // local thresholds must never ride a later successful revise.
+          if (healResult.healed) {
+            await db.update(listings)
+              .set({ marketplaceSpecificFields: healResult.specific, updatedAt: new Date() })
+              .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)));
+          }
+          throw new AppError(422, 'BEST_OFFER_CONFLICT', check.message);
+        }
       }
     }
 

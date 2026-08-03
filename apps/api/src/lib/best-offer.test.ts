@@ -13,6 +13,11 @@ describe('validateBestOfferThresholds', () => {
     if (!r.ok) expect(r.message).toMatch(/199/);
   });
 
+  it('rejects non-positive thresholds — a 0/negative value would pass pre-flight then be silently dropped by the builder (CodeRabbit)', () => {
+    expect(validateBestOfferThresholds(199, { bestOfferAutoAcceptPrice: 0 }).ok).toBe(false);
+    expect(validateBestOfferThresholds(199, { minimumBestOfferPrice: -5 }).ok).toBe(false);
+  });
+
   it('passes when both thresholds sit below the price (or are absent)', () => {
     expect(validateBestOfferThresholds(199, { bestOfferAutoAcceptPrice: 189, minimumBestOfferPrice: 150 }).ok).toBe(true);
     expect(validateBestOfferThresholds(199, {}).ok).toBe(true);

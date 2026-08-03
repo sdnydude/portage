@@ -117,13 +117,14 @@ describe('ebay-trading-client', () => {
         .rejects.toThrow('non-XML');
     });
 
-    it('extracts ShortMessage from Errors array', async () => {
+    it('joins ALL ShortMessages so multi-error responses stay classifiable (CodeRabbit)', async () => {
       mockFetch.mockReturnValue(xmlResponse(
         '<GetMemberMessagesResponse><Ack>Failure</Ack><Errors><ShortMessage>First error</ShortMessage></Errors><Errors><ShortMessage>Second error</ShortMessage></Errors></GetMemberMessagesResponse>'
       ));
 
-      await expect(callTradingApi('GetMemberMessages', '<Req/>', 'token'))
-        .rejects.toThrow('First error');
+      const err = await callTradingApi('GetMemberMessages', '<Req/>', 'token').catch((e: unknown) => e);
+      expect((err as Error).message).toContain('First error');
+      expect((err as Error).message).toContain('Second error');
     });
 
     it('throws on PartialFailure when throwOnPartialFailure is true', async () => {

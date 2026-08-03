@@ -14,18 +14,21 @@ export interface BestOfferSpecific {
 export type BestOfferValidation = { ok: true } | { ok: false; message: string };
 
 export function validateBestOfferThresholds(price: number, specific: BestOfferSpecific): BestOfferValidation {
+  // Both bounds matter (CodeRabbit): a threshold at/above price fails on
+  // eBay (22003/23004), and a 0/negative one would pass here only to be
+  // silently dropped by the XML builder — the phantom-config class again.
   const accept = specific.bestOfferAutoAcceptPrice;
-  if (typeof accept === 'number' && accept >= price) {
+  if (typeof accept === 'number' && (accept >= price || accept <= 0)) {
     return {
       ok: false,
-      message: `The Best Offer auto-accept price $${accept} must be below the listing price $${price} — adjust the offer thresholds together with the price.`,
+      message: `The Best Offer auto-accept price $${accept} must be a positive amount below the listing price $${price} — adjust the offer thresholds together with the price.`,
     };
   }
   const min = specific.minimumBestOfferPrice;
-  if (typeof min === 'number' && min >= price) {
+  if (typeof min === 'number' && (min >= price || min <= 0)) {
     return {
       ok: false,
-      message: `The Best Offer minimum price $${min} must be below the listing price $${price} — adjust the offer thresholds together with the price.`,
+      message: `The Best Offer minimum price $${min} must be a positive amount below the listing price $${price} — adjust the offer thresholds together with the price.`,
     };
   }
   return { ok: true };

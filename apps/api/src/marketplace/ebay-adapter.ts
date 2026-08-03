@@ -519,7 +519,9 @@ export class EbayAdapter implements MarketplaceAdapter {
         || input.conditionNotes?.trim().slice(0, 1000)
         || undefined,
       sku,
-      pictureUrls: input.photos.map((p) => p.url),
+      // Partial updates (e.g. price + Best Offer fields) can reach the full
+      // revise with no photos — omitted PictureDetails keeps eBay's pictures.
+      pictureUrls: (input.photos ?? []).map((p) => p.url),
       aspects: canonical,
       shipping: {
         originPostalCode,
@@ -701,19 +703,34 @@ export class EbayAdapter implements MarketplaceAdapter {
       input.title || input.description || input.photos || input.brand || input.model || input.mpn ||
       input.condition || input.features ||
       specific.aspects || specific.weight || specific.dimensions || specific.categoryId ||
-      specific.conditionId || specific.condition || specific.conditionDescription,
+      specific.conditionId || specific.condition || specific.conditionDescription ||
+      // Best Offer fields live in the full item body — the fast path would
+      // silently drop them (CodeRabbit, BO-6 audit defense-in-depth).
+      specific.bestOfferEnabled !== undefined || specific.bestOfferAutoAcceptPrice !== undefined ||
+      specific.minimumBestOfferPrice !== undefined,
     );
 
     if (!hasContentChange && (input.price !== undefined || input.quantity !== undefined)) {
-      await callTradingApi(
-        'ReviseInventoryStatus',
-        buildReviseInventoryStatusXml(
-          marketplaceListingId,
-          { price: input.price, quantity: input.quantity, currency: input.currency ?? 'USD' },
+      try {
+        await callTradingApi(
+          'ReviseInventoryStatus',
+          buildReviseInventoryStatusXml(
+            marketplaceListingId,
+            { price: input.price, quantity: input.quantity, currency: input.currency ?? 'USD' },
+            token,
+          ),
           token,
-        ),
-        token,
-      );
+        );
+      } catch (err) {
+        // eBay validates a price change against thresholds STORED on the live
+        // listing even here — same typed contract as the full revise
+        // (CodeRabbit, BO-6). Never a retry, never a deletion.
+        if (err instanceof EbayTradingError && err.errorCodes.some((c) => BEST_OFFER_THRESHOLD_CODES.has(c))) {
+          throw new AppError(422, 'BEST_OFFER_CONFLICT',
+            `The price $${input.price} is at or below this listing's Best Offer settings on eBay — adjust the offer thresholds together with the price. eBay said: ${(err as Error).message}`);
+        }
+        throw err;
+      }
       logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay price/qty revised via ReviseInventoryStatus');
       return { marketplaceListingId, marketplaceUrl, status: 'active' };
     }

@@ -712,6 +712,22 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
     expect(body).not.toContain('<Title>'); // not a full content revise
   });
 
+  it('the ReviseInventoryStatus fast path surfaces stored-threshold conflicts as typed 422s too (CodeRabbit)', async () => {
+    // eBay validates a price change against thresholds STORED on the live
+    // listing even on the fast path — the typed contract must hold there.
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url)
+        ? new Response('<ReviseInventoryStatusResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></ReviseInventoryStatusResponse>', { status: 200 })
+        : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307034606520', {
+      price: 199, currency: 'USD',
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+  });
+
   it('a content edit (title) goes through ReviseFixedPriceItem with the full item body', async () => {
     fetchMock.mockImplementation(async (url: unknown) =>
       isTradingCall(url) ? new Response(reviseOk('ReviseFixedPriceItem'), { status: 200 }) : new Response('{}', { status: 200 }));

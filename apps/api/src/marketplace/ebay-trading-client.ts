@@ -107,8 +107,13 @@ export async function callTradingApi(
   if (responseObj?.Ack === 'Failure') {
     const errors = responseObj.Errors;
     const errorList = Array.isArray(errors) ? errors : [errors];
-    const firstError = errorList[0];
-    const shortMsg = firstError?.ShortMessage ?? 'Unknown eBay error';
+    // Join ALL messages (CodeRabbit): prose classifiers (category-unsupported)
+    // scan the whole message, so a Best Offer error hiding behind an unrelated
+    // first error must not vanish from it.
+    const shortMsg = errorList
+      .map((e) => e?.ShortMessage)
+      .filter(Boolean)
+      .join('; ') || 'Unknown eBay error';
     logger.error({ errors }, 'Trading API returned Failure');
     // Stable ErrorCodes ride on the thrown error (BO-1) so callers can key
     // typed handling (e.g. Best Offer threshold conflicts) on ids, not prose.

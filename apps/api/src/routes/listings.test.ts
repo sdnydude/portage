@@ -1593,6 +1593,32 @@ describe('PATCH /listings/:id — Best Offer pre-flight (BO-3)', () => {
     expect(mockUpdateListing).not.toHaveBeenCalled(); // no revise attempted
   });
 
+  it('persists the healed thresholds even when the edit is still rejected — stale local config never lingers (CodeRabbit)', async () => {
+    mockSelectOnce([{
+      id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307100136291', ebaySku: 'PRT-000009', currency: 'USD',
+      marketplaceSpecificFields: { categoryId: '175669', bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199 },
+    }]);
+    // Live eBay disagrees with the stored copy but STILL conflicts with $199.
+    mockGetEbayItemVerification.mockResolvedValueOnce({
+      found: true, sku: 'PRT-000009', aspects: {}, mpn: null, brand: null, status: 'Active', listingId: '307100136291', price: '219',
+      bestOfferEnabled: true, bestOfferAutoAcceptPrice: 205, minimumBestOfferPrice: 195,
+    });
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{}]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 199 });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/205|195/); // conflict reported against the LIVE numbers
+    // The heal itself is persisted so the DB matches eBay for the next edit.
+    const healWrite = setMock.mock.calls.map((c) => (c as unknown[])[0] as { marketplaceSpecificFields?: Record<string, unknown> })
+      .find((a) => a.marketplaceSpecificFields?.bestOfferAutoAcceptPrice === 205);
+    expect(healWrite).toBeDefined();
+  });
+
   it('heals stripped thresholds from live eBay and lets the edit proceed — the healed state is persisted', async () => {
     mockSelectOnce([{
       id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307100024169', ebaySku: 'PRT-000009', currency: 'USD',

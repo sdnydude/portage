@@ -1666,6 +1666,9 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
 
   // BO-5: an AI-prepared auto-accept floor must be SEEN before it publishes.
   const [floorCleared, setFloorCleared] = useState(false);
+  // A removed floor applies to THIS item only (CodeRabbit): the next
+  // listing's prepared floor must be visible again.
+  useEffect(() => { setFloorCleared(false); }, [state.inventoryItemId]);
   const preparedFloor = state.marketplace === "ebay" && !floorCleared
     ? (prepareListing.data?.ebay as { bestOfferAutoAcceptPrice?: number } | null | undefined)?.bestOfferAutoAcceptPrice
     : undefined;
