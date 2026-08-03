@@ -28,22 +28,38 @@ export interface EnqueueItemSyncInput {
  * snapshotted nothing; the new job will re-sync after it).
  */
 export async function enqueueItemSync(input: EnqueueItemSyncInput): Promise<void> {
-  await db.delete(syncJobs).where(and(
+  const superseded = await db.delete(syncJobs).where(and(
     eq(syncJobs.listingId, input.listingId),
     eq(syncJobs.status, 'pending'),
-  ));
+  )).returning();
+  // A superseded pending job may have carried unpushed photo changes — the
+  // replacement must not drop them (CodeRabbit PR #283), so OR the flag.
+  const includePhotos = input.includePhotos
+    || (superseded ?? []).some((j) => j.includePhotos);
   await db.insert(syncJobs).values({
     userId: input.userId,
     itemId: input.itemId,
     listingId: input.listingId,
     marketplace: input.marketplace,
     trigger: input.trigger,
-    includePhotos: input.includePhotos,
+    includePhotos,
   });
   logger.debug({ listingId: input.listingId, trigger: input.trigger }, 'sync job enqueued');
 }
 
 let workerTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Crash/restart recovery (CodeRabbit PR #283): a job claimed as 'running'
+ * when the process dies would otherwise stay running forever. Single-server
+ * deployment, so at boot every 'running' row is by definition orphaned —
+ * flip them back to pending for the next tick.
+ */
+export async function recoverStaleRunningJobs(): Promise<void> {
+  await db.update(syncJobs)
+    .set({ status: 'pending', updatedAt: new Date() })
+    .where(eq(syncJobs.status, 'running'));
+}
 
 /**
  * Start the in-process outbox worker (called once from the API bootstrap —
@@ -52,6 +68,9 @@ let workerTimer: NodeJS.Timeout | null = null;
  */
 export function startSyncWorker(intervalMs = 5000): void {
   if (workerTimer) return;
+  void recoverStaleRunningJobs().catch((err) => {
+    logger.warn({ error: (err as Error).message }, 'stale running-job recovery failed');
+  });
   workerTimer = setInterval(() => {
     void processDueSyncJobs().catch((err) => {
       logger.warn({ error: (err as Error).message }, 'sync worker tick failed');

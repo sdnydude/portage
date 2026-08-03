@@ -788,7 +788,8 @@ listingsRouter.patch('/:id', async (req, res, next) => {
           });
           // Degraded-sync warnings (e.g. Best Offer downgrade) belong to the user.
           if (syncResult?.warning) warning = syncResult.warning;
-          // Durable success record (P1) — fire-and-forget.
+          // Durable success record (P1) — fire-and-forget. Degraded-sync
+          // warnings ride in message so the log matches what the client saw.
           void logSyncAttempt({
             userId,
             itemId: updated.itemId,
@@ -796,6 +797,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             marketplace: updated.marketplace,
             trigger: 'listing_edit',
             status: 'success',
+            message: syncResult?.warning,
             durationMs: Date.now() - syncStartedAt,
           });
         } catch (err) {

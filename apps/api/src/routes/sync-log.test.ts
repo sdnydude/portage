@@ -123,7 +123,7 @@ describe('POST /sync-log/retry', () => {
         }),
       }),
     } as any);
-    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    const whereSpy = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) });
     vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
     const valuesSpy = vi.fn().mockResolvedValue(undefined);
     vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);

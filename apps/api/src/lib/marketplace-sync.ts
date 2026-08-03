@@ -56,6 +56,13 @@ export async function syncItemListingRow(
   const syncId = listed.marketplaceListingId;
   if (!syncId) return { warnings };
 
+  // Parked marketplace (etsy enum value is inert but a stray row types as
+  // 'etsy') — never fall through to another adapter (CodeRabbit PR #283).
+  if (listed.marketplace !== 'ebay' && listed.marketplace !== 'reverb') {
+    warnings.push(`${listed.marketplace}: sync not supported in this release`);
+    return { warnings };
+  }
+
   if (listed.marketplace === 'ebay') {
     // GetItem-imported rows carry EMPTY specifics — without a leaf categoryId,
     // ReviseFixedPriceItem rejects every edit-sync. Reuse the publish path's
@@ -75,6 +82,7 @@ export async function syncItemListingRow(
       price: item.price ?? undefined,
       currency: listed.currency,
       condition: item.condition,
+      conditionNotes: item.conditionNotes ?? undefined,
       quantity: item.quantity,
       brand: item.brand ?? undefined,
       model: item.model ?? undefined,
@@ -106,6 +114,9 @@ export async function syncItemListingRow(
       price: item.price ?? undefined,
       currency: listed.currency,
       condition: item.condition,
+      // Reverb appends condition notes to the description at the adapter —
+      // without this an item's condition-note edit never reaches the listing.
+      conditionNotes: item.conditionNotes ?? undefined,
       quantity: item.quantity,
       brand: item.brand ?? undefined,
       model: item.model ?? undefined,

@@ -1288,6 +1288,41 @@ describe('PATCH /listings/:id', () => {
     }));
   });
 
+  it('keeps the degraded-sync warning on the success sync-log row (message not dropped)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+    mockUpdateListing.mockResolvedValueOnce({
+      marketplaceListingId: '110012345678', status: 'active',
+      warning: 'Updated without Best Offer auto-accept — eBay rejected it for this listing.',
+    });
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'success',
+      message: expect.stringMatching(/Best Offer/),
+    }));
+  });
+
   it('writes a marketplace_sync_log success row when the PATCH sync succeeds (P1)', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',

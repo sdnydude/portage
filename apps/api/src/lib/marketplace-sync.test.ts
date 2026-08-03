@@ -81,6 +81,30 @@ describe('syncItemListingRow', () => {
     expect(result.warnings.some((w: string) => /sold on Reverb/.test(w))).toBe(true);
   });
 
+  it('passes conditionNotes through to the adapter so condition-note edits reach the marketplace', async () => {
+    mockSelectReturnOnce([]); // enrichment profile (none)
+    mockReverbUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '87654321', status: 'active' });
+
+    await syncItemListingRow('user-1', { ...ITEM, conditionNotes: 'small ding on lower bout' } as any, {
+      id: 'row-1', marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321',
+      ebaySku: null, marketplaceSpecificFields: { conditionUuid: 'cu-1', categoryUuid: 'cat-1' }, currency: 'USD',
+    }, { includePhotos: false });
+
+    const [, input] = mockReverbUpdateListing.mock.calls[0];
+    expect(input.conditionNotes).toBe('small ding on lower bout');
+  });
+
+  it('skips a parked-etsy row with a warning instead of falling through to the Reverb adapter', async () => {
+    const result = await syncItemListingRow('user-1', ITEM as any, {
+      id: 'row-etsy', marketplace: 'etsy', status: 'active', marketplaceListingId: 'etsy-1',
+      ebaySku: null, marketplaceSpecificFields: {}, currency: 'USD',
+    }, { includePhotos: false });
+
+    expect(mockReverbUpdateListing).not.toHaveBeenCalled();
+    expect(mockEbayUpdateListing).not.toHaveBeenCalled();
+    expect(result.warnings.some((w: string) => /etsy.*not supported/i.test(w))).toBe(true);
+  });
+
   it('syncs an eBay row with category self-heal, ship-from fill, aspect + shipping merges, and inline photos', async () => {
     const ebayItem = {
       ...ITEM,
@@ -106,5 +130,18 @@ describe('syncItemListingRow', () => {
     expect(input.marketplaceSpecific?.weight).toBeDefined();                // mergeItemShipping (25020 guard)
     expect(input.marketplaceSpecific?.aspects?.Brand).toEqual(['Fender']);  // mergeItemAspects
     expect(input.photos).toEqual([{ url: 'https://r2.example/a.jpg' }]);    // eBay always sends photos inline
+  });
+
+  it('passes conditionNotes to the eBay adapter too (ConditionDescription parity)', async () => {
+    mockSelectReturnOnce([]); // applyShipFromOrigin profile (none)
+    mockEbayUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '307000000001', status: 'active' });
+
+    await syncItemListingRow('user-1', { ...ITEM, conditionNotes: 'pickguard scratch' } as any, {
+      id: 'row-2', marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001',
+      ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '33034' }, currency: 'USD',
+    }, { includePhotos: false });
+
+    const [, input] = mockEbayUpdateListing.mock.calls[0];
+    expect(input.conditionNotes).toBe('pickguard scratch');
   });
 });

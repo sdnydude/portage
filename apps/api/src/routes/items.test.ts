@@ -447,7 +447,7 @@ describe('PATCH /items/:id', () => {
     mockSelectReturnOnce([{ id: 'row-rd1', marketplace: 'reverb', status: 'draft', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: {}, currency: 'USD' }]);
     const valuesSpy = vi.fn().mockResolvedValue(undefined);
     vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
-    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) } as any);
+    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) } as any);
 
     const res = await request(app)
       .patch('/items/item-1')
@@ -501,7 +501,7 @@ describe('PATCH /items/:id', () => {
     ]);
     const valuesSpy = vi.fn().mockResolvedValue(undefined);
     vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
-    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) } as any);
+    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) } as any);
 
     const res = await request(app)
       .patch('/items/item-1')
@@ -646,7 +646,7 @@ describe('PATCH /items/:id — photo trigger flag (P2)', () => {
     mockSelectReturnOnce([{ id: 'row-r1', marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: {}, currency: 'USD' }]);
     const valuesSpy = vi.fn().mockResolvedValue(undefined);
     vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
-    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) } as any);
+    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) } as any);
 
     const res = await request(app)
       .patch('/items/item-1')
@@ -670,7 +670,7 @@ describe('PATCH /items/:id — outbox enqueue (P2)', () => {
       { id: 'row-r1', marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: { categoryUuid: 'cat-1' }, currency: 'USD' },
       { id: 'row-e1', marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' },
     ]);
-    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    const whereSpy = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) });
     vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
     const valuesSpy = vi.fn().mockResolvedValue(undefined);
     vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);

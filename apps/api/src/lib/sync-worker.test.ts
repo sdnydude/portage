@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { enqueueItemSync, processDueSyncJobs, startSyncWorker, stopSyncWorker } from './sync-worker.js';
+import { enqueueItemSync, processDueSyncJobs, startSyncWorker, stopSyncWorker, recoverStaleRunningJobs } from './sync-worker.js';
 
 vi.mock('../db/index.js', () => ({
   db: {
@@ -22,7 +22,7 @@ beforeEach(() => {
 
 describe('enqueueItemSync', () => {
   it('coalesces per listing: deletes pending siblings for the listing, then inserts the new job', async () => {
-    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    const whereSpy = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) });
     vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
     const valuesSpy = vi.fn().mockResolvedValue(undefined);
     vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
@@ -149,6 +149,40 @@ describe('processDueSyncJobs', () => {
       .find(v => v.status === 'failed');
     expect(terminalCall).toBeDefined();
     expect(terminalCall).toMatchObject({ attempts: 5, lastError: 'Reverb 503' });
+  });
+});
+
+describe('enqueueItemSync — photo-flag coalescing', () => {
+  it('keeps includePhotos true when a superseded pending job carried it and the new edit does not', async () => {
+    // The delete returns the superseded pending rows so the flag can be OR'd.
+    const returningSpy = vi.fn().mockResolvedValue([{ id: 'old-job', includePhotos: true }]);
+    const whereSpy = vi.fn().mockReturnValue({ returning: returningSpy });
+    vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    await enqueueItemSync({
+      userId: 'user-1',
+      itemId: 'item-1',
+      listingId: 'listing-1',
+      marketplace: 'reverb',
+      trigger: 'item_edit',
+      includePhotos: false, // title-only edit
+    });
+
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ includePhotos: true }));
+  });
+});
+
+describe('recoverStaleRunningJobs', () => {
+  it('resets running jobs back to pending so a restart never strands them', async () => {
+    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    const setSpy = vi.fn().mockReturnValue({ where: whereSpy });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    await recoverStaleRunningJobs();
+
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
   });
 });
 
