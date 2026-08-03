@@ -8,9 +8,8 @@ import { db } from '../db/index.js';
 import { items, exportTokens, listings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
-import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
-import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
-import { mergeItemShipping, mergeItemAspects, applyShipFromOrigin } from './listings.js';
+import { EbayAdapter } from '../marketplace/ebay-adapter.js';
+import { enqueueItemSync } from '../lib/sync-worker.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
 import type { MarketplaceData } from '@portage/shared';
 import { MAX_PHOTOS_PER_ITEM } from '@portage/shared';
@@ -518,6 +517,7 @@ itemsRouter.patch('/:id', async (req, res, next) => {
     // not 500 the saved item edit — but failures are surfaced to the client as
     // syncWarnings so a reorder that never reached eBay isn't a silent success.
     const syncWarnings: string[] = [];
+    const syncQueued: string[] = [];
     // eBay hard limit: the total length of all PictureURL values in a listing
     // must not exceed 3975 characters. Warn at save time so the seller hears
     // about it before a publish/revise fails on it.
@@ -530,6 +530,7 @@ itemsRouter.patch('/:id', async (req, res, next) => {
     }
     try {
       const marketplaceListings = await db.select({
+        id: listings.id,
         marketplace: listings.marketplace,
         status: listings.status,
         marketplaceListingId: listings.marketplaceListingId,
@@ -544,6 +545,12 @@ itemsRouter.patch('/:id', async (req, res, next) => {
         inArray(listings.status, ['active', 'draft']),
       ));
 
+      // P2 outbox flip: the route no longer talks to marketplaces inline —
+      // each syncable row gets a coalesced sync_jobs entry; the in-process
+      // worker executes via syncItemListingRow (same behavior: eBay heal +
+      // merges, Reverb enrichment + photo diff) and writes the sync log.
+      // The response's syncQueued ids feed the P3 badges.
+      const trigger = body.photos !== undefined ? 'photo' as const : 'item_edit' as const;
       for (const listed of marketplaceListings) {
         const syncId = listed.marketplaceListingId;
         // eBay Trade-First: only a published listing (active + Trading ItemID)
@@ -554,59 +561,19 @@ itemsRouter.patch('/:id', async (req, res, next) => {
         if (!syncId) continue;
         if (listed.marketplace === 'ebay' && listed.status !== 'active') continue;
         try {
-          if (listed.marketplace === 'ebay') {
-            // GetItem-imported rows carry EMPTY specifics — without a leaf
-            // categoryId, ReviseFixedPriceItem rejects every edit-sync. Reuse
-            // the publish path's self-heal (listing intent → item cache →
-            // Taxonomy suggestion); imported items have the cache, so this is
-            // a no-op lookup for them.
-            const specifics = listed.marketplaceSpecificFields as Record<string, unknown> | undefined;
-            let healed = { ...(specifics ?? {}) };
-            if (!healed.categoryId || healed.categoryId === '99') {
-              const cat = await resolveEbayCategoryId(healed, updated);
-              if (cat.categoryId) healed.categoryId = cat.categoryId;
-            }
-            // Publish parity: inline calculated shipping needs the seller's
-            // ship-from ZIP; imported rows carry none in their specifics.
-            healed = (await applyShipFromOrigin(userId, healed)) as Record<string, unknown>;
-            const adapter = new EbayAdapter(userId);
-            const syncResult = await adapter.updateListing(syncId, {
-              title: updated.title,
-              description: updated.description,
-              price: updated.price ?? undefined,
-              currency: listed.currency,
-              condition: updated.condition,
-              quantity: updated.quantity,
-              brand: updated.brand,
-              model: updated.model,
-              photos: (updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
-              features: updated.features as string[],
-              ebaySku: listed.ebaySku ?? undefined,
-              // eBay-Trading-specific merges — never applied to Reverb.
-              marketplaceSpecific: mergeItemAspects(updated, mergeItemShipping(updated, healed)),
-            });
-            if (syncResult.warning) syncWarnings.push(`ebay: ${syncResult.warning}`);
-          } else {
-            const adapter = new ReverbAdapter(userId);
-            await adapter.updateListing(syncId, {
-              title: updated.title,
-              description: updated.description,
-              price: updated.price ?? undefined,
-              currency: listed.currency,
-              condition: updated.condition,
-              quantity: updated.quantity,
-              brand: updated.brand,
-              model: updated.model,
-              photos: (updated.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
-              // Publish-time specifics as stored (conditionUuid/categoryUuid/
-              // shippingRates) — no eBay aspect/shipping merging.
-              marketplaceSpecific: listed.marketplaceSpecificFields as Record<string, unknown> | undefined,
-            });
-          }
+          await enqueueItemSync({
+            userId,
+            itemId: updated.id,
+            listingId: listed.id,
+            marketplace: listed.marketplace,
+            trigger,
+            includePhotos: body.photos !== undefined,
+          });
+          syncQueued.push(listed.id);
         } catch (err) {
-          // One failed row must not block syncing the others.
-          logger.warn({ itemId: updated.id, marketplace: listed.marketplace, syncId, error: (err as Error).message }, 'Failed to sync item edit to marketplace listing');
-          syncWarnings.push(`${listed.marketplace}: listing ${syncId} was not updated — ${(err as Error).message}`);
+          // Enqueue is a local DB write — if even that fails, say so.
+          logger.warn({ itemId: updated.id, marketplace: listed.marketplace, syncId, error: (err as Error).message }, 'Failed to enqueue marketplace sync');
+          syncWarnings.push(`${listed.marketplace}: listing ${syncId} sync could not be queued — ${(err as Error).message}`);
         }
       }
     } catch (err) {
@@ -614,7 +581,11 @@ itemsRouter.patch('/:id', async (req, res, next) => {
       syncWarnings.push('Could not check marketplace listings for this edit — they may be out of date.');
     }
 
-    res.json(syncWarnings.length > 0 ? { ...updated, syncWarnings } : updated);
+    res.json({
+      ...updated,
+      ...(syncWarnings.length > 0 ? { syncWarnings } : {}),
+      ...(syncQueued.length > 0 ? { syncQueued } : {}),
+    });
   } catch (err) {
     next(err);
   }

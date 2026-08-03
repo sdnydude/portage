@@ -13,6 +13,7 @@ import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.
 import { ensureItemEbaySku } from '../marketplace/ebay-sku.js';
 import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
 import { applyFooter, descriptionLimitFor } from '../lib/footer.js';
+import { logSyncAttempt } from '../lib/sync-log.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import type { MarketplaceAdapter, ReverbCacheEntry } from '@portage/shared';
 
@@ -115,7 +116,7 @@ function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): Ma
  * overrides after profile fill and persists on the stored row, so re-sync
  * keeps honoring the seller's per-listing choice.
  */
-async function applyReverbEnrichment(
+export async function applyReverbEnrichment(
   userId: string,
   item: { id: string; title: string; category: string | null; marketplaceData: unknown },
   adapter: MarketplaceAdapter,
@@ -517,6 +518,7 @@ listingsRouter.post('/', async (req, res, next) => {
 
     if (shouldPublish) {
       const adapter = getAdapter(userId, body.marketplace);
+      const publishStartedAt = Date.now();
       const photos = (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [];
 
       // Same self-heal as POST /:id/publish: resolve the eBay leaf category, fill
@@ -546,23 +548,40 @@ listingsRouter.post('/', async (req, res, next) => {
         .where(eq(sellerProfiles.userId, userId))
         .limit(1);
 
-      const result = await adapter.createListing({
-        title: item.title,
-        description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(body.marketplace)),
-        price: body.price,
-        currency: body.currency,
-        category: item.category,
-        condition: item.condition,
-        conditionNotes: item.conditionNotes,
-        photos,
-        quantity: item.quantity,
-        brand: item.brand,
-        model: item.model,
-        mpn: mpnFromAspects(marketplaceSpecific),
-        features: item.features as string[],
-        marketplaceSpecific,
-        ebaySku: stableSku,
-      });
+      let result;
+      try {
+        result = await adapter.createListing({
+          title: item.title,
+          description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(body.marketplace)),
+          price: body.price,
+          currency: body.currency,
+          category: item.category,
+          condition: item.condition,
+          conditionNotes: item.conditionNotes,
+          photos,
+          quantity: item.quantity,
+          brand: item.brand,
+          model: item.model,
+          mpn: mpnFromAspects(marketplaceSpecific),
+          features: item.features as string[],
+          marketplaceSpecific,
+          ebaySku: stableSku,
+        });
+      } catch (err) {
+        // Durable failure record (P1); the publish error itself still
+        // propagates unchanged — publish failures are user-facing.
+        void logSyncAttempt({
+          userId,
+          itemId: item.id,
+          listingId: listing.id,
+          marketplace: body.marketplace,
+          trigger: 'publish',
+          status: 'failure',
+          message: (err as Error).message,
+          durationMs: Date.now() - publishStartedAt,
+        });
+        throw err;
+      }
 
       // UPDATE the pre-inserted row with the eBay result. createListing already folds
       // Warning/PartialFailure into result (the ItemID is still present), so the row
@@ -581,6 +600,18 @@ listingsRouter.post('/', async (req, res, next) => {
       // Keep an enrichment warning (guessed category) even when the adapter
       // itself returned none — both matter to the seller.
       adapterWarning = [adapterWarning, result.warning].filter(Boolean).join('; ') || undefined;
+
+      // Durable publish record (P1) — fire-and-forget.
+      void logSyncAttempt({
+        userId,
+        itemId: item.id,
+        listingId: listing.id,
+        marketplace: body.marketplace,
+        trigger: 'publish',
+        status: 'success',
+        message: adapterWarning,
+        durationMs: Date.now() - publishStartedAt,
+      });
 
       // Advertising (beta request 55639b6e): only after the listing is live,
       // and never fatal — a failed promotion downgrades to a warning.
@@ -705,6 +736,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
         .limit(1);
 
       if (item) {
+        const syncStartedAt = Date.now();
         try {
           const adapter = getAdapter(userId, updated.marketplace);
           const [profileRow] = await db.select({ footer: sellerProfiles.defaultListingFooter, shipFromAddress: sellerProfiles.shipFromAddress })
@@ -745,13 +777,29 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             quantity: item.quantity,
             brand: item.brand,
             model: item.model,
-            photos: (item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? [],
+            // This route never edits photos. Reverb photo updates cost a PUT +
+            // GET /images + per-photo DELETEs, so omit them there entirely —
+            // the live set stays as-is. eBay's full-body revise still needs the
+            // current photos inline (one XML call, no extra cost).
+            photos: updated.marketplace === 'reverb' ? undefined : ((item.photos as Array<{ url: string; isPrimary?: boolean }>) ?? []),
             features: item.features as string[],
             ebaySku: updated.ebaySku ?? undefined,
             marketplaceSpecific: syncSpecific,
           });
           // Degraded-sync warnings (e.g. Best Offer downgrade) belong to the user.
           if (syncResult?.warning) warning = syncResult.warning;
+          // Durable success record (P1) — fire-and-forget. Degraded-sync
+          // warnings ride in message so the log matches what the client saw.
+          void logSyncAttempt({
+            userId,
+            itemId: updated.itemId,
+            listingId: updated.id,
+            marketplace: updated.marketplace,
+            trigger: 'listing_edit',
+            status: 'success',
+            message: syncResult?.warning,
+            durationMs: Date.now() - syncStartedAt,
+          });
         } catch (err) {
           // The local write already landed above — a parked marketplace (stray
           // etsy row) can never sync, so throwing 400 would tell the client
@@ -760,11 +808,27 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             logger.warn({ listingId: updated.id, marketplace: updated.marketplace }, 'Update saved locally — marketplace is parked, no sync');
             warning = `Saved locally — ${updated.marketplace} sync is not supported in this release`;
           } else if (err instanceof AppError) {
-            throw err;
+            // P0 soft-warn contract (2026-08-02, parity with items.ts): the
+            // local write already landed, so a marketplace failure must report
+            // "saved locally, sync failed + why" — throwing here told the
+            // client nothing saved when the change is persisted.
+            logger.warn({ listingId: updated.id, code: err.code, error: err.message }, 'Marketplace sync failed after local save');
+            warning = `Saved locally but failed to sync to ${updated.marketplace} — ${err.message}`;
           } else {
             logger.warn({ listingId: updated.id, error: (err as Error).message }, 'Failed to sync update to marketplace');
             warning = 'Saved locally but failed to sync to marketplace';
           }
+          // Durable failure record (P1) — fire-and-forget.
+          void logSyncAttempt({
+            userId,
+            itemId: updated.itemId,
+            listingId: updated.id,
+            marketplace: updated.marketplace,
+            trigger: 'listing_edit',
+            status: 'failure',
+            message: (err as Error).message,
+            durationMs: Date.now() - syncStartedAt,
+          });
         }
       }
     }
@@ -930,12 +994,40 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
     // Existing remote Reverb draft: push the publish onto the EXISTING listing
     // via PUT (adapter maps marketplaceSpecific.publish to publish:"true") —
     // POSTing a create here is what double-listed. Everything else creates.
-    const result = isExistingReverbListing
-      ? await adapter.updateListing(listing.marketplaceListingId!, {
-          ...publishInput,
-          marketplaceSpecific: { ...(publishInput.marketplaceSpecific ?? {}), publish: true },
-        })
-      : await adapter.createListing(publishInput);
+    const publishStartedAt = Date.now();
+    let result;
+    try {
+      result = isExistingReverbListing
+        ? await adapter.updateListing(listing.marketplaceListingId!, {
+            ...publishInput,
+            marketplaceSpecific: { ...(publishInput.marketplaceSpecific ?? {}), publish: true },
+          })
+        : await adapter.createListing(publishInput);
+    } catch (err) {
+      // Durable failure record (P1); the publish error still propagates.
+      void logSyncAttempt({
+        userId,
+        itemId: item.id,
+        listingId: listing.id,
+        marketplace: listing.marketplace,
+        trigger: 'publish',
+        status: 'failure',
+        message: (err as Error).message,
+        durationMs: Date.now() - publishStartedAt,
+      });
+      throw err;
+    }
+    // Durable publish record (P1) — fire-and-forget.
+    void logSyncAttempt({
+      userId,
+      itemId: item.id,
+      listingId: listing.id,
+      marketplace: listing.marketplace,
+      trigger: 'publish',
+      status: 'success',
+      message: result.warning,
+      durationMs: Date.now() - publishStartedAt,
+    });
 
     const [updated] = await db.update(listings)
       .set({

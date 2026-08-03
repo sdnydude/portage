@@ -30,6 +30,7 @@ import { usersRouter } from './routes/users.js';
 import { billingRouter, billingWebhookRouter } from './routes/billing.js';
 import { messagesRouter } from './routes/messages.js';
 import { betaRouter } from './routes/beta.js';
+import { syncLogRouter } from './routes/sync-log.js';
 
 export function createApp() {
   const config = env();
@@ -113,6 +114,7 @@ export function createApp() {
   app.use('/billing', billingRouter);
   app.use('/messages', messagesRouter);
   app.use('/beta', betaRouter);
+  app.use('/sync-log', syncLogRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

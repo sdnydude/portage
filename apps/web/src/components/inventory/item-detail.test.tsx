@@ -201,6 +201,28 @@ describe("ItemDetail (prop-driven)", () => {
   });
 });
 
+describe("ItemDetail — sync badge wiring (P3)", () => {
+  it("fetches /sync-log/status for the item's listings and renders the badge on the card", async () => {
+    mockListings = [{
+      id: "l1", itemId: "i1", userId: "u1", marketplace: "reverb",
+      marketplaceListingId: "87654321", marketplaceSpecificFields: null,
+      status: "active", price: 100, currency: "USD",
+      createdAt: "2026-08-01", publishedAt: "2026-08-01", soldAt: null,
+    } as unknown as Listing];
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (String(path).startsWith("/sync-log/status")) {
+        return { statuses: [{ listingId: "l1", state: "failed", lastAttemptAt: "2026-08-03T09:00:00Z", message: "Reverb 422: shipping required" }] };
+      }
+      return {};
+    });
+
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+
+    expect(await screen.findByTestId("sync-badge-l1")).toHaveTextContent(/sync failed/i);
+    expect(h.apiMock).toHaveBeenCalledWith("/sync-log/status?listingIds=l1", expect.objectContaining({ token: "t" }));
+  });
+});
+
 describe("ItemDetail — photo save serialization (Reverb-published race)", () => {
   it("a second accept while the save PATCH is in flight must not fire a second PATCH", async () => {
     h.item.photos = [{ url: "https://img/k0.jpg", key: "K0", isPrimary: true }];

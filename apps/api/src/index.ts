@@ -7,9 +7,14 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv } from './lib/env.js';
 import { createApp } from './app.js';
+import { startSyncWorker } from './lib/sync-worker.js';
 
 const config = loadEnv();
 const app = createApp();
+
+// Outbox worker (sync refactor P2): executes queued marketplace edit-syncs.
+// Started here, not in createApp, so the test app never spins a timer.
+startSyncWorker();
 
 // Docker stops the container with SIGTERM; flush queued spans before exit so a
 // deploy doesn't silently drop the traces of in-flight requests.
