@@ -47,6 +47,12 @@ export interface TradingListingInput {
   bestOfferAutoAcceptPrice?: number;
   /** Auto-DECLINE floor (offers below are rejected without seller review). */
   minimumBestOfferPrice?: number;
+  // Trading Revise semantics: an OMITTED field keeps the value stored on the
+  // live listing — clearing a Best Offer threshold requires an explicit
+  // DeletedField entry (error 23004 repro: price lowered to/below a stored
+  // BestOfferAutoAcceptPrice can only be fixed by deleting the field).
+  deleteBestOfferAutoAcceptPrice?: boolean;
+  deleteMinimumBestOfferPrice?: boolean;
   listingDuration?: string;
 }
 
@@ -365,10 +371,14 @@ export function buildReviseFixedPriceItemXml(itemId: string, input: TradingListi
   if (input.pictureUrls.length === 0 && !input.allowEmptyPictures) {
     throw new AppError(400, 'EBAY_PICTURE_LIMIT', 'Refusing to revise an eBay listing with zero photos — eBay would silently keep the old pictures. Add a photo first.');
   }
+  const deletedFields =
+    (input.deleteBestOfferAutoAcceptPrice ? '<DeletedField>Item.ListingDetails.BestOfferAutoAcceptPrice</DeletedField>' : '') +
+    (input.deleteMinimumBestOfferPrice ? '<DeletedField>Item.ListingDetails.MinimumBestOfferPrice</DeletedField>' : '');
   return (
     `${XML_DECL}\n<ReviseFixedPriceItemRequest xmlns="${NS}">` +
     `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +
     `<Item><ItemID>${escapeXml(itemId)}</ItemID>${itemBody(input)}</Item>` +
+    deletedFields +
     '</ReviseFixedPriceItemRequest>'
   );
 }
