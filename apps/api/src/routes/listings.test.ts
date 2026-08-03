@@ -523,6 +523,93 @@ describe('POST /listings', () => {
     expect(res.body.warning).toMatch(/best offer/i);
   });
 
+  it('writes a marketplace_sync_log success row with trigger publish on a live create (P1)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // seller profile (policy self-heal)
+    mockSelectOnce([]); // footer lookup — no seller profile
+    const valuesSpy = mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        marketplaceSpecificFields: { categoryId: '123' },
+      });
+
+    expect(res.status).toBe(201);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({
+      marketplace: 'ebay',
+      trigger: 'publish',
+      status: 'success',
+      durationMs: expect.any(Number),
+    }));
+  });
+
+  it('writes a marketplace_sync_log failure row when a live create publish throws (P1)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // seller profile (policy self-heal)
+    mockSelectOnce([]); // footer lookup — no seller profile
+    const valuesSpy = mockInsertCapture();
+    mockCreateListing.mockRejectedValueOnce(new AppError(400, 'EBAY_API_ERROR', 'It looks like this listing is for an item you already have on eBay.'));
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        itemId: ITEM_ID,
+        marketplace: 'ebay',
+        price: 100,
+        publishMode: 'live',
+        marketplaceSpecificFields: { categoryId: '123' },
+      });
+
+    expect(res.status).toBe(400); // publish failure still propagates to the client
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({
+      marketplace: 'ebay',
+      trigger: 'publish',
+      status: 'failure',
+      message: expect.stringMatching(/already have on eBay/),
+    }));
+  });
+
+  it('writes a marketplace_sync_log row for POST /:id/publish attempts (P1)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: null, marketplaceSpecificFields: { categoryId: '15032' },
+      ebaySku: 'PRT-000009',
+    }]);
+    mockSelectOnce([MOCK_ITEM]); // item
+    mockSelectOnce([]); // seller profile (policy self-heal)
+    mockSelectOnce([]); // applyShipFromOrigin (ship-from origin ZIP)
+    mockSelectOnce([]); // footer lookup
+    const valuesSpy = mockInsertCapture();
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplaceListingId: 'ebay-9',
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValueOnce({ marketplaceListingId: 'ebay-9', status: 'active' });
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({
+      listingId: 'listing-1',
+      marketplace: 'ebay',
+      trigger: 'publish',
+      status: 'success',
+    }));
+  });
+
   it('passes publishMode live explicitly to the adapter on POST /:id/publish', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
@@ -1166,6 +1253,76 @@ describe('PATCH /listings/:id', () => {
     expect(res.body.warning).toMatch(/leaf category/i);
   });
 
+  it('writes a marketplace_sync_log failure row when the PATCH sync fails (P1)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+    mockUpdateListing.mockRejectedValueOnce(new AppError(400, 'EBAY_API_ERROR', 'Revise rejected'));
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({
+      listingId: 'listing-1',
+      marketplace: 'ebay',
+      trigger: 'listing_edit',
+      status: 'failure',
+      message: expect.stringMatching(/Revise rejected/),
+    }));
+  });
+
+  it('writes a marketplace_sync_log success row when the PATCH sync succeeds (P1)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+    mockUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '110012345678', status: 'active' });
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({
+      listingId: 'listing-1',
+      marketplace: 'ebay',
+      trigger: 'listing_edit',
+      status: 'success',
+      durationMs: expect.any(Number),
+    }));
+  });
+
   it('syncs full item fields to eBay including ebaySku', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
@@ -1353,6 +1510,7 @@ describe('POST /listings — disclaimer consent (F3a)', () => {
     });
     vi.mocked(db.insert)
       .mockReturnValueOnce(mk([{ id: 'listing-1', status: 'active' }]) as any)
+      .mockReturnValueOnce(mk([]) as any) // marketplace_sync_log publish row (P1)
       .mockReturnValueOnce(mk([{ id: 'acc-1' }]) as any);
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 

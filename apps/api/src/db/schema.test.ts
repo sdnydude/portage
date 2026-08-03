@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { items, listings, sellerProfiles } from './schema.js';
+import { items, listings, sellerProfiles, marketplaceSyncLog } from './schema.js';
 
 // In a schema-push workflow with no migration files, these shape assertions are
 // the only guard against accidental column drift. They cover the four columns
@@ -48,5 +48,25 @@ describe('schema — eBay package weight & dimension columns', () => {
     // weightEstimated: true when AI-populated, flips false on seller edit.
     expect(items.weightEstimated).toBeDefined();
     expect(items.weightEstimated.notNull).toBe(true);
+  });
+});
+
+// P1 of the marketplace sync refactor (plan 2026-08-02): the durable sync log.
+// Every marketplace sync attempt writes a row here — the transient
+// syncWarnings/warning response fields stop being the only failure record.
+describe('schema — marketplace_sync_log (sync refactor P1)', () => {
+  it('defines marketplaceSyncLog with required attribution, status, trigger, and nullable diagnostics', () => {
+    expect(marketplaceSyncLog.userId.notNull).toBe(true);
+    expect(marketplaceSyncLog.marketplace.notNull).toBe(true);
+    expect(marketplaceSyncLog.status.notNull).toBe(true);      // 'success' | 'failure'
+    expect(marketplaceSyncLog.trigger.notNull).toBe(true);     // item_edit | listing_edit | photo | publish | mass_sync
+    // Diagnostics are failure-shaped, so nullable: message (marketplace error
+    // string), errors (Reverb reverb_response.errors verbatim), durationMs.
+    expect(marketplaceSyncLog.itemId.notNull).toBe(false);
+    expect(marketplaceSyncLog.listingId.notNull).toBe(false);
+    expect(marketplaceSyncLog.message.notNull).toBe(false);
+    expect(marketplaceSyncLog.errors.notNull).toBe(false);
+    expect(marketplaceSyncLog.durationMs.notNull).toBe(false);
+    expect(marketplaceSyncLog.createdAt.notNull).toBe(true);
   });
 });

@@ -18,6 +18,8 @@ export const notificationTypeEnum = pgEnum('notification_type', ['sale', 'buyer_
 export const referenceTypeEnum = pgEnum('reference_type', ['order', 'listing', 'item']);
 export const packageTypeEnum = pgEnum('package_type', ['box', 'envelope', 'poly_mailer']);
 export const messageDirectionEnum = pgEnum('message_direction', ['inbound', 'outbound']);
+export const syncStatusEnum = pgEnum('sync_status', ['success', 'failure']);
+export const syncTriggerEnum = pgEnum('sync_trigger', ['item_edit', 'listing_edit', 'photo', 'publish', 'mass_sync']);
 export const messageTypeEnum = pgEnum('message_type', ['asq', 'rtq', 'aaq']);
 
 export const users = pgTable('users', {
@@ -353,4 +355,29 @@ export const exportTokens = pgTable('export_tokens', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_export_tokens_user_id').on(t.userId),
+]);
+
+// Durable record of every marketplace sync attempt (sync refactor P1,
+// 2026-08-02). Written by the edit-sync and publish paths; read by
+// GET /sync-log and the item-detail sync badges. item/listing links are
+// nullable + SET NULL on delete so the log outlives what it describes.
+export const marketplaceSyncLog = pgTable('marketplace_sync_log', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  itemId: uuid('item_id').references(() => items.id, { onDelete: 'set null' }),
+  listingId: uuid('listing_id').references(() => listings.id, { onDelete: 'set null' }),
+  marketplace: marketplaceEnum('marketplace').notNull(),
+  trigger: syncTriggerEnum('trigger').notNull(),
+  status: syncStatusEnum('status').notNull(),
+  // Human-readable outcome: the marketplace error/warning string on failure,
+  // optional degraded-sync warning on success.
+  message: text('message'),
+  // Structured error detail — Reverb's reverb_response["errors"] array rides
+  // verbatim; eBay Trading faults as {code, longMessage} when available.
+  errors: jsonb('errors'),
+  durationMs: integer('duration_ms'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_sync_log_user_created').on(t.userId, t.createdAt),
+  index('idx_sync_log_listing_id').on(t.listingId),
 ]);

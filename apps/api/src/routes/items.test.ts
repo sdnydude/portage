@@ -832,6 +832,54 @@ describe('PATCH /items/:id — Reverb enrichment parity (P0)', () => {
   });
 });
 
+describe('PATCH /items/:id — sync-log writes (P1)', () => {
+  it('writes a failure row to marketplace_sync_log when a Reverb revise fails', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T6' }]);
+    mockSelectReturnOnce([{ marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321', ebaySku: null, marketplaceSpecificFields: { conditionUuid: 'cu-1', categoryUuid: 'cat-1' }, currency: 'USD' }]);
+    mockSelectReturnOnce([]); // enrichment profile
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+    mockReverbUpdateListing.mockRejectedValueOnce(new Error('Reverb 500'));
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'T6' });
+
+    expect(res.status).toBe(200);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({
+      marketplace: 'reverb',
+      trigger: 'item_edit',
+      status: 'failure',
+      message: expect.stringMatching(/Reverb 500/),
+    }));
+  });
+
+  it('writes a success row with durationMs when an eBay revise succeeds', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'T7', weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectReturnOnce([{ id: 'row-ebay-1', marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '175669' }, currency: 'USD' }]);
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+    mockUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '307000000001', status: 'active' });
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'T7' });
+
+    expect(res.status).toBe(200);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({
+      listingId: 'row-ebay-1',
+      marketplace: 'ebay',
+      trigger: 'item_edit',
+      status: 'success',
+      durationMs: expect.any(Number),
+    }));
+  });
+});
+
 describe('PATCH /items/:id — eBay picture URL budget warning (F2)', () => {
   it('warns when total photo URL length exceeds the eBay 3975-char PictureURL budget', async () => {
     mockSelectReturnOnce([{ id: 'item-1' }]);

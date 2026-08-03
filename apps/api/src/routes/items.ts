@@ -11,6 +11,7 @@ import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { mergeItemShipping, mergeItemAspects, applyShipFromOrigin, applyReverbEnrichment } from './listings.js';
+import { logSyncAttempt } from '../lib/sync-log.js';
 import { itemsToEbayCsv } from '../lib/csv-export.js';
 import type { MarketplaceData } from '@portage/shared';
 import { MAX_PHOTOS_PER_ITEM } from '@portage/shared';
@@ -530,6 +531,7 @@ itemsRouter.patch('/:id', async (req, res, next) => {
     }
     try {
       const marketplaceListings = await db.select({
+        id: listings.id,
         marketplace: listings.marketplace,
         status: listings.status,
         marketplaceListingId: listings.marketplaceListingId,
@@ -553,6 +555,8 @@ itemsRouter.patch('/:id', async (req, res, next) => {
         // revisable via the same PUT — so Reverb syncs on listingId alone.
         if (!syncId) continue;
         if (listed.marketplace === 'ebay' && listed.status !== 'active') continue;
+        const syncStartedAt = Date.now();
+        const trigger = body.photos !== undefined ? 'photo' as const : 'item_edit' as const;
         try {
           if (listed.marketplace === 'ebay') {
             // GetItem-imported rows carry EMPTY specifics — without a leaf
@@ -623,10 +627,31 @@ itemsRouter.patch('/:id', async (req, res, next) => {
             // state, stale-photo cleanup) belong to the user, not the void.
             if (syncResult.warning) syncWarnings.push(`reverb: ${syncResult.warning}`);
           }
+          // Durable success record (P1) — fire-and-forget, never blocks the loop.
+          void logSyncAttempt({
+            userId,
+            itemId: updated.id,
+            listingId: listed.id,
+            marketplace: listed.marketplace,
+            trigger,
+            status: 'success',
+            durationMs: Date.now() - syncStartedAt,
+          });
         } catch (err) {
           // One failed row must not block syncing the others.
           logger.warn({ itemId: updated.id, marketplace: listed.marketplace, syncId, error: (err as Error).message }, 'Failed to sync item edit to marketplace listing');
           syncWarnings.push(`${listed.marketplace}: listing ${syncId} was not updated — ${(err as Error).message}`);
+          // Durable failure record (P1) — fire-and-forget, never blocks the loop.
+          void logSyncAttempt({
+            userId,
+            itemId: updated.id,
+            listingId: listed.id,
+            marketplace: listed.marketplace,
+            trigger,
+            status: 'failure',
+            message: (err as Error).message,
+            durationMs: Date.now() - syncStartedAt,
+          });
         }
       }
     } catch (err) {
