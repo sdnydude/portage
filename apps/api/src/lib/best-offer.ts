@@ -55,6 +55,11 @@ export async function healBestOfferFromLive(
 ): Promise<{ specific: Record<string, unknown>; healed: boolean }> {
   const live = await adapter.getEbayItemVerification(marketplaceListingId);
   if (!live.found) return { specific, healed: false };
+  // Guard (audit #2): the GetItem BestOfferDetails parse shape is not yet
+  // live-verified. Deleting local keys is only allowed when the live Best
+  // Offer block POSITIVELY parsed (enabled flag present) — a parse miss must
+  // never be read as "eBay has no Best Offer" and strip seller config.
+  if (live.bestOfferEnabled == null) return { specific, healed: false };
 
   const healed: Record<string, unknown> = { ...specific };
   const apply = (key: 'bestOfferEnabled' | 'bestOfferAutoAcceptPrice' | 'minimumBestOfferPrice', value: boolean | number | null) => {

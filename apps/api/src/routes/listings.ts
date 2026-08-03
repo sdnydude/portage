@@ -757,6 +757,9 @@ listingsRouter.patch('/:id', async (req, res, next) => {
         if (healResult.healed) {
           effectiveSpecific = healResult.specific;
           updates.marketplaceSpecificFields = healResult.specific;
+          // Audit #2: a heal is never silent — tell the seller their stored
+          // Best Offer settings were refreshed from the live eBay listing.
+          warning = 'Best Offer settings were out of date and refreshed from your live eBay listing.';
         }
         check = validateBestOfferThresholds(Number(effectivePrice), effectiveSpecific);
         if (!check.ok) throw new AppError(422, 'BEST_OFFER_CONFLICT', check.message);

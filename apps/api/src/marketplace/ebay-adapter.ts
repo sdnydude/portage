@@ -546,15 +546,18 @@ export class EbayAdapter implements MarketplaceAdapter {
       // Per-listing "accept offers" toggle + auto-decline floor from the
       // publish sheet (ride marketplaceSpecific; not part of prepared fields).
       bestOfferEnabled: typeof specific.bestOfferEnabled === 'boolean' ? specific.bestOfferEnabled : undefined,
+      minimumBestOfferPrice: typeof specific.minimumBestOfferPrice === 'number' ? specific.minimumBestOfferPrice : undefined,
       // Explicit disable (BO-4): toggle-off is the ONLY path that clears the
       // stored thresholds on the live listing — seller intent, never auto.
+      // MUST spread LAST: object literals apply later keys last, so the
+      // threshold mappings above would otherwise resurrect the stored values
+      // (audit finding #3, 2026-08-03).
       ...(specific.bestOfferEnabled === false ? {
         bestOfferAutoAcceptPrice: undefined,
         minimumBestOfferPrice: undefined,
         deleteBestOfferAutoAcceptPrice: true,
         deleteMinimumBestOfferPrice: true,
       } : {}),
-      minimumBestOfferPrice: typeof specific.minimumBestOfferPrice === 'number' ? specific.minimumBestOfferPrice : undefined,
     };
   }
 

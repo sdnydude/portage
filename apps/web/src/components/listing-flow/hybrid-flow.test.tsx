@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   prepError: null as string | null,
   prepDataNull: false,
   prepEbay: null as Record<string, unknown> | null,
+  publish: vi.fn(),
   cardProps: {} as Record<string, unknown>,
   shipCardProps: {} as Record<string, unknown>,
   setField: vi.fn(),
@@ -63,7 +64,7 @@ vi.mock("@/hooks/use-listing-flow", () => ({
     addPhotos: vi.fn(),
     updatePhoto: h.updatePhoto,
     ensureItemCreated: h.ensureItemCreated,
-    publish: vi.fn(),
+    publish: h.publish,
     reset: vi.fn(),
   }),
 }));
@@ -121,6 +122,22 @@ describe("HybridFlow — AI-prepared Best Offer floor is visible (BO-5)", () => 
     expect(screen.getByText(/\$85/)).toBeInTheDocument();
     expect(screen.getByText(/auto-accept/i)).toBeInTheDocument();
     h.prepEbay = null;
+  });
+
+  it("Remove strips the floor on the preview-card publish path too — seller intent wins (audit #1)", async () => {
+    h.prepEbay = { bestOfferAutoAcceptPrice: 85, weight: { value: 16, unit: "OUNCE" }, dimensions: { length: 8, width: 6, height: 4 }, packageType: null, categoryId: "175669" };
+    h.publish.mockResolvedValue({ success: true });
+    h.publish.mockClear();
+    try {
+      render(<HybridFlow />);
+      fireEvent.click(screen.getByRole("button", { name: /remove auto-accept floor/i }));
+      (h.cardProps.onPublish as (m: string, p: string) => void)("ebay", "live");
+      await vi.waitFor(() => expect(h.publish).toHaveBeenCalledTimes(1));
+      const opts = h.publish.mock.calls[0][0] as { ebayPreparedFields?: { bestOfferAutoAcceptPrice?: number } };
+      expect(opts.ebayPreparedFields?.bestOfferAutoAcceptPrice).toBeUndefined();
+    } finally {
+      h.prepEbay = null;
+    }
   });
 });
 

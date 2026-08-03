@@ -813,7 +813,7 @@ function ChatMode({
             onQuantityChange={(q) => setField("quantity", q)}
             onPublish={(marketplace, publishMode, aspects, reverbCategoryUuid) => {
               setField("marketplace", marketplace);
-              runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode, aspects, reverbCategoryUuid });
+              runPublish({ ebayPreparedFields: effectivePreparedEbay(), publishMode, aspects, reverbCategoryUuid });
             }}
             isPublishing={state.publishStatus === "publishing"}
             sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}

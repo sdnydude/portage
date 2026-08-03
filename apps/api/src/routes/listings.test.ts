@@ -1620,6 +1620,9 @@ describe('PATCH /listings/:id — Best Offer pre-flight (BO-3)', () => {
     expect(setArg.marketplaceSpecificFields?.bestOfferAutoAcceptPrice).toBeUndefined();
     expect(setArg.marketplaceSpecificFields?.minimumBestOfferPrice).toBeUndefined();
     expect(mockUpdateListing).toHaveBeenCalledTimes(1); // edit went through
+    // Audit #2: a heal is never silent — the seller sees that Portage
+    // refreshed the offer settings from eBay.
+    expect(res.body.warning).toMatch(/best offer/i);
   });
 });
 

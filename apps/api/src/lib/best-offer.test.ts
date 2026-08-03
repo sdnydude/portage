@@ -35,4 +35,18 @@ describe('healBestOfferFromLive', () => {
     expect(r.specific.minimumBestOfferPrice).toBe(150);
     expect(r.specific.categoryId).toBe('175669'); // untouched siblings survive
   });
+
+  it('never deletes local config when the live Best Offer block did not positively parse (audit #2 — unverified GetItem shape)', async () => {
+    const adapter = {
+      getEbayItemVerification: vi.fn().mockResolvedValue({
+        found: true, bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null,
+      }),
+    };
+    const stored = { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 269, minimumBestOfferPrice: 249 };
+
+    const r = await healBestOfferFromLive(adapter as never, '307100024169', stored);
+
+    expect(r.healed).toBe(false);
+    expect(r.specific).toEqual(stored); // a parse miss must NEVER strip seller config
+  });
 });
