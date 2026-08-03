@@ -81,6 +81,27 @@ describe('syncItemListingRow', () => {
     expect(result.warnings.some((w: string) => /sold on Reverb/.test(w))).toBe(true);
   });
 
+  it('surfaces a warning when Reverb enrichment fails instead of reporting a clean success (audit M9)', async () => {
+    // Profile read blows up — the sync itself must proceed on stored
+    // specifics, but the result may NOT read as a clean success.
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockRejectedValue(new Error('db timeout')),
+        }),
+      }),
+    } as any);
+    mockReverbUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '87654321', status: 'active' });
+
+    const result = await syncItemListingRow('user-1', ITEM as any, {
+      id: 'row-1', marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321',
+      ebaySku: null, marketplaceSpecificFields: { conditionUuid: 'cu-1', categoryUuid: 'cat-1' }, currency: 'USD',
+    }, { includePhotos: false });
+
+    expect(mockReverbUpdateListing).toHaveBeenCalledTimes(1); // sync still ran
+    expect(result.warnings.some((w: string) => /enrichment/i.test(w))).toBe(true);
+  });
+
   it('passes conditionNotes through to the adapter so condition-note edits reach the marketplace', async () => {
     mockSelectReturnOnce([]); // enrichment profile (none)
     mockReverbUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '87654321', status: 'active' });

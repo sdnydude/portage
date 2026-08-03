@@ -571,9 +571,11 @@ itemsRouter.patch('/:id', async (req, res, next) => {
           });
           syncQueued.push(listed.id);
         } catch (err) {
-          // Enqueue is a local DB write — if even that fails, say so.
+          // Enqueue is a local DB write — if even that fails, say so. Raw
+          // driver text stays in the server log (audit m2): constraint/table
+          // names never belong in a client response.
           logger.warn({ itemId: updated.id, marketplace: listed.marketplace, syncId, error: (err as Error).message }, 'Failed to enqueue marketplace sync');
-          syncWarnings.push(`${listed.marketplace}: listing ${syncId} sync could not be queued — ${(err as Error).message}`);
+          syncWarnings.push(`${listed.marketplace}: listing ${syncId} sync could not be queued — edit saved, retry from the listing page`);
         }
       }
     } catch (err) {

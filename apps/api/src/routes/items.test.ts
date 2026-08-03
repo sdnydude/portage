@@ -3,14 +3,18 @@ import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
 
-vi.mock('../db/index.js', () => ({
-  db: {
+vi.mock('../db/index.js', () => {
+  const db: Record<string, unknown> = {
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  },
-}));
+  };
+  // Default: run the callback with db itself as tx, so per-test
+  // delete/insert mocks keep working inside enqueue's transaction.
+  db.transaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn(db));
+  return { db };
+});
 
 const { mockUpdateListing, mockGetTrafficReport, mockReverbUpdateListing } = vi.hoisted(() => ({
   mockUpdateListing: vi.fn(), mockGetTrafficReport: vi.fn(), mockReverbUpdateListing: vi.fn(),
@@ -489,6 +493,24 @@ describe('PATCH /items/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body.title).toBe('Saved Locally');
     expect(res.body.syncWarnings?.some((w: string) => /could not be queued/.test(w))).toBe(true);
+  });
+
+  it('does not leak raw database error text into syncWarnings on enqueue failure (audit m2)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockUpdateReturns([{ ...MOCK_ITEM, title: 'Saved' }]);
+    mockSelectReturnOnce([{ id: 'row-e1', marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: {}, currency: 'USD' }]);
+    vi.mocked(db.transaction).mockRejectedValueOnce(
+      new Error('insert or update on table "sync_jobs" violates foreign key constraint "sync_jobs_listing_id_fkey"'),
+    );
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Saved' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.syncWarnings?.length).toBeGreaterThan(0);
+    expect(res.body.syncWarnings.join(' ')).not.toMatch(/foreign key|sync_jobs|constraint/i);
   });
 
   it('enqueues only published eBay listings (active + Trading ItemID) and skips DB-only drafts', async () => {

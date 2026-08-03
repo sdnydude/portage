@@ -17,12 +17,18 @@ export function useSyncStatus(listingIds: string[], token: string | null) {
   // Poll re-entry goes through a ref so the callback doesn't reference itself
   // (self-reference inside useCallback is a TDZ lint error).
   const fetchRef = useRef<() => Promise<void>>(async () => {});
+  // Request version (audit M4): a poll response that started before the last
+  // retry click carries pre-retry state — applying it would overwrite the
+  // optimistic "pending" AND kill the poll loop. Bump to invalidate in-flight.
+  const versionRef = useRef(0);
   const idsKey = listingIds.filter(Boolean).sort().join(",");
 
   const fetchStatuses = useCallback(async () => {
     if (!idsKey || !token) return;
+    const version = ++versionRef.current;
     try {
       const res = await api<{ statuses: ListingSyncStatus[] }>(`/sync-log/status?listingIds=${idsKey}`, { token });
+      if (versionRef.current !== version) return; // stale response — discard
       const map = toStatusMap(res.statuses);
       setStatuses(map);
       if (shouldContinuePolling(map)) {
@@ -50,6 +56,7 @@ export function useSyncStatus(listingIds: string[], token: string | null) {
   const retrySync = useCallback(async (listingId: string) => {
     if (!token) return;
     await api("/sync-log/retry", { method: "POST", body: { listingId }, token });
+    versionRef.current++; // invalidate any in-flight pre-retry poll (audit M4)
     setStatuses((prev) => ({
       ...prev,
       [listingId]: { listingId, state: "pending", lastAttemptAt: new Date().toISOString() },
