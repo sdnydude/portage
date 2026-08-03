@@ -758,7 +758,9 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
       calls++;
-      if (String((opts as RequestInit).body).includes('BestOfferAutoAcceptPrice')) {
+      // Match the VALUE tag only — the retry now carries a DeletedField entry
+      // that contains the same field name.
+      if (String((opts as RequestInit).body).includes('<BestOfferAutoAcceptPrice currencyID')) {
         return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
       }
       return new Response(reviseOk('ReviseFixedPriceItem'), { status: 200 });
@@ -770,6 +772,37 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
     } as any);
 
     expect(calls).toBe(2);
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/best offer/i);
+  });
+});
+
+describe('EbayAdapter.updateListing — stored Best Offer threshold vs lowered price (23004)', () => {
+  it('retries with DeletedField entries — omission keeps the on-listing threshold, only deletion clears it', async () => {
+    let calls = 0;
+    let secondBody = '';
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      const body = String((opts as RequestInit).body);
+      if (!body.includes('DeletedField')) {
+        // Live repro: price lowered to the stored auto-accept amount — eBay
+        // validates the STORED threshold even when the revise omits the tag.
+        return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><LongMessage>The Best Offer Auto Accept Price must be less than the Buy It Now price.</LongMessage><ErrorCode>23004</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+      }
+      secondBody = body;
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><ItemID>307102403404</ItemID></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.updateListing('307102403404', {
+      ...baseInput, price: 25, ebaySku: 'PRT-000016',
+      // Stored specifics from publish time: auto-accept EQUAL to the new price.
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 25, minimumBestOfferPrice: 20 },
+    } as any);
+
+    expect(calls).toBe(2);
+    expect(secondBody).toContain('<DeletedField>Item.ListingDetails.BestOfferAutoAcceptPrice</DeletedField>');
+    expect(secondBody).toContain('<DeletedField>Item.ListingDetails.MinimumBestOfferPrice</DeletedField>');
     expect(result.status).toBe('active');
     expect(result.warning).toMatch(/best offer/i);
   });

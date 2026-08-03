@@ -711,7 +711,17 @@ export class EbayAdapter implements MarketplaceAdapter {
         buildReviseFixedPriceItemXml(
           marketplaceListingId,
           {
-            ...(withBestOffer ? tradingInput : { ...tradingInput, bestOfferAutoAcceptPrice: undefined }),
+            // Downgrade retry must DELETE the thresholds, not merely omit
+            // them: Revise omission keeps the values stored on the live
+            // listing, so a price lowered to/below a stored auto-accept
+            // amount re-fails with 23004 until the field is deleted.
+            ...(withBestOffer ? tradingInput : {
+              ...tradingInput,
+              bestOfferAutoAcceptPrice: undefined,
+              minimumBestOfferPrice: undefined,
+              deleteBestOfferAutoAcceptPrice: true,
+              deleteMinimumBestOfferPrice: true,
+            }),
             ...(photosEmpty ? { allowEmptyPictures: true } : {}),
           },
           token,

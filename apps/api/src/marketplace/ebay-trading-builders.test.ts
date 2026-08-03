@@ -248,6 +248,18 @@ describe('buildReviseFixedPriceItemXml (full content revise)', () => {
   });
 });
 
+describe('buildReviseFixedPriceItemXml — Best Offer threshold DeletedField', () => {
+  it('emits DeletedField entries to clear thresholds already stored on the live listing (omission keeps them)', () => {
+    const xml = buildReviseFixedPriceItemXml('307102403404', {
+      ...baseInput,
+      deleteBestOfferAutoAcceptPrice: true,
+      deleteMinimumBestOfferPrice: true,
+    }, 'T');
+    expect(xml).toContain('<DeletedField>Item.ListingDetails.BestOfferAutoAcceptPrice</DeletedField>');
+    expect(xml).toContain('<DeletedField>Item.ListingDetails.MinimumBestOfferPrice</DeletedField>');
+  });
+});
+
 describe('buildReviseFixedPriceItemXml — empty photos guard (F1 delete)', () => {
   it('throws instead of omitting PictureDetails when photos is explicitly empty (eBay keeps old pics silently)', () => {
     const input = { ...baseInput, pictureUrls: [] };
