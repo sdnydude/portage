@@ -81,3 +81,64 @@ describe('GET /sync-log', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('GET /sync-log/status', () => {
+  it('derives per-listing state: pending job wins, then failed job, then synced from the log', async () => {
+    // First select: sync_jobs rows for the requested listings
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockResolvedValue([
+            { listingId: 'l-pending', status: 'pending', updatedAt: new Date('2026-08-03T09:00:00Z'), lastError: null },
+            { listingId: 'l-failed', status: 'failed', updatedAt: new Date('2026-08-03T09:00:00Z'), lastError: 'Reverb 422: shipping required' },
+            { listingId: 'l-synced', status: 'success', updatedAt: new Date('2026-08-03T09:00:00Z'), lastError: null },
+          ]),
+        }),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .get('/sync-log/status?listingIds=l-pending,l-failed,l-synced')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.statuses).toEqual(expect.arrayContaining([
+      expect.objectContaining({ listingId: 'l-pending', state: 'pending' }),
+      expect.objectContaining({ listingId: 'l-failed', state: 'failed', message: 'Reverb 422: shipping required' }),
+      expect.objectContaining({ listingId: 'l-synced', state: 'synced' }),
+    ]));
+  });
+});
+
+describe('POST /sync-log/retry', () => {
+  it('re-enqueues a full sync for a caller-owned syncable listing and returns 202', async () => {
+    // Listing ownership lookup
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{
+            id: 'listing-1', userId: 'test-user-id', itemId: 'item-1',
+            marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321',
+          }]),
+        }),
+      }),
+    } as any);
+    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    const res = await request(app)
+      .post('/sync-log/retry')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ listingId: 'listing-1' });
+
+    expect(res.status).toBe(202);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({
+      listingId: 'listing-1',
+      itemId: 'item-1',
+      marketplace: 'reverb',
+      includePhotos: true, // retry pushes the full state, photos included
+    }));
+  });
+});

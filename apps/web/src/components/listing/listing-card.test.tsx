@@ -49,6 +49,26 @@ describe("ListingCard (read-only)", () => {
   });
 });
 
+describe("ListingCard sync badge (P3)", () => {
+  it("renders the failed badge with message and fires onRetrySync from the retry button", async () => {
+    const onRetrySync = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ListingCard
+        listing={LISTING}
+        token="t"
+        onChanged={() => {}}
+        highlight={false}
+        syncStatus={{ listingId: "l1", state: "failed", lastAttemptAt: "2026-08-03T09:00:00Z", message: "Reverb 422: shipping required" }}
+        onRetrySync={onRetrySync}
+      />,
+    );
+    expect(screen.getByTestId("sync-badge-l1")).toHaveTextContent(/sync failed/i);
+    expect(screen.getByText(/Reverb 422: shipping required/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /retry sync/i }));
+    expect(onRetrySync).toHaveBeenCalledWith("l1");
+  });
+});
+
 describe("ListingCard actions", () => {
   it("publishes a draft and calls onChanged", async () => {
     const onChanged = vi.fn();

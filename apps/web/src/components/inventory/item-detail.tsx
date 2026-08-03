@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
 import { useListings } from "@/hooks/use-listings";
 import { ListingCard } from "@/components/listing/listing-card";
+import { useSyncStatus } from "@/hooks/use-sync-status";
 import { ConfirmSheet } from "@/components/ui/confirm-sheet";
 import { useAuth } from "@/hooks/use-auth";
 import { useEnhance } from "@/hooks/use-enhance";
@@ -211,6 +212,9 @@ export function ItemDetail({
   const availableMarketplaces = (["ebay", "reverb"] as const).filter(
     (m) => !visibleListings.some((l) => l.marketplace === m),
   );
+  // P3 truth surface: one batched status fetch for every listing on the page;
+  // cards render the badge and the failed-state retry.
+  const { syncStatuses, retrySync } = useSyncStatus(itemListings.map((l) => l.id), token);
   const renderListingCard = (l: (typeof itemListings)[number]) => (
     <div key={l.id} id={`listing-${l.id}`}>
       <ListingCard
@@ -220,6 +224,8 @@ export function ItemDetail({
         highlight={l.id === highlightId}
         itemBrand={item?.brand || undefined}
         itemModel={item?.model || undefined}
+        syncStatus={syncStatuses[l.id]}
+        onRetrySync={retrySync}
       />
     </div>
   );

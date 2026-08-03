@@ -10,6 +10,7 @@ import { formatCurrency, formatMarketplace } from "@/lib/format";
 import { parsePriceInput } from "@/lib/price";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 import { ShippingFieldsSection, SHIPPING_FIELDS_DEFAULT, type ShippingFieldsValue } from "./shipping-fields-section";
+import type { ListingSyncStatus } from "@/lib/sync-status";
 import { WeightFillSheet } from "./weight-fill-sheet";
 import type { WeightDimsValue } from "./weight-dims-inputs";
 import { ConfirmSheet } from "@/components/ui/confirm-sheet";
@@ -44,6 +45,9 @@ interface ListingCardProps {
    */
   itemBrand?: string;
   itemModel?: string;
+  /** P3 sync truth surface: badge state from useSyncStatus (undefined = no badge). */
+  syncStatus?: ListingSyncStatus;
+  onRetrySync?: (listingId: string) => Promise<void>;
 }
 
 /**
@@ -51,7 +55,7 @@ interface ListingCardProps {
  * the action surface (price edit, publish, archive, delete, relist).
  * `token`/`onChanged` are part of the stable contract those actions consume.
  */
-export function ListingCard({ listing, token, onChanged, highlight, itemBrand, itemModel }: ListingCardProps) {
+export function ListingCard({ listing, token, onChanged, highlight, itemBrand, itemModel, syncStatus, onRetrySync }: ListingCardProps) {
   const router = useRouter();
   const status = statusConfig[listing.status] ?? statusConfig.draft;
   const currency = listing.currency || "USD";
@@ -315,10 +319,40 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
         <span className="text-sm font-semibold text-text-primary">
           {marketplaceLabel}
         </span>
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${status.className}`}>
-          {status.label}
+        <span className="flex items-center gap-1.5">
+          {syncStatus && (
+            <span
+              data-testid={`sync-badge-${listing.id}`}
+              title={syncStatus.message ?? `Last sync attempt ${new Date(syncStatus.lastAttemptAt).toLocaleString()}`}
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                syncStatus.state === "pending"
+                  ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                  : syncStatus.state === "failed"
+                    ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                    : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+              }`}
+            >
+              {syncStatus.state === "pending" ? "Syncing…" : syncStatus.state === "failed" ? "Sync failed" : "Synced"}
+            </span>
+          )}
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${status.className}`}>
+            {status.label}
+          </span>
         </span>
       </div>
+      {syncStatus?.state === "failed" && (
+        <div className="mt-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-2 text-sm text-red-700 dark:text-red-300 flex items-start justify-between gap-2">
+          <span>{syncStatus.message ?? "The last marketplace sync failed."}</span>
+          {onRetrySync && (
+            <button
+              onClick={() => { void onRetrySync(listing.id); }}
+              className="shrink-0 px-2 py-0.5 rounded-lg border border-red-300 dark:border-red-700 text-xs font-medium"
+            >
+              Retry sync
+            </button>
+          )}
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between">
         {editingPrice ? (
           <div className="flex items-center gap-2">
