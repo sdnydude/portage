@@ -1537,13 +1537,55 @@ describe('PATCH /listings/:id — price change syncs to the live eBay listing', 
   });
 });
 
-describe('PATCH /listings/:id — marketplaceSpecificFields server-side merge (BO-3)', () => {
-  const LID = '00000000-0000-0000-0000-0000000000d3';
+describe('applyReverbEnrichment — additive local pickup (RV-2)', () => {
+  it('reverbShipping.localPickup rides ALONGSIDE the chosen profile — pickup never strips the shipping choice', async () => {
+    const { applyReverbEnrichment } = await import('./listings.js');
+    mockSelectOnce([]); // no seller profile row
+    const adapter = {} as never;
 
-  it('shallow-merges into the stored fields and treats null as delete — a partial update cannot clobber siblings', async () => {
+    const r = await applyReverbEnrichment('u1', { id: 'i1', title: 'T', category: null, marketplaceData: null }, adapter, {
+      categoryUuid: 'cu-1', // skip the category-guess path — not under test
+      reverbShipping: { profileId: 'p1', localPickup: true },
+    });
+
+    expect(r.specific.shippingProfileId).toBe('p1');
+    expect(r.specific.localPickup).toBe(true);
+  });
+
+  it('an explicit localPickup:false overrides a profile default of true (CodeRabbit)', async () => {
+    const { applyReverbEnrichment } = await import('./listings.js');
+    mockSelectOnce([{ userId: 'u1', reverbOffersEnabled: true, reverbDefaultShipping: { local: true } }]);
+    const adapter = {} as never;
+
+    const r = await applyReverbEnrichment('u1', { id: 'i1', title: 'T', category: null, marketplaceData: null }, adapter, {
+      categoryUuid: 'cu-1',
+      reverbShipping: { profileId: 'p1', localPickup: false },
+    });
+
+    expect(r.specific.localPickup).toBe(false); // seller's OFF wins over the profile default
+  });
+});
+
+describe('splitSpecificsPatch (atomic merge, C2)', () => {
+  it('splits a patch into set-keys and null-delete keys', async () => {
+    const { splitSpecificsPatch } = await import('./listings.js');
+    const r = splitSpecificsPatch({ bestOfferEnabled: true, minimumBestOfferPrice: 150, bestOfferAutoAcceptPrice: null });
+    expect(r.setKeys).toEqual({ bestOfferEnabled: true, minimumBestOfferPrice: 150 });
+    expect(r.nullKeys).toEqual(['bestOfferAutoAcceptPrice']);
+  });
+});
+
+// The BO-3 JS-merged-write test was superseded by the C2 atomic-merge design:
+// sentinel semantics (null deletes, non-null sets, siblings untouched) are
+// pinned by the splitSpecificsPatch tests; the write shape by the C2 describe.
+
+describe('PATCH /listings/:id — atomic specifics merge (C2)', () => {
+  const LID = '00000000-0000-0000-0000-0000000000d6';
+
+  it('writes an atomic SQL merge expression, never a pre-merged object a concurrent PATCH could clobber', async () => {
     mockSelectOnce([{
       id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'draft', marketplaceListingId: null, ebaySku: null, currency: 'USD',
-      marketplaceSpecificFields: { categoryId: '175669', ebayShipping: { method: 'flat' }, bestOfferAutoAcceptPrice: 269 },
+      marketplaceSpecificFields: { categoryId: '175669', bestOfferAutoAcceptPrice: 269 },
     }]);
     const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, marketplace: 'ebay', status: 'draft', marketplaceListingId: null, price: 199, currency: 'USD', itemId: ITEM_ID }]) })) }));
     vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
@@ -1551,17 +1593,21 @@ describe('PATCH /listings/:id — marketplaceSpecificFields server-side merge (B
     const res = await request(app)
       .patch(`/listings/${LID}`)
       .set('Authorization', `Bearer ${authToken}`)
-      .send({ marketplaceSpecificFields: { bestOfferEnabled: true, minimumBestOfferPrice: 150, bestOfferAutoAcceptPrice: null } });
+      .send({ marketplaceSpecificFields: { bestOfferEnabled: true, bestOfferAutoAcceptPrice: null } });
 
     expect(res.status).toBe(200);
-    const setArg = (setMock.mock.calls[0] as unknown[])[0] as { marketplaceSpecificFields: Record<string, unknown> };
-    expect(setArg.marketplaceSpecificFields).toEqual({
-      categoryId: '175669',
-      ebayShipping: { method: 'flat' },
-      bestOfferEnabled: true,
-      minimumBestOfferPrice: 150,
-      // bestOfferAutoAcceptPrice deleted via the null sentinel
-    });
+    const setArg = (setMock.mock.calls[0] as unknown[])[0] as { marketplaceSpecificFields: unknown };
+    // A drizzle SQL expression (has queryChunks), not a plain merged object.
+    const chunks = (setArg.marketplaceSpecificFields as { queryChunks?: unknown[] }).queryChunks;
+    expect(chunks).toBeDefined();
+    // Param values only (the table ref inside the expression is circular).
+    const flat = (cs: unknown[]): unknown[] => cs.flatMap((c) =>
+      Array.isArray((c as { queryChunks?: unknown[] })?.queryChunks) ? flat((c as { queryChunks: unknown[] }).queryChunks) : [c]);
+    const params = JSON.stringify(flat(chunks!)
+      .map((c) => (typeof c === 'object' && c !== null && 'value' in c ? (c as { value: unknown }).value : c))
+      .filter((v) => typeof v === 'string' || typeof v === 'number' || Array.isArray(v)));
+    expect(params).toContain('bestOfferEnabled');        // set key rides the expression
+    expect(params).toContain('bestOfferAutoAcceptPrice'); // null key rides as a delete
   });
 });
 
@@ -1613,9 +1659,19 @@ describe('PATCH /listings/:id — Best Offer pre-flight (BO-3)', () => {
 
     expect(res.status).toBe(422);
     expect(res.body.error).toMatch(/205|195/); // conflict reported against the LIVE numbers
-    // The heal itself is persisted so the DB matches eBay for the next edit.
-    const healWrite = setMock.mock.calls.map((c) => (c as unknown[])[0] as { marketplaceSpecificFields?: Record<string, unknown> })
-      .find((a) => a.marketplaceSpecificFields?.bestOfferAutoAcceptPrice === 205);
+    // The heal itself is persisted (as the C2 atomic expression carrying the
+    // live values) so the DB matches eBay for the next edit.
+    const flat = (cs: unknown[]): unknown[] => cs.flatMap((c) =>
+      Array.isArray((c as { queryChunks?: unknown[] })?.queryChunks) ? flat((c as { queryChunks: unknown[] }).queryChunks) : [c]);
+    const healWrite = setMock.mock.calls.map((c) => (c as unknown[])[0] as { marketplaceSpecificFields?: { queryChunks?: unknown[] } })
+      .find((a) => {
+        const chunks = a.marketplaceSpecificFields?.queryChunks;
+        if (!chunks) return false;
+        const params = JSON.stringify(flat(chunks)
+          .map((x) => (typeof x === 'object' && x !== null && 'value' in x ? (x as { value: unknown }).value : x))
+          .filter((v) => typeof v === 'string'));
+        return params.includes('205');
+      });
     expect(healWrite).toBeDefined();
   });
 

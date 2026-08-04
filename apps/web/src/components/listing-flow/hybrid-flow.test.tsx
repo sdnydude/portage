@@ -190,6 +190,14 @@ describe("HybridFlow — photo editing wiring (S2.5-8)", () => {
   });
 });
 
+describe("HybridFlow — review panel description height (UI-1)", () => {
+  it("the description editor shows 5 lines (operator 2026-08-03)", () => {
+    render(<HybridFlow />);
+    fireEvent.click(screen.getByRole("button", { name: /edit details/i }));
+    expect(screen.getByPlaceholderText("Item description...")).toHaveAttribute("rows", "5");
+  });
+});
+
 describe("HybridFlow — fresh-scan prepare (item created at confirm)", () => {
   it("Looks right creates the item via ensureItemCreated and runs prepare with its id", async () => {
     h.lastStep = "recognition";

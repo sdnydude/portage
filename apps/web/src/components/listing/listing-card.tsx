@@ -76,6 +76,11 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
   const [boFields, setBoFields] = useState({ enabled: false, autoAccept: "", minimum: "" });
   const [boTouched, setBoTouched] = useState(false);
   const isEbay = listing.marketplace === "ebay";
+  // RV-1: Reverb's offers is a single explicit per-listing override — the
+  // post-publish parity surface for Reverb (eBay has the threshold fields).
+  const isReverb = listing.marketplace === "reverb";
+  const [reverbOffers, setReverbOffers] = useState(true);
+  const [reverbOffersTouched, setReverbOffersTouched] = useState(false);
 
   const seedBoFields = () => {
     const stored = (listing.marketplaceSpecificFields ?? {}) as Record<string, unknown>;
@@ -85,6 +90,13 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       minimum: typeof stored.minimumBestOfferPrice === "number" ? String(stored.minimumBestOfferPrice) : "",
     });
     setBoTouched(false);
+    // RV-1: explicit override wins; else the profile-driven stored value; else on.
+    setReverbOffers(
+      typeof stored.offersEnabledExplicit === "boolean" ? stored.offersEnabledExplicit
+        : typeof stored.offersEnabled === "boolean" ? stored.offersEnabled
+        : true,
+    );
+    setReverbOffersTouched(false);
   };
 
   const handleSavePrice = async () => {
@@ -105,7 +117,10 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       // sends the explicit disable triple — the only path that clears
       // thresholds, by seller intent.
       const num = (s: string): number | null => (s.trim() === "" ? null : parseFloat(s));
-      const boPayload = !isEbay || !boTouched ? {} : {
+      const reverbPayload = !isReverb || !reverbOffersTouched ? {} : {
+        marketplaceSpecificFields: { offersEnabledExplicit: reverbOffers },
+      };
+      const boPayload = !isEbay || !boTouched ? reverbPayload : {
         marketplaceSpecificFields: boFields.enabled
           ? {
               bestOfferEnabled: true,
@@ -165,11 +180,12 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
         ...(shipFields.service ? { service: shipFields.service } : {}),
         ...(days >= 0 && shipFields.handlingDays !== "" ? { handlingDays: days } : {}),
       };
-      const existing = (listing.marketplaceSpecificFields ?? {}) as Record<string, unknown>;
+      // C2: key-scoped payload — the server merges atomically, so spreading
+      // the (possibly stale) stored object would clobber concurrent writers.
       const updated = await api<Listing & { warning?: string }>(`/listings/${listing.id}`, {
         method: "PATCH",
         token,
-        body: { marketplaceSpecificFields: { ...existing, ebayShipping } },
+        body: { marketplaceSpecificFields: { ebayShipping } },
       });
       if (updated.warning) setActionWarning(updated.warning);
       setEditingShipping(false);
@@ -317,12 +333,14 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
     try {
       // Merge the filled specifics into the listing's marketplaceSpecificFields,
       // then re-publish. The publish gate re-validates server-side.
+      // C2: only the aspects key rides — merged within its own bag; the
+      // server's atomic merge leaves every sibling key untouched.
       const existing = (listing.marketplaceSpecificFields ?? {}) as Record<string, unknown>;
       const existingAspects = (existing.aspects as Record<string, string[]> | undefined) ?? {};
       await api(`/listings/${listing.id}`, {
         method: "PATCH",
         token,
-        body: { marketplaceSpecificFields: { ...existing, aspects: { ...existingAspects, ...aspects } } },
+        body: { marketplaceSpecificFields: { aspects: { ...existingAspects, ...aspects } } },
       });
       await publishAndRefresh();
       setAspectMissing(null);
@@ -417,6 +435,18 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
                 Cancel
               </button>
             </div>
+            {/* RV-1: Reverb per-listing offers override — a single explicit
+                on/off, the only Reverb offer control post-publish. */}
+            {isReverb && (
+              <label className="flex items-center gap-2 text-xs text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={reverbOffers}
+                  onChange={(e) => { setReverbOffers(e.target.checked); setReverbOffersTouched(true); }}
+                />
+                Accept offers
+              </label>
+            )}
             {/* Best Offer rides the price editor (BO-5): eBay validates
                 thresholds against the price, so they change together. */}
             {isEbay && (

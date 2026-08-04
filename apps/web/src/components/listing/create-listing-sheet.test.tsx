@@ -206,6 +206,71 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     expect(fields.bestOfferAutoAcceptPrice).toBe(85);
   });
 
+  it("Reverb local pickup is ADDITIVE: pickup toggle + shipping profile ride the POST together (RV-2)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      if (path === "/marketplace/reverb/shipping-profiles") return { profiles: [{ id: "p1", name: "Std" }] };
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Reverb"));
+    // Choose a shipping profile AND turn pickup on — both must survive.
+    fireEvent.change(await screen.findByLabelText(/shipping profile|reverb shipping/i), { target: { value: "p1" } });
+    fireEvent.click(screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!);
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const ship = (bodies[0].marketplaceSpecificFields as Record<string, unknown>)?.reverbShipping as Record<string, unknown>;
+    expect(ship).toEqual({ profileId: "p1", localPickup: true });
+  });
+
+  it("C1 pin: eBay seed survives switching to Reverb, toggling Reverb offers off, and switching back — per-marketplace state", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} initialBestOffer={{ bestOfferAutoAcceptPrice: 85 }} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Reverb"));
+    // Turn REVERB offers off — must not touch the eBay slice.
+    fireEvent.click(screen.getByText("Accept offers").closest("label")!.querySelector("div")!);
+    fireEvent.click(screen.getByText("eBay"));
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown>;
+    expect(bodies[0].marketplace).toBe("ebay");
+    expect(fields.bestOfferEnabled).toBe(true);           // seeded eBay config intact
+    expect(fields.bestOfferAutoAcceptPrice).toBe(85);
+    expect(fields.offersEnabledExplicit).toBeUndefined(); // Reverb key never rides an eBay POST
+  });
+
+  it("C1 pin (Reverb side): the Reverb toggle-off posts offersEnabledExplicit false and never any eBay threshold keys", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} initialBestOffer={{ bestOfferAutoAcceptPrice: 85 }} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Reverb"));
+    fireEvent.click(screen.getByText("Accept offers").closest("label")!.querySelector("div")!);
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown> | undefined;
+    expect(bodies[0].marketplace).toBe("reverb");
+    expect(fields?.offersEnabledExplicit).toBe(false);
+    expect(fields?.bestOfferEnabled).toBeUndefined();
+    expect(fields?.bestOfferAutoAcceptPrice).toBeUndefined();
+    expect(fields?.minimumBestOfferPrice).toBeUndefined();
+  });
+
   it("seeds visible Best Offer fields from initialBestOffer so an AI-prepared floor is seen, not invisible config (BO-5)", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
@@ -587,25 +652,9 @@ describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
     });
   });
 
-  it("Reverb: Local-pickup-only is a TOGGLE (not a select option) and rides the POST as localPickupOnly", async () => {
-    let body: Record<string, unknown> | undefined;
-    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
-      if (path === "/marketplace/reverb/shipping-profiles") return { profiles: [{ id: "789", name: "Guitars (US)" }] };
-      if (path === "/marketplace/reverb/product-types") return { productTypes: [] };
-      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
-      return {};
-    });
-    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
-    await screen.findByLabelText(/shipping profile/i);
-    // No pickup entry in the pull-down anymore.
-    expect(screen.queryByRole("option", { name: /local pickup only/i })).toBeNull();
-    const toggle = screen.getByText(/local pickup only/i).closest("label")!.querySelector("div")!;
-    fireEvent.click(toggle);
-    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
-    await waitFor(() => expect(body).toBeDefined());
-    expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbShipping).toEqual({ localPickupOnly: true });
-  });
+  // The pickup-ONLY toggle test was superseded 2026-08-03 (operator): pickup
+  // is an ADD-ON that rides alongside the shipping choice — pinned by the
+  // RV-2 additive test above.
 
   it("Reverb: loads shipping profiles into the select and sends reverbShipping.profileId when chosen", async () => {
     let body: Record<string, unknown> | undefined;

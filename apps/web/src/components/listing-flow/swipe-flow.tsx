@@ -967,7 +967,7 @@ function DetailsPhase({
             value={state.description}
             onChange={(e) => setField("description", e.target.value)}
             placeholder="Describe the item..."
-            rows={4}
+            rows={5}
           />
         </div>
 

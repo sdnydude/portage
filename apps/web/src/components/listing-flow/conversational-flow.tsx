@@ -209,7 +209,7 @@ function InlineInput({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKey}
-          rows={4}
+          rows={5}
           className="w-full bg-transparent text-[13px] leading-relaxed resize-none focus:outline-none"
           style={{ color: "#1A1A1A" }}
         />
