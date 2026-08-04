@@ -10,6 +10,8 @@ import {
   buildReviseFixedPriceItemXml,
   buildEndFixedPriceItemXml,
   buildGetItemXml,
+  buildGetCategoryFeaturesXml,
+  parseCategoryBestOfferEnabled,
   parseAddItemResponse,
   parseGetItemStatus,
   parseGetItemVerification,
@@ -306,6 +308,26 @@ describe('parseGetItemStatus', () => {
     expect(parseGetItemStatus(mk('Completed', 0))).toBe('ended');
     expect(parseGetItemStatus(mk('Ended'))).toBe('ended');
     expect(parseGetItemStatus({ GetItemResponse: {} })).toBe('unknown');
+  });
+});
+
+describe('GetCategoryFeatures — Best Offer support pre-flight (BO-M)', () => {
+  it('builds the request and parses the per-category BestOfferEnabled flag', () => {
+    const xml = buildGetCategoryFeaturesXml('175669', 'tok');
+    expect(xml).toContain('<CategoryID>175669</CategoryID>');
+    expect(xml).toContain('<FeatureID>BestOfferEnabled</FeatureID>');
+
+    const parsed = {
+      GetCategoryFeaturesResponse: {
+        Category: { CategoryID: '175669', BestOfferEnabled: 'true' },
+      },
+    };
+    expect(parseCategoryBestOfferEnabled(parsed)).toBe(true);
+    expect(parseCategoryBestOfferEnabled({
+      GetCategoryFeaturesResponse: { Category: { CategoryID: '9999', BestOfferEnabled: 'false' } },
+    })).toBe(false);
+    // Absent flag → null (unknown) — the caller must NOT treat unknown as unsupported.
+    expect(parseCategoryBestOfferEnabled({ GetCategoryFeaturesResponse: {} })).toBeNull();
   });
 });
 

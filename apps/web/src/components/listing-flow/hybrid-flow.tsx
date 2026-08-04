@@ -679,7 +679,7 @@ function ChatMode({
               </div>
               <div>
                 <p style={{ fontSize: 11, fontWeight: 600, color: SECONDARY, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</p>
-                <StyledTextarea value={state.description} onChange={(v) => setField("description", v)} rows={4} placeholder="Item description..." />
+                <StyledTextarea value={state.description} onChange={(v) => setField("description", v)} rows={5} placeholder="Item description..." />
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <div style={{ flex: 1 }}>
@@ -1034,7 +1034,7 @@ function CompactMode({ flow }: { flow: ReturnType<typeof useListingFlow> }) {
       {/* Description */}
       <div style={{ ...rowStyle, paddingTop: 14 }}>
         <label style={labelStyle}>Description</label>
-        <StyledTextarea value={state.description} onChange={(v) => setField("description", v)} placeholder="Describe the item..." rows={3} />
+        <StyledTextarea value={state.description} onChange={(v) => setField("description", v)} placeholder="Describe the item..." rows={5} />
       </div>
 
       {/* Category & Condition */}

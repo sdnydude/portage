@@ -93,6 +93,36 @@ export async function applyShipFromOrigin(
   return { ...ms, originPostalCode: shipFrom?.zip ?? shipFrom?.postalCode };
 }
 
+/**
+ * Split a marketplaceSpecificFields patch for the atomic JSONB merge (C2):
+ * non-null keys are set, null-valued keys are deleted. Pure — feeds the
+ * single-statement UPDATE so concurrent PATCHes can never erase each other.
+ */
+export function splitSpecificsPatch(patch: Record<string, unknown>): { setKeys: Record<string, unknown>; nullKeys: string[] } {
+  const setKeys: Record<string, unknown> = {};
+  const nullKeys: string[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) nullKeys.push(k);
+    else setKeys[k] = v;
+  }
+  return { setKeys, nullKeys };
+}
+
+/**
+ * Atomic merge expression (C2): evaluated against the ROW'S CURRENT value at
+ * write time — `current || set − nulls` in one statement, so overlapping
+ * PATCHes each land only their own keys. Preserves the null-delete sentinel.
+ */
+function specificsMergeExpression(patch: Record<string, unknown>) {
+  const { setKeys, nullKeys } = splitSpecificsPatch(patch);
+  let expr = sql`COALESCE(${listings.marketplaceSpecificFields}, '{}'::jsonb) || ${JSON.stringify(setKeys)}::jsonb`;
+  // Chain single-key deletes (portable — avoids text[] parameter binding).
+  for (const key of nullKeys) {
+    expr = sql`(${expr}) - ${key}::text`;
+  }
+  return expr;
+}
+
 function getAdapter(userId: string, marketplace: 'ebay' | 'etsy' | 'reverb'): MarketplaceAdapter {
   switch (marketplace) {
     case 'ebay': return new EbayAdapter(userId);
@@ -147,13 +177,17 @@ export async function applyReverbEnrichment(
   if (typeof ms.offersEnabledExplicit === 'boolean') ms.offersEnabled = ms.offersEnabledExplicit;
   // Per-listing shipping intent (publish sheet) — applied AFTER the profile
   // fill so an explicit choice always wins, same pattern as offersEnabledExplicit.
-  const reverbShipping = ms.reverbShipping as { profileId?: string; localPickupOnly?: boolean } | undefined;
+  const reverbShipping = ms.reverbShipping as { profileId?: string; localPickup?: boolean; localPickupOnly?: boolean } | undefined;
   if (reverbShipping?.localPickupOnly) {
+    // Legacy pickup-ONLY intent (pre-2026-08-03 rows) — still honored.
     delete ms.shippingProfileId;
     delete ms.shippingRates;
     ms.localPickup = true;
-  } else if (reverbShipping?.profileId) {
-    ms.shippingProfileId = reverbShipping.profileId;
+  } else {
+    // RV-2 (operator 2026-08-03): pickup is an ADD-ON — it rides alongside
+    // the shipping choice, never replaces it.
+    if (reverbShipping?.profileId) ms.shippingProfileId = reverbShipping.profileId;
+    if (reverbShipping?.localPickup) ms.localPickup = true;
   }
 
   // Never-prepared items carry no cached category. A Reverb publish without one
@@ -725,11 +759,13 @@ listingsRouter.patch('/:id', async (req, res, next) => {
     } = {};
     if (body.price !== undefined) updates.price = body.price;
     if (body.status !== undefined) updates.status = body.status;
+    // C2: the WRITE is a single atomic SQL merge (row-current || set − null
+    // keys) so concurrent PATCHes each land only their own keys. The JS
+    // merge below is only an in-memory PREVIEW for the pre-flight validation
+    // — it never rides a write.
+    let specificsPatch: Record<string, unknown> | undefined;
     if (body.marketplaceSpecificFields !== undefined) {
-      // BO-3: shallow-merge into the stored specifics; a null value deletes
-      // its key. Wholesale replace forced clients to read-spread the whole
-      // object (lost-update risk), and the Best Offer UI needs an explicit
-      // "clear this threshold" affordance.
+      specificsPatch = body.marketplaceSpecificFields;
       const stored = (existing.marketplaceSpecificFields as Record<string, unknown> | null) ?? {};
       const merged = { ...stored };
       for (const [k, v] of Object.entries(body.marketplaceSpecificFields)) {
@@ -754,8 +790,16 @@ listingsRouter.patch('/:id', async (req, res, next) => {
       if (!check.ok) {
         const adapter = getAdapter(userId, 'ebay') as EbayAdapter;
         const healResult = await healBestOfferFromLive(adapter, existing.marketplaceListingId, effectiveSpecific);
+        // C2: the heal contributes ONLY its 3 Best Offer keys to the atomic
+        // patch (absent live values ride as null-deletes) — never a whole
+        // stale object that could clobber a concurrent writer's keys.
+        const healPatch = (): Record<string, unknown> => Object.fromEntries(
+          (['bestOfferEnabled', 'bestOfferAutoAcceptPrice', 'minimumBestOfferPrice'] as const)
+            .map((k) => [k, healResult.specific[k] ?? null]),
+        );
         if (healResult.healed) {
           effectiveSpecific = healResult.specific;
+          specificsPatch = { ...(specificsPatch ?? {}), ...healPatch() };
           updates.marketplaceSpecificFields = healResult.specific;
           // Audit #2: a heal is never silent — tell the seller their stored
           // Best Offer settings were refreshed from the live eBay listing.
@@ -768,7 +812,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
           // local thresholds must never ride a later successful revise.
           if (healResult.healed) {
             await db.update(listings)
-              .set({ marketplaceSpecificFields: healResult.specific, updatedAt: new Date() })
+              .set({ marketplaceSpecificFields: specificsMergeExpression(healPatch()), updatedAt: new Date() })
               .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)));
           }
           throw new AppError(422, 'BEST_OFFER_CONFLICT', check.message);
@@ -777,7 +821,14 @@ listingsRouter.patch('/:id', async (req, res, next) => {
     }
 
     const [updated] = await db.update(listings)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({
+        ...updates,
+        // C2: specifics ride the atomic merge expression, not the JS preview.
+        ...(specificsPatch !== undefined
+          ? { marketplaceSpecificFields: specificsMergeExpression(specificsPatch) as unknown as Record<string, unknown> }
+          : {}),
+        updatedAt: new Date(),
+      })
       .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
       .returning();
 

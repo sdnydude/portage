@@ -325,6 +325,37 @@ export function buildGetItemXml(itemId: string, token: string): string {
   );
 }
 
+/**
+ * Deterministic Best Offer support pre-flight (BO-M): GetCategoryFeatures
+ * with FeatureID=BestOfferEnabled answers "does this category allow Best
+ * Offer" up front — replacing prose interpretation of rejection messages.
+ */
+export function buildGetCategoryFeaturesXml(categoryId: string, token: string): string {
+  return (
+    `${XML_DECL}\n<GetCategoryFeaturesRequest xmlns="${NS}">` +
+    `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +
+    `<CategoryID>${escapeXml(categoryId)}</CategoryID>` +
+    '<FeatureID>BestOfferEnabled</FeatureID>' +
+    '<DetailLevel>ReturnAll</DetailLevel>' +
+    '<ViewAllNodes>true</ViewAllNodes>' +
+    '</GetCategoryFeaturesRequest>'
+  );
+}
+
+/** true/false when the response carries the flag; null = unknown — callers
+ * must never treat unknown as unsupported (fail open, never drop config). */
+export function parseCategoryBestOfferEnabled(parsed: ParsedXml): boolean | null {
+  const catRaw = getPath(parsed, ['GetCategoryFeaturesResponse', 'Category']);
+  const cats = Array.isArray(catRaw) ? catRaw : catRaw != null ? [catRaw] : [];
+  for (const cat of cats) {
+    const flag = (cat as Record<string, unknown>)?.BestOfferEnabled;
+    if (flag != null) return String(flag) === 'true';
+  }
+  const siteDefault = getPath(parsed, ['GetCategoryFeaturesResponse', 'SiteDefaults', 'BestOfferEnabled']);
+  if (siteDefault != null) return String(siteDefault) === 'true';
+  return null;
+}
+
 export function buildEndFixedPriceItemXml(itemId: string, token: string): string {
   return (
     `${XML_DECL}\n<EndFixedPriceItemRequest xmlns="${NS}">` +

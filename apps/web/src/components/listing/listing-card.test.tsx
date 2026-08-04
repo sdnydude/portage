@@ -319,9 +319,33 @@ describe("ListingCard edit path", () => {
   });
 });
 
-describe("ListingCard — shipping edit (beta 17be7322)", () => {
-  it("saves ebayShipping via PATCH, client-side spreading the stored marketplaceSpecificFields", async () => {
-    const onChanged = vi.fn();
+describe("ListingCard — Reverb offers toggle (RV-1)", () => {
+  it("a Reverb listing's price editor carries an offers toggle that PATCHes offersEnabledExplicit only", async () => {
+    let patchBody: Record<string, unknown> | undefined;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: Record<string, unknown> }) => {
+      if (path === "/listings/l1" && opts?.method === "PATCH") { patchBody = opts.body; return {}; }
+      return path === "/seller-profile" ? { profile: {} } : {};
+    });
+    render(
+      <ListingCard
+        listing={{ ...LISTING, marketplace: "reverb" as const, marketplaceListingId: "87654321", marketplaceSpecificFields: { offersEnabledExplicit: true } }}
+        token="t" onChanged={vi.fn()} highlight={false}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /edit price/i }));
+    const toggle = screen.getByLabelText(/accept offers/i);
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle); // turn offers off for this listing
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(patchBody).toBeDefined());
+    expect(patchBody!.marketplaceSpecificFields).toEqual({ offersEnabledExplicit: false });
+  });
+});
+
+describe("ListingCard — key-scoped specifics saves (C2)", () => {
+  it("shipping save sends ONLY ebayShipping — stale sibling spread would defeat the server's atomic merge", async () => {
     let patchBody: Record<string, unknown> | undefined;
     apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: Record<string, unknown> }) => {
       if (path === "/listings/l1" && opts?.method === "PATCH") { patchBody = opts.body; return { warning: undefined }; }
@@ -331,7 +355,7 @@ describe("ListingCard — shipping edit (beta 17be7322)", () => {
     render(
       <ListingCard
         listing={{ ...LISTING, marketplaceSpecificFields: { aspects: { Brand: ["ASUS"] }, categoryId: "177" } }}
-        token="t" onChanged={onChanged} highlight={false}
+        token="t" onChanged={vi.fn()} highlight={false}
       />,
     );
 
@@ -342,12 +366,39 @@ describe("ListingCard — shipping edit (beta 17be7322)", () => {
     await userEvent.click(screen.getByRole("button", { name: /save shipping/i }));
 
     await waitFor(() => expect(patchBody).toBeDefined());
-    // Route full-replaces the JSONB — the client must spread the stored keys.
     expect(patchBody!.marketplaceSpecificFields).toEqual({
-      aspects: { Brand: ["ASUS"] },
-      categoryId: "177",
       ebayShipping: { method: "flat", flatCost: 9.99 },
     });
-    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+});
+
+// The client-spread shipping test was superseded by C2: the server merges
+// atomically and the key-scoped payload is pinned in the C2 describe above.
+
+describe("ListingCard — key-scoped aspects save (C2)", () => {
+  it("aspects save sends ONLY the merged aspects bag, no sibling spread", async () => {
+    let patchBody: Record<string, unknown> | undefined;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: Record<string, unknown> }) => {
+      if (String(path).includes("/publish")) throw new ApiError(422, "EBAY_ASPECTS_REQUIRED", "aspects", [{ name: "MPN", values: null }] as never);
+      if (path === "/listings/l1" && opts?.method === "PATCH") { patchBody = opts.body; return {}; }
+      return path === "/seller-profile" ? { profile: {} } : {};
+    });
+    render(
+      <ListingCard
+        listing={{ ...LISTING, status: "draft" as const, marketplaceListingId: null, marketplaceSpecificFields: { categoryId: "177", aspects: { Brand: ["ASUS"] } } }}
+        token="t" onChanged={vi.fn()} highlight={false}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /publish/i }));
+    await screen.findByText(/requires these item specifics/i);
+    await userEvent.type(screen.getByPlaceholderText("Enter MPN"), "X570");
+    await userEvent.click(screen.getByRole("button", { name: /save & publish/i }));
+
+    await waitFor(() => expect(patchBody).toBeDefined());
+    expect(Object.keys(patchBody!.marketplaceSpecificFields as Record<string, unknown>)).toEqual(["aspects"]);
+    expect((patchBody!.marketplaceSpecificFields as { aspects: Record<string, string[]> }).aspects).toMatchObject({
+      Brand: ["ASUS"], MPN: ["X570"],
+    });
   });
 });

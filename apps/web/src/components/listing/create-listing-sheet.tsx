@@ -73,25 +73,36 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // Per-listing "Accept offers" (beta request 1ad18a5b). Untouched → nothing is
   // sent and the server/profile defaults apply (eBay: off; Reverb: profile,
   // default on). Only an explicit user flip rides the POST.
-  const [acceptOffers, setAcceptOffers] = useState(marketplace === "reverb" || initialBestOffer != null);
+  // Per-marketplace offers state (C1, operator-classified critical
+  // 2026-08-03): eBay and Reverb Best Offer are DIFFERENT features — eBay is
+  // enable + two thresholds, Reverb is a single explicit boolean. One shared
+  // value corrupted both in one session (seed → switch → toggle → back).
+  // Each marketplace owns its slice; switching only changes which slice
+  // renders. Seeded once here — no switch-time re-seeding.
+  const [offers, setOffers] = useState({
+    ebay: {
+      enabled: initialBestOffer != null,
+      min: initialBestOffer?.minimumBestOfferPrice != null ? String(initialBestOffer.minimumBestOfferPrice) : "",
+      autoAccept: initialBestOffer?.bestOfferAutoAcceptPrice != null ? String(initialBestOffer.bestOfferAutoAcceptPrice) : "",
+    },
+    reverb: { enabled: true }, // profile default is on
+  });
   // Touched PER MARKETPLACE (review finding 2026-08-02): an eBay flip must not
-  // ride a later Reverb POST as offersEnabledExplicit (or vice versa) — same
-  // separation the shipping refs already have. An initialBestOffer seed counts
-  // as touched (BO-5, same contract as initialShipping).
+  // ride a later Reverb POST as offersEnabledExplicit (or vice versa). An
+  // initialBestOffer seed counts as touched (BO-5, same as initialShipping).
   const offersTouched = useRef<{ ebay: boolean; reverb: boolean }>({ ebay: initialBestOffer != null, reverb: false });
-  const [minOffer, setMinOffer] = useState(initialBestOffer?.minimumBestOfferPrice != null ? String(initialBestOffer.minimumBestOfferPrice) : "");
-  const [autoAcceptOffer, setAutoAcceptOffer] = useState(initialBestOffer?.bestOfferAutoAcceptPrice != null ? String(initialBestOffer.bestOfferAutoAcceptPrice) : "");
+  const acceptOffers = marketplace === "ebay" ? offers.ebay.enabled : offers.reverb.enabled;
+  const setAcceptOffers = (v: boolean) =>
+    setOffers((o) => marketplace === "ebay" ? { ...o, ebay: { ...o.ebay, enabled: v } } : { ...o, reverb: { enabled: v } });
+  const minOffer = offers.ebay.min;
+  const setMinOffer = (v: string) => setOffers((o) => ({ ...o, ebay: { ...o.ebay, min: v } }));
+  const autoAcceptOffer = offers.ebay.autoAccept;
+  const setAutoAcceptOffer = (v: string) => setOffers((o) => ({ ...o, ebay: { ...o.ebay, autoAccept: v } }));
   // Advertising (beta request 55639b6e): eBay Promoted Listings ad rate /
   // Reverb Bump bid. Off by default; nothing rides the POST until toggled.
   const [promote, setPromote] = useState(false);
   const [adRate, setAdRate] = useState("");
   const [bumpBid, setBumpBid] = useState("1.5");
-  // Marketplace switch before any interaction re-seeds the default position.
-  useEffect(() => {
-    // Re-seed the default whenever THIS marketplace's toggle is untouched.
-    if (!offersTouched.current[marketplace]) setAcceptOffers(marketplace === "reverb");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [marketplace]);
   // Per-listing shipping (beta 17be7322) — eBay only for now. Untouched sends
   // nothing: the server keeps its calculated-shipping defaults and legacy rows
   // keep profile-driven behavior (same contract as offersTouched above).
@@ -179,7 +190,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       ebayAdRate?: number;
       reverbBumpBid?: number;
       ebayShipping?: { method: string; flatCost?: number; service?: string; handlingDays?: number; localPickup?: boolean };
-      reverbShipping?: { profileId?: string; localPickupOnly?: boolean };
+      reverbShipping?: { profileId?: string; localPickup?: boolean; localPickupOnly?: boolean };
       categoryUuid?: string;
     } = {};
     if (categoryId) fields.categoryId = categoryId;
@@ -215,9 +226,10 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       };
     }
     if (reverbShippingTouched.current && marketplace === "reverb" && (reverbLocalPickup || reverbShipChoice)) {
-      fields.reverbShipping = reverbLocalPickup
-        ? { localPickupOnly: true }
-        : { profileId: reverbShipChoice };
+      fields.reverbShipping = {
+        ...(reverbShipChoice ? { profileId: reverbShipChoice } : {}),
+        ...(reverbLocalPickup ? { localPickup: true } : {}),
+      };
     }
     // Explicit cascade pick wins over server enrichment (applyReverbEnrichment
     // only fills categoryUuid when absent).
@@ -593,8 +605,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            {/* Pickup intent is a panel toggle (operator correction 2026-08-02),
-                matching the other switches — it wins over the profile select. */}
+            {/* Pickup is an ADD-ON toggle (operator correction 2026-08-03):
+                it rides ALONGSIDE the shipping choice, never replaces it. */}
             <label className="flex items-center gap-3 py-2 mt-1 cursor-pointer">
               <div
                 onClick={() => { reverbShippingTouched.current = true; setReverbLocalPickup(!reverbLocalPickup); }}
@@ -608,7 +620,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
                   }`}
                 />
               </div>
-              <span className="text-sm text-text-primary">Local pickup only</span>
+              <span className="text-sm text-text-primary">Offer local pickup</span>
             </label>
           </div>
         )}

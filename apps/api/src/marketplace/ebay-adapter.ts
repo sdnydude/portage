@@ -8,7 +8,9 @@ import { callTradingApi, EbayTradingError } from './ebay-trading-client.js';
 // Stable eBay Trading codes for price-vs-threshold conflicts (BO-2):
 // 22003 = auto-decline amount >= Buy It Now price, 23004 = auto-accept >= price.
 const BEST_OFFER_THRESHOLD_CODES = new Set([22003, 23004]);
-import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml, buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
+import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml,
+  buildGetCategoryFeaturesXml,
+  parseCategoryBestOfferEnabled, buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
 import { EBAY_USER_AGENT } from './ebay-constants.js';
 import type {
   MarketplaceAdapter,
@@ -31,11 +33,16 @@ const validConditionsCache = new Map<string, { value: string[]; cachedAt: number
 const VALID_CONDITIONS_TTL = 60 * 60 * 1000; // 1h
 const requiredAspectsCache = new Map<string, { value: Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>; cachedAt: number }>();
 const REQUIRED_ASPECTS_TTL = 24 * 60 * 60 * 1000; // 24h
+// BO-M: per-category Best Offer support (GetCategoryFeatures). Category
+// features change rarely — long TTL; null (unknown) is never cached.
+const bestOfferSupportCache = new Map<string, { value: boolean; cachedAt: number }>();
+const BEST_OFFER_SUPPORT_TTL = 24 * 60 * 60 * 1000; // 24h
 
 // Test seam: module-level caches survive across vitest tests in a file.
 export function clearEbayTaxonomyCaches(): void {
   validConditionsCache.clear();
   requiredAspectsCache.clear();
+  bestOfferSupportCache.clear();
 }
 
 /**
@@ -405,7 +412,11 @@ export class EbayAdapter implements MarketplaceAdapter {
    * tightening this to id-based matching once real rejections are observed.
    */
   private static isBestOfferRejection(err: unknown): boolean {
-    return err instanceof Error && /best[\s-]?offer|auto[\s-]?accept/i.test(err.message);
+    // Narrowed backstop (BO-M): the GetCategoryFeatures pre-flight is the
+    // primary signal for category support; this matches only eBay's known
+    // category-unsupported sentence — never a coincidental word hit, and
+    // threshold conflicts are already handled by stable codes upstream.
+    return err instanceof Error && /best offer is not (supported|available|allowed)/i.test(err.message);
   }
 
   /**
@@ -629,17 +640,43 @@ export class EbayAdapter implements MarketplaceAdapter {
     logger.info({ userId: this.userId, marketplaceListingId, campaignId, adRatePercent }, 'eBay Promoted Listing ad created');
   }
 
+  /**
+   * BO-M: does this category allow Best Offer? Deterministic pre-flight via
+   * GetCategoryFeatures (FeatureID=BestOfferEnabled). Returns null when eBay
+   * doesn't answer — callers FAIL OPEN (send as configured); unknown must
+   * never drop seller config.
+   */
+  private async isCategoryBestOfferSupported(categoryId: string, token: string): Promise<boolean | null> {
+    const cached = bestOfferSupportCache.get(categoryId);
+    if (cached && Date.now() - cached.cachedAt < BEST_OFFER_SUPPORT_TTL) return cached.value;
+    try {
+      const parsed = await callTradingApi('GetCategoryFeatures', buildGetCategoryFeaturesXml(categoryId, token), token);
+      const supported = parseCategoryBestOfferEnabled(parsed);
+      if (supported !== null) bestOfferSupportCache.set(categoryId, { value: supported, cachedAt: Date.now() });
+      return supported;
+    } catch (err) {
+      logger.warn({ categoryId, error: (err as Error).message }, 'GetCategoryFeatures Best Offer pre-flight failed — proceeding as configured');
+      return null;
+    }
+  }
+
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
     const sku = input.ebaySku ?? `portage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const tradingInput = await this.buildTradingInput(input, sku);
 
     const token = await getEbayAccessToken(this.userId);
 
-    // Best Offer category support is not verifiable pre-flight — on a best-offer
-    // rejection, retry once without it rather than failing the whole listing.
+    // BO-M: category Best Offer support IS verifiable pre-flight —
+    // GetCategoryFeatures(FeatureID=BestOfferEnabled), TTL-cached. false →
+    // deterministic warn-downgrade (operator decision: warn at create only);
+    // true/unknown → send as configured; the prose fallback below is a
+    // narrow backstop, never the primary signal.
     let bestOfferDowngraded = false;
-    const BEST_OFFER_DOWNGRADE_WARNING = 'Listed without Best Offer — eBay rejected it for this listing.';
+    const BEST_OFFER_DOWNGRADE_WARNING = 'Listed without Best Offer — eBay does not allow it in this category.';
     const wantsBestOffer = !!(tradingInput.bestOfferAutoAcceptPrice || tradingInput.bestOfferEnabled);
+    if (wantsBestOffer && await this.isCategoryBestOfferSupported(tradingInput.categoryId, token) === false) {
+      bestOfferDowngraded = true;
+    }
     const callAdd = (withBestOffer: boolean): Promise<Record<string, unknown>> =>
       callTradingApi(
         'AddFixedPriceItem',
@@ -654,7 +691,7 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     let parsed: Record<string, unknown>;
     try {
-      parsed = await callAdd(true);
+      parsed = await callAdd(!bestOfferDowngraded);
     } catch (err) {
       // BO-2: a threshold conflict at publish means the seller's numbers are
       // wrong for this price — surface them; silently dropping the config
