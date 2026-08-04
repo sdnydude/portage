@@ -70,7 +70,8 @@ test.describe("proof: publish-sheet shipping controls", () => {
     await expect(profileSelect.locator("option")).toContainText([/seller profile default/i]);
     // Pickup is a TOGGLE (operator correction 2026-08-02), not a select option.
     await expect(profileSelect.locator('option:has-text("Local pickup only")')).toHaveCount(0);
-    const pickupToggle = page.locator('label:has-text("Local pickup only") > div').first();
+    // RV-2 (2026-08-03): pickup is an ADD-ON toggle, relabeled accordingly.
+    const pickupToggle = page.locator('label:has-text("Offer local pickup") > div').first();
     await pickupToggle.click();
     await expect(pickupToggle).toHaveClass(/bg-forest-green/);
     // Let the marketplace-pill color transition finish before capturing.
