@@ -1551,6 +1551,19 @@ describe('applyReverbEnrichment — additive local pickup (RV-2)', () => {
     expect(r.specific.shippingProfileId).toBe('p1');
     expect(r.specific.localPickup).toBe(true);
   });
+
+  it('an explicit localPickup:false overrides a profile default of true (CodeRabbit)', async () => {
+    const { applyReverbEnrichment } = await import('./listings.js');
+    mockSelectOnce([{ userId: 'u1', reverbOffersEnabled: true, reverbDefaultShipping: { local: true } }]);
+    const adapter = {} as never;
+
+    const r = await applyReverbEnrichment('u1', { id: 'i1', title: 'T', category: null, marketplaceData: null }, adapter, {
+      categoryUuid: 'cu-1',
+      reverbShipping: { profileId: 'p1', localPickup: false },
+    });
+
+    expect(r.specific.localPickup).toBe(false); // seller's OFF wins over the profile default
+  });
 });
 
 describe('splitSpecificsPatch (atomic merge, C2)', () => {

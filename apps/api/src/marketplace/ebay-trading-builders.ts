@@ -344,11 +344,15 @@ export function buildGetCategoryFeaturesXml(categoryId: string, token: string): 
 
 /** true/false when the response carries the flag; null = unknown — callers
  * must never treat unknown as unsupported (fail open, never drop config). */
-export function parseCategoryBestOfferEnabled(parsed: ParsedXml): boolean | null {
+export function parseCategoryBestOfferEnabled(parsed: ParsedXml, categoryId: string): boolean | null {
   const catRaw = getPath(parsed, ['GetCategoryFeaturesResponse', 'Category']);
   const cats = Array.isArray(catRaw) ? catRaw : catRaw != null ? [catRaw] : [];
   for (const cat of cats) {
-    const flag = (cat as Record<string, unknown>)?.BestOfferEnabled;
+    const c = cat as Record<string, unknown>;
+    // Only the REQUESTED category counts (CodeRabbit): ViewAllNodes can
+    // return child overrides whose flag must not poison the answer.
+    if (String(c?.CategoryID) !== categoryId) continue;
+    const flag = c?.BestOfferEnabled;
     if (flag != null) return String(flag) === 'true';
   }
   const siteDefault = getPath(parsed, ['GetCategoryFeaturesResponse', 'SiteDefaults', 'BestOfferEnabled']);

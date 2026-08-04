@@ -651,7 +651,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     if (cached && Date.now() - cached.cachedAt < BEST_OFFER_SUPPORT_TTL) return cached.value;
     try {
       const parsed = await callTradingApi('GetCategoryFeatures', buildGetCategoryFeaturesXml(categoryId, token), token);
-      const supported = parseCategoryBestOfferEnabled(parsed);
+      const supported = parseCategoryBestOfferEnabled(parsed, categoryId);
       if (supported !== null) bestOfferSupportCache.set(categoryId, { value: supported, cachedAt: Date.now() });
       return supported;
     } catch (err) {

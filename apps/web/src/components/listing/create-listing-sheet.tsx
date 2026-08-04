@@ -113,6 +113,9 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   const [reverbProfiles, setReverbProfiles] = useState<Array<{ id: string; name: string }>>([]);
   const [reverbShipChoice, setReverbShipChoice] = useState("");
   const [reverbLocalPickup, setReverbLocalPickup] = useState(false);
+  // Pickup toggle touched separately: only then does the explicit boolean
+  // ride the POST (so a profile-only change never overrides the default).
+  const reverbPickupTouched = useRef(false);
   const reverbShippingTouched = useRef(false);
   // Reverb category cascade — an explicit pick overrides server enrichment
   // (AI/prepare-cache/profile); null = untouched, nothing sent.
@@ -225,10 +228,10 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         ...(shipFields.localPickup ? { localPickup: true } : {}),
       };
     }
-    if (reverbShippingTouched.current && marketplace === "reverb" && (reverbLocalPickup || reverbShipChoice)) {
+    if (reverbShippingTouched.current && marketplace === "reverb" && (reverbPickupTouched.current || reverbShipChoice)) {
       fields.reverbShipping = {
         ...(reverbShipChoice ? { profileId: reverbShipChoice } : {}),
-        ...(reverbLocalPickup ? { localPickup: true } : {}),
+        ...(reverbPickupTouched.current ? { localPickup: reverbLocalPickup } : {}),
       };
     }
     // Explicit cascade pick wins over server enrichment (applyReverbEnrichment
@@ -609,7 +612,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
                 it rides ALONGSIDE the shipping choice, never replaces it. */}
             <label className="flex items-center gap-3 py-2 mt-1 cursor-pointer">
               <div
-                onClick={() => { reverbShippingTouched.current = true; setReverbLocalPickup(!reverbLocalPickup); }}
+                onClick={() => { reverbShippingTouched.current = true; reverbPickupTouched.current = true; setReverbLocalPickup(!reverbLocalPickup); }}
                 className={`w-10 h-6 rounded-full transition-colors flex items-center ${
                   reverbLocalPickup ? "bg-forest-green" : "bg-muted border border-border"
                 }`}

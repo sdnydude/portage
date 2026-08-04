@@ -187,7 +187,9 @@ export async function applyReverbEnrichment(
     // RV-2 (operator 2026-08-03): pickup is an ADD-ON — it rides alongside
     // the shipping choice, never replaces it.
     if (reverbShipping?.profileId) ms.shippingProfileId = reverbShipping.profileId;
-    if (reverbShipping?.localPickup) ms.localPickup = true;
+    // Explicit boolean wins over the profile default in BOTH directions
+    // (CodeRabbit): the seller's OFF must beat a profile default of ON.
+    if (typeof reverbShipping?.localPickup === 'boolean') ms.localPickup = reverbShipping.localPickup;
   }
 
   // Never-prepared items carry no cached category. A Reverb publish without one

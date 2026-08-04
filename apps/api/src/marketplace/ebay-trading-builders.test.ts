@@ -322,12 +322,24 @@ describe('GetCategoryFeatures — Best Offer support pre-flight (BO-M)', () => {
         Category: { CategoryID: '175669', BestOfferEnabled: 'true' },
       },
     };
-    expect(parseCategoryBestOfferEnabled(parsed)).toBe(true);
+    expect(parseCategoryBestOfferEnabled(parsed, '175669')).toBe(true);
     expect(parseCategoryBestOfferEnabled({
       GetCategoryFeaturesResponse: { Category: { CategoryID: '9999', BestOfferEnabled: 'false' } },
-    })).toBe(false);
+    }, '9999')).toBe(false);
     // Absent flag → null (unknown) — the caller must NOT treat unknown as unsupported.
-    expect(parseCategoryBestOfferEnabled({ GetCategoryFeaturesResponse: {} })).toBeNull();
+    expect(parseCategoryBestOfferEnabled({ GetCategoryFeaturesResponse: {} }, '175669')).toBeNull();
+  });
+
+  it('only the REQUESTED category counts — a child override must not poison the answer (CodeRabbit)', () => {
+    // ViewAllNodes can return child categories; requested 175669 inherits the
+    // site default (true) while child 999111 overrides to false.
+    const parsed = {
+      GetCategoryFeaturesResponse: {
+        SiteDefaults: { BestOfferEnabled: 'true' },
+        Category: [{ CategoryID: '999111', BestOfferEnabled: 'false' }],
+      },
+    };
+    expect(parseCategoryBestOfferEnabled(parsed, '175669')).toBe(true);
   });
 });
 
