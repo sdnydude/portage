@@ -9,8 +9,7 @@ import { callTradingApi, EbayTradingError } from './ebay-trading-client.js';
 // 22003 = auto-decline amount >= Buy It Now price, 23004 = auto-accept >= price.
 const BEST_OFFER_THRESHOLD_CODES = new Set([22003, 23004]);
 import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml,
-  buildGetCategoryFeaturesXml,
-  parseCategoryBestOfferEnabled, buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
+  buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
 import { EBAY_USER_AGENT } from './ebay-constants.js';
 import type {
   MarketplaceAdapter,
@@ -642,20 +641,43 @@ export class EbayAdapter implements MarketplaceAdapter {
 
   /**
    * BO-M: does this category allow Best Offer? Deterministic pre-flight via
-   * GetCategoryFeatures (FeatureID=BestOfferEnabled). Returns null when eBay
-   * doesn't answer — callers FAIL OPEN (send as configured); unknown must
-   * never drop seller config.
+   * Metadata API getNegotiatedPricePolicies. (GetCategoryFeatures was
+   * decommissioned 2026-05-04 — HTTP 410 on every call, observed live
+   * 2026-08-04, which left this pre-flight permanently failed-open.)
+   * Returns null when eBay doesn't answer OR the category has no policy row
+   * — callers FAIL OPEN (send as configured); unknown must never drop
+   * seller config.
    */
   private async isCategoryBestOfferSupported(categoryId: string, token: string): Promise<boolean | null> {
     const cached = bestOfferSupportCache.get(categoryId);
     if (cached && Date.now() - cached.cachedAt < BEST_OFFER_SUPPORT_TTL) return cached.value;
     try {
-      const parsed = await callTradingApi('GetCategoryFeatures', buildGetCategoryFeaturesXml(categoryId, token), token);
-      const supported = parseCategoryBestOfferEnabled(parsed, categoryId);
+      const base = env().EBAY_SANDBOX ? 'https://api.sandbox.ebay.com' : 'https://api.ebay.com';
+      const filter = encodeURIComponent(`categoryIds:{${categoryId}}`);
+      const res = await fetch(`${base}/sell/metadata/v1/marketplace/EBAY_US/get_negotiated_price_policies?filter=${filter}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      if (!res.ok) {
+        logger.warn({ categoryId, status: res.status }, 'getNegotiatedPricePolicies Best Offer pre-flight failed — proceeding as configured');
+        return null;
+      }
+      const data = await res.json() as { negotiatedPricePolicies?: Array<{
+        categoryId?: string;
+        bestOfferAutoAcceptEnabled?: boolean;
+        bestOfferAutoDeclineEnabled?: boolean;
+        bestOfferCounterEnabled?: boolean;
+      }> };
+      const policy = data.negotiatedPricePolicies?.find((pol) => pol.categoryId === categoryId);
+      // Missing policy row = unknown, not unsupported: the response shape for
+      // categories outside the negotiated-price program is not live-verified,
+      // and a wrong "false" here downgrades seller config at publish.
+      const supported = policy
+        ? !!(policy.bestOfferAutoAcceptEnabled || policy.bestOfferAutoDeclineEnabled || policy.bestOfferCounterEnabled)
+        : null;
       if (supported !== null) bestOfferSupportCache.set(categoryId, { value: supported, cachedAt: Date.now() });
       return supported;
     } catch (err) {
-      logger.warn({ categoryId, error: (err as Error).message }, 'GetCategoryFeatures Best Offer pre-flight failed — proceeding as configured');
+      logger.warn({ categoryId, error: (err as Error).message }, 'getNegotiatedPricePolicies Best Offer pre-flight failed — proceeding as configured');
       return null;
     }
   }

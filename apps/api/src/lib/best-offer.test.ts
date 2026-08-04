@@ -22,6 +22,16 @@ describe('validateBestOfferThresholds', () => {
     expect(validateBestOfferThresholds(199, { bestOfferAutoAcceptPrice: 189, minimumBestOfferPrice: 150 }).ok).toBe(true);
     expect(validateBestOfferThresholds(199, {}).ok).toBe(true);
   });
+
+  it('rejects auto-accept at or below the minimum offer (eBay 23005 class), naming both numbers', () => {
+    // Live failure 2026-08-04: accept $135 under minimum $144 passed pre-flight,
+    // died at eBay with 23005 "Auto Accept price must be higher than Auto Decline price".
+    const swapped = validateBestOfferThresholds(149, { bestOfferAutoAcceptPrice: 135, minimumBestOfferPrice: 144 });
+    expect(swapped.ok).toBe(false);
+    if (!swapped.ok) expect(swapped.message).toMatch(/135.*144|144.*135/);
+    const equal = validateBestOfferThresholds(149, { bestOfferAutoAcceptPrice: 140, minimumBestOfferPrice: 140 });
+    expect(equal.ok).toBe(false);
+  });
 });
 
 describe('healBestOfferFromLive', () => {

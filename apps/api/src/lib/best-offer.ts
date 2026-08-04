@@ -31,6 +31,16 @@ export function validateBestOfferThresholds(price: number, specific: BestOfferSp
       message: `The Best Offer minimum price $${min} must be a positive amount below the listing price $${price} — adjust the offer thresholds together with the price.`,
     };
   }
+  // eBay 23005: auto-accept must sit strictly above auto-decline (minimum).
+  // Equal or swapped values pass the per-bound checks above but die at eBay
+  // ("Auto Accept price must be higher than Auto Decline price" — observed
+  // live 2026-08-04, accept $135 under minimum $144).
+  if (typeof accept === 'number' && typeof min === 'number' && accept <= min) {
+    return {
+      ok: false,
+      message: `The Best Offer auto-accept price $${accept} must be higher than the minimum offer $${min} — swap or adjust the two amounts.`,
+    };
+  }
   return { ok: true };
 }
 

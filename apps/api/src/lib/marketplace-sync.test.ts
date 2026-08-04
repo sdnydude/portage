@@ -10,11 +10,11 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
-const { mockEbayUpdateListing, mockReverbUpdateListing } = vi.hoisted(() => ({
-  mockEbayUpdateListing: vi.fn(), mockReverbUpdateListing: vi.fn(),
+const { mockEbayUpdateListing, mockReverbUpdateListing, mockGetEbayItemVerification } = vi.hoisted(() => ({
+  mockEbayUpdateListing: vi.fn(), mockReverbUpdateListing: vi.fn(), mockGetEbayItemVerification: vi.fn(),
 }));
 vi.mock('../marketplace/ebay-adapter.js', () => {
-  const EbayAdapter = vi.fn(() => ({ updateListing: mockEbayUpdateListing }));
+  const EbayAdapter = vi.fn(() => ({ updateListing: mockEbayUpdateListing, getEbayItemVerification: mockGetEbayItemVerification }));
   (EbayAdapter as unknown as Record<string, unknown>).getCategorySuggestion = vi.fn();
   return {
     EbayAdapter,
@@ -164,5 +164,50 @@ describe('syncItemListingRow', () => {
 
     const [, input] = mockEbayUpdateListing.mock.calls[0];
     expect(input.conditionNotes).toBe('pickguard scratch');
+  });
+});
+
+describe('syncItemListingRow Best Offer pre-flight (BO-3 parity with the listings PATCH route)', () => {
+  const EBAY_ROW = {
+    id: 'listing-1', marketplace: 'ebay' as const, status: 'active',
+    marketplaceListingId: '307100024169', ebaySku: null, currency: 'USD',
+    marketplaceSpecificFields: {
+      categoryId: '175669', bestOfferEnabled: true,
+      bestOfferAutoAcceptPrice: 240, minimumBestOfferPrice: 220,
+    },
+  };
+
+  it('heals stale thresholds from the live listing and syncs with the healed values (live failure 2026-08-04: price 149 vs stored 240/220)', async () => {
+    mockSelectReturnOnce([]);
+    mockGetEbayItemVerification.mockResolvedValue({
+      found: true, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 140, minimumBestOfferPrice: 120,
+    });
+    mockEbayUpdateListing.mockResolvedValue({ warning: undefined });
+    const { warnings } = await syncItemListingRow('user-1', { ...ITEM, price: 149 }, EBAY_ROW, { includePhotos: true });
+    expect(mockEbayUpdateListing).toHaveBeenCalledTimes(1);
+    const sent = mockEbayUpdateListing.mock.calls[0][1].marketplaceSpecific as Record<string, unknown>;
+    expect(sent.bestOfferAutoAcceptPrice).toBe(140);
+    expect(sent.minimumBestOfferPrice).toBe(120);
+    expect(warnings.some((w: string) => /refreshed/i.test(w))).toBe(true);
+  });
+
+  it('terminal-fails with BEST_OFFER_CONFLICT before any eBay call when the live thresholds still conflict with the price', async () => {
+    mockSelectReturnOnce([]);
+    mockGetEbayItemVerification.mockResolvedValue({
+      found: true, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 240, minimumBestOfferPrice: 220,
+    });
+    await expect(syncItemListingRow('user-1', { ...ITEM, price: 149 }, EBAY_ROW, { includePhotos: true }))
+      .rejects.toMatchObject({ code: 'BEST_OFFER_CONFLICT' });
+    expect(mockEbayUpdateListing).not.toHaveBeenCalled();
+  });
+
+  it('skips the pre-flight entirely when the row has no Best Offer thresholds', async () => {
+    mockSelectReturnOnce([]);
+    mockEbayUpdateListing.mockResolvedValue({ warning: undefined });
+    await syncItemListingRow('user-1', { ...ITEM, price: 149 }, {
+      ...EBAY_ROW, marketplaceSpecificFields: { categoryId: '175669' },
+    }, { includePhotos: true });
+    expect(mockGetEbayItemVerification).not.toHaveBeenCalled();
+    expect(mockEbayUpdateListing).toHaveBeenCalledTimes(1);
   });
 });
