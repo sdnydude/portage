@@ -2,7 +2,7 @@ import { createLogger } from '../lib/logger.js';
 import { computePriceBands } from '../lib/pricing.js';
 import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
-import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
+import { getEbayAccessToken, getEbayAppToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
 import { callTradingApi, EbayTradingError } from './ebay-trading-client.js';
 
 // Stable eBay Trading codes for price-vs-threshold conflicts (BO-2):
@@ -32,7 +32,7 @@ const validConditionsCache = new Map<string, { value: string[]; cachedAt: number
 const VALID_CONDITIONS_TTL = 60 * 60 * 1000; // 1h
 const requiredAspectsCache = new Map<string, { value: Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>; cachedAt: number }>();
 const REQUIRED_ASPECTS_TTL = 24 * 60 * 60 * 1000; // 24h
-// BO-M: per-category Best Offer support (GetCategoryFeatures). Category
+// BO-M: per-category Best Offer support (Metadata API getNegotiatedPricePolicies). Category
 // features change rarely — long TTL; null (unknown) is never cached.
 const bestOfferSupportCache = new Map<string, { value: boolean; cachedAt: number }>();
 const BEST_OFFER_SUPPORT_TTL = 24 * 60 * 60 * 1000; // 24h
@@ -648,33 +648,38 @@ export class EbayAdapter implements MarketplaceAdapter {
    * — callers FAIL OPEN (send as configured); unknown must never drop
    * seller config.
    */
-  private async isCategoryBestOfferSupported(categoryId: string, token: string): Promise<boolean | null> {
+  private async isCategoryBestOfferSupported(categoryId: string): Promise<boolean | null> {
     const cached = bestOfferSupportCache.get(categoryId);
     if (cached && Date.now() - cached.cachedAt < BEST_OFFER_SUPPORT_TTL) return cached.value;
     try {
+      // Application token, NOT the user token: this method requires the
+      // client-credentials base api_scope, which the user-consent scope list
+      // does not carry — a user token 401s here forever, silently killing
+      // the pre-flight (advisor review 2026-08-04, verified against the
+      // method reference + eBay's published OAS).
+      const token = await getEbayAppToken();
       const base = env().EBAY_SANDBOX ? 'https://api.sandbox.ebay.com' : 'https://api.ebay.com';
       const filter = encodeURIComponent(`categoryIds:{${categoryId}}`);
       const res = await fetch(`${base}/sell/metadata/v1/marketplace/EBAY_US/get_negotiated_price_policies?filter=${filter}`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Accept-Encoding': 'gzip' },
       });
       if (!res.ok) {
         logger.warn({ categoryId, status: res.status }, 'getNegotiatedPricePolicies Best Offer pre-flight failed — proceeding as configured');
         return null;
       }
-      const data = await res.json() as { negotiatedPricePolicies?: Array<{
-        categoryId?: string;
-        bestOfferAutoAcceptEnabled?: boolean;
-        bestOfferAutoDeclineEnabled?: boolean;
-        bestOfferCounterEnabled?: boolean;
-      }> };
-      const policy = data.negotiatedPricePolicies?.find((pol) => pol.categoryId === categoryId);
-      // Missing policy row = unknown, not unsupported: the response shape for
-      // categories outside the negotiated-price program is not live-verified,
-      // and a wrong "false" here downgrades seller config at publish.
-      const supported = policy
-        ? !!(policy.bestOfferAutoAcceptEnabled || policy.bestOfferAutoDeclineEnabled || policy.bestOfferCounterEnabled)
-        : null;
-      if (supported !== null) bestOfferSupportCache.set(categoryId, { value: supported, cachedAt: Date.now() });
+      const data = await res.json() as { negotiatedPricePolicies?: Array<{ categoryId?: string | number }> };
+      if (!Array.isArray(data.negotiatedPricePolicies) || data.negotiatedPricePolicies.length === 0) {
+        // Empty/absent container = shape drift or unfiltered miss — unknown,
+        // never "unsupported"; a wrong false drops seller config at publish.
+        return null;
+      }
+      // Migration-guide semantics: "If a category is returned in this
+      // container, it supports Best Offer." Row PRESENCE is the signal — the
+      // per-row automation booleans (auto-accept/decline/counter) describe
+      // sub-features and must NOT gate support. A queried leaf category
+      // absent from a parsed, non-empty response does not support it.
+      const supported = data.negotiatedPricePolicies.some((pol) => String(pol.categoryId) === categoryId);
+      bestOfferSupportCache.set(categoryId, { value: supported, cachedAt: Date.now() });
       return supported;
     } catch (err) {
       logger.warn({ categoryId, error: (err as Error).message }, 'getNegotiatedPricePolicies Best Offer pre-flight failed — proceeding as configured');
@@ -689,14 +694,14 @@ export class EbayAdapter implements MarketplaceAdapter {
     const token = await getEbayAccessToken(this.userId);
 
     // BO-M: category Best Offer support IS verifiable pre-flight —
-    // GetCategoryFeatures(FeatureID=BestOfferEnabled), TTL-cached. false →
+    // Metadata API getNegotiatedPricePolicies (row presence = supported), TTL-cached. false →
     // deterministic warn-downgrade (operator decision: warn at create only);
     // true/unknown → send as configured; the prose fallback below is a
     // narrow backstop, never the primary signal.
     let bestOfferDowngraded = false;
     const BEST_OFFER_DOWNGRADE_WARNING = 'Listed without Best Offer — eBay does not allow it in this category.';
     const wantsBestOffer = !!(tradingInput.bestOfferAutoAcceptPrice || tradingInput.bestOfferEnabled);
-    if (wantsBestOffer && await this.isCategoryBestOfferSupported(tradingInput.categoryId, token) === false) {
+    if (wantsBestOffer && await this.isCategoryBestOfferSupported(tradingInput.categoryId) === false) {
       bestOfferDowngraded = true;
     }
     const callAdd = (withBestOffer: boolean): Promise<Record<string, unknown>> =>

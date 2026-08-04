@@ -6,6 +6,7 @@ import { resolveEbayCondition, resolveEbayConditionId, selectValidEbayCondition,
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
   getEbayProdAppToken: vi.fn().mockResolvedValue('test-app-token'),
+  getEbayAppToken: vi.fn().mockResolvedValue('test-app-token'),
   invalidateEbayProdAppToken: vi.fn(),
 }));
 
@@ -28,7 +29,7 @@ const isTradingCall = (url: unknown) => String(url).includes('/ws/api.dll');
 /** The XML body sent to the Trading API (AddFixedPriceItem) on the most recent createListing. */
 // GetCategoryFeatures was decommissioned 2026-05-04 (HTTP 410 observed live
 // 2026-08-04); the pre-flight now calls Metadata API getNegotiatedPricePolicies.
-const isFeaturesCall = (u: unknown, _o?: unknown) => String(u).includes('/sell/metadata/v1/marketplace/');
+const isFeaturesCall = (u: unknown, _o?: unknown) => String(u).includes('get_negotiated_price_policies');
 const metadataPolicyResponse = (u: unknown) => {
   const m = /categoryIds%3A%7B(\d+)%7D|categoryIds:\{(\d+)\}/.exec(decodeURIComponent(String(u)));
   const categoryId = m?.[1] ?? m?.[2] ?? '0';
@@ -343,12 +344,15 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
     expect(result.warning).toMatch(/best offer/i);
   });
 
-  it('downgrades DETERMINISTICALLY at publish when getNegotiatedPricePolicies says the category has no Best Offer — no prose guessing (BO-M)', async () => {
+  it('downgrades DETERMINISTICALLY at publish when the category is absent from a parsed getNegotiatedPricePolicies response — no prose guessing (BO-M)', async () => {
     let addBody = '';
     let addCalls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
       if (isFeaturesCall(url, opts)) {
-        return new Response(JSON.stringify({ negotiatedPricePolicies: [{ categoryId: '9999', bestOfferAutoAcceptEnabled: false, bestOfferAutoDeclineEnabled: false, bestOfferCounterEnabled: false }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        // Docs semantics (migration guide): a category returned in the container
+        // supports Best Offer; a QUERIED leaf category ABSENT from a parsed,
+        // non-empty response does not. 9999 is absent here.
+        return new Response(JSON.stringify({ negotiatedPricePolicies: [{ categoryId: '1234', bestOfferAutoAcceptEnabled: true, bestOfferAutoDeclineEnabled: true, bestOfferCounterEnabled: true }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
       addCalls++;
@@ -1320,5 +1324,81 @@ describe('EbayAdapter — flat shipping requires a positive cost', () => {
       } as any),
     ).rejects.toMatchObject({ code: 'EBAY_FLAT_COST_REQUIRED' });
     expect(fetchMock.mock.calls.find(([u]) => isTradingCall(u))).toBeUndefined();
+  });
+});
+
+describe('isCategoryBestOfferSupported — Metadata API semantics (advisor review 2026-08-04)', () => {
+  const addOk = () => new Response(ADD_ITEM_OK, { status: 200 });
+  const policyRow = (categoryId: string, flags: Record<string, boolean>) =>
+    new Response(JSON.stringify({ negotiatedPricePolicies: [{ categoryId, ...flags }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const publish = (categoryId: string) => new EbayAdapter('user-1').createListing({
+    ...baseInput,
+    marketplaceSpecific: { ...tradingSetup, categoryId, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 85 },
+  } as any);
+  const addBodies = () => fetchMock.mock.calls.filter(([u, o]) => isTradingCall(u) && !isFeaturesCall(u, o)).map(([, o]) => String((o as RequestInit).body));
+
+  it('uses the application token (client-credentials api_scope), never the user token — user token lacks the scope and 401s silently', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return policyRow('7777', { bestOfferAutoAcceptEnabled: true });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    const metaCall = fetchMock.mock.calls.find(([u]) => isFeaturesCall(u));
+    const auth = ((metaCall![1] as RequestInit).headers as Record<string, string>).Authorization;
+    expect(auth).toBe('Bearer test-app-token');
+  });
+
+  it('treats ROW PRESENCE as supported even with all three automation flags false (migration guide: returned-in-container = supports Best Offer)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return policyRow('7777', { bestOfferAutoAcceptEnabled: false, bestOfferAutoDeclineEnabled: false, bestOfferCounterEnabled: false });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    const result = await publish('7777');
+    expect(addBodies()[0]).toContain('<BestOfferDetails>');
+    expect(result.warning ?? '').not.toMatch(/best offer/i);
+  });
+
+  it('fails OPEN (config sent, no downgrade) on a 401 from the metadata endpoint', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return new Response('Unauthorized', { status: 401 });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    expect(addBodies()[0]).toContain('<BestOfferDetails>');
+  });
+
+  it('fails OPEN on a malformed (non-JSON) metadata body', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return new Response('<html>gateway error</html>', { status: 200 });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    expect(addBodies()[0]).toContain('<BestOfferDetails>');
+  });
+
+  it('caches a definitive verdict (one metadata fetch across two publishes) but never caches unknown (401 refetches)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return policyRow('7777', { bestOfferCounterEnabled: true });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    await publish('7777');
+    expect(fetchMock.mock.calls.filter(([u]) => isFeaturesCall(u)).length).toBe(1);
+
+    clearEbayTaxonomyCaches();
+    fetchMock.mockClear();
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return new Response('Unauthorized', { status: 401 });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    await publish('7777');
+    expect(fetchMock.mock.calls.filter(([u]) => isFeaturesCall(u)).length).toBe(2);
   });
 });

@@ -10,8 +10,6 @@ import {
   buildReviseFixedPriceItemXml,
   buildEndFixedPriceItemXml,
   buildGetItemXml,
-  buildGetCategoryFeaturesXml,
-  parseCategoryBestOfferEnabled,
   parseAddItemResponse,
   parseGetItemStatus,
   parseGetItemVerification,
@@ -308,38 +306,6 @@ describe('parseGetItemStatus', () => {
     expect(parseGetItemStatus(mk('Completed', 0))).toBe('ended');
     expect(parseGetItemStatus(mk('Ended'))).toBe('ended');
     expect(parseGetItemStatus({ GetItemResponse: {} })).toBe('unknown');
-  });
-});
-
-describe('GetCategoryFeatures — Best Offer support pre-flight (BO-M)', () => {
-  it('builds the request and parses the per-category BestOfferEnabled flag', () => {
-    const xml = buildGetCategoryFeaturesXml('175669', 'tok');
-    expect(xml).toContain('<CategoryID>175669</CategoryID>');
-    expect(xml).toContain('<FeatureID>BestOfferEnabled</FeatureID>');
-
-    const parsed = {
-      GetCategoryFeaturesResponse: {
-        Category: { CategoryID: '175669', BestOfferEnabled: 'true' },
-      },
-    };
-    expect(parseCategoryBestOfferEnabled(parsed, '175669')).toBe(true);
-    expect(parseCategoryBestOfferEnabled({
-      GetCategoryFeaturesResponse: { Category: { CategoryID: '9999', BestOfferEnabled: 'false' } },
-    }, '9999')).toBe(false);
-    // Absent flag → null (unknown) — the caller must NOT treat unknown as unsupported.
-    expect(parseCategoryBestOfferEnabled({ GetCategoryFeaturesResponse: {} }, '175669')).toBeNull();
-  });
-
-  it('only the REQUESTED category counts — a child override must not poison the answer (CodeRabbit)', () => {
-    // ViewAllNodes can return child categories; requested 175669 inherits the
-    // site default (true) while child 999111 overrides to false.
-    const parsed = {
-      GetCategoryFeaturesResponse: {
-        SiteDefaults: { BestOfferEnabled: 'true' },
-        Category: [{ CategoryID: '999111', BestOfferEnabled: 'false' }],
-      },
-    };
-    expect(parseCategoryBestOfferEnabled(parsed, '175669')).toBe(true);
   });
 });
 
