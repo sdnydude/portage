@@ -2,7 +2,7 @@ import { createLogger } from '../lib/logger.js';
 import { computePriceBands } from '../lib/pricing.js';
 import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
-import { getEbayAccessToken, getEbayAppToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
+import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
 import { callTradingApi, EbayTradingError } from './ebay-trading-client.js';
 
 // Stable eBay Trading codes for price-vs-threshold conflicts (BO-2):
@@ -656,11 +656,13 @@ export class EbayAdapter implements MarketplaceAdapter {
       // client-credentials base api_scope, which the user-consent scope list
       // does not carry — a user token 401s here forever, silently killing
       // the pre-flight (advisor review 2026-08-04, verified against the
-      // method reference + eBay's published OAS).
-      const token = await getEbayAppToken();
-      const base = env().EBAY_SANDBOX ? 'https://api.sandbox.ebay.com' : 'https://api.ebay.com';
+      // method reference + eBay's published OAS). PROD app token + prod URL,
+      // mirroring getValidConditions' get_item_condition_policies call: the
+      // base EBAY_CLIENT_ID creds fail the prod token endpoint
+      // (invalid_client — live-probed 2026-08-04).
+      const token = await getEbayProdAppToken();
       const filter = encodeURIComponent(`categoryIds:{${categoryId}}`);
-      const res = await fetch(`${base}/sell/metadata/v1/marketplace/EBAY_US/get_negotiated_price_policies?filter=${filter}`, {
+      const res = await fetch(`https://api.ebay.com/sell/metadata/v1/marketplace/EBAY_US/get_negotiated_price_policies?filter=${filter}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Accept-Encoding': 'gzip' },
       });
       if (!res.ok) {
