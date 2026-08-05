@@ -484,9 +484,12 @@ listingsRouter.post('/', async (req, res, next) => {
     // Bump pre-flight (live failure 2026-08-04): an out-of-range bid was only
     // caught by the adapter AFTER the listing published — the listing went
     // live, the promotion silently didn't. Reject before any marketplace call.
+    // Range 0.5%-30% per Reverb's published Bump docs (help.reverb.com
+    // "What is Bump", verified 2026-08-05); the earlier 3.5% cap was invented
+    // in PR #265 and rejected legitimate bids — Reverb itself suggests 4.5%+.
     const bumpBid = (body.marketplaceSpecificFields as { reverbBumpBid?: unknown } | undefined)?.reverbBumpBid;
-    if (body.marketplace === 'reverb' && typeof bumpBid === 'number' && !(bumpBid >= 0.005 && bumpBid <= 0.035)) {
-      throw new AppError(422, 'REVERB_BUMP_INVALID', 'Bump bid must be between 0.5% and 3.5% of the sale price.');
+    if (body.marketplace === 'reverb' && typeof bumpBid === 'number' && !(bumpBid >= 0.005 && bumpBid <= 0.30)) {
+      throw new AppError(422, 'REVERB_BUMP_INVALID', 'Bump bid must be between 0.5% and 30% of the sale price.');
     }
 
     // R3 insert-first: persist the row BEFORE any eBay call so a crash/throw between

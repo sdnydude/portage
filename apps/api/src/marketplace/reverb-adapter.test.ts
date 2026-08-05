@@ -59,14 +59,14 @@ afterEach(() => {
 });
 
 describe('ReverbAdapter.setBump', () => {
-  it('PUTs the bump bid to /bump/v2/bids with the numeric listing id', async () => {
+  it('PUTs a bid above the fabricated 3.5% cap (Reverb suggests 4.5%+; real cap is 30%)', async () => {
     const fetchMock = stubFetch({}, true, 200);
     const adapter = new ReverbAdapter('user-1');
-    await adapter.setBump('15191342', 0.035);
+    await adapter.setBump('15191342', 0.075);
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe('https://api.reverb.com/api/bump/v2/bids');
     expect((init as RequestInit).method).toBe('PUT');
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ products: [15191342], bid: 0.035 });
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ products: [15191342], bid: 0.075 });
   });
 });
 

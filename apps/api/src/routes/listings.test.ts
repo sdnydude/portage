@@ -127,19 +127,19 @@ describe('POST /listings', () => {
     expect(mockCreateListing).not.toHaveBeenCalled();
   });
 
-  it('rejects an out-of-range reverbBumpBid with 422 BEFORE any marketplace call (live failure 2026-08-04: 10% entered, adapter rejected after publish)', async () => {
+  it('rejects a reverbBumpBid above Reverb\'s documented 30% cap with 422 BEFORE any marketplace call (0.5-3.5 cap was fabricated, corrected 2026-08-05)', async () => {
     mockSelectOnce([MOCK_ITEM]);
     const res = await request(app)
       .post('/listings')
       .set('Authorization', `Bearer ${authToken}`)
       .send({
         itemId: ITEM_ID, marketplace: 'reverb', price: 199, publishMode: 'live',
-        marketplaceSpecificFields: { reverbBumpBid: 0.1 },
+        marketplaceSpecificFields: { reverbBumpBid: 0.35 },
       });
 
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('REVERB_BUMP_INVALID');
-    expect(res.body.error).toMatch(/0\.5.*3\.5/);
+    expect(res.body.error).toMatch(/0\.5.*30/);
     expect(mockCreateListing).not.toHaveBeenCalled();
   });
 

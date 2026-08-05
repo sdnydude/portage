@@ -284,13 +284,13 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       setError("Flat-rate shipping needs a buyer cost above $0 — enter the rate or switch to free shipping.");
       return;
     }
-    // Reverb caps Bump at 0.5-3.5%; the number input's min/max don't stop
+    // Reverb caps Bump at 0.5-30% (published docs; old 3.5 cap was fabricated); the number input's min/max don't stop
     // typed values, and the server-side reject used to land only AFTER the
     // listing published (live failure 2026-08-04: 10% entered).
     if (marketplace === "reverb" && promote) {
       const bid = parseFloat(bumpBid);
-      if (bid > 0 && !(bid >= 0.5 && bid <= 3.5)) {
-        setError("Bump bid must be between 0.5% and 3.5% of the sale price.");
+      if (bid > 0 && !(bid >= 0.5 && bid <= 30)) {
+        setError("Bump bid must be between 0.5% and 30% of the sale price.");
         return;
       }
     }
@@ -577,11 +577,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
               type="number"
               inputMode="decimal"
               min="0.5"
-              max="3.5"
+              max="30"
               step="0.1"
               value={bumpBid}
               onChange={(e) => setBumpBid(e.target.value)}
-              placeholder="0.5 – 3.5"
+              placeholder="0.5 – 30"
               className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
             />
             <p className="mt-1 text-xs text-text-secondary">Charged only when the listing sells (Reverb Bump).</p>
