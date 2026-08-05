@@ -181,6 +181,10 @@ export class ReverbAdapter implements MarketplaceAdapter {
     // id (per-listing rates are discouraged and redundant when a profile wins).
     if (specific.shippingProfileId) {
       body.shipping_profile_id = specific.shippingProfileId;
+      // Pickup NEVER shuts off shipping (operator rule 2026-08-05): profile and
+      // local:true coexist — live-probe-verified on listing 100019158 (profile
+      // rates stay, pickup shows). The old profile-only branch dropped pickup.
+      if (specific.localPickup) body.shipping = { local: true };
     } else if (specific.shippingRates) {
       body.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
     } else if (specific.localPickup) {
@@ -296,8 +300,10 @@ export class ReverbAdapter implements MarketplaceAdapter {
     if (specific.offersEnabled !== undefined) updates.offers_enabled = specific.offersEnabled;
     if (specific.shippingProfileId) {
       // Same precedence as create: a Reverb-side shipping profile id wins over
-      // per-listing rates.
+      // per-listing rates. Pickup never shuts off shipping (operator rule
+      // 2026-08-05): local:true rides alongside the profile — same as create.
       updates.shipping_profile_id = specific.shippingProfileId;
+      if (specific.localPickup) updates.shipping = { local: true };
     } else if (specific.shippingRates) {
       updates.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
     } else if (specific.localPickup) {
