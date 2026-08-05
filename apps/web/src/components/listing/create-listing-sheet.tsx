@@ -284,6 +284,16 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       setError("Flat-rate shipping needs a buyer cost above $0 — enter the rate or switch to free shipping.");
       return;
     }
+    // Reverb caps Bump at 0.5-3.5%; the number input's min/max don't stop
+    // typed values, and the server-side reject used to land only AFTER the
+    // listing published (live failure 2026-08-04: 10% entered).
+    if (marketplace === "reverb" && promote) {
+      const bid = parseFloat(bumpBid);
+      if (bid > 0 && !(bid >= 0.5 && bid <= 3.5)) {
+        setError("Bump bid must be between 0.5% and 3.5% of the sale price.");
+        return;
+      }
+    }
 
     setIsCreating(true);
     setError(null);
