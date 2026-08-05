@@ -363,7 +363,10 @@ function itemBody(input: TradingListingInput): string {
     '<ListingType>FixedPriceItem</ListingType>' +
     `<ListingDuration>${input.listingDuration ?? 'GTC'}</ListingDuration>` +
     `<ConditionID>${escapeXml(input.conditionId)}</ConditionID>` +
-    (input.conditionDescription ? `<ConditionDescription>${escapeXml(input.conditionDescription)}</ConditionDescription>` : '') +
+    // eBay forbids ConditionDescription on brand-new (1000) items — "The
+    // ConditionDescription field is not valid for new items", live revise
+    // failure 2026-08-05. New-other (1500) still allows it.
+    (input.conditionDescription && input.conditionId !== '1000' ? `<ConditionDescription>${escapeXml(input.conditionDescription)}</ConditionDescription>` : '') +
     (input.sku ? `<SKU>${escapeXml(input.sku)}</SKU>` : '') +
     '<Country>US</Country>' +
     `<Currency>${input.currency}</Currency>` +

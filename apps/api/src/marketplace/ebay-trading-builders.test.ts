@@ -72,6 +72,15 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(xml).toContain('<ConditionDescription>Light wear on headband.</ConditionDescription>');
   });
 
+  it('omits ConditionDescription for brand-new items (ConditionID 1000) — eBay rejects it (live revise failure 2026-08-05)', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, conditionId: '1000', conditionDescription: 'Sealed in box.' },
+      'T',
+    );
+    expect(xml).toContain('<ConditionID>1000</ConditionID>');
+    expect(xml).not.toContain('<ConditionDescription>');
+  });
+
   it('marks self-hosted (R2) pictures with PictureSource=Vendor so eBay does not treat them as EPS', () => {
     expect(buildAddFixedPriceItemXml(baseInput, 'T')).toContain('<PictureDetails><PictureSource>Vendor</PictureSource>');
   });
