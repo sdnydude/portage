@@ -308,6 +308,29 @@ describe('ReverbAdapter.createListing — shipping profile reference', () => {
   });
 });
 
+describe('ReverbAdapter.createListing — pickup rides alongside a shipping profile', () => {
+  // Live-probe-verified 2026-08-05 on listing 100019158: Reverb accepts
+  // shipping_profile_id AND shipping.local together (profile rates stay,
+  // pickup shows). Pickup must NEVER shut off shipping (operator rule) —
+  // the old profile-only branch silently dropped localPickup.
+  it('sends shipping_profile_id AND shipping.local when both profile and localPickup are set', async () => {
+    const fetchMock = stubFetch();
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing({
+      ...BASE_INPUT,
+      marketplaceSpecific: {
+        shippingProfileId: '456',
+        localPickup: true,
+      },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.shipping_profile_id).toBe('456');
+    expect(body.shipping).toEqual({ local: true });
+  });
+});
+
 describe('ReverbAdapter.createListing — UPC requirement for Brand New', () => {
   // Reverb blocks publish on Brand New items without a UPC: "A valid UPC/EAN
   // must be entered in the UPC field or the 'UPC does not apply' field must be
@@ -437,6 +460,19 @@ describe('ReverbAdapter.updateListing — shipping profile reference', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
     expect(body.shipping_profile_id).toBe('456');
     expect(body.shipping).toBeUndefined();
+  });
+
+  it('sends shipping_profile_id AND shipping.local on update when both are set — pickup never shuts off shipping', async () => {
+    const fetchMock = stubFetch({ listing: { state: { slug: 'live' } } });
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.updateListing('99606134', {
+      marketplaceSpecific: { shippingProfileId: '456', localPickup: true },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.shipping_profile_id).toBe('456');
+    expect(body.shipping).toEqual({ local: true });
   });
 
   it('sends shipping {local:true} on update for a pickup-only listing (no profile, no rates) — create/update parity', async () => {
