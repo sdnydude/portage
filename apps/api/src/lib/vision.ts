@@ -75,7 +75,16 @@ const CandidateSchema = z.object({
   // AI-estimated packaged shipping weight (ounces) + box dimensions (inches), so a
   // scanned item carries weight/dims for eBay Calculated shipping without waiting
   // for the prepare-listing step. Optional — older responses may omit them.
-  weight: z.object({ value: z.number(), unit: z.string() }).optional(),
+  // Some models flatten weight to a bare oz number despite the prompted object
+  // shape (gemini-3.5-flash drift, live 502 2026-08-05) — coerce instead of 502ing.
+  // A bare number is only trusted as ounces inside a plausible packaged-shipping
+  // range (≤100 lb); outside it the unit claim is untrustworthy, so drop the
+  // weight rather than stamp a wrong value into eBay calculated shipping.
+  weight: z.union([
+    z.object({ value: z.number(), unit: z.string() }),
+    z.number().transform((v) => (v > 0 && v <= 1600 ? { value: v, unit: 'oz' } : undefined)),
+    z.null().transform(() => undefined),
+  ]).optional(),
   dimensions: z.object({ length: z.number(), width: z.number(), height: z.number(), unit: z.string() }).optional(),
   packageType: z.string().optional(),
 });
@@ -111,7 +120,14 @@ const ListingFieldsOutputSchema = z.object({
     ).optional().default({}),
     upc: z.string().nullable().optional().default(null),
     epid: z.string().nullable().optional().default(null),
-    weight: z.object({ value: z.number(), unit: z.string() }).optional().default({ value: 0, unit: 'oz' }),
+    // Bare-number weight coerced, same drift class + same 100 lb plausibility rule
+    // as candidates weight (2026-08-05); out-of-range maps to the existing
+    // zero sentinel (field is non-optional here, so undefined would break the type).
+    weight: z.union([
+      z.object({ value: z.number(), unit: z.string() }),
+      z.number().transform((v) => (v > 0 && v <= 1600 ? { value: v, unit: 'oz' } : { value: 0, unit: 'oz' })),
+      z.null().transform(() => ({ value: 0, unit: 'oz' })),
+    ]).optional().default({ value: 0, unit: 'oz' }),
     dimensions: z.object({ length: z.number(), width: z.number(), height: z.number(), unit: z.string() }).optional().default({ length: 0, width: 0, height: 0, unit: 'in' }),
     packageType: z.string().optional().default('LETTER'),
   }).passthrough().nullable().optional().default(null),
@@ -123,7 +139,8 @@ const ListingFieldsOutputSchema = z.object({
     categoryName: z.string().optional().default(''),
     conditionUuid: z.string().optional().default(''),
     conditionName: z.string().optional().default(''),
-    year: z.string().nullable().optional().default(null),
+    // Models return year as a bare number (gemini-2.5-flash, live warn 2026-08-05).
+    year: z.union([z.string(), z.number().transform(String)]).nullable().optional().default(null),
     finish: z.string().nullable().optional().default(null),
     description: z.string().optional().default(''),
   }).passthrough().nullable().optional().default(null),
@@ -183,13 +200,35 @@ function extractJSON(raw: string): string {
   return raw;
 }
 
+/** Chain-failover validator: throws AppError 502 (with per-schema Zod detail so
+ *  drift incidents stay triageable from prod logs) unless the raw text parses
+ *  under at least one of the given schemas. Runs inside the provider loop, so a
+ *  throw fails over to the next provider instead of 502ing the request
+ *  (gemini-3.5-flash weight drift outage, 2026-08-05). */
+function schemaValidator(schemas: Array<{ name: string; schema: z.ZodTypeAny }>): (raw: string) => void {
+  return (raw) => {
+    const parsed = safeParseJSON(raw);
+    const failures: string[] = [];
+    for (const { name, schema } of schemas) {
+      const result = schema.safeParse(parsed);
+      if (result.success) return;
+      failures.push(`${name}: ${result.error.message}`);
+    }
+    throw new AppError(502, 'AI_RESPONSE_INVALID', `AI vision response failed schema validation — ${failures.join('; ')}`);
+  };
+}
+
 export async function identifyItem(imageBase64: string, mediaType: string): Promise<VisionResult> {
   const { text } = await analyzeImage(
     imageBase64,
     mediaType,
     SYSTEM_PROMPT,
     'Identify this item for marketplace listing. Respond with ONLY a JSON object, no other text.',
-    { temperature: 0, maxTokens: 2048 },
+    {
+      temperature: 0,
+      maxTokens: 2048,
+      validate: schemaValidator([{ name: 'single', schema: VisionResultSchema }]),
+    },
   );
 
   const parsed = safeParseJSON(text);
@@ -235,7 +274,14 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     mediaType,
     DETAILED_SYSTEM_PROMPT,
     'Identify this item with multiple candidates and reasoning.',
-    { temperature: 0, maxTokens: 2048 },
+    {
+      temperature: 0,
+      maxTokens: 2048,
+      validate: schemaValidator([
+        { name: 'detailed', schema: DetailedVisionResultSchema },
+        { name: 'single', schema: VisionResultSchema },
+      ]),
+    },
   );
 
   const parsed = safeParseJSON(text);
@@ -257,7 +303,8 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     };
   }
 
-  throw new AppError(502, 'AI_RESPONSE_INVALID', `AI detailed scan returned invalid response: ${detailed.error.message}`);
+  // Mirrors identifyItemsMulti: both schemas' diagnostics survive for triage.
+  throw new AppError(502, 'AI_RESPONSE_INVALID', `AI detailed scan returned invalid response — detailed: ${detailed.error.message}; single: ${single.error.message}`);
 }
 
 const LISTING_FIELDS_SYSTEM_PROMPT = `You are a marketplace listing expert. Generate production-quality fields for selling a used item on eBay and optionally Reverb.
@@ -363,7 +410,14 @@ export async function identifyItemsMulti(
     ? 'Identify this item with multiple candidates and reasoning. Respond with ONLY valid JSON.'
     : `You are viewing ${images.length} photos of the SAME item from different angles. Cross-reference all photos to identify it precisely. Respond with ONLY valid JSON.`;
 
-  const { text } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, { temperature: 0, maxTokens: 2048 });
+  const { text } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, {
+    temperature: 0,
+    maxTokens: 2048,
+    validate: schemaValidator([
+      { name: 'detailed', schema: DetailedVisionResultSchema },
+      { name: 'single', schema: VisionResultSchema },
+    ]),
+  });
 
   const parsed = safeParseJSON(text);
 
@@ -446,9 +500,15 @@ Generate all listing fields as JSON.`;
 
   let text: string;
   if (images.length > 0) {
-    const result = await analyzeImages(images, LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
+    const result = await analyzeImages(images, LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, {
+      temperature: 0,
+      maxTokens: 4096,
+      validate: schemaValidator([{ name: 'listing-fields', schema: ListingFieldsOutputSchema }]),
+    });
     text = result.text;
   } else {
+    // chatText has no validate support — the photo-less path keeps parse-fail-as-502
+    // behavior; only the vision chains fail over on schema-invalid output.
     const result = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
     text = result.text;
   }
