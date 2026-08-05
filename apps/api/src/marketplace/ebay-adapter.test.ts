@@ -6,6 +6,7 @@ import { resolveEbayCondition, resolveEbayConditionId, selectValidEbayCondition,
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
   getEbayProdAppToken: vi.fn().mockResolvedValue('test-app-token'),
+  getEbayAppToken: vi.fn().mockResolvedValue('test-app-token'),
   invalidateEbayProdAppToken: vi.fn(),
 }));
 
@@ -26,10 +27,16 @@ const ADD_ITEM_OK =
   '<?xml version="1.0" encoding="utf-8"?><AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><ItemID>3001234567</ItemID></AddFixedPriceItemResponse>';
 const isTradingCall = (url: unknown) => String(url).includes('/ws/api.dll');
 /** The XML body sent to the Trading API (AddFixedPriceItem) on the most recent createListing. */
-const isFeaturesCall = (o: unknown) =>
-  ((o as RequestInit)?.headers as Record<string, string> | undefined)?.['X-EBAY-API-CALL-NAME'] === 'GetCategoryFeatures';
+// GetCategoryFeatures was decommissioned 2026-05-04 (HTTP 410 observed live
+// 2026-08-04); the pre-flight now calls Metadata API getNegotiatedPricePolicies.
+const isFeaturesCall = (u: unknown, _o?: unknown) => String(u).includes('get_negotiated_price_policies');
+const metadataPolicyResponse = (u: unknown) => {
+  const m = /categoryIds%3A%7B(\d+)%7D|categoryIds:\{(\d+)\}/.exec(decodeURIComponent(String(u)));
+  const categoryId = m?.[1] ?? m?.[2] ?? '0';
+  return new Response(JSON.stringify({ negotiatedPricePolicies: [{ categoryId, bestOfferAutoAcceptEnabled: true, bestOfferAutoDeclineEnabled: true, bestOfferCounterEnabled: true }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
 const tradingXml = () => {
-  const call = fetchMock.mock.calls.find(([u, o]) => isTradingCall(u) && !isFeaturesCall(o));
+  const call = fetchMock.mock.calls.find(([u, o]) => isTradingCall(u) && !isFeaturesCall(u, o));
   return call ? String((call[1] as RequestInit).body) : '';
 };
 /** Inline-terms publish setup: category + ship-from ZIP + package weight/dims (no policy IDs). */
@@ -284,8 +291,8 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
   it('retries AddFixedPriceItem without Best Offer when eBay rejects it for that reason, and surfaces a downgrade warning', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
-      if (isFeaturesCall(opts)) return new Response('<GetCategoryFeaturesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></GetCategoryFeaturesResponse>', { status: 200 });
       calls++;
       const body = String((opts as RequestInit).body);
       if (body.includes('BestOfferAutoAcceptPrice')) {
@@ -309,7 +316,7 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
       ...baseInput,
       marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 10 },
     } as any);
-    const addCall = fetchMock.mock.calls.find(([u, o]) => isTradingCall(u) && !isFeaturesCall(o));
+    const addCall = fetchMock.mock.calls.find(([u, o]) => isTradingCall(u) && !isFeaturesCall(u, o));
     const body = String((addCall![1] as RequestInit).body);
     expect(body).toContain('<BestOfferEnabled>true</BestOfferEnabled>');
     expect(body).toContain('<MinimumBestOfferPrice currencyID="USD">10</MinimumBestOfferPrice>');
@@ -318,8 +325,8 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
   it('downgrade-retries a toggle-only (no floor) Best Offer rejection as well', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
-      if (isFeaturesCall(opts)) return new Response('<GetCategoryFeaturesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></GetCategoryFeaturesResponse>', { status: 200 });
       calls++;
       const body = String((opts as RequestInit).body);
       if (body.includes('<BestOfferEnabled>true</BestOfferEnabled>')) {
@@ -337,15 +344,17 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
     expect(result.warning).toMatch(/best offer/i);
   });
 
-  it('downgrades DETERMINISTICALLY at publish when GetCategoryFeatures says the category has no Best Offer — no prose guessing (BO-M)', async () => {
+  it('downgrades DETERMINISTICALLY at publish when the category is absent from a parsed getNegotiatedPricePolicies response — no prose guessing (BO-M)', async () => {
     let addBody = '';
     let addCalls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
-      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
-      const headers = (opts as RequestInit).headers as Record<string, string>;
-      if (headers['X-EBAY-API-CALL-NAME'] === 'GetCategoryFeatures') {
-        return new Response('<GetCategoryFeaturesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Category><CategoryID>9999</CategoryID><BestOfferEnabled>false</BestOfferEnabled></Category></GetCategoryFeaturesResponse>', { status: 200 });
+      if (isFeaturesCall(url, opts)) {
+        // Docs semantics (migration guide): a category returned in the container
+        // supports Best Offer; a QUERIED leaf category ABSENT from a parsed,
+        // non-empty response does not. 9999 is absent here.
+        return new Response(JSON.stringify({ negotiatedPricePolicies: [{ categoryId: '1234', bestOfferAutoAcceptEnabled: true, bestOfferAutoDeclineEnabled: true, bestOfferCounterEnabled: true }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
       addCalls++;
       addBody = String((opts as RequestInit).body);
       return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><ItemID>307000000009</ItemID></AddFixedPriceItemResponse>', { status: 200 });
@@ -365,8 +374,8 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
   it('surfaces a threshold-conflict code at publish as 422 BEST_OFFER_CONFLICT — config is never silently dropped (BO-2)', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
-      if (isFeaturesCall(opts)) return new Response('<GetCategoryFeaturesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></GetCategoryFeaturesResponse>', { status: 200 });
       calls++;
       return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></AddFixedPriceItemResponse>', { status: 200 });
     });
@@ -383,8 +392,8 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
 
   it('the narrowed prose backstop ignores unrelated errors that merely mention auto-accept wording (BO-M)', async () => {
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
-      if (isFeaturesCall(opts)) return new Response('<GetCategoryFeaturesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></GetCategoryFeaturesResponse>', { status: 200 });
       return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Promotion auto-accept scheduling failed.</ShortMessage><ErrorCode>99999</ErrorCode></Errors></AddFixedPriceItemResponse>', { status: 200 });
     });
     const adapter = new EbayAdapter('user-1');
@@ -839,8 +848,8 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
   it('surfaces a category-level Best Offer rejection as 422 BEST_OFFER_UNSUPPORTED — no downgrade retry on updates (BO-2)', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
-      if (isFeaturesCall(opts)) return new Response('<GetCategoryFeaturesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></GetCategoryFeaturesResponse>', { status: 200 });
       calls++;
       return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
     });
@@ -861,8 +870,8 @@ describe('EbayAdapter.updateListing — stored Best Offer threshold vs lowered p
   it('surfaces 23004 from STORED thresholds as 422 BEST_OFFER_CONFLICT — no DeletedField retry (BO-2, supersedes PR #285)', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
-      if (isFeaturesCall(opts)) return new Response('<GetCategoryFeaturesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></GetCategoryFeaturesResponse>', { status: 200 });
       calls++;
       // Live repro: price lowered to the stored auto-accept amount — eBay
       // validates the STORED threshold even when the revise omits the tag.
@@ -885,8 +894,8 @@ describe('EbayAdapter.updateListing — Best Offer threshold conflict (BO-2)', (
   it('surfaces eBay 22003/23004 as a typed 422 BEST_OFFER_CONFLICT with the stored thresholds, and never retries with deletion', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
-      if (isFeaturesCall(opts)) return new Response('<GetCategoryFeaturesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></GetCategoryFeaturesResponse>', { status: 200 });
       calls++;
       return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Auto decline amount cannot be greater than or equal to the Buy It Now price.</ShortMessage><ErrorCode>22003</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
     });
@@ -945,8 +954,8 @@ describe('EbayAdapter.updateListing — category-level rejection, floor-only con
   it('classifies a floor-only config (enabled + minimum, no auto-accept) as BEST_OFFER_UNSUPPORTED too — no retry', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
-      if (isFeaturesCall(opts)) return new Response('<GetCategoryFeaturesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></GetCategoryFeaturesResponse>', { status: 200 });
       calls++;
       return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
     });
@@ -1315,5 +1324,81 @@ describe('EbayAdapter — flat shipping requires a positive cost', () => {
       } as any),
     ).rejects.toMatchObject({ code: 'EBAY_FLAT_COST_REQUIRED' });
     expect(fetchMock.mock.calls.find(([u]) => isTradingCall(u))).toBeUndefined();
+  });
+});
+
+describe('isCategoryBestOfferSupported — Metadata API semantics (advisor review 2026-08-04)', () => {
+  const addOk = () => new Response(ADD_ITEM_OK, { status: 200 });
+  const policyRow = (categoryId: string, flags: Record<string, boolean>) =>
+    new Response(JSON.stringify({ negotiatedPricePolicies: [{ categoryId, ...flags }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const publish = (categoryId: string) => new EbayAdapter('user-1').createListing({
+    ...baseInput,
+    marketplaceSpecific: { ...tradingSetup, categoryId, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 85 },
+  } as any);
+  const addBodies = () => fetchMock.mock.calls.filter(([u, o]) => isTradingCall(u) && !isFeaturesCall(u, o)).map(([, o]) => String((o as RequestInit).body));
+
+  it('uses the application token (client-credentials api_scope), never the user token — user token lacks the scope and 401s silently', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return policyRow('7777', { bestOfferAutoAcceptEnabled: true });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    const metaCall = fetchMock.mock.calls.find(([u]) => isFeaturesCall(u));
+    const auth = ((metaCall![1] as RequestInit).headers as Record<string, string>).Authorization;
+    expect(auth).toBe('Bearer test-app-token');
+  });
+
+  it('treats ROW PRESENCE as supported even with all three automation flags false (migration guide: returned-in-container = supports Best Offer)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return policyRow('7777', { bestOfferAutoAcceptEnabled: false, bestOfferAutoDeclineEnabled: false, bestOfferCounterEnabled: false });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    const result = await publish('7777');
+    expect(addBodies()[0]).toContain('<BestOfferDetails>');
+    expect(result.warning ?? '').not.toMatch(/best offer/i);
+  });
+
+  it('fails OPEN (config sent, no downgrade) on a 401 from the metadata endpoint', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return new Response('Unauthorized', { status: 401 });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    expect(addBodies()[0]).toContain('<BestOfferDetails>');
+  });
+
+  it('fails OPEN on a malformed (non-JSON) metadata body', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return new Response('<html>gateway error</html>', { status: 200 });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    expect(addBodies()[0]).toContain('<BestOfferDetails>');
+  });
+
+  it('caches a definitive verdict (one metadata fetch across two publishes) but never caches unknown (401 refetches)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return policyRow('7777', { bestOfferCounterEnabled: true });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    await publish('7777');
+    expect(fetchMock.mock.calls.filter(([u]) => isFeaturesCall(u)).length).toBe(1);
+
+    clearEbayTaxonomyCaches();
+    fetchMock.mockClear();
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return new Response('Unauthorized', { status: 401 });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    await publish('7777');
+    expect(fetchMock.mock.calls.filter(([u]) => isFeaturesCall(u)).length).toBe(2);
   });
 });

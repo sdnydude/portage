@@ -2,6 +2,8 @@ import { createLogger } from './logger.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { mergeItemShipping, mergeItemAspects, applyShipFromOrigin, applyReverbEnrichment } from '../routes/listings.js';
+import { validateBestOfferThresholds, healBestOfferFromLive } from './best-offer.js';
+import { AppError } from '../middleware/error.js';
 
 const logger = createLogger('marketplace-sync');
 
@@ -76,6 +78,23 @@ export async function syncItemListingRow(
     // Publish parity: inline calculated shipping needs the seller's ship-from ZIP.
     healed = (await applyShipFromOrigin(userId, healed)) as Record<string, unknown>;
     const adapter = new EbayAdapter(userId);
+    // BO-3 pre-flight (parity with the listings PATCH route): an item-edit
+    // price change syncs with the STORED thresholds — a stale/conflicting
+    // pair reached eBay raw here (observed live 2026-08-04, price $149 vs
+    // stored $240/$220 → 22003). Heal from the live listing on conflict;
+    // still conflicting → typed 422 the worker terminal-fails on.
+    if (typeof item.price === 'number') {
+      let boCheck = validateBestOfferThresholds(item.price, healed);
+      if (!boCheck.ok) {
+        const healResult = await healBestOfferFromLive(adapter, syncId, healed);
+        if (healResult.healed) {
+          healed = healResult.specific;
+          warnings.push('ebay: Best Offer settings were out of date and refreshed from your live eBay listing.');
+        }
+        boCheck = validateBestOfferThresholds(item.price, healed);
+        if (!boCheck.ok) throw new AppError(422, 'BEST_OFFER_CONFLICT', boCheck.message);
+      }
+    }
     const syncResult = await adapter.updateListing(syncId, {
       title: item.title,
       description: item.description,

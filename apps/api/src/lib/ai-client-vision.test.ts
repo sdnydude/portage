@@ -1,4 +1,4 @@
-import { analyzeImages } from './ai-client.js';
+import { analyzeImage, analyzeImages } from './ai-client.js';
 import { resetEnv, loadEnv } from './env.js';
 
 // Mock the OpenAI SDK so we can inspect the params passed to chat.completions.create
@@ -53,6 +53,47 @@ describe('gemini vision: per-entry model override', () => {
     mockCreate.mockResolvedValue(OK_RESPONSE);
     await analyzeImages(IMG, 'sys', 'user', { maxTokens: 2048 });
     expect(mockCreate.mock.calls[0][0].model).toBe('gemini-3.5-flash');
+  });
+
+  it('falls back to the next provider when options.validate rejects the first response (schema drift)', async () => {
+    const driftResponse = {
+      ...OK_RESPONSE,
+      choices: [{ message: { content: '{"candidates":[{"weight":14}]}' } }],
+    };
+    mockCreate
+      .mockResolvedValueOnce(driftResponse)
+      .mockResolvedValueOnce(OK_RESPONSE);
+
+    const result = await analyzeImages(IMG, 'sys', 'user', {
+      maxTokens: 2048,
+      validate: (text) => {
+        if (text.includes('"weight":14')) throw new Error('schema drift');
+      },
+    });
+
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCreate.mock.calls[1][0].model).toBe('gemini-2.5-flash');
+    expect(result.text).toBe(OK_RESPONSE.choices[0].message.content);
+  });
+
+  it('analyzeImage (single-image chain) honors options.validate the same way', async () => {
+    const driftResponse = {
+      ...OK_RESPONSE,
+      choices: [{ message: { content: '{"candidates":[{"weight":14}]}' } }],
+    };
+    mockCreate
+      .mockResolvedValueOnce(driftResponse)
+      .mockResolvedValueOnce(OK_RESPONSE);
+
+    const result = await analyzeImage('x', 'image/jpeg', 'sys', 'user', {
+      maxTokens: 2048,
+      validate: (text) => {
+        if (text.includes('"weight":14')) throw new Error('schema drift');
+      },
+    });
+
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(result.text).toBe(OK_RESPONSE.choices[0].message.content);
   });
 
   it('falls back to 2.5-flash (reasoning still off) when 3.5-flash fails', async () => {

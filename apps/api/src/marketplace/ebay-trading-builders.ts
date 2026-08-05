@@ -325,41 +325,6 @@ export function buildGetItemXml(itemId: string, token: string): string {
   );
 }
 
-/**
- * Deterministic Best Offer support pre-flight (BO-M): GetCategoryFeatures
- * with FeatureID=BestOfferEnabled answers "does this category allow Best
- * Offer" up front — replacing prose interpretation of rejection messages.
- */
-export function buildGetCategoryFeaturesXml(categoryId: string, token: string): string {
-  return (
-    `${XML_DECL}\n<GetCategoryFeaturesRequest xmlns="${NS}">` +
-    `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +
-    `<CategoryID>${escapeXml(categoryId)}</CategoryID>` +
-    '<FeatureID>BestOfferEnabled</FeatureID>' +
-    '<DetailLevel>ReturnAll</DetailLevel>' +
-    '<ViewAllNodes>true</ViewAllNodes>' +
-    '</GetCategoryFeaturesRequest>'
-  );
-}
-
-/** true/false when the response carries the flag; null = unknown — callers
- * must never treat unknown as unsupported (fail open, never drop config). */
-export function parseCategoryBestOfferEnabled(parsed: ParsedXml, categoryId: string): boolean | null {
-  const catRaw = getPath(parsed, ['GetCategoryFeaturesResponse', 'Category']);
-  const cats = Array.isArray(catRaw) ? catRaw : catRaw != null ? [catRaw] : [];
-  for (const cat of cats) {
-    const c = cat as Record<string, unknown>;
-    // Only the REQUESTED category counts (CodeRabbit): ViewAllNodes can
-    // return child overrides whose flag must not poison the answer.
-    if (String(c?.CategoryID) !== categoryId) continue;
-    const flag = c?.BestOfferEnabled;
-    if (flag != null) return String(flag) === 'true';
-  }
-  const siteDefault = getPath(parsed, ['GetCategoryFeaturesResponse', 'SiteDefaults', 'BestOfferEnabled']);
-  if (siteDefault != null) return String(siteDefault) === 'true';
-  return null;
-}
-
 export function buildEndFixedPriceItemXml(itemId: string, token: string): string {
   return (
     `${XML_DECL}\n<EndFixedPriceItemRequest xmlns="${NS}">` +
@@ -398,7 +363,10 @@ function itemBody(input: TradingListingInput): string {
     '<ListingType>FixedPriceItem</ListingType>' +
     `<ListingDuration>${input.listingDuration ?? 'GTC'}</ListingDuration>` +
     `<ConditionID>${escapeXml(input.conditionId)}</ConditionID>` +
-    (input.conditionDescription ? `<ConditionDescription>${escapeXml(input.conditionDescription)}</ConditionDescription>` : '') +
+    // eBay forbids ConditionDescription on brand-new (1000) items — "The
+    // ConditionDescription field is not valid for new items", live revise
+    // failure 2026-08-05. New-other (1500) still allows it.
+    (input.conditionDescription && input.conditionId !== '1000' ? `<ConditionDescription>${escapeXml(input.conditionDescription)}</ConditionDescription>` : '') +
     (input.sku ? `<SKU>${escapeXml(input.sku)}</SKU>` : '') +
     '<Country>US</Country>' +
     `<Currency>${input.currency}</Currency>` +

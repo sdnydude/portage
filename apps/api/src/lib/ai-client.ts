@@ -143,6 +143,12 @@ function chatChain(): ProviderConfig[] {
 export interface AIOptions {
   temperature?: number;
   maxTokens?: number;
+  /** Vision chains only (analyzeImage / analyzeImages) — chat paths ignore it.
+   *  Runs on each provider's raw text before it is accepted; throw to treat the
+   *  response as a provider failure and continue down the chain. Closes the
+   *  drift blind spot where a provider answers 200 with schema-invalid output
+   *  (gemini-3.5-flash weight-as-number, live outage 2026-08-05). */
+  validate?: (text: string) => void;
 }
 
 // ─── Vision: image → structured text ───────────────────────
@@ -163,6 +169,9 @@ export async function analyzeImage(
       const result = config.type === 'openai'
         ? await visionOpenAI(config, imageBase64, mediaType, systemPrompt, userPrompt, options)
         : await visionAnthropic(config, imageBase64, mediaType, systemPrompt, userPrompt, options);
+
+      // Schema-invalid 200s fail over like call failures (drift blind spot).
+      options?.validate?.(result.text);
 
       logger.info({
         provider: config.name,
@@ -285,6 +294,9 @@ export async function analyzeImages(
       const result = config.type === 'openai'
         ? await visionMultiOpenAI(config, images, systemPrompt, userPrompt, options)
         : await visionMultiAnthropic(config, images, systemPrompt, userPrompt, options);
+
+      // Schema-invalid 200s fail over like call failures (drift blind spot).
+      options?.validate?.(result.text);
 
       logger.info({
         provider: config.name,

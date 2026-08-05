@@ -356,6 +356,24 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     expect(fields.ebayAdRate).toBeUndefined();
   });
 
+  it("blocks submit with an inline error when the bump bid is outside 0.5-30% — no API call (10% is legal; fabricated 3.5 cap corrected 2026-08-05)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} allowedMarketplaces={["reverb"]} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Promote this listing").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByLabelText("Bump bid (% of sale)"), { target: { value: "35" } });
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await screen.findByText(/between 0\.5% and 30%/);
+    expect(bodies.length).toBe(0);
+  });
+
   it("sends disclaimerAccepted on a publish-now (after accepting terms) so consent is recorded", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
