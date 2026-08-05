@@ -80,6 +80,15 @@ export function clearReverbCategoriesCache(): void {
   categoriesCachedAt = 0;
 }
 
+/**
+ * Photo-ingestion race guard (live failure 2026-08-04): Reverb ingests the
+ * photo URLs from a create ASYNC. A publish retry fired in the same second
+ * 422s "must have at least one image" even though the create carried photos.
+ * Poll budget: 3 checks, 4s apart — ingestion of a handful of images
+ * typically completes well inside that.
+ */
+export const REVERB_PHOTO_INGEST = { polls: 3, delayMs: 4000 };
+
 export class ReverbAdapter implements MarketplaceAdapter {
   readonly marketplace = 'reverb' as const;
 
@@ -204,6 +213,22 @@ export class ReverbAdapter implements MarketplaceAdapter {
     // exact blockers (e.g. "Please set a shipping rate or enable local
     // pickup.") — surface those verbatim so the seller can act.
     if (createdSlug !== 'live') {
+      // Photo-ingestion race guard: wait until Reverb reports at least one
+      // ingested photo before retrying publish — otherwise the retry 422s
+      // on the image requirement while ingestion is still running.
+      if (input.photos.length > 0) {
+        for (let attempt = 0; attempt < REVERB_PHOTO_INGEST.polls; attempt++) {
+          try {
+            const check = await this.request<{ listing?: { photos?: unknown[] } }>(`/listings/${data.listing.id}`, { method: 'GET' });
+            if ((check.listing?.photos?.length ?? 0) > 0) break;
+          } catch {
+            break; // best-effort — the publish retry below surfaces real blockers
+          }
+          if (attempt < REVERB_PHOTO_INGEST.polls - 1 || REVERB_PHOTO_INGEST.polls === 1) {
+            await new Promise((r) => setTimeout(r, REVERB_PHOTO_INGEST.delayMs));
+          }
+        }
+      }
       try {
         const retry = await this.request<{ listing?: { state?: string | { slug?: string } } }>(
           `/listings/${data.listing.id}`,

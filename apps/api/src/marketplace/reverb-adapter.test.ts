@@ -2,7 +2,7 @@ vi.mock('./token-manager.js', () => ({
   getReverbAccessToken: vi.fn().mockResolvedValue('test-reverb-pat'),
 }));
 
-import { ReverbAdapter, clearReverbConditionsCache, clearReverbCategoriesCache } from './reverb-adapter.js';
+import { ReverbAdapter, REVERB_PHOTO_INGEST, clearReverbConditionsCache, clearReverbCategoriesCache } from './reverb-adapter.js';
 import { getReverbAccessToken } from './token-manager.js';
 import { loadEnv, resetEnv } from '../lib/env.js';
 
@@ -36,6 +36,9 @@ const BASE_INPUT = {
 // searchComps tests mutate REVERB_API_TOKEN + the env cache — restore both so
 // leakage never bleeds into other suites in the same worker.
 const ORIGINAL_REVERB_API_TOKEN = process.env.REVERB_API_TOKEN;
+
+// No real sleeps in tests — the ingestion-poll delay is a test-tunable.
+beforeEach(() => { REVERB_PHOTO_INGEST.delayMs = 0; });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -242,6 +245,11 @@ describe('ReverbAdapter.createListing — publish retry + verbatim blockers', ()
         JSON.stringify({ listing: { id: 555, state: { slug: 'draft' } } }),
         { status: 201, headers: { 'Content-Type': 'application/hal+json' } },
       ))
+      // ingestion-poll GET: photos already ingested
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ listing: { id: 555, state: { slug: 'draft' }, photos: [{}] } }),
+        { status: 200, headers: { 'Content-Type': 'application/hal+json' } },
+      ))
       .mockResolvedValueOnce(new Response(
         JSON.stringify({ message: 'Please set a shipping rate or enable local pickup.' }),
         { status: 422, headers: { 'Content-Type': 'application/hal+json' } },
@@ -251,7 +259,7 @@ describe('ReverbAdapter.createListing — publish retry + verbatim blockers', ()
 
     const result = await adapter.createListing(BASE_INPUT);
 
-    const [putUrl, putInit] = fetchMock.mock.calls[1];
+    const [putUrl, putInit] = fetchMock.mock.calls[2];
     expect(putUrl).toBe('https://api.reverb.com/api/listings/555');
     expect(putInit!.method).toBe('PUT');
     expect(JSON.parse(putInit!.body as string)).toEqual({ publish: 'true' });
@@ -956,5 +964,60 @@ describe('ReverbAdapter.searchCategories — leaf-safe path derivation', () => {
     expect(hit.path).toEqual([
       'Keyboards and Synths', 'Keyboard and Synth Accessories', 'Modular Synth Accessories', 'Modular Synth Splitters / Hubs',
     ]);
+  });
+});
+
+describe('ReverbAdapter.createListing — photo-ingestion race guard', () => {
+  // Live failure 2026-08-04 (RC-30 100095335, Verb Square 100097689): POST
+  // publish:"true" returns 201 draft, Reverb ingests photo URLs ASYNC, and
+  // the immediate PUT publish retry 422'd "must have at least one image" in
+  // the same second the listing was created. The retry must wait for
+  // ingestion before publishing.
+  beforeEach(() => { REVERB_PHOTO_INGEST.delayMs = 0; });
+
+  it('polls the listing until photos are ingested before the publish retry, then goes live', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' } } }), { status: 201, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' }, photos: [] } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' }, photos: [{ _links: {} }] } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'live' } } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.createListing(BASE_INPUT);
+
+    expect(fetchMock.mock.calls.map(([, init]) => (init as RequestInit)?.method ?? 'GET')).toEqual(['POST', 'GET', 'GET', 'PUT']);
+    expect(result.status).toBe('active');
+    expect(result.warning).toBeUndefined();
+  });
+
+  it('gives up after the poll budget and still attempts the publish retry (existing draft-warning path)', async () => {
+    const emptyGet = () => new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' }, photos: [] } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' } } }), { status: 201, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(emptyGet())
+      .mockResolvedValueOnce(emptyGet())
+      .mockResolvedValueOnce(emptyGet())
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'You must have at least one image on your listing to submit it to the marketplace.' }), { status: 422, headers: { 'Content-Type': 'application/hal+json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.createListing(BASE_INPUT);
+
+    expect(fetchMock.mock.calls.length).toBe(5); // POST + 3 polls + PUT
+    expect(result.status).toBe('draft');
+    expect(result.warning).toContain('at least one image');
+  });
+
+  it('skips polling entirely when the input has no photos', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' } } }), { status: 201, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'live' } } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing({ ...BASE_INPUT, photos: [] });
+
+    expect(fetchMock.mock.calls.map(([, init]) => (init as RequestInit)?.method ?? 'GET')).toEqual(['POST', 'PUT']);
   });
 });
