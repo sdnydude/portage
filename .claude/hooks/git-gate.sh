@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # PreToolUse gate (Stephen, 2026-08-03): git state changes require per-action
-# operator approval. Commit/push/PR-create/PR-merge each force a confirmation
-# prompt — "auto mode" covers building and read-only ops, never publication.
+# operator approval. Commit/push/PR-merge each force a confirmation prompt —
+# "auto mode" covers building and read-only ops, never publication.
+# PR-create exempted 2026-08-05 (Stephen): opening a PR is reviewable, not
+# publication — commit/push/merge gates and the proof waiver stay.
 set -euo pipefail
 
 input="$(cat)"
@@ -28,8 +30,6 @@ case "$command" in
     ask "GIT GATE: commit requires Stephen's approval for this specific commit (standing rule 2026-08-03)." ;;
   *"git push"*)
     ask "GIT GATE: push requires Stephen's approval for this specific push (standing rule 2026-08-03)." ;;
-  *"gh pr create"*)
-    ask "GIT GATE: PR creation requires Stephen's approval (standing rule 2026-08-03)." ;;
   *"gh pr merge"*)
     ask "GIT GATE: PR MERGE requires Stephen's approval (standing rule 2026-08-03)." ;;
 esac
