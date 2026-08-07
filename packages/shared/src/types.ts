@@ -524,6 +524,20 @@ export interface EbayListingShipping {
 }
 
 /**
+ * Payload of details[0] on a 422 BEST_OFFER_CONFLICT (25afd214): the effective
+ * (post-heal) thresholds so price editors can render a guided fix. `healed`
+ * distinguishes server-persisted live values (client may un-touch its form)
+ * from an unpersisted echo of the client's own submission (must stay touched,
+ * or a price-only retry silently drops the seller's edit — CR#3/BO-5).
+ */
+export interface BestOfferConflictDetails {
+  bestOfferEnabled: boolean | null;
+  bestOfferAutoAcceptPrice: number | null;
+  minimumBestOfferPrice: number | null;
+  healed: boolean;
+}
+
+/**
  * Per-listing Reverb shipping choice, persisted verbatim under
  * marketplaceSpecificFields.reverbShipping and applied AFTER seller-profile
  * fill in applyReverbEnrichment (same explicit-override pattern as

@@ -16,7 +16,7 @@ import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
 import { applyFooter, descriptionLimitFor } from '../lib/footer.js';
 import { logSyncAttempt } from '../lib/sync-log.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
-import type { MarketplaceAdapter, ReverbCacheEntry } from '@portage/shared';
+import type { BestOfferConflictDetails, MarketplaceAdapter, ReverbCacheEntry } from '@portage/shared';
 
 const logger = createLogger('listings');
 
@@ -827,7 +827,18 @@ listingsRouter.patch('/:id', async (req, res, next) => {
               .set({ marketplaceSpecificFields: specificsMergeExpression(healPatch()), updatedAt: new Date() })
               .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)));
           }
-          throw new AppError(422, 'BEST_OFFER_CONFLICT', check.message);
+          // 25afd214: ship the effective (post-heal) thresholds so price
+          // editors can render a guided fix instead of prose. `healed` tells
+          // the client whether these values were PERSISTED (heal path) or are
+          // its own submitted values echoed back — an unpersisted echo must
+          // stay "touched" client-side or a price-only retry silently drops
+          // the seller's Best Offer edit (CR#3, BO-5 contract).
+          throw new AppError(422, 'BEST_OFFER_CONFLICT', check.message, [{
+            bestOfferEnabled: (effectiveSpecific.bestOfferEnabled as boolean | undefined) ?? null,
+            bestOfferAutoAcceptPrice: (effectiveSpecific.bestOfferAutoAcceptPrice as number | undefined) ?? null,
+            minimumBestOfferPrice: (effectiveSpecific.minimumBestOfferPrice as number | undefined) ?? null,
+            healed: healResult.healed,
+          } satisfies BestOfferConflictDetails]);
         }
       }
     }
