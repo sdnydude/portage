@@ -15,7 +15,9 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
-    public details?: string[],
+    // Zod failures ship string[]; typed errors (e.g. BEST_OFFER_CONFLICT)
+    // ship structured entries — narrow at the consumption site.
+    public details?: unknown[],
   ) {
     super(message);
     this.name = "ApiError";

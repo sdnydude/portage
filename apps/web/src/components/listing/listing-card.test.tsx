@@ -304,6 +304,379 @@ describe("ListingCard GTC date (ported from listings/[id]/gtc-date.test.tsx)", (
   });
 });
 
+describe("ListingCard — Reverb category picker on publish (307ffa75)", () => {
+  const REVERB_DRAFT = {
+    ...LISTING,
+    marketplace: "reverb" as const,
+    marketplaceListingId: null,
+    status: "draft" as const,
+  };
+
+  it("opens the category cascade when publish returns REVERB_CATEGORY_REQUIRED", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === `/listings/l1/publish` && opts?.method === "POST") {
+        throw new ApiError(422, "REVERB_CATEGORY_REQUIRED", "No Reverb category could be resolved for this item.");
+      }
+      if (path === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "pt-1", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "pt-1", listable: true }] };
+      }
+      return {};
+    });
+    render(<ListingCard listing={REVERB_DRAFT} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /publish/i }));
+
+    // Cascade appears instead of the generic error banner.
+    expect(await screen.findByText(/product type/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no reverb category could be resolved/i)).not.toBeInTheDocument();
+  });
+
+  it("surfaces a category-load failure instead of a silently disabled Save (review A)", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === `/listings/l1/publish` && opts?.method === "POST") {
+        throw new ApiError(422, "REVERB_CATEGORY_REQUIRED", "category required");
+      }
+      if (path === "/marketplace/reverb/product-types") throw new Error("network");
+      return {};
+    });
+    render(<ListingCard listing={REVERB_DRAFT} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /publish/i }));
+
+    expect(await screen.findByText(/couldn.t load reverb categories/i)).toBeInTheDocument();
+  });
+
+  it("surfaces a subcategory-load failure through the same error channel (loadChildren)", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === `/listings/l1/publish` && opts?.method === "POST") {
+        throw new ApiError(422, "REVERB_CATEGORY_REQUIRED", "category required");
+      }
+      if (path === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "pt-1", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "pt-1", listable: true }] };
+      }
+      if (path.startsWith("/marketplace/reverb/subcategories")) throw new Error("network");
+      return {};
+    });
+    render(<ListingCard listing={REVERB_DRAFT} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /publish/i }));
+    await user.selectOptions(await screen.findByLabelText(/product type/i), "pt-1");
+
+    expect(await screen.findByText(/couldn.t load reverb categories/i)).toBeInTheDocument();
+    // The root pick itself survives — Save stays enabled on the top-level choice.
+    expect(screen.getByRole("button", { name: /save & publish/i })).toBeEnabled();
+  });
+
+  it("Cancel closes the cascade without another publish attempt", async () => {
+    const user = userEvent.setup();
+    let publishCalls = 0;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === `/listings/l1/publish` && opts?.method === "POST") {
+        publishCalls += 1;
+        throw new ApiError(422, "REVERB_CATEGORY_REQUIRED", "category required");
+      }
+      if (path === "/marketplace/reverb/product-types") return { productTypes: [] };
+      return {};
+    });
+    render(<ListingCard listing={REVERB_DRAFT} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /publish/i }));
+    await user.click(await screen.findByRole("button", { name: /cancel/i }));
+
+    expect(screen.queryByText(/pick one/i)).not.toBeInTheDocument();
+    expect(publishCalls).toBe(1);
+  });
+
+  it("saves the picked category (categoryUuid only) and re-publishes", async () => {
+    const user = userEvent.setup();
+    let publishCalls = 0;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === `/listings/l1/publish` && opts?.method === "POST") {
+        publishCalls += 1;
+        if (publishCalls === 1) throw new ApiError(422, "REVERB_CATEGORY_REQUIRED", "category required");
+        return { id: "l1" };
+      }
+      if (path === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "pt-1", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "pt-1", listable: true }] };
+      }
+      if (path.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      return { id: "l1" };
+    });
+    render(<ListingCard listing={REVERB_DRAFT} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /publish/i }));
+    await user.selectOptions(await screen.findByLabelText(/product type/i), "pt-1");
+    await user.click(screen.getByRole("button", { name: /save & publish/i }));
+
+    await waitFor(() => {
+      const patch = apiMock.mock.calls.find(([p, opts]) => p === "/listings/l1" && (opts as { method?: string })?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect((patch![1] as { body: Record<string, unknown> }).body).toEqual({
+        marketplaceSpecificFields: { categoryUuid: "pt-1" },
+      });
+      expect(publishCalls).toBe(2);
+    });
+  });
+});
+
+describe("ListingCard — Best Offer conflict guided fix (25afd214)", () => {
+  it("re-seeds the offer fields from the 422 details so the seller can fix thresholds in place", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (path === "/listings/l1" && opts?.method === "PATCH") {
+        throw new ApiError(422, "BEST_OFFER_CONFLICT", "Price conflicts with Best Offer thresholds", [
+          { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199 },
+        ] as unknown as string[]);
+      }
+      return {};
+    });
+    // Stored copy is stale-empty — the live thresholds arrive only in the 422.
+    render(<ListingCard listing={LISTING} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    const priceInput = screen.getByLabelText(/price/i);
+    await user.clear(priceInput);
+    await user.type(priceInput, "199");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    // Editor stays open; offer fields now show the server-healed thresholds.
+    expect(await screen.findByLabelText(/auto-accept/i)).toHaveValue(209);
+    expect(screen.getByLabelText(/minimum offer/i)).toHaveValue(199);
+    expect(screen.getByText(/best offer/i, { selector: "p,div,span" })).toBeInTheDocument();
+  });
+
+  it("re-seeds the configured threshold and clears the other to empty when details carries null", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (path === "/listings/l1" && opts?.method === "PATCH") {
+        throw new ApiError(422, "BEST_OFFER_CONFLICT", "conflict", [
+          { bestOfferEnabled: true, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: 199 },
+        ] as unknown as string[]);
+      }
+      return {};
+    });
+    render(<ListingCard listing={LISTING} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByLabelText(/minimum offer/i)).toHaveValue(199);
+    expect(screen.getByLabelText(/auto-accept/i)).toHaveValue(null);
+  });
+
+  it("falls back to the generic error message when BEST_OFFER_CONFLICT carries no details", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (path === "/listings/l1" && opts?.method === "PATCH") {
+        throw new ApiError(422, "BEST_OFFER_CONFLICT", "Price conflicts with Best Offer thresholds");
+      }
+      return {};
+    });
+    render(<ListingCard listing={LISTING} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/price conflicts with best offer thresholds/i)).toBeInTheDocument();
+    // No details → no re-seed; offers stay in their seeded (off) state.
+    expect(screen.queryByLabelText(/auto-accept/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the seller's edit touched when the 422 echo was NOT healed — the retry resends their values (CR#3)", async () => {
+    const user = userEvent.setup();
+    let patchCalls = 0;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (path === "/listings/l1" && opts?.method === "PATCH") {
+        patchCalls += 1;
+        if (patchCalls === 1) {
+          // healed:false — server persisted NOTHING; these are the seller's own values echoed back.
+          throw new ApiError(422, "BEST_OFFER_CONFLICT", "conflict", [
+            { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199, healed: false },
+          ] as unknown as string[]);
+        }
+        return { id: "l1" };
+      }
+      return {};
+    });
+    const BO_ON = {
+      ...LISTING,
+      marketplaceSpecificFields: { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199 },
+    };
+    render(<ListingCard listing={BO_ON} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    const min = screen.getByLabelText(/minimum offer/i);
+    await user.clear(min);
+    await user.type(min, "250"); // seller's edit — conflicts with price 1200? no: min 250 < 1200; conflict comes from server mock regardless
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await screen.findByText(/conflict/i);
+
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(patchCalls).toBe(2);
+      const retry = apiMock.mock.calls.filter(([p, o]) => p === "/listings/l1" && (o as { method?: string })?.method === "PATCH")[1];
+      const body = (retry![1] as { body: Record<string, unknown> }).body;
+      // Unpersisted echo → still touched → the seller's values ride the retry.
+      expect(body.marketplaceSpecificFields).toEqual({
+        bestOfferEnabled: true,
+        bestOfferAutoAcceptPrice: 209,
+        minimumBestOfferPrice: 199,
+      });
+    });
+  });
+
+  it("closes the loop: a corrected price after re-seed saves without resending untouched offer keys", async () => {
+    const user = userEvent.setup();
+    let patchCalls = 0;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: Record<string, unknown> }) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (path === "/listings/l1" && opts?.method === "PATCH") {
+        patchCalls += 1;
+        if (patchCalls === 1) {
+          // healed:true — the server persisted these live values; omitting
+          // them on retry is safe (they're already the DB truth).
+          throw new ApiError(422, "BEST_OFFER_CONFLICT", "conflict", [
+            { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199, healed: true },
+          ] as unknown as string[]);
+        }
+        return { id: "l1" };
+      }
+      return {};
+    });
+    render(<ListingCard listing={LISTING} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    const priceInput = screen.getByLabelText(/price/i);
+    await user.clear(priceInput);
+    await user.type(priceInput, "199");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await screen.findByLabelText(/auto-accept/i); // re-seeded, editor open
+
+    await user.clear(priceInput);
+    await user.type(priceInput, "250");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(patchCalls).toBe(2);
+      const retry = apiMock.mock.calls.filter(([p, o]) => p === "/listings/l1" && (o as { method?: string })?.method === "PATCH")[1];
+      const body = (retry![1] as { body: Record<string, unknown> }).body;
+      expect(body.price).toBe(250);
+      // Untouched after re-seed → server-persisted heal is the source of truth.
+      expect(body.marketplaceSpecificFields).toBeUndefined();
+    });
+  });
+});
+
+describe("ListingCard — shipping editor localPickup (6454017d)", () => {
+  it("seeds localPickup from stored ebayShipping and keeps it in the save payload", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string) =>
+      path === "/seller-profile" ? { profile: {} } : { id: "l1" });
+    const listing = {
+      ...LISTING,
+      marketplaceSpecificFields: {
+        ebayShipping: { method: "calculated", handlingDays: 2, localPickup: true },
+      },
+    };
+    render(<ListingCard listing={listing} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit shipping/i }));
+    await user.click(screen.getByRole("button", { name: /save shipping/i }));
+
+    await waitFor(() => {
+      const patch = apiMock.mock.calls.find(([p, opts]) => p === "/listings/l1" && (opts as { method?: string })?.method === "PATCH");
+      expect(patch).toBeDefined();
+      const body = (patch![1] as { body: Record<string, unknown> }).body;
+      expect(body.marketplaceSpecificFields).toEqual({
+        ebayShipping: { method: "calculated", handlingDays: 2, localPickup: true },
+      });
+    });
+  });
+
+  it("clicking the pickup toggle from off includes localPickup true in the save payload", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string) =>
+      path === "/seller-profile" ? { profile: {} } : { id: "l1" });
+    const listing = {
+      ...LISTING,
+      marketplaceSpecificFields: { ebayShipping: { method: "calculated" } },
+    };
+    render(<ListingCard listing={listing} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit shipping/i }));
+    const pickupToggle = screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!;
+    await user.click(pickupToggle);
+    await user.click(screen.getByRole("button", { name: /save shipping/i }));
+
+    await waitFor(() => {
+      const patch = apiMock.mock.calls.find(([p, opts]) => p === "/listings/l1" && (opts as { method?: string })?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect((patch![1] as { body: Record<string, unknown> }).body.marketplaceSpecificFields).toEqual({
+        ebayShipping: { method: "calculated", localPickup: true },
+      });
+    });
+  });
+
+  it("omits localPickup when saving a listing whose stored ebayShipping predates the field", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string) =>
+      path === "/seller-profile" ? { profile: {} } : { id: "l1" });
+    const listing = {
+      ...LISTING,
+      marketplaceSpecificFields: { ebayShipping: { method: "free" } },
+    };
+    render(<ListingCard listing={listing} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit shipping/i }));
+    await user.click(screen.getByRole("button", { name: /save shipping/i }));
+
+    await waitFor(() => {
+      const patch = apiMock.mock.calls.find(([p, opts]) => p === "/listings/l1" && (opts as { method?: string })?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect((patch![1] as { body: Record<string, unknown> }).body.marketplaceSpecificFields).toEqual({
+        ebayShipping: { method: "free" },
+      });
+    });
+  });
+
+  it("turning pickup off omits localPickup so the wholesale ebayShipping replace clears it", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string) =>
+      path === "/seller-profile" ? { profile: {} } : { id: "l1" });
+    const listing = {
+      ...LISTING,
+      marketplaceSpecificFields: {
+        ebayShipping: { method: "calculated", localPickup: true },
+      },
+    };
+    render(<ListingCard listing={listing} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit shipping/i }));
+    // The pickup switch is a styled div (sheet toggle pattern), not a labeled
+    // control — click it via its wrapping label.
+    const pickupToggle = screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!;
+    await user.click(pickupToggle);
+    await user.click(screen.getByRole("button", { name: /save shipping/i }));
+
+    await waitFor(() => {
+      const patch = apiMock.mock.calls.find(([p, opts]) => p === "/listings/l1" && (opts as { method?: string })?.method === "PATCH");
+      expect(patch).toBeDefined();
+      const body = (patch![1] as { body: Record<string, unknown> }).body;
+      expect(body.marketplaceSpecificFields).toEqual({
+        ebayShipping: { method: "calculated" },
+      });
+    });
+  });
+});
+
 describe("ListingCard price display", () => {
   it("appends the currency code for non-USD listings (Reverb signal)", () => {
     render(<ListingCard listing={{ ...LISTING, marketplace: "reverb", currency: "CAD", price: 1150 }} token="t" onChanged={vi.fn()} highlight={false} />);
