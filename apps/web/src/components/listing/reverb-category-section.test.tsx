@@ -73,4 +73,27 @@ describe("ReverbCategorySection", () => {
     fireEvent.change(sub1, { target: { value: "" } });
     expect(onChange).toHaveBeenLastCalledWith({ uuid: "root-fx", fullName: "Effects and Pedals" });
   });
+
+  it("keeps a seeded non-listable node visible as the current selection (PR #280 review gap)", async () => {
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/marketplace/reverb/product-types") {
+        return {
+          productTypes: [
+            { uuid: "root-parts", fullName: "Parts", name: "Parts", rootUuid: "root-parts", listable: false },
+            { uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true },
+          ],
+        };
+      }
+      if (path.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      return {};
+    });
+    render(
+      <ReverbCategorySection value={{ uuid: "root-parts", fullName: "Parts" }} onChange={vi.fn()} token="t" />,
+    );
+    // The seeded choice must render AS the selection, not vanish into the placeholder.
+    await waitFor(() => {
+      expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("root-parts");
+    });
+    expect(screen.getByRole("option", { name: "Parts" })).toBeInTheDocument();
+  });
 });

@@ -10,6 +10,8 @@ import { formatCurrency, formatMarketplace } from "@/lib/format";
 import { parsePriceInput } from "@/lib/price";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 import { ShippingFieldsSection, SHIPPING_FIELDS_DEFAULT, type ShippingFieldsValue } from "./shipping-fields-section";
+import { ReverbCategorySection } from "./reverb-category-section";
+import type { BestOfferConflictDetails, EbayListingShipping } from "@portage/shared";
 import type { ListingSyncStatus } from "@/lib/sync-status";
 import { WeightFillSheet } from "./weight-fill-sheet";
 import type { WeightDimsValue } from "./weight-dims-inputs";
@@ -138,6 +140,23 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       setEditingPrice(false);
       onChanged();
     } catch (err) {
+      // 25afd214: a Best Offer conflict carries the live thresholds in
+      // details — re-seed the offer fields so the seller fixes them in place
+      // instead of reading the 422 as app breakage.
+      if (err instanceof ApiError && err.code === "BEST_OFFER_CONFLICT") {
+        const conflictDetails = err.details?.[0] as BestOfferConflictDetails | undefined;
+        if (conflictDetails) {
+          setBoFields({
+            enabled: conflictDetails.bestOfferEnabled === true,
+            autoAccept: typeof conflictDetails.bestOfferAutoAcceptPrice === "number" ? String(conflictDetails.bestOfferAutoAcceptPrice) : "",
+            minimum: typeof conflictDetails.minimumBestOfferPrice === "number" ? String(conflictDetails.minimumBestOfferPrice) : "",
+          });
+          // CR#3 / BO-5: only un-touch when the server HEALED (and persisted)
+          // these values. An unpersisted echo of the seller's own edit must
+          // stay touched, or a price-only retry silently drops their change.
+          setBoTouched(conflictDetails.healed !== true);
+        }
+      }
       setActionError(err instanceof ApiError ? err.message : "Failed to save changes");
     } finally {
       setIsSaving(false);
@@ -146,22 +165,32 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
   const [aspectMissing, setAspectMissing] = useState<AspectRequirement[] | null>(null);
   const [aspectSaving, setAspectSaving] = useState(false);
   const [aspectError, setAspectError] = useState<string | null>(null);
+  // 307ffa75: publish of a category-less Reverb draft 422s — collect the
+  // category via the cascade (same collect-then-republish flow as aspects).
+  const [reverbCategoryMissing, setReverbCategoryMissing] = useState(false);
+  const [reverbCategoryPick, setReverbCategoryPick] = useState<{ uuid: string; fullName: string } | null>(null);
+  const [reverbCategorySaving, setReverbCategorySaving] = useState(false);
+  const [reverbCategoryError, setReverbCategoryError] = useState<string | null>(null);
   // Shipping edit (beta 17be7322): inline editor seeded from the stored
-  // ebayShipping. PATCH full-replaces marketplaceSpecificFields server-side,
-  // so save must client-side spread the stored keys (aspect-merge pattern).
+  // ebayShipping. Save sends only the ebayShipping key — the server merges
+  // marketplaceSpecificFields atomically per top-level key (C2), replacing
+  // this nested object wholesale while leaving sibling keys untouched.
   const [editingShipping, setEditingShipping] = useState(false);
   const [shipFields, setShipFields] = useState<ShippingFieldsValue>(SHIPPING_FIELDS_DEFAULT);
   const [shippingSaving, setShippingSaving] = useState(false);
 
   const handleOpenShipping = () => {
+    // Canonical stored shape from shared — the previous inline hand-copy of
+    // this type drifted (missing localPickup) and caused 6454017d.
     const stored = ((listing.marketplaceSpecificFields ?? {}) as Record<string, unknown>).ebayShipping as
-      | { method?: string; flatCost?: number; service?: string; handlingDays?: number }
+      | Partial<EbayListingShipping>
       | undefined;
     setShipFields({
       method: (stored?.method as ShippingFieldsValue["method"]) ?? "calculated",
       flatCost: stored?.flatCost != null ? String(stored.flatCost) : "",
       service: stored?.service ?? "",
       handlingDays: stored?.handlingDays != null ? String(stored.handlingDays) : "",
+      localPickup: stored?.localPickup ?? false,
     });
     setEditingShipping(true);
   };
@@ -179,6 +208,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
         ...(shipFields.method === "flat" && cost > 0 ? { flatCost: cost } : {}),
         ...(shipFields.service ? { service: shipFields.service } : {}),
         ...(days >= 0 && shipFields.handlingDays !== "" ? { handlingDays: days } : {}),
+        ...(shipFields.localPickup ? { localPickup: true } : {}),
       };
       // C2: key-scoped payload — the server merges atomically, so spreading
       // the (possibly stale) stored object would clobber concurrent writers.
@@ -280,6 +310,9 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       } else if (err instanceof ApiError && err.code === "EBAY_WEIGHT_REQUIRED") {
         // Calculated shipping needs package weight/dims — collect, then re-publish.
         setWeightMissing(true);
+      } else if (err instanceof ApiError && err.code === "REVERB_CATEGORY_REQUIRED") {
+        // Reverb needs a category — open the cascade, then re-publish (307ffa75).
+        setReverbCategoryMissing(true);
       } else {
         setActionError(err instanceof ApiError ? err.message : "Failed to publish listing");
       }
@@ -323,6 +356,29 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       }
     } finally {
       setWeightSaving(false);
+    }
+  };
+
+  // 307ffa75: persist the cascade pick, then re-publish (aspect-flow parity).
+  const handleReverbCategorySave = async () => {
+    if (!token || !reverbCategoryPick) return;
+    setReverbCategorySaving(true);
+    setReverbCategoryError(null);
+    try {
+      // C2: only categoryUuid rides — the server's atomic merge leaves
+      // sibling keys untouched (same key the create sheet writes).
+      await api(`/listings/${listing.id}`, {
+        method: "PATCH",
+        token,
+        body: { marketplaceSpecificFields: { categoryUuid: reverbCategoryPick.uuid } },
+      });
+      await publishAndRefresh();
+      setReverbCategoryMissing(false);
+      setReverbCategoryPick(null);
+    } catch (err) {
+      setReverbCategoryError(err instanceof ApiError ? err.message : "Failed to publish listing");
+    } finally {
+      setReverbCategorySaving(false);
     }
   };
 
@@ -662,6 +718,44 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
           }}
           onSave={handleAspectsSave}
         />
+      )}
+      {reverbCategoryMissing && (
+        <div className="mt-3 p-3 bg-muted rounded-xl space-y-3">
+          <p className="text-sm text-text-primary">
+            Reverb needs a category before this listing can publish. Pick one:
+          </p>
+          <ReverbCategorySection
+            idPrefix={`card-cat-${listing.id}-`}
+            value={reverbCategoryPick}
+            onChange={setReverbCategoryPick}
+            token={token}
+            onLoadError={() =>
+              setReverbCategoryError("Couldn't load Reverb categories — check your connection and try again.")
+            }
+          />
+          {reverbCategoryError && <p className="text-sm text-red-700 dark:text-red-300">{reverbCategoryError}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleReverbCategorySave}
+              disabled={!reverbCategoryPick || reverbCategorySaving}
+              className="px-4 py-2 bg-forest-green text-white rounded-xl text-sm font-medium disabled:opacity-50"
+            >
+              {reverbCategorySaving ? "Publishing..." : "Save & publish"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setReverbCategoryMissing(false);
+                setReverbCategoryPick(null);
+                setReverbCategoryError(null);
+              }}
+              className="px-4 py-2 text-sm text-text-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
       {weightMissing && (
         <WeightFillSheet
