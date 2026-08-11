@@ -881,7 +881,11 @@ export class EbayAdapter implements MarketplaceAdapter {
       const token = await getEbayAccessToken(this.userId);
       const parsed = await callTradingApi('GetItem', buildGetItemXml(marketplaceListingId, token), token);
       return parseGetItemStatus(parsed);
-    } catch {
+    } catch (err) {
+      // Logging parity with ReverbAdapter (review HIGH-2): the status sweep
+      // treats 'unknown' as a safe no-op, so without this line a broken eBay
+      // token silently stops reconciliation with no trace anywhere.
+      logger.warn({ marketplaceListingId, err }, 'eBay getListingStatus failed — returning unknown');
       return 'unknown';
     }
   }
@@ -1020,6 +1024,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     // Page through the window — the sync heals can only repair orders this
     // returns, so a hard one-page cap silently strands sellers past 50 orders.
     // MAX_PAGES bounds a runaway `next` chain (500 orders covers the window).
+    // Twin of the loop in reverb-adapter.ts getOrders; keep cap/shape changes in sync.
     const MAX_PAGES = 10;
     const allOrders: NonNullable<OrdersPage['orders']> = [];
     let path: string | undefined = `/sell/fulfillment/v1/order?${params}`;

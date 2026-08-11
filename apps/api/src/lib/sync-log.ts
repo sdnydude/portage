@@ -9,7 +9,7 @@ export interface SyncAttempt {
   itemId?: string | null;
   listingId?: string | null;
   marketplace: 'ebay' | 'etsy' | 'reverb';
-  trigger: 'item_edit' | 'listing_edit' | 'photo' | 'publish' | 'mass_sync';
+  trigger: 'item_edit' | 'listing_edit' | 'photo' | 'publish' | 'mass_sync' | 'status_sweep' | 'order_sync';
   status: 'success' | 'failure';
   message?: string | null;
   errors?: unknown;

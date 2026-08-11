@@ -43,11 +43,11 @@ be unavailable and show as on hold for a period of time."*
 > and that the underlying issue is fixed.
 >
 > **Who I am.** My name is Stephen Webber. I own this eBay account (username:
-> wdydvitosre, login email: swebber@me.com). I also run a small software
+> [redacted], login email: [redacted]). I also run a small software
 > company, Digital Harmony Group, and I sell on eBay through an
 > inventory/listing application I built, which connects to my account through
 > eBay's official Developers Program OAuth flow (application keyset beginning
-> `DigitalH-click2li-PRD`). This app has been listing and selling on my
+> `[redacted-PRD]`). This app has been listing and selling on my
 > account normally since June 2026.
 >
 > **What happened.** On July 26, a fault in my configuration-management system

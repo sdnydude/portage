@@ -1,6 +1,8 @@
 import request from 'supertest';
+import { and, eq } from 'drizzle-orm';
 import { createApp } from '../app.js';
 import { db } from '../db/index.js';
+import { orders, listings, items } from '../db/schema.js';
 import { createTestToken } from '../test/helpers.js';
 
 vi.mock('../db/index.js', () => ({
@@ -34,12 +36,14 @@ function queueAccountsSelect(accounts: unknown[]) {
   } as any);
 }
 
-// db.insert(table).values(obj).returning() -> resolves to `rows`.
-// Returns the `.values` spies (in order) so tests can assert inserted payloads.
+// db.insert(table).values(obj)[.onConflictDoNothing()].returning() -> resolves
+// to `rows`. Returns the `.values` spies (in order) so tests can assert
+// inserted payloads.
 function queueInserts(...rowSets: unknown[][]) {
   const valueSpies: ReturnType<typeof vi.fn>[] = [];
   for (const rows of rowSets) {
-    const values = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue(rows) });
+    const returning = vi.fn().mockResolvedValue(rows);
+    const values = vi.fn().mockReturnValue({ returning, onConflictDoNothing: vi.fn().mockReturnValue({ returning }) });
     valueSpies.push(values);
     vi.mocked(db.insert).mockReturnValueOnce({ values } as any);
   }
@@ -209,6 +213,48 @@ describe('POST /orders/sync', () => {
     expect(mockGetItemDetail).toHaveBeenCalledWith('306972688941');
   });
 
+  it('deletes the freshly backfilled item+listing when the order insert loses the unique-index race — the loser must not leave orphaned duplicate inventory', async () => {
+    // Two concurrent syncs (periodic cycle vs manual POST) can both miss the
+    // matchedListing lookup and both backfill: items/listings have no unique
+    // constraint, only orders does. The loser's rows would persist as duplicate
+    // inventory unless it cleans up its own backfill.
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    mockGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: '23-14730-30879',
+      marketplaceListingId: '306972688941',
+      buyerUsername: 'buyer1',
+      salePrice: 399,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt: new Date(),
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    queueSelects([], []); // no existing order; no matching listing -> backfill
+    mockGetItemDetail.mockResolvedValueOnce({
+      found: true, title: 'Shure SM7B', photos: ['https://i/a.jpg'], price: 399, brand: 'Shure', aspects: {},
+    });
+    // INSERT item, INSERT listing succeed; INSERT order returns [] (lost race)
+    queueInserts([{ id: 'item-new' }], [{ id: 'listing-new' }], []);
+    const deleteWhere = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: deleteWhere } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.synced).toBe(0);
+    expect(res.body.newOrders).toEqual([]);
+    // Listing deleted before item (FK direction), both scoped to the new ids.
+    expect(db.delete).toHaveBeenCalledTimes(2);
+    expect(deleteWhere).toHaveBeenNthCalledWith(1, eq(listings.id, 'listing-new'));
+    expect(deleteWhere).toHaveBeenNthCalledWith(2, eq(items.id, 'item-new'));
+    expect(vi.mocked(db.delete).mock.calls[0][0]).toBe(listings);
+    expect(vi.mocked(db.delete).mock.calls[1][0]).toBe(items);
+  });
+
   it('imports an already-FULFILLED order as status shipped, not needs-shipping', async () => {
     const token = createTestToken({ sub: 'user-1' });
     queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
@@ -314,6 +360,136 @@ describe('POST /orders/sync', () => {
 
     expect(res.status).toBe(200);
     expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'canceled' }));
+  });
+
+  it('scopes the existing-order dedup lookup by marketplace — order numbers are only unique per shop (uq_orders_user_marketplace_order)', async () => {
+    // Without the marketplace filter, a Reverb order numbered like an existing
+    // eBay order matches the eBay row: the real Reverb sale is never inserted
+    // and the heal can overwrite the eBay order with Reverb-sourced values.
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'reverb', accessTokenEncrypted: 'enc' }]);
+    const soldAt = new Date('2026-06-10T00:00:00Z');
+    mockReverbGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: 'REV-1',
+      marketplaceListingId: '100019158',
+      buyerUsername: 'buyer1',
+      salePrice: 100,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt,
+      fulfillmentStatus: 'shipped',
+      shippingAddress: null,
+    }]);
+    const whereSpy = vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'order-1', soldAt, marketplaceFees: 0, status: 'shipped' }]) });
+    vi.mocked(db.select).mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: whereSpy }) } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(whereSpy).toHaveBeenCalledWith(
+      and(
+        eq(orders.userId, 'user-1'),
+        eq(orders.marketplace, 'reverb'),
+        eq(orders.marketplaceOrderId, 'REV-1'),
+      ),
+    );
+  });
+
+  it('an order insert losing the unique-index race (empty returning) is not counted and does not flip the listing', async () => {
+    // TOCTOU (review 2026-08-07): the periodic 45-min cycle and a manual
+    // POST /orders/sync can both pass the exists-check for the same order.
+    // The unique index makes the second insert a no-op — the code must treat
+    // an empty returning() as "someone else imported it" and move on.
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    mockGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: '05-77777-00001',
+      marketplaceListingId: '306972688941',
+      buyerUsername: 'buyer1',
+      salePrice: 100,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt: new Date('2026-07-20T00:00:00Z'),
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    queueSelects([], [{ id: 'listing-1', itemId: 'item-1' }]); // exists-check raced: passed, but insert conflicts
+    queueInserts([]); // ON CONFLICT DO NOTHING swallowed it — no row returned
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+    } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.synced).toBe(0);
+    expect(res.body.newOrders).toEqual([]);
+    // The concurrent winner already flipped the listing — this run must not double-write.
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('backfill title fallback names the actual marketplace, not "eBay item", for a Reverb order', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'reverb', accessTokenEncrypted: 'enc' }]);
+    // ReverbAdapter has no getItemDetail and this order carries no title —
+    // the placeholder is all the seller will ever see on the backfilled item.
+    mockReverbGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: 'RV-500',
+      marketplaceListingId: '87654321',
+      buyerUsername: 'buyer1',
+      salePrice: 50,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt: new Date('2026-07-20T00:00:00Z'),
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    queueSelects([], []); // no existing order; no matched listing → backfill
+    const [itemValues] = queueInserts([{ id: 'item-new' }], [{ id: 'listing-new' }], [{ id: 'order-new' }]);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(itemValues).toHaveBeenCalledWith(expect.objectContaining({ title: 'reverb item 87654321' }));
+  });
+
+  it('first import of an already-canceled order does NOT flip the matched listing to sold', async () => {
+    const token = createTestToken({ sub: 'user-1' });
+    queueAccountsSelect([{ marketplace: 'ebay', accessTokenEncrypted: 'enc' }]);
+    mockGetOrders.mockResolvedValueOnce([{
+      marketplaceOrderId: '26-99999-00001',
+      marketplaceListingId: '306972688941',
+      buyerUsername: 'buyer1',
+      salePrice: 100,
+      shippingCost: 0,
+      marketplaceFees: 0,
+      currency: 'USD',
+      soldAt: new Date('2026-07-20T00:00:00Z'),
+      fulfillmentStatus: 'canceled', // canceled before Portage ever saw it
+      shippingAddress: { name: 'B', street1: '1 St', city: 'X', state: 'CA', zip: '90001', country: 'US' },
+    }]);
+    queueSelects([], [{ id: 'listing-1', itemId: 'item-1' }]); // no existing order; matched local listing
+    const [orderValues] = queueInserts([{ id: 'order-new' }]);
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+    } as any);
+
+    const res = await request(app)
+      .post('/orders/sync')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // The order row itself imports as canceled…
+    expect(orderValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'canceled' }));
+    // …but the listing must stay active: the sale never completed.
+    expect(db.update).not.toHaveBeenCalled();
   });
 
   it('falls back to the order line-item title (not a placeholder) when GetItem fails', async () => {

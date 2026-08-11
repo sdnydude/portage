@@ -123,6 +123,17 @@ describe('ReverbAdapter.createListing', () => {
     });
   });
 
+  it('omits make/model keys entirely when brand/model are absent — an explicit "" 422s ("Localized contents model for English can\'t be blank"), an omitted key lets Reverb title-guess', async () => {
+    const fetchMock = stubFetch();
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing(BASE_INPUT);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string) as Record<string, unknown>;
+    expect('make' in body).toBe(false);
+    expect('model' in body).toBe(false);
+  });
+
   it('normalizes profile-shaped shippingRates (camelCase regionCode) to the API region_code shape', async () => {
     const fetchMock = stubFetch();
     const adapter = new ReverbAdapter('user-1');
@@ -727,7 +738,9 @@ describe('ReverbAdapter.getOrders', () => {
     const fetchMock = stubFetch({
       orders: [{
         order_number: 'RV-100',
-        listing_id: '12345678',
+        // Reverb order objects carry product_id (+ _links.listing), never
+        // listing_id — reverb-api.com "Retrieve Orders" example, 2026-08-07.
+        product_id: '12345678',
         buyer_name: 'Buyer Bob',
         amount_product: { amount: '850.00', currency: 'USD' },
         shipping: { amount: '35.00' },
@@ -748,7 +761,12 @@ describe('ReverbAdapter.getOrders', () => {
     const orders = await adapter.getOrders(since);
 
     const [url] = fetchMock.mock.calls[0];
-    expect(url).toBe(`https://api.reverb.com/api/my/orders/selling?created_after=${encodeURIComponent(since.toISOString())}`);
+    // /my/orders/selling/ALL + updated_start_date per Reverb's published docs
+    // (reverb-api.com "Retrieve Orders", verified 2026-08-07). The previous
+    // bare /my/orders/selling + created_after were UNDOCUMENTED — Reverb
+    // answered 200 with no orders key, so every order sync silently imported
+    // nothing (root cause of the reverb_orders=0 live finding).
+    expect(url).toBe(`https://api.reverb.com/api/my/orders/selling/all?updated_start_date=${encodeURIComponent(since.toISOString())}`);
     expect(orders).toEqual([{
       marketplaceOrderId: 'RV-100',
       marketplaceListingId: '12345678',
@@ -767,6 +785,139 @@ describe('ReverbAdapter.getOrders', () => {
         country: 'US',
       },
     }]);
+  });
+
+  it('follows _links.next through every page so orders past page 1 are not silently dropped', async () => {
+    // Live-verified 2026-08-07: the endpoint is HAL-paginated (total_pages +
+    // _links.next.href, absolute URL). One-page reads recreate the exact
+    // "orders missing" class this endpoint fix addressed.
+    const page1 = {
+      orders: [{
+        order_number: 'RV-1',
+        product_id: '111',
+        buyer_name: 'A',
+        amount_product: { amount: '10.00', currency: 'USD' },
+        shipping: { amount: '0' },
+      }],
+      _links: { next: { href: 'https://api.reverb.com/api/my/orders/selling/all?page=2' } },
+    };
+    const page2 = {
+      orders: [{
+        order_number: 'RV-2',
+        product_id: '222',
+        buyer_name: 'B',
+        amount_product: { amount: '20.00', currency: 'USD' },
+        shipping: { amount: '0' },
+      }],
+      _links: {},
+    };
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => new Response(
+      JSON.stringify(String(url).includes('page=2') ? page2 : page1),
+      { status: 200, headers: { 'Content-Type': 'application/hal+json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    const orders = await adapter.getOrders();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.reverb.com/api/my/orders/selling/all?page=2');
+    expect(orders.map((o) => o.marketplaceOrderId)).toEqual(['RV-1', 'RV-2']);
+  });
+
+  it('re-anchors a next href that lacks the /api segment instead of producing a doubled URL', async () => {
+    // The old regex replace(/^https?:\/\/[^/]+\/api/) was a silent no-op on any
+    // href without a literal /api after the host — request() then built
+    // "https://api.reverb.com/apihttps://…" and pages past 1 were dropped.
+    const page1 = {
+      orders: [{
+        order_number: 'RV-1',
+        product_id: '111',
+        buyer_name: 'A',
+        amount_product: { amount: '10.00', currency: 'USD' },
+        shipping: { amount: '0' },
+      }],
+      _links: { next: { href: 'https://rvb-edge.reverb.com/my/orders/selling/all?page=2' } },
+    };
+    const page2 = { orders: [], _links: {} };
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => new Response(
+      JSON.stringify(String(url).includes('page=2') ? page2 : page1),
+      { status: 200, headers: { 'Content-Type': 'application/hal+json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.getOrders();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.reverb.com/api/my/orders/selling/all?page=2');
+  });
+
+  it('skips an order missing amount_product instead of throwing the whole batch away', async () => {
+    // Untrusted marketplace input: one malformed order must not abort the
+    // user's entire order sync (order-sync wraps getOrders in one try/catch).
+    stubFetch({
+      orders: [
+        { order_number: 'RV-BAD', product_id: '1', buyer_name: 'A', shipping: { amount: '0' } },
+        { order_number: 'RV-OK', product_id: '2', buyer_name: 'B', amount_product: { amount: '15.00', currency: 'USD' }, shipping: { amount: '0' } },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    const orders = await adapter.getOrders();
+
+    expect(orders.map((o) => o.marketplaceOrderId)).toEqual(['RV-OK']);
+  });
+
+  it('maps title, soldAt (paid_at), fulfillmentStatus and selling_fee from the live payload', async () => {
+    // Live-verified field vocabulary 2026-08-07 (real shop, 17 orders):
+    // status ∈ {shipped, cancelled} (British spelling), paid_at/shipped_at
+    // ISO strings, selling_fee {amount}. Without this mapping every import
+    // got soldAt=sync-time, status=payment_received (a cancelled order sat
+    // in the ship queue), fees=0 despite selling_fee in the payload.
+    stubFetch({
+      orders: [
+        {
+          order_number: 'RV-SHIPPED',
+          product_id: '1',
+          title: 'Donner Harmonic Square',
+          buyer_name: 'A',
+          status: 'shipped',
+          paid_at: '2026-08-07T11:58:10-04:00',
+          created_at: '2026-08-07T11:58:07-04:00',
+          amount_product: { amount: '25.00', currency: 'USD' },
+          selling_fee: { amount: '1.25' },
+          shipping: { amount: '0' },
+        },
+        {
+          order_number: 'RV-CANCELLED',
+          product_id: '2',
+          title: 'Cancelled Pedal',
+          buyer_name: 'B',
+          status: 'cancelled',
+          created_at: '2026-07-26T13:54:24-04:00',
+          amount_product: { amount: '30.00', currency: 'USD' },
+          shipping: { amount: '0' },
+        },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    const orders = await adapter.getOrders();
+
+    expect(orders[0]).toMatchObject({
+      title: 'Donner Harmonic Square',
+      soldAt: new Date('2026-08-07T11:58:10-04:00'),
+      fulfillmentStatus: 'shipped',
+      marketplaceFees: 1.25,
+    });
+    // cancelled: no paid_at — soldAt falls back to created_at; no selling_fee — 0.
+    expect(orders[1]).toMatchObject({
+      title: 'Cancelled Pedal',
+      soldAt: new Date('2026-07-26T13:54:24-04:00'),
+      fulfillmentStatus: 'canceled',
+      marketplaceFees: 0,
+    });
   });
 });
 

@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { enqueueItemSync, processDueSyncJobs, startSyncWorker, stopSyncWorker, recoverStaleRunningJobs, runRetentionSweep } from './sync-worker.js';
+import { enqueueItemSync, processDueSyncJobs, startSyncWorker, stopSyncWorker, recoverStaleRunningJobs, runRetentionSweep, runStatusSweepScan, processStatusCheckQueue, runOrderSyncCycle } from './sync-worker.js';
 
 vi.mock('../db/index.js', () => ({
   db: {
@@ -11,11 +11,20 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
-const { mockSyncItemListingRow, mockLogSyncAttempt } = vi.hoisted(() => ({
+const { mockSyncItemListingRow, mockLogSyncAttempt, mockEbayGetListingStatus, mockReverbGetListingStatus } = vi.hoisted(() => ({
   mockSyncItemListingRow: vi.fn(), mockLogSyncAttempt: vi.fn(),
+  mockEbayGetListingStatus: vi.fn(), mockReverbGetListingStatus: vi.fn(),
 }));
 vi.mock('./marketplace-sync.js', () => ({ syncItemListingRow: mockSyncItemListingRow }));
 vi.mock('./sync-log.js', () => ({ logSyncAttempt: mockLogSyncAttempt }));
+vi.mock('../marketplace/ebay-adapter.js', () => ({
+  EbayAdapter: class { getListingStatus = mockEbayGetListingStatus; },
+}));
+vi.mock('../marketplace/reverb-adapter.js', () => ({
+  ReverbAdapter: class { getListingStatus = mockReverbGetListingStatus; },
+}));
+const { mockRunOrderSync } = vi.hoisted(() => ({ mockRunOrderSync: vi.fn() }));
+vi.mock('./order-sync.js', () => ({ runOrderSync: mockRunOrderSync }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -380,6 +389,12 @@ describe('startSyncWorker', () => {
     vi.useFakeTimers();
     try {
       // Each tick starts with the due query — count db.select calls per tick.
+      // Boot now also runs one status-sweep scan + one order-sync accounts
+      // query (Phase 2, b6536cc1 + 98f9f383).
+      mockSelectChainOnce([]); // boot status-sweep scan
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockResolvedValue([]),
+      } as never); // boot order-sync accounts query
       mockSelectChainOnce([]); // tick 1 due query (empty — tick ends)
       mockSelectChainOnce([]); // tick 2 due query
 
@@ -387,13 +402,227 @@ describe('startSyncWorker', () => {
       startSyncWorker(1000); // second start must be a no-op
 
       await vi.advanceTimersByTimeAsync(1000);
-      expect(db.select).toHaveBeenCalledTimes(1); // one tick, one due query — not two timers
+      expect(db.select).toHaveBeenCalledTimes(3); // boot scan + accounts + one tick due query — not two timers
 
       await vi.advanceTimersByTimeAsync(1000);
-      expect(db.select).toHaveBeenCalledTimes(2);
+      expect(db.select).toHaveBeenCalledTimes(4);
     } finally {
       stopSyncWorker();
       vi.useRealTimers();
     }
+  });
+});
+
+describe('status reconciliation sweep (b6536cc1)', () => {
+  it('flips an externally-ended eBay listing to archived and writes a sync-log row', async () => {
+    // Scan: active published listings queued for checking.
+    mockSelectChainOnce([{
+      id: 'listing-9', userId: 'user-1', itemId: 'item-9', marketplace: 'ebay',
+      marketplaceListingId: '307000000001', status: 'active',
+    }]);
+    mockEbayGetListingStatus.mockResolvedValueOnce('ended');
+    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.update).mockReturnValue({ set: vi.fn().mockReturnValue({ where: whereSpy }) } as any);
+
+    await runStatusSweepScan();
+    await processStatusCheckQueue(1);
+
+    expect(mockEbayGetListingStatus).toHaveBeenCalledWith('307000000001');
+    expect(db.update).toHaveBeenCalledTimes(1); // ended -> archived write
+    expect(mockLogSyncAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      listingId: 'listing-9',
+      trigger: 'status_sweep',
+      status: 'success',
+      message: expect.stringMatching(/archived|ended/i),
+    }));
+  });
+
+  it('flips a sold-on-marketplace Reverb listing to sold with soldAt stamped', async () => {
+    mockSelectChainOnce([{
+      id: 'listing-10', userId: 'user-1', itemId: 'item-10', marketplace: 'reverb',
+      marketplaceListingId: '99270095', status: 'active',
+    }]);
+    mockReverbGetListingStatus.mockResolvedValueOnce('sold');
+    const setSpy = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    await runStatusSweepScan();
+    await processStatusCheckQueue(1);
+
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'sold',
+      soldAt: expect.any(Date),
+    }));
+  });
+
+  it("'unknown' (the adapters' swallowed-error value) is a hard no-op — a token outage must never mass-end inventory", async () => {
+    mockSelectChainOnce([{
+      id: 'listing-11', userId: 'user-1', itemId: 'item-11', marketplace: 'ebay',
+      marketplaceListingId: '307000000002', status: 'active',
+    }]);
+    mockEbayGetListingStatus.mockResolvedValueOnce('unknown');
+
+    await runStatusSweepScan();
+    await processStatusCheckQueue(1);
+
+    expect(db.update).not.toHaveBeenCalled();
+    expect(mockLogSyncAttempt).not.toHaveBeenCalled();
+  });
+
+  it('an adapter error mid-check logs a warning, leaves the listing untouched, and the batch continues', async () => {
+    mockSelectChainOnce([
+      { id: 'listing-13', userId: 'user-1', itemId: 'item-13', marketplace: 'ebay',
+        marketplaceListingId: '307000000004', status: 'active' },
+      { id: 'listing-14', userId: 'user-1', itemId: 'item-14', marketplace: 'ebay',
+        marketplaceListingId: '307000000005', status: 'active' },
+    ]);
+    mockEbayGetListingStatus
+      .mockRejectedValueOnce(new Error('eBay 401: invalid scope'))
+      .mockResolvedValueOnce('ended');
+    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.update).mockReturnValue({ set: vi.fn().mockReturnValue({ where: whereSpy }) } as any);
+
+    await runStatusSweepScan();
+    await processStatusCheckQueue(2);
+
+    // First entry failed without a listing write; second still processed
+    // (ended -> archived). The failure itself lands durably (review HIGH-1).
+    expect(db.update).toHaveBeenCalledTimes(1);
+    expect(mockLogSyncAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      listingId: 'listing-13',
+      trigger: 'status_sweep',
+      status: 'failure',
+      message: expect.stringMatching(/invalid scope/),
+    }));
+    expect(mockLogSyncAttempt).toHaveBeenCalledWith(expect.objectContaining({ listingId: 'listing-14', status: 'success' }));
+  });
+
+  it('a second scan while the queue is draining REPLACES it — stale entries are never processed', async () => {
+    mockSelectChainOnce([{
+      id: 'listing-A', userId: 'user-1', itemId: 'item-A', marketplace: 'ebay',
+      marketplaceListingId: '307000000006', status: 'active',
+    }]);
+    await runStatusSweepScan();
+    // Rescan before draining: only B may be checked afterwards.
+    mockSelectChainOnce([{
+      id: 'listing-B', userId: 'user-1', itemId: 'item-B', marketplace: 'ebay',
+      marketplaceListingId: '307000000007', status: 'active',
+    }]);
+    await runStatusSweepScan();
+    mockEbayGetListingStatus.mockResolvedValue('unknown');
+
+    await processStatusCheckQueue(5);
+
+    expect(mockEbayGetListingStatus).toHaveBeenCalledTimes(1);
+    expect(mockEbayGetListingStatus).toHaveBeenCalledWith('307000000007');
+  });
+
+  it('a drip tick overlapping a slow status check is a no-op (M6 pattern) — no marketplace-call bursts', async () => {
+    mockSelectChainOnce([
+      { id: 'listing-C', userId: 'user-1', itemId: 'item-C', marketplace: 'ebay',
+        marketplaceListingId: '307000000008', status: 'active' },
+      { id: 'listing-D', userId: 'user-1', itemId: 'item-D', marketplace: 'ebay',
+        marketplaceListingId: '307000000009', status: 'active' },
+    ]);
+    await runStatusSweepScan();
+    let releaseCheck!: (v: string) => void;
+    mockEbayGetListingStatus.mockReturnValueOnce(new Promise((resolve) => { releaseCheck = resolve; }));
+
+    const first = processStatusCheckQueue(1);   // hangs on the slow check
+    await processStatusCheckQueue(1);           // overlapping tick — must bail
+
+    expect(mockEbayGetListingStatus).toHaveBeenCalledTimes(1); // second tick took nothing
+    releaseCheck('unknown');
+    await first;
+  });
+
+  it('startSyncWorker registers the sweep scan + drip timers (drip drains the queue on cadence)', async () => {
+    vi.useFakeTimers();
+    try {
+      // Boot order: recover (update) → retention (deletes) → SCAN (select #1);
+      // the first 5s tick then runs the worker due query (select #2) + drip.
+      mockSelectChainOnce([{
+        id: 'listing-12', userId: 'user-1', itemId: 'item-12', marketplace: 'ebay',
+        marketplaceListingId: '307000000003', status: 'active',
+      }]); // immediate boot scan
+      mockSelectChainOnce([]); // worker tick 1 due query
+      mockEbayGetListingStatus.mockResolvedValue('ended');
+      const whereSpy = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(db.update).mockReturnValue({ set: vi.fn().mockReturnValue({ where: whereSpy }) } as any);
+
+      startSyncWorker(5000);
+      await vi.advanceTimersByTimeAsync(5000); // one drip tick
+
+      expect(mockEbayGetListingStatus).toHaveBeenCalledWith('307000000003');
+      expect(db.update).toHaveBeenCalled(); // ended → archived via the drip
+    } finally {
+      stopSyncWorker();
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('periodic order sync (98f9f383)', () => {
+  it('boot runs runOrderSync once per account-holding user', async () => {
+    vi.useFakeTimers();
+    try {
+      mockSelectChainOnce([]); // boot status-sweep scan
+      // Boot order-sync accounts query awaits .from() directly (no where):
+      // two accounts share a user → dedup to 2 users.
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockResolvedValue([
+          { userId: 'user-1' }, { userId: 'user-1' }, { userId: 'user-2' },
+        ]),
+      } as never);
+      mockRunOrderSync.mockResolvedValue({ synced: 0, newOrders: [], errors: [] });
+
+      startSyncWorker(5000);
+      await vi.advanceTimersByTimeAsync(0); // flush boot microtasks
+
+      expect(mockRunOrderSync).toHaveBeenCalledTimes(2);
+      expect(mockRunOrderSync).toHaveBeenCalledWith('user-1');
+      expect(mockRunOrderSync).toHaveBeenCalledWith('user-2');
+    } finally {
+      stopSyncWorker();
+      vi.useRealTimers();
+    }
+  });
+
+  it('a second runOrderSyncCycle while one is in flight is a no-op — no double-fetch of the order window', async () => {
+    let releaseAccounts!: (rows: unknown[]) => void;
+    const hanging = new Promise<unknown[]>((resolve) => { releaseAccounts = resolve; });
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue(hanging),
+    } as never);
+    mockRunOrderSync.mockResolvedValue({ synced: 0, newOrders: [], errors: [] });
+
+    const first = runOrderSyncCycle();
+    await runOrderSyncCycle(); // overlapping call — must bail on the guard
+
+    expect(db.select).toHaveBeenCalledTimes(1); // second call never queried accounts
+    releaseAccounts([{ userId: 'user-1' }]);
+    await first;
+    expect(mockRunOrderSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('per-marketplace order-sync failures land in the durable sync-log — the unattended path must not eat them', async () => {
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockResolvedValue([{ userId: 'user-1' }]),
+    } as never);
+    mockRunOrderSync.mockResolvedValueOnce({
+      synced: 0,
+      newOrders: [],
+      errors: [{ marketplace: 'reverb', message: 'Reverb API error (401): invalid token' }],
+    });
+
+    await runOrderSyncCycle();
+
+    expect(mockLogSyncAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user-1',
+      marketplace: 'reverb',
+      trigger: 'order_sync',
+      status: 'failure',
+      message: expect.stringMatching(/invalid token/),
+    }));
   });
 });

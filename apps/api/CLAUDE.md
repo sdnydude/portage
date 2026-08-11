@@ -102,7 +102,8 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 | Messages | `/messages` | requireAuth |
 | Dashboard | `/dashboard` | requireAuth |
 | Beta | `/beta` | requireAuth |
+| Sync log | `/sync-log` | requireAuth |
 
 ## Testing
 
-Vitest. Run `npm test` (once) or `npm run test:watch`. 768 tests across 72 files covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, and FAQs.
+Vitest. Run `npm test` (once) or `npm run test:watch`. 905 tests across 78 files covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, marketplace sync, and FAQs.
