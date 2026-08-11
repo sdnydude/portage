@@ -201,7 +201,10 @@ typed errors + conflict-time heal + never-delete semantics (PRs #288-289),
 Reverb Bump-bid range validation + publish-retry photo-ingestion race fix,
 vision provider schema-drift coercion + fail-over, beta-blocker UI batch —
 pickup seed/save, Best Offer guided fix w/ healed flag, Reverb cascade (PR #295).
-Test suite: 905 API / 631 web as of 2026-08-08.
+Marketplace-truth sync shipped (PR #299, 08-10): periodic status sweep +
+Reverb order sync/backfill, 10-finding review batch, Reverb blank-model 422
+publish fix (omit make/model when absent) — live-verified.
+Test suite: 909 API / 631 web as of 2026-08-10.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
