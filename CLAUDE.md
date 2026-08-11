@@ -31,9 +31,9 @@ npm workspaces monorepo with three packages:
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 18 tables:
+Drizzle ORM, schema-push workflow (no migration files). 20 tables:
 
-users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages, faqs, export_tokens
+users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages, faqs, export_tokens, marketplace_sync_log, sync_jobs
 
 Notable JSONB columns: `items.photos`, `items.marketplaceData` (eBay category/title cache), `orders.shippingAddress`.
 
@@ -192,8 +192,16 @@ beta bug batch + auth-exchange hardening (PRs #262-263), accept-offers +
 advertising toggles (PRs #264-265), TabBar overlay fix + audit gate (PR #266),
 Trust Gates enforcement docs + proof-before-push hook (PRs #267-268),
 CF_ACCESS_AUD login-outage fix + boot guard (PR #269), Langfuse Porter
-agent-observation typing (PR #270).
-Test suite: 785 API / 590 web as of 2026-08-02.
+agent-observation typing (PR #270), per-listing shipping controls + local
+pickup (PRs #274/#276/#278), Reverb category cascade + review batch (PR #280),
+marketplace sync refactor — durable log, outbox worker, UI truth surface
+(PR #283), sync audit fix batch (PR #287), Best Offer redesign — PR #285's
+DeletedField hotfix caused a config-deletion crisis, rebuilt ground-up with
+typed errors + conflict-time heal + never-delete semantics (PRs #288-289),
+Reverb Bump-bid range validation + publish-retry photo-ingestion race fix,
+vision provider schema-drift coercion + fail-over, beta-blocker UI batch —
+pickup seed/save, Best Offer guided fix w/ healed flag, Reverb cascade (PR #295).
+Test suite: 905 API / 631 web as of 2026-08-08.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.

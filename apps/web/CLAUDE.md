@@ -19,7 +19,7 @@ src/app/
 ├── list/            # Create listing entry
 ├── orders/[id]/     # Order detail
 ├── messages/        # eBay buyer messaging (conversations list + thread view)
-└── settings/        # 6 settings pages (profile, marketplace, seller-profile, billing, notifications, help)
+└── settings/        # 7 settings pages (profile, marketplace, seller-profile, billing, notifications, help, sync-log)
 ```
 
 The root `app/layout.tsx` wraps everything in `AppShell` (route-aware responsive shell: desktop sidebar, iPad breakpoints, mobile floating glass `TabBar`). `(tabs)/layout.tsx` only adds bottom padding (`pb-24`) and `PorterProvider` — `TabBar` mounts once inside `AppShell` for all non-admin routes, not per-layout.
@@ -92,6 +92,7 @@ All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. K
 | `useBulkSelect` | Multi-select state for bulk actions |
 | `usePhotoDrag` | Touch-capable long-press drag reorder for photo grids/strips |
 | `useDesktopIngest` | R2 desktop drag-drop file ingest + queue state |
+| `useSyncStatus` | Marketplace sync status polling + retry (sync-log badges, settings screen) |
 
 ## Listing Flow Modes
 

@@ -154,8 +154,6 @@ export class ReverbAdapter implements MarketplaceAdapter {
       : undefined;
 
     const body: Record<string, unknown> = {
-      make: input.brand ?? '',
-      model: input.model ?? '',
       title: input.title,
       // Reverb has no condition-notes field (verified against the create-listings
       // API doc 2026-07-21) — the description is the only place they can live.
@@ -170,6 +168,12 @@ export class ReverbAdapter implements MarketplaceAdapter {
       // the adapter (route-owned shouldPublish gate), so always publish.
       publish: 'true',
     };
+
+    // Omit make/model when absent — Reverb title-guesses missing fields, but an
+    // explicit "" fails validation: 422 "Localized contents model for English
+    // can't be blank" (live 2026-08-09, model-less cable/accessory items).
+    if (input.brand) body.make = input.brand;
+    if (input.model) body.model = input.model;
 
     if (specific.categoryUuid) {
       body.categories = [{ uuid: specific.categoryUuid }];
@@ -406,36 +410,90 @@ export class ReverbAdapter implements MarketplaceAdapter {
   }
 
   async getOrders(since?: Date): Promise<MarketplaceOrderResult[]> {
+    // /my/orders/selling/ALL + updated_start_date per Reverb's published docs
+    // (reverb-api.com "Retrieve Orders", verified 2026-08-07). The bare
+    // /my/orders/selling path and created_after param were undocumented —
+    // Reverb answered 200 without an orders key, so order sync silently
+    // imported nothing (live finding 2026-08-07, reverb_orders=0).
     const params = new URLSearchParams();
-    if (since) params.set('created_after', since.toISOString());
+    if (since) params.set('updated_start_date', since.toISOString());
 
-    const data = await this.request<{
-      orders?: Array<{
-        order_number: string;
-        listing_id?: string;
-        buyer_name: string;
-        amount_product: { amount: string; currency: string };
-        shipping: { amount: string };
-        shipping_address?: {
-          name: string;
-          street_address: string;
-          extended_address?: string;
-          locality: string;
-          region: string;
-          postal_code: string;
-          country_code: string;
-        };
-      }>;
-    }>(`/my/orders/selling?${params}`);
+    type ReverbOrder = {
+      order_number: string;
+      // Reverb order objects carry product_id, never listing_id
+      // (reverb-api.com "Retrieve Orders", verified 2026-08-07).
+      product_id?: string | number;
+      title?: string;
+      buyer_name?: string;
+      // Live-observed vocabulary (real shop, 2026-08-07): 'shipped',
+      // 'cancelled' (British spelling). Untrusted input — everything optional.
+      status?: string;
+      paid_at?: string;
+      created_at?: string;
+      amount_product?: { amount?: string; currency?: string };
+      selling_fee?: { amount?: string };
+      shipping?: { amount?: string };
+      shipping_address?: {
+        name: string;
+        street_address: string;
+        extended_address?: string;
+        locality: string;
+        region: string;
+        postal_code: string;
+        country_code: string;
+      };
+    };
+    type OrdersPage = { orders?: ReverbOrder[]; _links?: { next?: { href?: string } } };
 
-    return (data.orders ?? []).map(order => ({
+    // HAL pagination (live-verified 2026-08-07: total_pages + _links.next.href,
+    // absolute URL). One-page reads recreate the "orders missing" class this
+    // endpoint fix addressed. MAX_PAGES bounds a runaway next chain — twin of
+    // the loop in ebay-adapter.ts getOrders; keep cap/shape changes in sync.
+    const MAX_PAGES = 10;
+    const allOrders: ReverbOrder[] = [];
+    let path: string | undefined = `/my/orders/selling/all?${params}`;
+    for (let page = 0; page < MAX_PAGES && path; page++) {
+      const data: OrdersPage = await this.request<OrdersPage>(path);
+      allOrders.push(...(data.orders ?? []));
+      const next = data._links?.next?.href;
+      // next is absolute — re-anchor to a path for request() (REVERB_BASE ends
+      // in /api). URL-parse instead of a regex: a href without a literal /api
+      // after the host made the old replace() a silent no-op, and request()
+      // then built a doubled "https://api.reverb.com/apihttps://…" URL.
+      if (next) {
+        const parsed = new URL(next);
+        path = parsed.pathname.replace(/^\/api(?=\/|$)/, '') + parsed.search;
+      } else {
+        path = undefined;
+      }
+    }
+
+    // Untrusted marketplace input: a malformed order (no amount_product) must
+    // not throw — order-sync wraps this whole call in one try/catch, so a
+    // single bad order would otherwise block every other order for the user.
+    return allOrders.filter(order => {
+      if (order.amount_product?.amount != null) return true;
+      logger.warn({ orderNumber: order.order_number }, 'Reverb order missing amount_product — skipping');
+      return false;
+    }).map(order => ({
       marketplaceOrderId: order.order_number,
-      marketplaceListingId: order.listing_id ?? null,
-      buyerUsername: order.buyer_name,
-      salePrice: parseFloat(order.amount_product.amount),
+      marketplaceListingId: order.product_id != null ? String(order.product_id) : null,
+      title: order.title,
+      buyerUsername: order.buyer_name ?? '',
+      salePrice: parseFloat(order.amount_product!.amount!),
       shippingCost: parseFloat(order.shipping?.amount ?? '0'),
-      marketplaceFees: 0,
-      currency: order.amount_product.currency,
+      // Reverb DOES return the real fee (unlike eBay's Fulfillment API).
+      marketplaceFees: parseFloat(order.selling_fee?.amount ?? '0'),
+      currency: order.amount_product!.currency ?? 'USD',
+      // Reverb's actual sale date (paid_at; created_at for never-paid orders).
+      // Without this, order-sync falls back to new Date() and every synced
+      // order shows the sync time.
+      soldAt: order.paid_at ? new Date(order.paid_at)
+        : order.created_at ? new Date(order.created_at) : undefined,
+      // Live-observed vocabulary only — unrecognized statuses give no signal
+      // rather than a wrong one.
+      fulfillmentStatus: order.status === 'cancelled' ? 'canceled' as const
+        : order.status === 'shipped' ? 'shipped' as const : undefined,
       shippingAddress: {
         name: order.shipping_address?.name ?? '',
         street1: order.shipping_address?.street_address ?? '',

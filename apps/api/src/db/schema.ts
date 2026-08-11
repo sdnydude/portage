@@ -19,7 +19,7 @@ export const referenceTypeEnum = pgEnum('reference_type', ['order', 'listing', '
 export const packageTypeEnum = pgEnum('package_type', ['box', 'envelope', 'poly_mailer']);
 export const messageDirectionEnum = pgEnum('message_direction', ['inbound', 'outbound']);
 export const syncStatusEnum = pgEnum('sync_status', ['success', 'failure']);
-export const syncTriggerEnum = pgEnum('sync_trigger', ['item_edit', 'listing_edit', 'photo', 'publish', 'mass_sync']);
+export const syncTriggerEnum = pgEnum('sync_trigger', ['item_edit', 'listing_edit', 'photo', 'publish', 'mass_sync', 'status_sweep', 'order_sync']);
 export const syncJobStatusEnum = pgEnum('sync_job_status', ['pending', 'running', 'success', 'failed']);
 export const messageTypeEnum = pgEnum('message_type', ['asq', 'rtq', 'aaq']);
 
@@ -168,7 +168,18 @@ export const orders = pgTable('orders', {
 }, (t) => [
   index('idx_orders_user_id').on(t.userId),
   index('idx_orders_listing_id').on(t.listingId),
-  index('idx_orders_marketplace_order_id').on(t.marketplaceOrderId),
+  // Unique: the DB arbitrates when the periodic order-sync cycle and a manual
+  // POST /orders/sync race the same marketplace order — the losing insert's
+  // onConflictDoNothing() becomes a no-op instead of a duplicate row. Scoped
+  // (userId, marketplace, orderId): order numbers are only unique per shop.
+  // db:push fails on CREATE UNIQUE INDEX if the pre-index SELECT-then-INSERT
+  // race ever left duplicate rows — dedupe first on such a DB:
+  //   DELETE FROM orders a USING orders b
+  //   WHERE a.id > b.id AND a.user_id = b.user_id
+  //     AND a.marketplace = b.marketplace
+  //     AND a.marketplace_order_id = b.marketplace_order_id;
+  // (Live DB verified 0 duplicates before the index was pushed, 2026-08-08.)
+  uniqueIndex('uq_orders_user_marketplace_order').on(t.userId, t.marketplace, t.marketplaceOrderId),
 ]);
 
 export const conversations = pgTable('conversations', {
