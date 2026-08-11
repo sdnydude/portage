@@ -106,4 +106,4 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 
 ## Testing
 
-Vitest. Run `npm test` (once) or `npm run test:watch`. 905 tests across 78 files covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, marketplace sync, and FAQs.
+Vitest. Run `npm test` (once) or `npm run test:watch`. 909 tests across 78 files covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, marketplace sync, and FAQs.
