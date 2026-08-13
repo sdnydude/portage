@@ -90,6 +90,7 @@ export default function EditItemPage() {
     categoryMismatch,
     resolvedVisionCategory,
     dismissCategoryMismatch,
+    clearCategoryResolution,
   } = useScanAspects(
     title,
     `${title} ${description}`,
@@ -281,13 +282,27 @@ export default function EditItemPage() {
                 like a match for what was scanned
                 {resolvedVisionCategory ? ` (${resolvedVisionCategory})` : ""}.
               </p>
-              <button
-                type="button"
-                onClick={dismissCategoryMismatch}
-                className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-primary"
-              >
-                Use anyway
-              </button>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={dismissCategoryMismatch}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-primary"
+                >
+                  Use anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Rejecting the suggestion also withdraws the explicit
+                    // resolve flag — Save keeps the stored category.
+                    setCategoryUserResolved(false);
+                    clearCategoryResolution();
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-primary"
+                >
+                  Don&apos;t use it
+                </button>
+              </div>
             </div>
           )}
           <div className="mt-2 flex gap-2">

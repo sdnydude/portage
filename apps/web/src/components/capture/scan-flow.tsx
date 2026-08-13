@@ -175,6 +175,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     categoryMismatch,
     resolvedVisionCategory,
     dismissCategoryMismatch,
+    clearCategoryResolution,
   } = useScanAspects(
     editName,
     `${editName} ${editDescription}`,
@@ -1407,6 +1408,13 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                         className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-text-primary"
                       >
                         Find different category
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearCategoryResolution}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-text-primary"
+                      >
+                        Don&apos;t use it
                       </button>
                     </div>
                   </div>

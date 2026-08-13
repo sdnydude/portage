@@ -484,6 +484,108 @@ describe("useScanAspects", () => {
     expect(result.current.resolvedVisionCategory).toBe("electronics");
   });
 
+  it("clearCategoryResolution rejects the suggestion outright — resolution gone, banner gone, conditions unconstrained", async () => {
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        return Promise.resolve({
+          suggestion: { categoryId: "181335", categoryName: "Baseball Jackets", conditionIds: ["1000"] },
+          mismatch: true,
+        });
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: {} });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    const { result } = renderHook(
+      ({ name, text }) => useScanAspects(name, text, undefined, "electronics"),
+      { initialProps: { name: "fiber optic audio cable", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.categoryMismatch).toBe(true);
+
+    act(() => {
+      result.current.clearCategoryResolution();
+    });
+    expect(result.current.resolvedCategoryId).toBeNull();
+    expect(result.current.resolvedCategoryName).toBeNull();
+    expect(result.current.categoryMismatch).toBe(false);
+    expect(result.current.conditionIds).toEqual([]);
+  });
+
+  it("a rejected suggestion does not re-flag when re-resolution returns the same category (rejection persists like dismissal)", async () => {
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        return Promise.resolve({
+          suggestion: { categoryId: "181335", categoryName: "Baseball Jackets", conditionIds: [] },
+          mismatch: true,
+        });
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: {} });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    const { result, rerender } = renderHook(
+      ({ name, text }) => useScanAspects(name, text, undefined, "electronics"),
+      { initialProps: { name: "fiber optic audio cable", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.categoryMismatch).toBe(true);
+
+    act(() => {
+      result.current.clearCategoryResolution();
+    });
+    expect(result.current.resolvedCategoryId).toBeNull();
+
+    // A trivial title edit re-fires the debounce and returns the SAME suggestion.
+    rerender({ name: "fiber optic audio cable 1m", text: "" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.resolvedCategoryId).toBe("181335"); // resolution itself returns
+    expect(result.current.categoryMismatch).toBe(false); // but the rejected suggestion stays un-flagged
+  });
+
+  it("live sequence: plausible auto-resolve then implausible manual Find flags the mismatch (edit-page repro)", async () => {
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        if (path.includes("baseball")) {
+          return Promise.resolve({
+            suggestion: { categoryId: "57988", categoryName: "Coats, Jackets & Vests", conditionIds: [] },
+            mismatch: true,
+          });
+        }
+        return Promise.resolve({
+          suggestion: { categoryId: "14964", categoryName: "Audio Cables & Interconnects", conditionIds: [] },
+          mismatch: false,
+        });
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: {} });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    const { result } = renderHook(
+      ({ name, text }) => useScanAspects(name, text, undefined, "electronics"),
+      { initialProps: { name: "Impeto Fiber Optic Audio Cable", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.categoryMismatch).toBe(false);
+
+    await act(async () => {
+      await result.current.resolveCategory("baseball jacket");
+    });
+    expect(result.current.resolvedCategoryName).toBe("Coats, Jackets & Vests");
+    expect(result.current.categoryMismatch).toBe(true);
+  });
+
   it("clears the mismatch flag when a manual re-resolution comes back clean", async () => {
     apiMock.mockImplementation((path: string) => {
       if (path.startsWith("/marketplace/ebay/category-suggestion")) {

@@ -197,6 +197,22 @@ export function useScanAspects(
       dismissedCategoryId.current = resolvedIdRef.current;
       setCategoryMismatch(false);
     }, []),
+    // "Don't use it" — reject the suggestion outright: back to unresolved, so
+    // saves fall through to the stored/vision category and publish resolves
+    // later via the self-heal path. Bump the sequence so an in-flight
+    // resolution can't resurrect the rejected suggestion.
+    clearCategoryResolution: useCallback(() => {
+      requestSeq.current++;
+      // Rejection persists at least as strongly as "Use anyway": if a later
+      // resolution returns the same category, don't re-flag it.
+      dismissedCategoryId.current = resolvedIdRef.current;
+      resolvedIdRef.current = null;
+      setResolvedCategoryId(null);
+      setResolvedCategoryName(null);
+      setConditionIds([]);
+      setCategoryMismatch(false);
+      setIsCategoryResolving(false);
+    }, []),
     isCategoryResolving,
     isAspectsLoading,
     aspects,

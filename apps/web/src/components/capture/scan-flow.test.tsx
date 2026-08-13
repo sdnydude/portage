@@ -80,6 +80,7 @@ const scanAspectsState = {
   categoryMismatch: false,
   resolvedVisionCategory: "electronics" as string | undefined,
   dismissCategoryMismatch: vi.fn(),
+  clearCategoryResolution: vi.fn(),
 };
 
 vi.mock("@/hooks/use-scan-aspects", () => ({
@@ -631,6 +632,17 @@ describe("ScanFlow review wiring", () => {
     } finally {
       scanAspectsState.categoryMismatch = false;
       scanAspectsState.resolvedCategoryName = "Electric Guitars";
+    }
+  });
+
+  it("Don't use it rejects the suggestion outright via clearCategoryResolution", async () => {
+    scanAspectsState.categoryMismatch = true;
+    try {
+      await renderInReview();
+      fireEvent.click(screen.getByRole("button", { name: "Don't use it" }));
+      expect(scanAspectsState.clearCategoryResolution).toHaveBeenCalled();
+    } finally {
+      scanAspectsState.categoryMismatch = false;
     }
   });
 

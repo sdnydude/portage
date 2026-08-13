@@ -60,6 +60,7 @@ const scanAspectsState = {
   categoryMismatch: false,
   resolvedVisionCategory: "electronics" as string | undefined,
   dismissCategoryMismatch: vi.fn(),
+  clearCategoryResolution: vi.fn(),
 };
 vi.mock("@/hooks/use-scan-aspects", () => ({
   useScanAspects: () => scanAspectsState,
@@ -139,6 +140,17 @@ describe("EditItemPage — eBay taxonomy category + price", () => {
     try {
       render(<EditItemPage />);
       expect(screen.getByText(/Double-check this category/)).toBeInTheDocument();
+    } finally {
+      scanAspectsState.categoryMismatch = false;
+    }
+  });
+
+  it("Don't use it on the edit page rejects the suggestion via clearCategoryResolution", () => {
+    scanAspectsState.categoryMismatch = true;
+    try {
+      render(<EditItemPage />);
+      fireEvent.click(screen.getByRole("button", { name: "Don't use it" }));
+      expect(scanAspectsState.clearCategoryResolution).toHaveBeenCalled();
     } finally {
       scanAspectsState.categoryMismatch = false;
     }
