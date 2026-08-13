@@ -148,6 +148,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [weightEstimated, setWeightEstimated] = useState(false);
   // Override search text for the eBay category control.
   const [categorySearch, setCategorySearch] = useState("");
+  const categorySearchInputRef = useRef<HTMLInputElement>(null);
   const [activeTool, setActiveTool] = useState<"none" | "crop" | "exposure">("none");
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
@@ -171,11 +172,17 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     buildAspects,
     aspectsBlockPublish,
     conditionIds,
+    categoryMismatch,
+    resolvedVisionCategory,
+    dismissCategoryMismatch,
+    clearCategoryResolution,
   } = useScanAspects(
     editName,
     `${editName} ${editDescription}`,
     // Phase A AI-filled specifics from the selected candidate → surfaced as [AI] chips.
     candidates[selectedCandidateIndex]?.aspects,
+    // Vision coarse category feeds the server-side mismatch guard (advisory banner).
+    candidates[selectedCandidateIndex]?.category,
   );
 
   // Constrain the condition pills to what the resolved eBay category accepts;
@@ -592,8 +599,17 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           // resolve the category (resolveEbayCategoryId reads marketplaceData.
           // ebay.categoryId) instead of falling back to a title guess.
           ...(resolvedCategoryId
-            ? { marketplaceData: { ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } } }
-            : {}),
+            ? {
+              marketplaceData: {
+                ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName },
+                // Vision coarse category persists so the edit page and
+                // publish-time self-heal can re-run the mismatch guard.
+                ...(selectedCandidate?.category ? { scan: { visionCategory: selectedCandidate.category } } : {}),
+              },
+            }
+            : selectedCandidate?.category
+              ? { marketplaceData: { scan: { visionCategory: selectedCandidate.category } } }
+              : {}),
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes,
           quantity: Math.max(1, Math.floor(Number(editQuantity)) || 1),
@@ -657,8 +673,15 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           // Cache the resolved eBay leaf id on the item too (not just the listing
           // payload) so a re-list from inventory resolves the category.
           ...(resolvedCategoryId
-            ? { marketplaceData: { ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } } }
-            : {}),
+            ? {
+              marketplaceData: {
+                ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName },
+                ...(selectedCandidate?.category ? { scan: { visionCategory: selectedCandidate.category } } : {}),
+              },
+            }
+            : selectedCandidate?.category
+              ? { marketplaceData: { scan: { visionCategory: selectedCandidate.category } } }
+              : {}),
           // Persist the seller's price so it prefills future publishes.
           ...(price && price > 0 ? { price } : {}),
           // Packaged weight/dims from the review inputs (seeded from the AI estimate).
@@ -1363,8 +1386,42 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                       ? (resolvedCategoryName ?? resolvedCategoryId)
                       : "Not matched yet — search below"}
                 </div>
+                {categoryMismatch && !isCategoryResolving && resolvedCategoryId !== null && (
+                  <div className="mt-2 px-3 py-2.5 rounded-xl border border-[var(--accent-warning,#b45309)] bg-[color-mix(in_srgb,var(--accent-warning,#b45309)_10%,transparent)] text-sm text-text-primary">
+                    <p>
+                      Double-check this category — eBay filed this under{" "}
+                      <strong>{resolvedCategoryName ?? resolvedCategoryId}</strong>, which doesn&apos;t
+                      look like a match for what was scanned
+                      {resolvedVisionCategory ? ` (${resolvedVisionCategory})` : ""}.
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={dismissCategoryMismatch}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-text-primary"
+                      >
+                        Use anyway
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => categorySearchInputRef.current?.focus()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-text-primary"
+                      >
+                        Find different category
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearCategoryResolution}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-text-primary"
+                      >
+                        Don&apos;t use it
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="mt-2 flex gap-2">
                   <input
+                    ref={categorySearchInputRef}
                     type="text"
                     value={categorySearch}
                     onChange={(e) => setCategorySearch(e.target.value)}

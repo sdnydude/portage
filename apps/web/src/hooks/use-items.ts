@@ -43,6 +43,13 @@ export interface Item {
   heightIn?: number | null;
   ebayPackageType?: string | null;
   weightEstimated?: boolean;
+  // Per-marketplace resolved-category cache + scan metadata (JSONB). The edit
+  // page reads scan.visionCategory for the category-mismatch guard.
+  marketplaceData?: {
+    ebay?: { categoryId?: string | null; categoryName?: string | null };
+    reverb?: Record<string, unknown>;
+    scan?: { visionCategory?: string };
+  } | null;
   createdAt: string;
   updatedAt: string;
 }

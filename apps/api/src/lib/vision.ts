@@ -228,6 +228,7 @@ export async function identifyItem(imageBase64: string, mediaType: string): Prom
       temperature: 0,
       maxTokens: 2048,
       validate: schemaValidator([{ name: 'single', schema: VisionResultSchema }]),
+      purpose: 'scan-vision',
     },
   );
 
@@ -281,6 +282,7 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
         { name: 'detailed', schema: DetailedVisionResultSchema },
         { name: 'single', schema: VisionResultSchema },
       ]),
+      purpose: 'scan-vision',
     },
   );
 
@@ -417,6 +419,7 @@ export async function identifyItemsMulti(
       { name: 'detailed', schema: DetailedVisionResultSchema },
       { name: 'single', schema: VisionResultSchema },
     ]),
+    purpose: 'scan-vision',
   });
 
   const parsed = safeParseJSON(text);
@@ -504,12 +507,18 @@ Generate all listing fields as JSON.`;
       temperature: 0,
       maxTokens: 4096,
       validate: schemaValidator([{ name: 'listing-fields', schema: ListingFieldsOutputSchema }]),
+      purpose: 'prepare-listing',
     });
     text = result.text;
   } else {
-    // chatText has no validate support — the photo-less path keeps parse-fail-as-502
-    // behavior; only the vision chains fail over on schema-invalid output.
-    const result = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
+    // chat() gained validate support in Phase 3a — the photo-less path now
+    // fails over on schema-invalid output like the vision chains do.
+    const result = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, {
+      temperature: 0,
+      maxTokens: 4096,
+      validate: schemaValidator([{ name: 'listing-fields', schema: ListingFieldsOutputSchema }]),
+      purpose: 'prepare-listing',
+    });
     text = result.text;
   }
 

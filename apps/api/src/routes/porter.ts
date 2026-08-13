@@ -8,6 +8,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
 import { chat, chatStream, type ToolDef, type StreamToolResult } from '../lib/ai-client.js';
 import { traceRequest, traceTool } from '../lib/tracing.js';
+import { collectToolTitles, validateGrounding } from '../lib/porter-grounding.js';
 import { limitsForTier } from '@portage/shared';
 import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
 
@@ -35,6 +36,8 @@ Never begin a response with "Thank you", "Thanks for", "Great question", or simi
 The tool result is the ONLY source of truth about what the user owns. List exactly the items it returned — never add an item that is not in the result, never invent a name, and never copy one item's values onto another. If the result has 2 items, your answer has 2 items.
 
 When search_inventory returns items, LIST them — one line per item: name, condition, estimated value. Nothing else. Do not analyze the results, do not comment on price spreads or discrepancies, do not group them into sections with headers, and do not add observations or recommendations the user did not ask for. If more than 8 items match, list the first 8 and say how many more there are. If nothing matches, say so in one sentence.
+
+Never state a total, sum, or combined value you computed yourself — never add prices up yourself. For any total or aggregate value, call get_inventory_stats and quote its numbers; if the question is about a subset the tools cannot total, list the per-item values and let the user add them.
 
 ## Action Pills
 
@@ -91,33 +94,49 @@ async function executeToolCall(userId: string, name: string, input: Record<strin
 async function runToolCall(userId: string, name: string, input: Record<string, unknown>): Promise<string> {
   switch (name) {
     case 'search_inventory': {
-      const conditions = [eq(items.userId, userId)];
-      if (input.query) {
-        const escaped = String(input.query).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-        conditions.push(ilike(items.title, `%${escaped}%`));
-      }
-      if (input.category) conditions.push(eq(items.category, input.category as string));
-      if (input.condition) conditions.push(eq(items.condition, input.condition as 'new' | 'like_new' | 'good' | 'fair' | 'poor'));
+      const runSearch = async (query: string | undefined) => {
+        const conditions = [eq(items.userId, userId)];
+        if (query) {
+          const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+          conditions.push(ilike(items.title, `%${escaped}%`));
+        }
+        if (input.category) conditions.push(eq(items.category, input.category as string));
+        if (input.condition) conditions.push(eq(items.condition, input.condition as 'new' | 'like_new' | 'good' | 'fair' | 'poor'));
 
-      const results = await db.select({
-        id: items.id,
-        title: items.title,
-        category: items.category,
-        condition: items.condition,
-        brand: items.brand,
-        model: items.model,
-        estimatedValueMin: items.estimatedValueMin,
-        estimatedValueMax: items.estimatedValueMax,
-        estimatedValueRecommended: items.estimatedValueRecommended,
-        photos: items.photos,
-      })
-        .from(items)
-        .where(and(...conditions))
-        .orderBy(desc(items.createdAt))
-        .limit(10);
+        return db.select({
+          id: items.id,
+          title: items.title,
+          category: items.category,
+          condition: items.condition,
+          brand: items.brand,
+          model: items.model,
+          estimatedValueMin: items.estimatedValueMin,
+          estimatedValueMax: items.estimatedValueMax,
+          estimatedValueRecommended: items.estimatedValueRecommended,
+        })
+          .from(items)
+          .where(and(...conditions))
+          .orderBy(desc(items.createdAt))
+          .limit(10);
+      };
+
+      const query = input.query ? String(input.query) : undefined;
+      let results = await runSearch(query);
+      // Recall fix (2026-08-11): ILIKE '%cables%' misses "…Cable 3.3ft" — a
+      // plural query also runs as singular and the result sets merge unique
+      // (live incident: "cables" matched 1 of the user's 10 cable items).
+      if (query && /s$/i.test(query.trim())) {
+        const singular = await runSearch(query.trim().replace(/s$/i, ''));
+        const seen = new Set(results.map(r => r.id));
+        results = [...results, ...singular.filter(r => !seen.has(r.id))].slice(0, 10);
+      }
 
       if (results.length === 0) return 'No items found matching your criteria.';
-      return JSON.stringify(results);
+      // Photo URLs are model-facing noise (live 08-12: granite4.1 misread photo
+      // arrays as duplicate listings); the web client never renders tool results.
+      return JSON.stringify(
+        results.map(({ photos: _photos, ...rest }: (typeof results)[number] & { photos?: unknown }) => rest),
+      );
     }
 
     case 'get_inventory_stats': {
@@ -406,24 +425,112 @@ porterRouter.post('/stream', async (req, res, next) => {
         input: message,
       },
       async () => {
-        await chatStream(
-          chatMessages,
-          PORTER_SYSTEM,
-          tools,
-          (name, input) => executeToolCallStructured(userId, name, input),
-          (event) => {
-            if (event.type === 'text_delta') {
-              accumulatedText += event.text;
-              writeSSE(event);
-            } else if (event.type === 'tool_start' || event.type === 'tool_result') {
-              writeSSE(event);
-            } else if (event.type === 'done') {
-              finalModel = event.model;
-              inputTokens = event.inputTokens;
-              outputTokens = event.outputTokens;
+        // Grounding (Phase 3a, buffer-after-first-tool): text streams live
+        // until any tool runs; after that, deltas buffer server-side so an
+        // ungrounded reply can be discarded and retried (attempt 2 = same
+        // chain, attempt 3 = force gemini). chatStream cannot fail over
+        // mid-stream, so retries are orchestrated here. After 3 failed
+        // attempts the last reply is flushed anyway (degrade, logged).
+        const MAX_ATTEMPTS = 3;
+        // Cost cap (advisor A6): retries multiply LLM + tool-loop calls, so a
+        // turn stops retrying once this much wall-clock has elapsed and serves
+        // the best reply it has (degrade, logged).
+        const RETRY_TIME_BUDGET_MS = 45_000;
+        const turnStart = Date.now();
+        // Titles from the last attempt that ran tools — a retry that skips the
+        // tool call is validated against these instead of escaping grounding
+        // (per-attempt replace, not union: an accepted reply must ground
+        // against its own tool truth, or the freshest one available).
+        let turnTitles: string[] = [];
+        // Text actually written to the client so far (attempt 1's live frames)
+        // — preserved if a later retry hard-fails (advisor A7).
+        let sentLiveText = '';
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          let attemptText = '';
+          let toolsRan = false;
+          const bufferedPre: string[] = [];
+          const bufferedPost: string[] = [];
+          const toolTitles: string[] = [];
+
+          try {
+          await chatStream(
+            chatMessages,
+            PORTER_SYSTEM,
+            tools,
+            async (name, input) => {
+              const result = await executeToolCallStructured(userId, name, input);
+              collectToolTitles(name, result.text, toolTitles);
+              return result;
+            },
+            (event) => {
+              // Attempt 1 streams live until the first tool; retries stay fully
+              // silent (text buffered, tool frames suppressed) so the client
+              // never sees duplicate preamble or tool chips. Attempt 1's live
+              // pre-tool text can't be retracted — a retry's accepted text may
+              // repeat it; the persisted conversation keeps only the accepted
+              // attempt's text.
+              if (event.type === 'text_delta') {
+                attemptText += event.text;
+                if (attempt === 1 && !toolsRan) {
+                  sentLiveText += event.text;
+                  writeSSE(event);
+                } else {
+                  (toolsRan ? bufferedPost : bufferedPre).push(event.text);
+                }
+              } else if (event.type === 'tool_start') {
+                toolsRan = true;
+                if (attempt === 1) writeSSE(event);
+              } else if (event.type === 'tool_result') {
+                if (attempt === 1) writeSSE(event);
+              } else if (event.type === 'done') {
+                finalModel = event.model;
+                // Accumulate across grounding attempts — discarded attempts
+                // still consumed tokens and belong in the turn's usage.
+                inputTokens += event.inputTokens;
+                outputTokens += event.outputTokens;
+              }
+            },
+            { purpose: 'porter-chat', ...(attempt === MAX_ATTEMPTS ? { forceProvider: 'gemini' } : {}) },
+          );
+          } catch (streamErr) {
+            const isEmptyReply = (streamErr as Error).message?.startsWith('Empty chat response');
+            if (isEmptyReply && attempt < MAX_ATTEMPTS && Date.now() - turnStart < RETRY_TIME_BUDGET_MS) {
+              // Blank streamed reply (3a.1 class): retry like a grounding miss.
+              logger.warn({ userId, attempt }, 'Porter stream got an empty reply, retrying');
+              continue;
             }
-          },
-        );
+            if (sentLiveText) {
+              // The user already saw attempt 1's live text — keep the turn and
+              // persist what was shown instead of erroring the whole stream.
+              logger.error({ userId, attempt, error: (streamErr as Error).message }, 'Porter stream retry hard-failed after live text — degrading to shown text');
+              accumulatedText = sentLiveText;
+              break;
+            }
+            throw streamErr;
+          }
+
+          if (toolsRan) turnTitles = toolTitles;
+          try {
+            validateGrounding(attemptText, toolsRan ? toolTitles : turnTitles);
+          } catch (vErr) {
+            const withinBudget = Date.now() - turnStart < RETRY_TIME_BUDGET_MS;
+            if (attempt < MAX_ATTEMPTS && withinBudget) {
+              // Log the discarded draft — a thrown-away reply is otherwise
+              // unrecoverable for forensics (2026-08-11 false-positive incident).
+              logger.warn({ userId, attempt, error: (vErr as Error).message, discardedDraft: attemptText.slice(0, 500) }, 'Porter stream reply failed grounding, retrying');
+              continue;
+            }
+            logger.error({ userId, attempt, withinBudget, error: (vErr as Error).message }, 'Porter stream grounding exhausted — flushing ungrounded reply');
+          }
+
+          // Retry attempts drop their pre-tool preamble from the flush —
+          // attempt 1 already streamed its own live (A4 dedupe). A no-tool
+          // retry has only "pre-tool" text, which IS the answer: flush it all.
+          const toFlush = toolsRan ? bufferedPost : [...bufferedPre, ...bufferedPost];
+          for (const text of toFlush) writeSSE({ type: 'text_delta', text });
+          accumulatedText = attemptText;
+          break;
+        }
 
         const parsed = parseActionPills(accumulatedText);
         pills = parsed.pills;
@@ -532,11 +639,51 @@ porterRouter.post('/message', async (req, res, next) => {
         input: message,
       },
       async () => {
+        // Grounding (Phase 3a): collect item titles from tool results; the
+        // validate hook rejects replies naming items outside them, which makes
+        // ai-client retry the provider once, then fail over down the chain.
+        // After 3 rejections the hook degrades to a no-op so exhaustion serves
+        // the last reply (logged) instead of a 500 — mirrors the stream path.
+        const toolTitles: string[] = [];
+        let lastToolTitles: string[] = [];
+        let groundingFailures = 0;
+        // Cost cap (advisor A6): same wall-clock budget as the stream path.
+        const RETRY_TIME_BUDGET_MS = 45_000;
+        const turnStart = Date.now();
         const { text } = await chat(
           chatMessages,
           PORTER_SYSTEM,
           tools,
-          (name, input) => executeToolCall(userId, name, input),
+          async (name, input) => {
+            const result = await executeToolCall(userId, name, input);
+            collectToolTitles(name, result, toolTitles);
+            return result;
+          },
+          {
+            validate: (reply) => {
+              // Per-call scoping: titles gathered since the previous validate
+              // belong to the call under validation; a retry that skipped
+              // tools falls back to the freshest tool truth instead of
+              // escaping grounding. Never a union across attempts.
+              if (toolTitles.length > 0) lastToolTitles = toolTitles.splice(0);
+              if (groundingFailures >= 3) return;
+              if (Date.now() - turnStart >= RETRY_TIME_BUDGET_MS) {
+                logger.error({ userId }, 'Porter message grounding budget exhausted — accepting reply');
+                return;
+              }
+              try {
+                validateGrounding(reply, lastToolTitles);
+              } catch (err) {
+                groundingFailures++;
+                logger.warn({ userId, groundingFailures, error: (err as Error).message, discardedDraft: reply.slice(0, 500) }, 'Porter message reply failed grounding');
+                if (groundingFailures >= 3) {
+                  logger.error({ userId, error: (err as Error).message }, 'Porter message grounding exhausted — accepting next reply');
+                }
+                throw err;
+              }
+            },
+            purpose: 'porter-chat',
+          },
         );
         return text;
       },

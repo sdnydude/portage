@@ -8,7 +8,7 @@ Source: plan rev2 + docs/deferred-audit-2026-08-05.md. Each phase = one /ship cy
 
 Decisions (each → decision-log record):
 - [ ] 0.1 eBay account-deletion (c683b4bc): dev-portal check → **exempt** (screenshot, close in 6b) or **build** (→ 4.4)
-- [ ] 0.2 docs.digitalharmonyai.com (c6f43445): PUBLIC vs GATED — execute the CF change same session; proof: off-LAN curl 200 (PUBLIC) or decision record + login screenshot (GATED)
+- [x] 0.2 docs.digitalharmonyai.com (c6f43445): decided PUBLIC — CF Access bypass-everyone (decision on record in registry); proof: proof-of-done page fetched publicly HTTP 200 on 08-10 (docs.digitalharmonyai.com/portage/proof/…)
 - [ ] 0.3 Ship-log: confirm 07-17 REVIVAL directive stands (or supersede on record). Revival ⇒ MDX-escape fix named in 6a
 - [ ] 0.4 Porter history (a0eb2e98): accept dock-only (close vs PR #252) or require deep-links + mobile (→ Phase 7)
 - [ ] 0.5 Batch-enhance (c8e0e606): build (→ Phase 7) or drop (→ 6a removes endpoint + tests)
@@ -16,7 +16,7 @@ Decisions (each → decision-log record):
 - [ ] 0.7 Authorize one prod /scan → Langfuse trace provider=gemini closes 1c0ae91e
 - [ ] 0.8 Rewrite 3fd52d03 vs local-first decision + disposition of chatModel-override sub-item (build in 3a.4 or dated rejection)
 - [ ] 0.9 Porter hallucination approach: reference-by-ID w/ degrade-on-stream semantics — approve/amend/reject (→ 3b)
-- [ ] 0.10 Approval-on-record for 08-05 rows: 25afd214 + 307ffa75 (→ Phase 1), 98f9f383 + b6536cc1 (→ Phase 2)
+- [x] 0.10 Approval-on-record for 08-05 rows: 25afd214 + 307ffa75 (→ Phase 1), 98f9f383 + b6536cc1 (→ Phase 2) — satisfied by built+merged PRs #295/#299
 - [ ] 0.11 Proof-gate (61bbbc14): build as specced vs re-scope against 4-hook stack (→ 5.4)
 - [ ] 0.12 Order-decrement + refund-increment push: into Phase 7 scoping spec by name, or dated rejection
 - [ ] 0.13 Boot-guard key policy: Anthropic unconditional vs provider-conditional (recommended) (→ 4.1)
@@ -24,30 +24,30 @@ Decisions (each → decision-log record):
 Executed proofs (same session):
 - [ ] 0.14 `doppler secrets get VISION_PROVIDERS` vs container env diff, then SessionStart resync + re-diff (non-destructive proof) — closes 3db31cb1
 - [ ] 0.15 Prod scan per 0.7 — closes 1c0ae91e
-- [ ] 0.16 Container→host Ollama reachability check — feeds 3a.3
+- [x] 0.16 Container→host Ollama reachability check — feeds 3a.3. EXECUTED 08-10 21:54: `10.0.0.251:11434` reachable from portage-api container (11 models incl. qwen3:14b); `host.docker.internal` NOT reachable. LOCAL_LLM_BASE_URL already uses 10.0.0.251 — correct as-is
 
 ---
 
-## Phase 1 — Beta-blocker UI batch (/ship PR, TDD, ~half day)
+## Phase 1 — Beta-blocker UI batch (/ship PR, TDD, ~half day) — SHIPPED PR #295 (2026-08-05)
 
 Constraint: three independent minimal diffs in listing-card.tsx; no refactor; pathspec-scoped commit per task. Anchors pre-edit.
 
-- [ ] 1.1 localPickup card fix (6454017d)
+- [x] 1.1 localPickup card fix (6454017d)
   - Files: apps/web/src/components/listing/listing-card.tsx (handleOpenShipping :156-167, handleSaveShipping :177-188)
   - Do: seed `localPickup` from stored `ebayShipping.localPickup` on open; include in save payload
   - Verify: component test — stored true renders toggle on, survives save round-trip; live proof screenshot pickup ON after reopen
   - Risk: low (local)
-- [ ] 1.2 BO conflict api half (25afd214a)
+- [x] 1.2 BO conflict api half (25afd214a)
   - Files: apps/api/src/routes/listings.ts (:830 throw; also :482, :989 audit for same treatment)
   - Do: add `details: { bestOfferEnabled, bestOfferAutoAcceptPrice, minimumBestOfferPrice }` to the BEST_OFFER_CONFLICT AppError (heal already persisted :825-828; errorHandler serializes details)
   - Verify: api test — 422 body carries details
   - Risk: low (additive response field)
-- [ ] 1.3 BO conflict FE half (25afd214b)
+- [x] 1.3 BO conflict FE half (25afd214b)
   - Files: listing-card.tsx (handleSavePrice catch :140-141, BO fields :452-489)
   - Do: on code BEST_OFFER_CONFLICT open/highlight BO fields seeded from `err.details` (NOT stale listing prop)
   - Verify: component test on the code branch; live proof: below-threshold price edit shows guided-fix UI (screenshot)
   - Risk: low
-- [ ] 1.4 Reverb category picker (307ffa75)
+- [x] 1.4 Reverb category picker (307ffa75)
   - Files: listing-card.tsx (handlePublish catch :276-285, AspectFillSheet pattern :649-665); reuse ReverbCategorySection (reverb-category-section.tsx:35)
   - Do: REVERB_CATEGORY_REQUIRED (listings.ts:203) opens category cascade; publish retries after selection
   - Verify: component test on 422 code; live proof: category-less draft publishes after cascade (screenshots)
@@ -57,37 +57,38 @@ Constraint: three independent minimal diffs in listing-card.tsx; no refactor; pa
   - Do: microcopy link → /legal/terms
   - Verify: click-through logged-in + logged-out screenshots
   - Risk: low
-- [ ] 1.6 /ship Phases 5-6: suite + typecheck + lint + 6 review agents + proofs archived test-results/proof/
-- [ ] 1.7 PR (per-action approval)
+- [x] 1.6 /ship Phases 5-6: suite + typecheck + lint + 6 review agents + proofs archived test-results/proof/
+- [x] 1.7 PR (per-action approval) — PR #295 merged 8221ca2
+  - 1.5 /about retarget NOT done — still gated on 0.6 (undecided)
 
 ---
 
-## Phase 2 — Marketplace-truth sync (/ship PR, TDD, ~1 day)
+## Phase 2 — Marketplace-truth sync (/ship PR, TDD, ~1 day) — SHIPPED PR #299 (merged 2026-08-10, 5044535)
 
 Constraint: additive job registration only; outbox paths untouched. Precedent: retention timer (sync-worker.ts:76-77,:96-111).
 
-- [ ] 2.1 Status-sweep job scaffold
+- [x] 2.1 Status-sweep job scaffold
   - Files: apps/api/src/lib/sync-worker.ts
   - Do: second periodic job (30-60 min interval, final in spec), drip active listings through existing 5s tick — no burst
   - Verify: unit test — job registers, start/stop idempotent
   - Risk: medium (shared worker); Rollback: git revert
-- [ ] 2.2 Status transitions
+- [x] 2.2 Status transitions
   - Files: sync-worker.ts + adapters (getListingStatus ebay :850, reverb :390)
   - Do: flip rows ONLY on positive ended/sold; `'unknown'` = no-op (adapters swallow errors into unknown — token outage must not mass-end); sync-log row per transition
   - Verify: one test per case (ended / sold / unknown-no-op), separate writes
   - Risk: medium (data transitions)
-- [ ] 2.3 Periodic Reverb order sync
+- [x] 2.3 Periodic Reverb order sync
   - Files: sync-worker.ts (caller), orders sync machinery (orders.ts:143-183, already Reverb-capable)
   - Do: order-sync interval alongside sweep
   - Verify: test — timer triggers order sync
   - Risk: low-medium
-- [ ] 2.4 Backfill run (inside 90-day window)
+- [x] 2.4 Backfill run (inside 90-day window) — 17/17 Reverb orders healed, real fees/paid_at, cancelled 26127575 out of ship queue
   - Do: execute POST /orders/sync for affected user NOW
   - Verify: SQL count ≥6 reverb orders matching named listings (output archived)
   - Risk: low (idempotent heal path exists)
-- [ ] 2.5 Live sweep proof: externally-ended listing (candidate: stale row 307034606520) flips within one interval — screenshots
-- [ ] 2.6 Note in PR: per-user pacing not built (single live seller); revisit trigger = second active seller
-- [ ] 2.7 /ship Phases 5-6 + PR (absorbs §5 rows: externally-ended reconcile 07-02, stale row 06-30 — close in 6b)
+- [x] 2.5 Live sweep proof — sync log carries real `status_sweep` transitions since 08-07: 8 "reports ended — archived" + 6 "reports sold — sold locally" rows (verified in DB 08-10 21:54); survived 2.5h NIC outage 08-07 with zero false flips
+- [x] 2.6 Per-user pacing: PR-noted + operator-approved deferral, registry `1c2d031c-ec28-4001-a3a5-c5fcffc47a9f`; revisit trigger = second active seller
+- [x] 2.7 /ship Phases 5-6 + PR — PR #299, 10-finding review batch all fixed pre-commit; §5-row closures still due in 6b
 
 ---
 
@@ -118,6 +119,7 @@ Constraint: additive job registration only; outbox paths untouched. Precedent: r
 
 ## Phase 3b — Porter hallucination fix (/ship PR, TDD, ~1.5-2 days, gated on 0.9)
 
+- [ ] 3b.0 Porter stream abort wiring: req.on(close) → AbortController through chatStream + all 4 provider functions; signal check between grounding attempts (APPROVED DEFERRAL from 3a advisor finding A8, operator "slot in 3b" 2026-08-11, registry e95934b4-afc1-4365-ad71-73aa2bd5b880)
 - [ ] 3b.1 Design doc per approved 0.9: item_ref blocks on action-pills rails (post-stream parse porter.ts:233-251; new SSE frame like action_pills :436; FE strips tags during stream). STREAM = degrade on invalid ID (drop ref, fallback text, log); NON-STREAM = failed-call retry
 - [ ] 3b.2 Server: accumulate tool-result IDs per turn (executeToolCallStructured `structured` currently discarded); validate refs post-stream
 - [ ] 3b.3 Persistence: widen blocks JSONB for item_ref (porter.ts:381-382); normalizeConversationMessages typing (:209-218); model-history rebuild policy for non-text blocks (:383-389)

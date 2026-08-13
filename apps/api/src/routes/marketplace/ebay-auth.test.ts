@@ -185,7 +185,7 @@ describe('POST /marketplace/ebay/callback identity capture', () => {
 
 describe('GET /marketplace/ebay/category-suggestion', () => {
   it('returns the suggested category bundled with its valid condition IDs', async () => {
-    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({ categoryId: '619', categoryName: 'Guitar Amplifiers' });
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({ categoryId: '619', categoryName: 'Guitar Amplifiers', rootCategoryId: null, rootCategoryName: null });
     vi.spyOn(EbayAdapter, 'getValidConditions').mockResolvedValue(['1000', '3000']);
 
     const res = await request(app)
@@ -197,8 +197,57 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
     expect(EbayAdapter.getCategorySuggestion).toHaveBeenCalledWith('fender deluxe reverb amp');
     expect(EbayAdapter.getValidConditions).toHaveBeenCalledWith('619');
     expect(res.body).toEqual({
-      suggestion: { categoryId: '619', categoryName: 'Guitar Amplifiers', conditionIds: ['1000', '3000'] },
+      suggestion: { categoryId: '619', categoryName: 'Guitar Amplifiers', rootCategoryId: null, rootCategoryName: null, conditionIds: ['1000', '3000'] },
+      mismatch: false, // no visionCategory param sent — guard fails open
     });
+  });
+
+  it('flags mismatch:true when visionCategory is implausible for the suggestion root (Baseball Jackets incident)', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    vi.spyOn(EbayAdapter, 'getValidConditions').mockResolvedValue([]);
+
+    const res = await request(app)
+      .get('/marketplace/ebay/category-suggestion')
+      .query({ q: 'fiber optic audio cable', visionCategory: 'electronics' })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.mismatch).toBe(true);
+    expect(res.body.suggestion.categoryId).toBe('181335');
+  });
+
+  it('accepts an over-50-char visionCategory (AI drift) instead of 400ing — truncated, guard still works', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    vi.spyOn(EbayAdapter, 'getValidConditions').mockResolvedValue([]);
+
+    const res = await request(app)
+      .get('/marketplace/ebay/category-suggestion')
+      .query({ q: 'fiber optic audio cable', visionCategory: 'electronics'.padEnd(80, 'x') })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('flags mismatch for RICH vision strings too (scan refine path sends eBay-style names, not the coarse enum)', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    vi.spyOn(EbayAdapter, 'getValidConditions').mockResolvedValue([]);
+
+    const res = await request(app)
+      .get('/marketplace/ebay/category-suggestion')
+      .query({ q: 'Impeto Digital Fiber Optic Audio Cable', visionCategory: 'Audio Cables & Adapters' })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.mismatch).toBe(true);
   });
 
   it('returns {suggestion: null} when the Taxonomy API has no suggestion', async () => {
@@ -218,7 +267,7 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
   it('still returns the suggestion with empty conditionIds when the Metadata lookup throws', async () => {
     // A conditions failure must not 500 the whole route — the suggestion alone
     // is still useful; the client treats [] as "constrain nothing".
-    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({ categoryId: '619', categoryName: 'Guitar Amplifiers' });
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({ categoryId: '619', categoryName: 'Guitar Amplifiers', rootCategoryId: null, rootCategoryName: null });
     vi.spyOn(EbayAdapter, 'getValidConditions').mockRejectedValue(new Error('metadata token failure'));
 
     const res = await request(app)
@@ -228,7 +277,8 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      suggestion: { categoryId: '619', categoryName: 'Guitar Amplifiers', conditionIds: [] },
+      suggestion: { categoryId: '619', categoryName: 'Guitar Amplifiers', rootCategoryId: null, rootCategoryName: null, conditionIds: [] },
+      mismatch: false,
     });
   });
 

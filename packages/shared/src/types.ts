@@ -66,6 +66,8 @@ export interface ReverbCacheEntry {
 export interface MarketplaceData {
   ebay?: MarketplaceCacheEntry;
   reverb?: ReverbCacheEntry;
+  /** Vision scan's coarse category — read by the category-mismatch guard. */
+  scan?: { visionCategory?: string };
 }
 
 export interface Item {
