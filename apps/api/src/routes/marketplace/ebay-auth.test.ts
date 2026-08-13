@@ -234,6 +234,22 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
     expect(res.status).toBe(200);
   });
 
+  it('flags mismatch for RICH vision strings too (scan refine path sends eBay-style names, not the coarse enum)', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    vi.spyOn(EbayAdapter, 'getValidConditions').mockResolvedValue([]);
+
+    const res = await request(app)
+      .get('/marketplace/ebay/category-suggestion')
+      .query({ q: 'Impeto Digital Fiber Optic Audio Cable', visionCategory: 'Audio Cables & Adapters' })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.mismatch).toBe(true);
+  });
+
   it('returns {suggestion: null} when the Taxonomy API has no suggestion', async () => {
     vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue(null);
     const conditionsSpy = vi.spyOn(EbayAdapter, 'getValidConditions');
