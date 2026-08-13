@@ -676,6 +676,40 @@ describe('getCategorySuggestion — mixed level fields', () => {
   });
 });
 
+describe('isPlausibleSuggestion — rich vision strings (scan refine path)', () => {
+  it('flags a rich vision category with zero token overlap against leaf+root (live 08-13: "Audio Cables & Adapters" vs Baseball Jackets slipped through fail-open)', () => {
+    expect(EbayAdapter.isPlausibleSuggestion('Audio Cables & Adapters', {
+      categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450',
+      rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(false);
+  });
+});
+
+describe('isPlausibleSuggestion — pass-throughs', () => {
+  it('accepts token-overlapping rich strings, coarse-enum table hits, and fails open on garbage', () => {
+    // rich string overlaps the leaf name — plausible
+    expect(EbayAdapter.isPlausibleSuggestion('Audio Cables & Adapters', {
+      categoryName: 'Audio Cables & Interconnects', rootCategoryId: '293', rootCategoryName: 'Consumer Electronics',
+    })).toBe(true);
+    // rich string overlaps only the ROOT name — plausible
+    expect(EbayAdapter.isPlausibleSuggestion('Consumer Electronics Accessories', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(true); // "accessories" overlaps root
+    // coarse enum routes through the table
+    expect(EbayAdapter.isPlausibleSuggestion('electronics', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(false);
+    // garbage/short input fails open
+    expect(EbayAdapter.isPlausibleSuggestion('a&b', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(true);
+    expect(EbayAdapter.isPlausibleSuggestion('', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(true);
+  });
+});
+
 describe('isPlausibleRoot — vision-category vs eBay root sanity check', () => {
   it('flags electronics vs Clothing root as implausible (the Baseball Jackets incident shape)', () => {
     expect(EbayAdapter.isPlausibleRoot('electronics', '11450')).toBe(false);

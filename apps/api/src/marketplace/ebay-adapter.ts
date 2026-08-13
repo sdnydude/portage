@@ -1233,6 +1233,33 @@ export class EbayAdapter implements MarketplaceAdapter {
    * `music` scan) must NOT flag. Used only to compute an advisory boolean;
    * never a category source (eBay taxonomy stays the user-facing truth).
    */
+  /**
+   * Full plausibility check for the mismatch guard. Coarse enum values go
+   * through the root table; RICH vision strings (the scan refine path emits
+   * eBay-style names like "Audio Cables & Adapters", not the 14-value enum —
+   * live 08-13: that fail-open let Baseball Jackets through silently) fall
+   * back to token overlap against the suggested leaf + root names. Zero
+   * overlap = implausible. Empty/no-token input still fails open.
+   */
+  static isPlausibleSuggestion(
+    visionCategory: string,
+    suggestion: { categoryName: string; rootCategoryId: string | null; rootCategoryName: string | null },
+  ): boolean {
+    const key = visionCategory.trim().toLowerCase();
+    if (!key) return true;
+    const coarse = ['electronics', 'clothing', 'furniture', 'collectibles', 'sports', 'home',
+      'books', 'toys', 'tools', 'automotive', 'jewelry', 'art', 'music', 'other'];
+    if (coarse.includes(key)) {
+      return suggestion.rootCategoryId ? this.isPlausibleRoot(key, suggestion.rootCategoryId) : true;
+    }
+    const stem = (w: string) => w.replace(/s$/, '');
+    const tokens = key.split(/[^a-z0-9]+/).map(stem).filter(w => w.length > 3);
+    if (tokens.length === 0) return true; // garbage/too-short input — fail open
+    const hay = `${suggestion.categoryName} ${suggestion.rootCategoryName ?? ''}`
+      .toLowerCase().split(/[^a-z0-9]+/).map(stem).filter(Boolean);
+    return tokens.some(t => hay.includes(t));
+  }
+
   static isPlausibleRoot(visionCategory: string, rootCategoryId: string): boolean {
     const roots: Record<string, string[]> = {
       // eBay L1 root ids are years-stable. '99' (Everything Else) plausible everywhere.

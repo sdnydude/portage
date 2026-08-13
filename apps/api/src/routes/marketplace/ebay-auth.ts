@@ -60,10 +60,10 @@ ebayAuthRouter.get('/category-suggestion', async (req, res, next) => {
       res.json({ suggestion: null });
       return;
     }
+    // isPlausibleSuggestion handles both coarse enum values (root table) and
+    // the scan refine path's rich eBay-style strings (token-overlap backstop).
     const mismatch = Boolean(
-      visionCategory
-      && suggestion.rootCategoryId
-      && !EbayAdapter.isPlausibleRoot(visionCategory, suggestion.rootCategoryId),
+      visionCategory && !EbayAdapter.isPlausibleSuggestion(visionCategory, suggestion),
     );
     // A conditions failure must not sink the suggestion we already have —
     // the client treats an empty list as "constrain nothing".
