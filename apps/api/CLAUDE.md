@@ -106,4 +106,4 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 
 ## Testing
 
-Vitest. Run `npm test` (once) or `npm run test:watch`. 909 tests across 78 files covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, marketplace sync, and FAQs.
+Vitest. Run `npm test` (once) or `npm run test:watch`. 909 tests across 78 files (last merged state, PR #299) covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, marketplace sync, and FAQs. feat/porter-reliability-3a adds 4 test files/+35 tests uncommitted.

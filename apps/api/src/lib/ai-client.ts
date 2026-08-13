@@ -23,15 +23,21 @@ function getAnthropicClient(config: ProviderConfig): Anthropic {
   return client;
 }
 
-function getOpenAIClient(config: ProviderConfig): OpenAI {
-  let client = openaiClients.get(config.name);
+function getOpenAIClient(config: ProviderConfig, purpose?: string): OpenAI {
+  // One wrapped client per provider+purpose: observeOpenAI fixes the Langfuse
+  // generation name at wrap time, so per-purpose names need distinct wrappers.
+  const key = purpose ? `${config.name}:${purpose}` : config.name;
+  let client = openaiClients.get(key);
   if (!client) {
     // observeOpenAI emits a Langfuse `generation` per call with model, tokens,
     // and cost. Gemini and the local models run through the OpenAI-compat API,
     // so this covers them too. No-op when tracing is off. Anthropic gets the
     // same treatment via the OpenInference patch in instrumentation.ts.
-    client = observeOpenAI(new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl }));
-    openaiClients.set(config.name, client);
+    client = observeOpenAI(
+      new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl }),
+      purpose ? { generationName: purpose } : undefined,
+    );
+    openaiClients.set(key, client);
   }
   return client;
 }
@@ -116,15 +122,20 @@ function buildChain(envVar: string): ProviderConfig[] {
     const name = (sep >= 0 ? entry.slice(0, sep) : entry).toLowerCase();
     const provider = resolveProvider(name);
     if (provider) {
-      // "provider:model" overrides the vision model for this chain entry
-      // (lets the chain hold multiple Gemini models, e.g. 3.5-flash → 2.5-flash).
-      if (sep >= 0) provider.visionModel = entry.slice(sep + 1).trim();
+      // "provider:model" overrides the model for this chain entry (lets a chain
+      // hold multiple models of one provider, e.g. 3.5-flash → 2.5-flash). Both
+      // fields are set; the vision chain reads visionModel, chat reads chatModel.
+      if (sep >= 0) {
+        const model = entry.slice(sep + 1).trim();
+        provider.visionModel = model;
+        provider.chatModel = model;
+      }
       chain.push(provider);
     }
   }
 
   if (chain.length === 0) {
-    throw new Error(`No AI providers configured — check provider list and API keys in .env`);
+    throw new AppError(503, 'AI_UNAVAILABLE', 'No AI providers configured — check provider list and API keys in .env');
   }
 
   return chain;
@@ -143,12 +154,22 @@ function chatChain(): ProviderConfig[] {
 export interface AIOptions {
   temperature?: number;
   maxTokens?: number;
-  /** Vision chains only (analyzeImage / analyzeImages) — chat paths ignore it.
-   *  Runs on each provider's raw text before it is accepted; throw to treat the
-   *  response as a provider failure and continue down the chain. Closes the
-   *  drift blind spot where a provider answers 200 with schema-invalid output
-   *  (gemini-3.5-flash weight-as-number, live outage 2026-08-05). */
+  /** Runs on each provider's final text before it is accepted; throw to treat
+   *  the response as a provider failure. Vision chains (analyzeImage /
+   *  analyzeImages) fail over immediately (schema-drift blind spot,
+   *  gemini-3.5-flash weight-as-number, live outage 2026-08-05). The
+   *  non-streaming chat path retries the same provider once before failing
+   *  over (Porter grounding, 2026-08-10). chatStream ignores it — streaming
+   *  cannot fail over post-stream; porter.ts orchestrates retries instead. */
   validate?: (text: string) => void;
+  /** Restrict the chat chain to this provider name (porter grounding retries
+   *  force 'gemini'). Falls back to the full chain if the name doesn't match
+   *  any configured provider. */
+  forceProvider?: string;
+  /** Langfuse generation name for this call site (porter-chat / scan-vision /
+   *  prepare-listing). OpenAI-compat providers only — Anthropic is traced via
+   *  the OpenInference patch in instrumentation.ts. */
+  purpose?: string;
 }
 
 // ─── Vision: image → structured text ───────────────────────
@@ -243,7 +264,7 @@ async function visionOpenAI(
   userPrompt: string,
   options?: AIOptions,
 ) {
-  const client = getOpenAIClient(config);
+  const client = getOpenAIClient(config, options?.purpose);
 
   const response = await client.chat.completions.create({
     model: config.visionModel,
@@ -369,7 +390,7 @@ async function visionMultiOpenAI(
   userPrompt: string,
   options?: AIOptions,
 ) {
-  const client = getOpenAIClient(config);
+  const client = getOpenAIClient(config, options?.purpose);
 
   const imageBlocks = images.map(img => ({
     type: 'image_url' as const,
@@ -433,10 +454,15 @@ export async function chatStream(
   onEvent: (event: PorterStreamEvent) => void,
   options?: AIOptions,
 ): Promise<void> {
-  const chain = chatChain();
-  if (chain.length === 0) {
-    throw new AppError(503, 'AI_UNAVAILABLE', 'No chat providers configured — check CHAT_PROVIDERS and API keys.');
+  // Empty-chain case: chatChain() → buildChain() throws AppError 503 AI_UNAVAILABLE.
+  const fullChain = chatChain();
+  const forced = options?.forceProvider
+    ? fullChain.filter(c => c.name === options.forceProvider)
+    : fullChain;
+  if (options?.forceProvider && forced.length === 0) {
+    logger.warn({ forceProvider: options.forceProvider }, 'forceProvider not in CHAT_PROVIDERS — falling back to full chain');
   }
+  const chain = forced.length > 0 ? forced : fullChain;
 
   // Once any token reaches the client, a mid-stream failure must NOT fall back —
   // re-streaming a second provider would double-emit. Fall back only before the
@@ -546,7 +572,7 @@ async function chatStreamOpenAI(
   onEvent: (event: PorterStreamEvent) => void,
   options?: AIOptions,
 ): Promise<void> {
-  const client = getOpenAIClient(config);
+  const client = getOpenAIClient(config, options?.purpose);
 
   const openaiTools: OpenAI.ChatCompletionTool[] = tools.map(t => ({
     type: 'function' as const,
@@ -609,6 +635,11 @@ async function chatStreamOpenAI(
 
     const toolCalls = Object.values(toolAcc);
     if (finishReason !== 'tool_calls' || toolCalls.length === 0) {
+      if (!assistantText) {
+        // Blank streamed reply (same class as chatOpenAI's guard): fail the
+        // call so the provider chain / porter retry loop can recover.
+        throw new Error(`Empty chat response from ${config.chatModel}`);
+      }
       onEvent({ type: 'done', model, inputTokens, outputTokens });
       return;
     }
@@ -669,15 +700,34 @@ export async function chat(
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
   options?: AIOptions,
 ): Promise<{ text: string; provider: string; model: string }> {
-  const chain = chatChain();
+  const fullChain = chatChain();
+  const forced = options?.forceProvider
+    ? fullChain.filter(c => c.name === options.forceProvider)
+    : fullChain;
+  if (options?.forceProvider && forced.length === 0) {
+    logger.warn({ forceProvider: options.forceProvider }, 'forceProvider not in CHAT_PROVIDERS — falling back to full chain');
+  }
+  const chain = forced.length > 0 ? forced : fullChain;
   const startTime = Date.now();
 
   for (let i = 0; i < chain.length; i++) {
     const config = chain[i];
     try {
-      const result = config.type === 'openai'
-        ? await chatOpenAI(config, history, systemPrompt, tools, executeTool, options)
-        : await chatAnthropic(config, history, systemPrompt, tools, executeTool, options);
+      const call = () => config.type === 'openai'
+        ? chatOpenAI(config, history, systemPrompt, tools, executeTool, options)
+        : chatAnthropic(config, history, systemPrompt, tools, executeTool, options);
+
+      let result = await call();
+      if (options?.validate) {
+        try {
+          options.validate(result.text);
+        } catch (vErr) {
+          // Grounding mismatch: one same-provider retry before failing over.
+          logger.warn({ provider: config.name, error: (vErr as Error).message }, 'Chat validation failed, retrying provider once');
+          result = await call();
+          options.validate(result.text);
+        }
+      }
 
       logger.info({
         provider: config.name,
@@ -693,6 +743,7 @@ export async function chat(
     }
   }
 
+  // Unreachable: the loop always returns or rethrows on the last provider.
   throw new Error('All chat providers failed');
 }
 
@@ -776,7 +827,7 @@ async function chatOpenAI(
   executeTool: (name: string, input: Record<string, unknown>) => Promise<string>,
   options?: AIOptions,
 ): Promise<{ text: string; model: string }> {
-  const client = getOpenAIClient(config);
+  const client = getOpenAIClient(config, options?.purpose);
 
   const openaiTools: OpenAI.ChatCompletionTool[] = tools.map(t => ({
     type: 'function' as const,
@@ -797,6 +848,7 @@ async function chatOpenAI(
     model: config.chatModel,
     max_tokens: maxTokens,
     ...(options?.temperature !== undefined && { temperature: options.temperature }),
+    ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort as 'low' } : {}),
     tools: openaiTools,
     messages,
   });
@@ -822,13 +874,21 @@ async function chatOpenAI(
       model: config.chatModel,
       max_tokens: maxTokens,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
+      ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort as 'low' } : {}),
       tools: openaiTools,
       messages,
     });
   }
 
+  const text = response.choices[0]?.message?.content;
+  if (!text) {
+    // Blank reply (seen on reasoning models when reasoning_effort is unset):
+    // treat as a failed call so chat() advances down the provider chain.
+    throw new Error(`Empty chat response from ${config.chatModel}`);
+  }
+
   return {
-    text: response.choices[0]?.message?.content || '',
+    text,
     model: response.model || config.chatModel,
   };
 }

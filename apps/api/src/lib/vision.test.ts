@@ -520,6 +520,19 @@ describe('generateListingFields', () => {
     expect(vi.mocked(analyzeImages).mock.calls[0][0]).toEqual(images);
   });
 
+  it('passes a schema validate hook on the photo-less chatText path (fail-over on drift)', async () => {
+    vi.mocked(chatText).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash',
+    } as never);
+
+    await generateListingFields({ ...baseInput });
+
+    expect(chatText).toHaveBeenCalledTimes(1);
+    const options = vi.mocked(chatText).mock.calls[0][2] as { validate?: unknown };
+    expect(typeof options?.validate).toBe('function');
+  });
+
   it('injects the Reverb flat-category list into the prompt so the AI picks a real category verbatim', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),

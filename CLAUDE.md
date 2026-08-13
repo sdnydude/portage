@@ -204,7 +204,9 @@ pickup seed/save, Best Offer guided fix w/ healed flag, Reverb cascade (PR #295)
 Marketplace-truth sync shipped (PR #299, 08-10): periodic status sweep +
 Reverb order sync/backfill, 10-finding review batch, Reverb blank-model 422
 publish fix (omit make/model when absent) — live-verified.
-Test suite: 909 API / 631 web as of 2026-08-10.
+Test suite: 909 API / 631 web as of 2026-08-10 (last merged state, PR #299;
+feat/porter-reliability-3a adds 4 test files/+35 tests uncommitted, not yet
+reflected here per the shipped-only convention this log follows).
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
