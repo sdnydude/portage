@@ -43,17 +43,28 @@ ebayAuthRouter.get('/category-aspects/:categoryId', async (req, res, next) => {
 
 // Suggested leaf category for a free-text query, bundled with the category's
 // valid condition IDs so the scan-review flow gets both in one round trip.
-const suggestionQuerySchema = z.object({ q: z.string().min(1).max(200) });
+const suggestionQuerySchema = z.object({
+  q: z.string().min(1).max(200),
+  // Vision scan's coarse category, for the mismatch guard. Optional — absent,
+  // unknown, or rootless suggestions all fail open (mismatch: false). The AI
+  // field is unbounded (schema-drift class) — truncate, never 400 the lookup.
+  visionCategory: z.string().transform(s => s.slice(0, 50)).optional(),
+});
 
 ebayAuthRouter.get('/category-suggestion', async (req, res, next) => {
   try {
-    const { q } = suggestionQuerySchema.parse(req.query);
+    const { q, visionCategory } = suggestionQuerySchema.parse(req.query);
     ebayTaxonomyCalls.inc({ operation: 'category_suggestion' });
     const suggestion = await EbayAdapter.getCategorySuggestion(q);
     if (!suggestion) {
       res.json({ suggestion: null });
       return;
     }
+    // isPlausibleSuggestion handles both coarse enum values (root table) and
+    // the scan refine path's rich eBay-style strings (token-overlap backstop).
+    const mismatch = Boolean(
+      visionCategory && !EbayAdapter.isPlausibleSuggestion(visionCategory, suggestion),
+    );
     // A conditions failure must not sink the suggestion we already have —
     // the client treats an empty list as "constrain nothing".
     const conditionIds = await EbayAdapter.getValidConditions(suggestion.categoryId)
@@ -61,7 +72,7 @@ ebayAuthRouter.get('/category-suggestion', async (req, res, next) => {
         logger.warn({ err, categoryId: suggestion.categoryId }, 'getValidConditions failed; returning empty conditionIds');
         return [] as string[];
       });
-    res.json({ suggestion: { ...suggestion, conditionIds } });
+    res.json({ suggestion: { ...suggestion, conditionIds }, mismatch });
   } catch (err) {
     next(err);
   }

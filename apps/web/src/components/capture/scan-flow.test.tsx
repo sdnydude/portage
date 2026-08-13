@@ -77,6 +77,10 @@ const scanAspectsState = {
   buildAspects: vi.fn(() => ({}) as Record<string, string[]>),
   aspectsBlockPublish: false,
   resolveCategory: vi.fn(),
+  categoryMismatch: false,
+  resolvedVisionCategory: "electronics" as string | undefined,
+  dismissCategoryMismatch: vi.fn(),
+  clearCategoryResolution: vi.fn(),
 };
 
 vi.mock("@/hooks/use-scan-aspects", () => ({
@@ -396,6 +400,34 @@ describe("ScanFlow review wiring", () => {
     expect((itemsCall?.[1] as { body: { price?: number } }).body.price).toBe(65);
   });
 
+  it("Save persists the vision coarse category under marketplaceData.scan (Tier-2 mismatch guard data)", async () => {
+    await renderInReview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { marketplaceData?: { scan?: { visionCategory?: string } } } }).body;
+    expect(body.marketplaceData?.scan?.visionCategory).toBe("Guitars");
+  });
+
+  it("Save & List persists the vision coarse category under marketplaceData.scan too", async () => {
+    await renderInReview();
+
+    fireEvent.click(screen.getByRole("button", { name: /Save & List/ }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { marketplaceData?: { scan?: { visionCategory?: string } } } }).body;
+    expect(body.marketplaceData?.scan?.visionCategory).toBe("Guitars");
+  });
+
   it("review captures quantity and Save persists it to the item (editable from default 1)", async () => {
     await renderInReview();
 
@@ -588,6 +620,41 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByText("Electric Guitars")).toBeInTheDocument();
     // Find is disabled until the seller types a search
     expect(screen.getByRole("button", { name: "Find category" })).toBeDisabled();
+  });
+
+  it("shows the category-mismatch banner when the suggestion is implausible for the scanned kind", async () => {
+    scanAspectsState.categoryMismatch = true;
+    scanAspectsState.resolvedCategoryName = "Baseball Jackets";
+    try {
+      await renderInReview();
+      expect(screen.getByText(/Double-check this category/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Use anyway" })).toBeInTheDocument();
+    } finally {
+      scanAspectsState.categoryMismatch = false;
+      scanAspectsState.resolvedCategoryName = "Electric Guitars";
+    }
+  });
+
+  it("Don't use it rejects the suggestion outright via clearCategoryResolution", async () => {
+    scanAspectsState.categoryMismatch = true;
+    try {
+      await renderInReview();
+      fireEvent.click(screen.getByRole("button", { name: "Don't use it" }));
+      expect(scanAspectsState.clearCategoryResolution).toHaveBeenCalled();
+    } finally {
+      scanAspectsState.categoryMismatch = false;
+    }
+  });
+
+  it("Use anyway dismisses the mismatch banner via the hook", async () => {
+    scanAspectsState.categoryMismatch = true;
+    try {
+      await renderInReview();
+      fireEvent.click(screen.getByRole("button", { name: "Use anyway" }));
+      expect(scanAspectsState.dismissCategoryMismatch).toHaveBeenCalled();
+    } finally {
+      scanAspectsState.categoryMismatch = false;
+    }
   });
 
   it("warns instead of rendering an empty pill row when no conditionIds are recognized", async () => {

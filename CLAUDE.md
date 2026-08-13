@@ -57,7 +57,7 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 ### AI
 
 - **Item scanning:** configurable provider chain defined by the `VISION_PROVIDERS` env var, consumed in `apps/api/src/lib/ai-client.ts` (`apps/api/src/lib/vision.ts` holds the vision prompt/schema logic) — Gemini 2.5 primary, Claude fallback in prod
-- **Porter assistant:** Claude Sonnet SSE streaming via `client.messages.stream()`, 3 tools (search_inventory, get_inventory_stats, suggest_listing), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback)
+- **Porter assistant:** local-first chat chain (`CHAT_PROVIDERS=local:granite4.1:8b,gemini` — granite via Ollama, gemini-2.5-flash fallback; model eval + switch 2026-08-13, PR #303) with SSE streaming, 3 tools (search_inventory, get_inventory_stats, suggest_listing), runtime grounding validation (post-tool-loop item check, buffer-after-first-tool streaming, 3-attempt retry w/ gemini force, 45s budget — `apps/api/src/lib/porter-grounding.ts`), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback)
 - **Voice (STT/TTS):** REMOVED 2026-07-01 (parked for a future release) — pre-removal code preserved at git tag `voice-parked-2026-07`
 - **Background removal:** Server-side via portage-rembg container (`POST /images/remove-bg`, `REMBG_URL`), billing-gated per tier
 - **Auto-enhance:** Server-side Sharp pipeline, billing-gated per tier
@@ -204,7 +204,19 @@ pickup seed/save, Best Offer guided fix w/ healed flag, Reverb cascade (PR #295)
 Marketplace-truth sync shipped (PR #299, 08-10): periodic status sweep +
 Reverb order sync/backfill, 10-finding review batch, Reverb blank-model 422
 publish fix (omit make/model when absent) — live-verified.
-Test suite: 909 API / 631 web as of 2026-08-10.
+Ship-program Phase 3a shipped (PR #303, 08-13): Porter reliability
+(blank-reply fix, AI_UNAVAILABLE guard, Langfuse per-purpose names,
+chatModel override), runtime grounding validation, granite4.1:8b model
+switch (125-prompt eval, 0 fabrications, ~1s turns; supersedes gemma4:12b
+rec and qwen3:14b), search_inventory recall merge + photos-strip fix —
+live-proven with DB-verified screenshots.
+Category-mismatch guard shipped (PR #304, 08-13): eBay suggestion
+plausibility check (ancestor-root table + rich-vision token overlap),
+advisory banner in scan review + edit page (Use anyway / Find different /
+Don't use it, per-category dismissal memory), Tier-2 persisted
+visionCategory + publish-time self-heal warn-log — caught the live
+Baseball Jackets recurrence in scan-flow during PoD.
+Test suite: 973 API / 646 web as of 2026-08-13 (merged + wrap branch).
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
