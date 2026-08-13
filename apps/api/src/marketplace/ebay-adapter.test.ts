@@ -3,6 +3,11 @@ import { loadEnv } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
 import { resolveEbayCondition, resolveEbayConditionId, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError, clearEbayTaxonomyCaches } from './ebay-adapter.js';
 
+const loggerSpies = vi.hoisted(() => ({
+  warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn(),
+}));
+vi.mock('../lib/logger.js', () => ({ createLogger: () => loggerSpies }));
+
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
   getEbayProdAppToken: vi.fn().mockResolvedValue('test-app-token'),
@@ -613,10 +618,187 @@ describe('eBay taxonomy TTL caches', () => {
   });
 });
 
+describe('getCategorySuggestion — category-tree root for the mismatch guard', () => {
+  it('parses categoryTreeNodeAncestors into rootCategoryId/rootCategoryName (root = highest ancestor)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      categorySuggestions: [{
+        category: { categoryId: '181335', categoryName: 'Baseball Jackets' },
+        categoryTreeNodeAncestors: [
+          { categoryId: '181334', categoryName: 'Jackets & Vests', categoryTreeNodeLevel: 3 },
+          { categoryId: '1059', categoryName: "Men's Clothing", categoryTreeNodeLevel: 2 },
+          { categoryId: '11450', categoryName: 'Clothing, Shoes & Accessories', categoryTreeNodeLevel: 1 },
+        ],
+      }],
+    }), { status: 200 }));
+
+    const result = await EbayAdapter.getCategorySuggestion('fiber optic audio cable');
+    expect(result).toEqual({
+      categoryId: '181335',
+      categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450',
+      rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+  });
+});
+
+describe('getCategorySuggestion — ancestors without level fields', () => {
+  it('falls back to the LAST ancestor as root when categoryTreeNodeLevel is absent (eBay orders leaf-parent first, root last)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      categorySuggestions: [{
+        category: { categoryId: '181335', categoryName: 'Baseball Jackets' },
+        categoryTreeNodeAncestors: [
+          { categoryId: '181334', categoryName: 'Jackets & Vests' },
+          { categoryId: '1059', categoryName: "Men's Clothing" },
+          { categoryId: '11450', categoryName: 'Clothing, Shoes & Accessories' },
+        ],
+      }],
+    }), { status: 200 }));
+
+    const result = await EbayAdapter.getCategorySuggestion('no levels');
+    expect(result?.rootCategoryId).toBe('11450');
+  });
+});
+
+describe('getCategorySuggestion — mixed level fields', () => {
+  it('falls back to last-ancestor ordering when ANY entry lacks a level (partial levels cannot elect a leveled non-root)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      categorySuggestions: [{
+        category: { categoryId: '181335', categoryName: 'Baseball Jackets' },
+        categoryTreeNodeAncestors: [
+          { categoryId: '181334', categoryName: 'Jackets & Vests', categoryTreeNodeLevel: 3 },
+          { categoryId: '11450', categoryName: 'Clothing, Shoes & Accessories' }, // true root, level omitted
+        ],
+      }],
+    }), { status: 200 }));
+
+    const result = await EbayAdapter.getCategorySuggestion('mixed levels');
+    expect(result?.rootCategoryId).toBe('11450');
+  });
+});
+
+describe('isPlausibleRoot — vision-category vs eBay root sanity check', () => {
+  it('flags electronics vs Clothing root as implausible (the Baseball Jackets incident shape)', () => {
+    expect(EbayAdapter.isPlausibleRoot('electronics', '11450')).toBe(false);
+  });
+
+  it('fails open on an unknown vision value (schema is z.string, enum is prompt-convention only)', () => {
+    expect(EbayAdapter.isPlausibleRoot('sprockets', '11450')).toBe(true);
+  });
+
+  it('accepts electronics under its own plausible roots (Consumer Electronics, Computers, Musical Instruments & Gear)', () => {
+    expect(EbayAdapter.isPlausibleRoot('electronics', '293')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('electronics', '58058')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('electronics', '619')).toBe(true);
+  });
+
+  it('music maps: band-merch tee under Clothing is surprising-but-correct, must not flag', () => {
+    expect(EbayAdapter.isPlausibleRoot('music', '11450')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('music', '619')).toBe(true);
+  });
+
+  it('music has a real row — an absurd root (eBay Motors) flags instead of failing open', () => {
+    expect(EbayAdapter.isPlausibleRoot('music', '6000')).toBe(false);
+  });
+
+  it('clothing maps: Clothing and Sporting Goods roots pass, Consumer Electronics flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('clothing', '293')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('clothing', '11450')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('clothing', '888')).toBe(true);
+  });
+
+  it('sports maps: Sporting Goods, memorabilia, and apparel pass, eBay Motors flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('sports', '6000')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('sports', '888')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('sports', '64482')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('sports', '11450')).toBe(true);
+  });
+
+  it('furniture maps: Home & Garden and Antiques pass, Consumer Electronics flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('furniture', '293')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('furniture', '11700')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('furniture', '20081')).toBe(true);
+  });
+
+  it('collectibles maps: Collectibles, Antiques, memorabilia, coins, stamps, dolls pass, eBay Motors flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '6000')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '1')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '64482')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '11116')).toBe(true);
+  });
+
+  it('home maps: Home & Garden, Crafts, appliances-as-electronics, Pottery & Glass pass, Clothing flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('home', '11450')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('home', '11700')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('home', '14339')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('home', '293')).toBe(true);
+  });
+
+  it('books maps: Books & Magazines and Collectibles pass, Clothing flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('books', '11450')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('books', '267')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('books', '1')).toBe(true);
+  });
+
+  it('toys maps: Toys & Hobbies, Dolls & Bears, Video Games pass, Home & Garden flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('toys', '11700')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('toys', '220')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('toys', '237')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('toys', '1249')).toBe(true);
+  });
+
+  it('art maps: Art, Antiques, Crafts, Collectibles pass, Consumer Electronics flags; other stays fail-open', () => {
+    expect(EbayAdapter.isPlausibleRoot('art', '293')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('art', '550')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('art', '20081')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('other', '11450')).toBe(true);
+  });
+
+  it('jewelry maps: Jewelry & Watches, Antiques, Collectibles pass, eBay Motors flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('jewelry', '6000')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('jewelry', '281')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('jewelry', '20081')).toBe(true);
+  });
+
+  it('automotive maps: eBay Motors and Business & Industrial pass, Clothing flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('automotive', '11450')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('automotive', '6000')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('automotive', '12576')).toBe(true);
+  });
+
+  it('tools maps: Business & Industrial, Home & Garden, eBay Motors pass, Jewelry flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('tools', '281')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('tools', '12576')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('tools', '11700')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('tools', '6000')).toBe(true);
+  });
+});
+
+describe('resolveEbayCategoryId — mismatch guard on live resolution', () => {
+  it('warn-logs when the live suggestion is implausible for the persisted vision category, but returns the id unchanged', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    const warnSpy = loggerSpies.warn;
+
+    const resolved = await resolveEbayCategoryId(undefined, {
+      title: 'Fiber Optic Audio Cable',
+      marketplaceData: { scan: { visionCategory: 'electronics' } },
+    });
+
+    // Advisory only — the eBay id is never substituted or blocked.
+    expect(resolved.categoryId).toBe('181335');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ visionCategory: 'electronics', rootCategoryId: '11450' }),
+      expect.stringContaining('implausible'),
+    );
+  });
+});
+
 describe('resolveEbayCategoryId — self-healing leaf category for publish', () => {
   it('resolves by priority: explicit field > item cache > Taxonomy API (explicit/cache skip the API)', async () => {
     const spy = vi.spyOn(EbayAdapter, 'getCategorySuggestion')
-      .mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops' });
+      .mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops', rootCategoryId: null, rootCategoryName: null });
 
     // 1. an explicit categoryId on the listing wins and never calls the API (user/listing intent preserved)
     const explicit = await resolveEbayCategoryId({ categoryId: '177' }, { title: 'X', marketplaceData: null });

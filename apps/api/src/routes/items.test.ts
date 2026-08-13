@@ -622,6 +622,66 @@ describe('PATCH /items/:id', () => {
     expect(res.body.marketplaceData.ebay.categoryId).toBe('33034');
   });
 
+  it('persists marketplaceData.scan.visionCategory (Tier-2 mismatch-guard data, not stripped by Zod)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const mp = { scan: { visionCategory: 'electronics' } };
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, marketplaceData: mp }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ marketplaceData: mp });
+
+    expect(res.status).toBe(200);
+    const written = setSpy.mock.calls[0][0].marketplaceData;
+    expect(written.scan.visionCategory).toBe('electronics');
+  });
+
+  it('accepts an over-50-char scan.visionCategory (AI drift) — truncated, never a 400 that kills the save', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const mp = { scan: { visionCategory: 'electronics'.padEnd(90, 'y') } };
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, marketplaceData: mp }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ marketplaceData: mp });
+
+    expect(res.status).toBe(200);
+    const written = setSpy.mock.calls[0][0].marketplaceData;
+    expect(written.scan.visionCategory).toHaveLength(50);
+  });
+
+  it('keeps the scan entry title-free — the ebay title-preservation branch must not inject title:null into scan', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const mp = { scan: { visionCategory: 'electronics' } };
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, marketplaceData: mp }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ marketplaceData: mp });
+
+    expect(res.status).toBe(200);
+    const written = setSpy.mock.calls[0][0].marketplaceData;
+    expect(written.scan).toEqual({ visionCategory: 'electronics' });
+  });
+
   it('merges marketplaceData — a category-only edit preserves the AI title and sibling entries', async () => {
     // Existing item already carries an AI-optimized eBay title (csv-export reads it)
     // and a sibling etsy entry. A category-only edit must not wipe either.

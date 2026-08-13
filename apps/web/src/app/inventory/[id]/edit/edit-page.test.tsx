@@ -57,6 +57,9 @@ const scanAspectsState = {
   buildAspects: vi.fn(() => ({})),
   aspectsBlockPublish: false,
   resolveCategory: vi.fn(),
+  categoryMismatch: false,
+  resolvedVisionCategory: "electronics" as string | undefined,
+  dismissCategoryMismatch: vi.fn(),
 };
 vi.mock("@/hooks/use-scan-aspects", () => ({
   useScanAspects: () => scanAspectsState,
@@ -129,6 +132,16 @@ describe("EditItemPage — eBay taxonomy category + price", () => {
         },
       }),
     );
+  });
+
+  it("shows the mismatch banner when a resolution is implausible for the item's scanned kind", () => {
+    scanAspectsState.categoryMismatch = true;
+    try {
+      render(<EditItemPage />);
+      expect(screen.getByText(/Double-check this category/)).toBeInTheDocument();
+    } finally {
+      scanAspectsState.categoryMismatch = false;
+    }
   });
 
   it("constrains the Condition options to the resolved category's conditionIds", () => {

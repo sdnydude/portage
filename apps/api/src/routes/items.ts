@@ -66,6 +66,10 @@ const reverbCacheEntrySchema = z.object({
 const marketplaceDataSchema = z.object({
   ebay: marketplaceCacheEntrySchema.optional(),
   reverb: reverbCacheEntrySchema.optional(),
+  // Vision scan's coarse category — read by the category-mismatch guard on the
+  // edit page and the publish-time self-heal. The AI field is unbounded
+  // (schema-drift class) — truncate, never 400 the item save over it.
+  scan: z.object({ visionCategory: z.string().transform(s => s.slice(0, 50)) }).optional(),
 });
 
 const createItemSchema = z.object({
@@ -486,8 +490,9 @@ itemsRouter.patch('/:id', async (req, res, next) => {
         const prev = current[mk];
         merged[mk] = { ...prev, ...entry };
         // The edit flow never sends a title, so Zod's null default must not clobber
-        // a previously cached one. Reverb's entry shape has no title.
-        if (mk !== 'reverb') {
+        // a previously cached one. Only the ebay entry shape carries a title —
+        // reverb and scan must not get a title key injected.
+        if (mk === 'ebay') {
           const e = entry as { title?: string | null };
           merged[mk].title = e.title ?? (prev as { title?: string | null } | undefined)?.title ?? null;
         }

@@ -355,4 +355,173 @@ describe("useScanAspects", () => {
       { token: "t" },
     );
   });
+
+  it("passes visionCategory to the endpoint and exposes the mismatch flag (Baseball Jackets guard)", async () => {
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        return Promise.resolve({
+          suggestion: { categoryId: "181335", categoryName: "Baseball Jackets", conditionIds: [] },
+          mismatch: true,
+        });
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: {} });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    const { result } = renderHook(
+      ({ name, text }) => useScanAspects(name, text, undefined, "electronics"),
+      { initialProps: { name: "fiber optic audio cable", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.categoryMismatch).toBe(true);
+    expect(apiMock).toHaveBeenCalledWith(
+      "/marketplace/ebay/category-suggestion?q=fiber%20optic%20audio%20cable&visionCategory=electronics",
+      { token: "t" },
+    );
+  });
+
+  it("a dismissed mismatch stays dismissed when re-resolution returns the same category (title typo fix must not resurrect the banner)", async () => {
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        return Promise.resolve({
+          suggestion: { categoryId: "181335", categoryName: "Baseball Jackets", conditionIds: [] },
+          mismatch: true,
+        });
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: {} });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    const { result, rerender } = renderHook(
+      ({ name, text }) => useScanAspects(name, text, undefined, "electronics"),
+      { initialProps: { name: "fiber optic audio cable", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.categoryMismatch).toBe(true);
+
+    act(() => {
+      result.current.dismissCategoryMismatch();
+    });
+    expect(result.current.categoryMismatch).toBe(false);
+
+    rerender({ name: "fiber optic audio cable 3ft", text: "" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.categoryMismatch).toBe(false); // same category — dismissal holds
+  });
+
+  it("a dismissal does NOT suppress a different implausible category's banner (per-category memory)", async () => {
+    let categoryId = "181335";
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        return Promise.resolve({
+          suggestion: { categoryId, categoryName: "whatever", conditionIds: [] },
+          mismatch: true,
+        });
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: {} });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    const { result, rerender } = renderHook(
+      ({ name, text }) => useScanAspects(name, text, undefined, "electronics"),
+      { initialProps: { name: "fiber optic audio cable", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    act(() => {
+      result.current.dismissCategoryMismatch();
+    });
+    expect(result.current.categoryMismatch).toBe(false);
+
+    categoryId = "57988"; // different implausible category — a NEW situation
+    rerender({ name: "totally different item", text: "" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.categoryMismatch).toBe(true);
+  });
+
+  it("exposes the visionCategory snapshot the current resolution was computed against (banner text consistency)", async () => {
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        return Promise.resolve({
+          suggestion: { categoryId: "181335", categoryName: "Baseball Jackets", conditionIds: [] },
+          mismatch: true,
+        });
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: {} });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    const { result, rerender } = renderHook(
+      ({ name, text, vision }: { name: string; text: string; vision: string }) =>
+        useScanAspects(name, text, undefined, vision),
+      { initialProps: { name: "fiber optic audio cable", text: "", vision: "electronics" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.resolvedVisionCategory).toBe("electronics");
+
+    // Vision prop changes (candidate switch) but the next fetch FAILS — the
+    // snapshot must stay on the value the shown resolution was computed with.
+    apiMock.mockImplementation(() => Promise.reject(new Error("network down")));
+    rerender({ name: "different candidate name", text: "", vision: "clothing" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.resolvedVisionCategory).toBe("electronics");
+  });
+
+  it("clears the mismatch flag when a manual re-resolution comes back clean", async () => {
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        return Promise.resolve({
+          suggestion: { categoryId: "181335", categoryName: "Baseball Jackets", conditionIds: [] },
+          mismatch: true,
+        });
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: {} });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    const { result } = renderHook(
+      ({ name, text }) => useScanAspects(name, text, undefined, "electronics"),
+      { initialProps: { name: "fiber optic audio cable", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.categoryMismatch).toBe(true);
+
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        return Promise.resolve({
+          suggestion: { categoryId: "14970", categoryName: "Cables, Snakes & Interconnects", conditionIds: [] },
+          mismatch: false,
+        });
+      }
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) {
+        return Promise.resolve({ aspects: {} });
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    await act(async () => {
+      await result.current.resolveCategory("audio snake cable");
+    });
+    expect(result.current.categoryMismatch).toBe(false);
+    expect(result.current.resolvedCategoryName).toBe("Cables, Snakes & Interconnects");
+  });
 });
