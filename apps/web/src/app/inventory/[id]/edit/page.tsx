@@ -87,7 +87,17 @@ export default function EditItemPage() {
     resolveCategory,
     isCategoryResolving,
     conditionIds,
-  } = useScanAspects(title, `${title} ${description}`);
+    categoryMismatch,
+    resolvedVisionCategory,
+    dismissCategoryMismatch,
+    clearCategoryResolution,
+  } = useScanAspects(
+    title,
+    `${title} ${description}`,
+    undefined,
+    // Persisted vision coarse category (Tier-2) feeds the mismatch guard.
+    item?.marketplaceData?.scan?.visionCategory,
+  );
   const availableConditions = getAvailablePortageConditions(conditionIds);
   const conditionOptions = availableConditions.length > 0
     ? conditions.filter((c) =>
@@ -264,6 +274,37 @@ export default function EditItemPage() {
                 ? resolvedCategoryName
                 : category || "Not set — search below"}
           </div>
+          {categoryMismatch && !isCategoryResolving && resolvedCategoryId !== null && (
+            <div className="mt-2 px-3 py-2.5 rounded-xl border border-[var(--accent-warning,#b45309)] bg-[color-mix(in_srgb,var(--accent-warning,#b45309)_10%,transparent)] text-sm text-text-primary">
+              <p>
+                Double-check this category — eBay suggests{" "}
+                <strong>{resolvedCategoryName ?? resolvedCategoryId}</strong>, which doesn&apos;t look
+                like a match for what was scanned
+                {resolvedVisionCategory ? ` (${resolvedVisionCategory})` : ""}.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={dismissCategoryMismatch}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-primary"
+                >
+                  Use anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Rejecting the suggestion also withdraws the explicit
+                    // resolve flag — Save keeps the stored category.
+                    setCategoryUserResolved(false);
+                    clearCategoryResolution();
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-primary"
+                >
+                  Don&apos;t use it
+                </button>
+              </div>
+            </div>
+          )}
           <div className="mt-2 flex gap-2">
             <input
               type="text"

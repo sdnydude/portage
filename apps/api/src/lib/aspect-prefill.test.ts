@@ -38,7 +38,7 @@ beforeEach(() => {
 
 describe('prefillCandidateAspects', () => {
   it('fills the top candidate aspects from generateListingFields output', async () => {
-    vi.mocked(EbayAdapter.getCategorySuggestion).mockResolvedValue({ categoryId: '9355', categoryName: 'Headphones' });
+    vi.mocked(EbayAdapter.getCategorySuggestion).mockResolvedValue({ categoryId: '9355', categoryName: 'Headphones', rootCategoryId: null, rootCategoryName: null });
     vi.mocked(EbayAdapter.getRequiredAspects).mockResolvedValue({
       Brand: { required: true, values: null, cardinality: 'SINGLE' },
     });
@@ -52,7 +52,7 @@ describe('prefillCandidateAspects', () => {
   });
 
   it('forwards imageBase64 as a pre-fetched image to generateListingFields', async () => {
-    vi.mocked(EbayAdapter.getCategorySuggestion).mockResolvedValue({ categoryId: '9355', categoryName: 'Headphones' });
+    vi.mocked(EbayAdapter.getCategorySuggestion).mockResolvedValue({ categoryId: '9355', categoryName: 'Headphones', rootCategoryId: null, rootCategoryName: null });
     vi.mocked(EbayAdapter.getRequiredAspects).mockResolvedValue({});
     vi.mocked(generateListingFields).mockResolvedValue({
       ebay: { aspects: {} },
@@ -76,7 +76,7 @@ describe('prefillCandidateAspects', () => {
   });
 
   it('is non-fatal — returns candidates unchanged when generateListingFields throws', async () => {
-    vi.mocked(EbayAdapter.getCategorySuggestion).mockResolvedValue({ categoryId: '9355', categoryName: 'Headphones' });
+    vi.mocked(EbayAdapter.getCategorySuggestion).mockResolvedValue({ categoryId: '9355', categoryName: 'Headphones', rootCategoryId: null, rootCategoryName: null });
     vi.mocked(EbayAdapter.getRequiredAspects).mockResolvedValue({
       Brand: { required: true, values: null, cardinality: 'SINGLE' },
     });
@@ -88,7 +88,7 @@ describe('prefillCandidateAspects', () => {
   });
 
   it('fills only the top candidate, leaving other candidates untouched', async () => {
-    vi.mocked(EbayAdapter.getCategorySuggestion).mockResolvedValue({ categoryId: '9355', categoryName: 'Headphones' });
+    vi.mocked(EbayAdapter.getCategorySuggestion).mockResolvedValue({ categoryId: '9355', categoryName: 'Headphones', rootCategoryId: null, rootCategoryName: null });
     vi.mocked(EbayAdapter.getRequiredAspects).mockResolvedValue({});
     vi.mocked(generateListingFields).mockResolvedValue({
       ebay: { aspects: { Brand: ['Sony'] } },

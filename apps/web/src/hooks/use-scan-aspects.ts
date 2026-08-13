@@ -16,11 +16,25 @@ export function useScanAspects(
   editName: string,
   itemText: string,
   aiAspects?: Record<string, string[]>,
+  // Vision scan's coarse category — sent to the suggestion endpoint so the
+  // server can flag implausible suggestions (advisory only, never blocks).
+  visionCategory?: string,
 ) {
   const { token } = useAuth();
   const [resolvedCategoryId, setResolvedCategoryId] = useState<string | null>(null);
   const [resolvedCategoryName, setResolvedCategoryName] = useState<string | null>(null);
   const [conditionIds, setConditionIds] = useState<string[]>([]);
+  const [categoryMismatch, setCategoryMismatch] = useState(false);
+  // The visionCategory value the CURRENT resolution was computed against —
+  // banner text must quote this snapshot, not the live candidate prop, or a
+  // failed re-resolve after a candidate switch mixes two candidates' data.
+  const [resolvedVisionCategory, setResolvedVisionCategory] = useState<string | undefined>(undefined);
+  // "Use anyway" is a per-category decision: remember which categoryId was
+  // dismissed so a re-resolution to the SAME category (title typo fix) doesn't
+  // resurrect the banner; a different category is a new situation.
+  const dismissedCategoryId = useRef<string | null>(null);
+  // Ref mirror of resolvedCategoryId so dismissCategoryMismatch keeps a stable identity.
+  const resolvedIdRef = useRef<string | null>(null);
   const [isCategoryResolving, setIsCategoryResolving] = useState(false);
   const [aspectValues, setAspectValues] = useState<Record<string, string>>({});
   // Names whose current value was auto-filled from the AI scan and not yet edited
@@ -110,25 +124,36 @@ export function useScanAspects(
         setResolvedCategoryId(null);
         setResolvedCategoryName(null);
         setConditionIds([]);
+        setCategoryMismatch(false);
         setIsCategoryResolving(false);
         return;
       }
       setIsCategoryResolving(true);
       try {
-        const data = await api<{ suggestion: CategorySuggestion | null }>(
-          `/marketplace/ebay/category-suggestion?q=${encodeURIComponent(name)}`,
+        const visionParam = visionCategory?.trim()
+          ? `&visionCategory=${encodeURIComponent(visionCategory)}`
+          : "";
+        const data = await api<{ suggestion: CategorySuggestion | null; mismatch?: boolean }>(
+          `/marketplace/ebay/category-suggestion?q=${encodeURIComponent(name)}${visionParam}`,
           { token },
         );
         if (seq !== requestSeq.current) return;
         if (data.suggestion) {
+          resolvedIdRef.current = data.suggestion.categoryId;
           setResolvedCategoryId(data.suggestion.categoryId);
           setResolvedCategoryName(data.suggestion.categoryName);
+          setResolvedVisionCategory(visionCategory);
           setConditionIds(data.suggestion.conditionIds ?? []);
+          setCategoryMismatch(
+            data.mismatch === true
+            && data.suggestion.categoryId !== dismissedCategoryId.current,
+          );
         } else {
           // Graceful degrade — no match is not an error state.
           setResolvedCategoryId(null);
           setResolvedCategoryName(null);
           setConditionIds([]);
+          setCategoryMismatch(false);
         }
       } catch {
         // Transient failure (network, 5xx): retain the previous resolution.
@@ -139,7 +164,7 @@ export function useScanAspects(
         if (seq === requestSeq.current) setIsCategoryResolving(false);
       }
     },
-    [token],
+    [token, visionCategory],
   );
 
   useEffect(() => {
@@ -148,6 +173,7 @@ export function useScanAspects(
       setResolvedCategoryId(null);
       setResolvedCategoryName(null);
       setConditionIds([]);
+      setCategoryMismatch(false);
       setIsCategoryResolving(false);
       return;
     }
@@ -165,6 +191,28 @@ export function useScanAspects(
     resolvedCategoryId,
     resolvedCategoryName,
     conditionIds,
+    categoryMismatch,
+    resolvedVisionCategory,
+    dismissCategoryMismatch: useCallback(() => {
+      dismissedCategoryId.current = resolvedIdRef.current;
+      setCategoryMismatch(false);
+    }, []),
+    // "Don't use it" — reject the suggestion outright: back to unresolved, so
+    // saves fall through to the stored/vision category and publish resolves
+    // later via the self-heal path. Bump the sequence so an in-flight
+    // resolution can't resurrect the rejected suggestion.
+    clearCategoryResolution: useCallback(() => {
+      requestSeq.current++;
+      // Rejection persists at least as strongly as "Use anyway": if a later
+      // resolution returns the same category, don't re-flag it.
+      dismissedCategoryId.current = resolvedIdRef.current;
+      resolvedIdRef.current = null;
+      setResolvedCategoryId(null);
+      setResolvedCategoryName(null);
+      setConditionIds([]);
+      setCategoryMismatch(false);
+      setIsCategoryResolving(false);
+    }, []),
     isCategoryResolving,
     isAspectsLoading,
     aspects,

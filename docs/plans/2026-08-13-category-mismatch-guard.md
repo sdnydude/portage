@@ -1,6 +1,6 @@
 # Category Mismatch Guard — Implementation Plan
 
-**Date:** 2026-08-13 · **Status:** DRAFT — awaiting operator approval
+**Date:** 2026-08-13 · **Status:** APPROVED (operator, 05:23 ET, Tier 2 in) — build complete, PoD in progress
 **Trigger incident:** eBay Taxonomy suggested "Baseball Jackets" (leaf 181335, Clothing tree) for a fiber-optic audio cable title; scan-flow silently saved it as the item's category and cached it for publish (2026-08-10 item, discovered 2026-08-12 during Porter PoD).
 
 ## Problem
@@ -31,34 +31,34 @@ Per rule 00: Tier 2 is NOT silently deferred — it ships with Tier 1 unless the
 ## Task list
 
 ### Phase 1 — adapter (TDD, one test per write)
-- [ ] 1.1 Test: `getCategorySuggestion` parses `categoryTreeNodeAncestors` → `rootCategoryId`/`rootCategoryName` — red
-- [ ] 1.2 Implement ancestor parsing — green
-- [ ] 1.3 Test: `isPlausibleRoot()` true for mapped root — red; implement table + helper — green
-- [ ] 1.4 Test: fail-open — unknown vision value returns plausible (no mismatch) — green loop
-- [ ] 1.5 Test: fail-open — missing/empty ancestors returns plausible — green loop
-- [ ] 1.6 Test: `resolveEbayCategoryId` warn-logs on mismatch, still returns eBay's id unchanged — green loop
+- [x] 1.1 Test: `getCategorySuggestion` parses `categoryTreeNodeAncestors` → `rootCategoryId`/`rootCategoryName` — red
+- [x] 1.2 Implement ancestor parsing — green
+- [x] 1.3 Test: `isPlausibleRoot()` true for mapped root — red; implement table + helper — green
+- [x] 1.4 Test: fail-open — unknown vision value returns plausible (no mismatch) — green loop
+- [x] 1.5 Test: fail-open — missing/empty ancestors returns plausible — green loop
+- [x] 1.6 Test: `resolveEbayCategoryId` warn-logs on mismatch, still returns eBay's id unchanged — done as part of 4.3 (needs the Tier-2 persisted vision category)
 
 ### Phase 2 — route (TDD)
-- [ ] 2.1 Test: `/category-suggestion?visionCategory=electronics` returns `mismatch: true` for clothing-root suggestion — red; implement — green
-- [ ] 2.2 Test: omitted `visionCategory` → `mismatch: false` — green loop
-- [ ] 2.3 Test: response keeps existing `suggestion` + `conditionIds` shape untouched (regression pin) — green loop
+- [x] 2.1 Test: `/category-suggestion?visionCategory=electronics` returns `mismatch: true` for clothing-root suggestion — red; implement — green
+- [x] 2.2 Test: omitted `visionCategory` → `mismatch: false` — green loop
+- [x] 2.3 Test: response keeps existing `suggestion` + `conditionIds` shape untouched (regression pin) — green loop
 
 ### Phase 3 — web hook + UI
-- [ ] 3.1 `use-scan-aspects`: pass `visionCategory`, expose `mismatch` (+ test)
-- [ ] 3.2 scan-flow: banner render on mismatch (+ test)
-- [ ] 3.3 scan-flow: "Use anyway" dismiss + "Find different category" focus action (+ test)
-- [ ] 3.4 Banner clears when user manually resolves a different category (+ test)
+- [x] 3.1 `use-scan-aspects`: pass `visionCategory`, expose `mismatch` (+ test)
+- [x] 3.2 scan-flow: banner render on mismatch (+ test)
+- [x] 3.3 scan-flow: "Use anyway" dismiss + "Find different category" focus action (+ test)
+- [x] 3.4 Banner clears when user manually resolves a different category (+ test)
 
 ### Phase 4 — Tier 2 persistence (unless operator splits it out)
-- [ ] 4.1 scan-flow save paths write `marketplace_data.scan.visionCategory` (atomic JSONB merge pattern, decision_api_atomic_jsonb_merge)
-- [ ] 4.2 Edit page: seed `visionCategory` from item's persisted value, banner works there (+ test)
-- [ ] 4.3 Self-heal path reads persisted value when live scan state absent (+ test)
+- [x] 4.1 scan-flow save paths write `marketplace_data.scan.visionCategory` (atomic JSONB merge pattern, decision_api_atomic_jsonb_merge)
+- [x] 4.2 Edit page: seed `visionCategory` from item's persisted value, banner works there (+ test)
+- [x] 4.3 Self-heal path reads persisted value when live scan state absent (+ test)
 
 ### Phase 5 — verification (PoD)
-- [ ] 5.1 `npm run test:api` + web tests + typecheck + lint all green
-- [ ] 5.2 Rebuild containers, live scan of a real item with a deliberately confusing title — banner appears, screenshot
-- [ ] 5.3 Live scan of a normal item — no banner (false-positive check), screenshot
-- [ ] 5.4 Screenshots delivered; ground truth verified against DB rows
+- [x] 5.1 `npm run test:api` + web tests + typecheck + lint all green
+- [x] 5.2 Containers rebuilt; live banner proven on edit page — real eBay suggestion (Coats, Jackets & Vests root 11450) vs scanned electronics; screenshot delivered
+- [x] 5.3 Same item auto-resolve (Audio Cables & Interconnects root 293) — mismatch:false, no banner; screenshot delivered
+- [x] 5.4 3 screenshots delivered; mismatch flags verified against live endpoint responses + seeded scan.visionCategory rows
 - [ ] 5.5 Commit/push/PR — per-action approval each
 
 ## Risk analysis & mitigation
