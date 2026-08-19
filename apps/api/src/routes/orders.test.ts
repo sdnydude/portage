@@ -21,6 +21,10 @@ vi.mock('../marketplace/ebay-adapter.js', () => ({
 }));
 
 const mockReverbGetOrders = vi.fn();
+vi.mock('../marketplace/ebay-deletion-anonymize.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../marketplace/ebay-deletion-anonymize.js')>();
+  return { ...actual, findDeletedEbayIdentities: vi.fn(async () => new Map<string, string>()), sweepDeletedBuyerRows: vi.fn(async () => ({ orders: 0, messages: 0 })) };
+});
 vi.mock('../marketplace/reverb-adapter.js', () => ({
   ReverbAdapter: vi.fn(() => ({ getOrders: mockReverbGetOrders })),
 }));

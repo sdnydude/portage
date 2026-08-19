@@ -1,7 +1,33 @@
 import { z } from 'zod';
 import { validateCfAccessAud } from './cf-access-config.js';
+import { missingProdEnv } from './prod-env-guard.js';
 import dotenv from 'dotenv';
 import { resolve } from 'node:path';
+import { isIPv4, isIPv6 } from 'node:net';
+
+/**
+ * eBay guide: the deletion endpoint "should use the 'https' protocol, and it
+ * should not contain an internal IP address or 'localhost'". Only IP LITERALS
+ * are range-checked — hostnames are never prefix-matched (a public host like
+ * fdx.example.com must not brick boot).
+ */
+export function isPublicHttpsUrl(u: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(u);
+    if (protocol !== 'https:') return false;
+    const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (host === 'localhost' || host.endsWith('.localhost')) return false;
+    if (isIPv4(host)) {
+      return !/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.)/.test(host);
+    }
+    if (isIPv6(host)) {
+      return !(host === '::1' || host === '::' || /^(fc|fd|fe[89ab])/.test(host));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -45,6 +71,14 @@ export const envSchema = z.object({
   STRIPE_PRICE_MONTHLY: z.string().optional(),
   STRIPE_PRICE_ANNUAL: z.string().optional(),
   STRIPE_PRICE_CREDITS: z.string().optional(),
+  // eBay Marketplace Account Deletion endpoint (public, signature-verified).
+  // TOKEN: 32-80 chars [A-Za-z0-9_-] per eBay; URL: the EXACT string registered
+  // in the eBay developer portal — both feed the challenge-response hash.
+  EBAY_DELETION_VERIFICATION_TOKEN: z.string().regex(/^[A-Za-z0-9_-]{32,80}$/, 'must be 32-80 chars of [A-Za-z0-9_-] (eBay verification-token rule)').optional(),
+  // eBay guide: "should use the 'https' protocol, and it should not contain an
+  // internal IP address or 'localhost'". Public hostname only.
+  EBAY_DELETION_ENDPOINT_URL: z.string().url().refine(isPublicHttpsUrl,
+    'must be a public https URL (no localhost / internal IP) — eBay endpoint rule').optional(),
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_EMAIL: z.string().optional(),
@@ -94,6 +128,15 @@ export const envSchema = z.object({
         message: (err as Error).message,
       });
     }
+  }
+  // Statically-required production keys — one issue per missing key so a
+  // single failed boot names the whole gap (see prod-env-guard.ts).
+  for (const key of missingProdEnv(value, value.NODE_ENV)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [key],
+      message: `${key} is required in production (boot guard). Check Doppler and resync the env file.`,
+    });
   }
 });
 

@@ -16,6 +16,11 @@ vi.mock('../marketplace/token-manager.js', () => ({
   getEbayAccessToken: vi.fn(),
 }));
 
+vi.mock('../marketplace/ebay-deletion-anonymize.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../marketplace/ebay-deletion-anonymize.js')>();
+  return { ...actual, findDeletedEbayIdentities: vi.fn(async () => new Map<string, string>()), sweepDeletedBuyerRows: vi.fn(async () => ({ orders: 0, messages: 0 })) };
+});
+
 vi.mock('../marketplace/ebay-trading-client.js', () => ({
   callTradingApi: vi.fn(),
   parseGetMemberMessages: vi.fn(),
@@ -25,6 +30,7 @@ vi.mock('../marketplace/ebay-trading-client.js', () => ({
 import { db } from '../db/index.js';
 import { getEbayAccessToken } from '../marketplace/token-manager.js';
 import { callTradingApi, parseGetMemberMessages, buildReplyXml } from '../marketplace/ebay-trading-client.js';
+import { findDeletedEbayIdentities, sweepDeletedBuyerRows } from '../marketplace/ebay-deletion-anonymize.js';
 
 let app: ReturnType<typeof createApp>;
 let token: string;
@@ -499,6 +505,52 @@ describe('messages routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.synced).toBe(1);
       expect(vi.mocked(callTradingApi)).toHaveBeenCalled();
+    });
+
+    it('writes the redaction marker instead of live PII when the buyer was anonymized by an eBay account-deletion notification', async () => {
+      vi.mocked(getEbayAccessToken).mockResolvedValue('mock-token');
+      vi.mocked(callTradingApi).mockResolvedValue({ GetMemberMessagesResponse: { Ack: 'Success' } });
+      vi.mocked(parseGetMemberMessages).mockReturnValue([
+        {
+          ebayMessageId: 'msg-del-1',
+          buyerUsername: 'Gone_Buyer',
+          itemId: '777',
+          itemTitle: 'Amp',
+          subject: 'Still available?',
+          body: 'Hi, my address is 1 Main St',
+          direction: 'inbound',
+          messageType: 'asq',
+          ebayCreatedAt: '2026-05-18T10:00:00Z',
+        },
+      ]);
+      vi.mocked(findDeletedEbayIdentities).mockResolvedValueOnce(new Map([['gone_buyer', 'abcdef0123456789']]));
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ notificationPreferences: null }]) }),
+        }),
+      } as any);
+
+      const values = vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'uuid-del', ebayMessageId: 'msg-del-1' }]) }),
+      });
+      vi.mocked(db.insert).mockReturnValueOnce({ values } as any);
+
+      const res = await request(app).post('/messages/sync').set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(findDeletedEbayIdentities).toHaveBeenCalledWith(['Gone_Buyer']);
+      // No buyer_message notification for a deleted buyer (its title/body would carry PII).
+      expect(db.insert).toHaveBeenCalledTimes(1);
+      expect(values).toHaveBeenCalledWith(expect.objectContaining({
+        buyerUsername: 'deleted-ebay-user',
+        conversationKey: 'deleted-ebay-user-abcdef01:777',
+        subject: '',
+        body: '[redacted: eBay account deletion]',
+      }));
+      expect(JSON.stringify(values.mock.calls[0][0])).not.toContain('Gone_Buyer');
+      expect(JSON.stringify(values.mock.calls[0][0])).not.toContain('1 Main St');
+      // Post-sync sweep re-checks the batch (closes the guard-check → deletion-commit race).
+      expect(sweepDeletedBuyerRows).toHaveBeenCalledWith(['Gone_Buyer']);
     });
   });
 });

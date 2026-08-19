@@ -18,6 +18,7 @@ import { porterRouter } from './routes/porter.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { ebayAuthRouter } from './routes/marketplace/ebay-auth.js';
 import { reverbAuthRouter } from './routes/marketplace/reverb-auth.js';
+import { ebayDeletionRouter } from './routes/marketplace/ebay-deletion.js';
 import { adminRouter } from './routes/admin.js';
 import { disclaimerRouter } from './routes/disclaimer.js';
 import { faqsRouter } from './routes/faqs.js';
@@ -53,6 +54,15 @@ export function createApp() {
   }));
 
   app.use('/billing', billingWebhookRouter);
+  // eBay Marketplace Account Deletion — public, signature-verified, raw body
+  // (own 100kb parser), mounted before express.json like the Stripe webhook.
+  app.use('/marketplace/ebay/account-deletion', ebayDeletionRouter);
+  // The URL must match the eBay portal registration byte-for-byte (it feeds
+  // the challenge hash) — surface it in the boot log for live verification.
+  rootLogger.info(
+    { endpointUrl: config.EBAY_DELETION_ENDPOINT_URL ?? null, tokenConfigured: Boolean(config.EBAY_DELETION_VERIFICATION_TOKEN) },
+    'eBay account-deletion endpoint mounted at /marketplace/ebay/account-deletion',
+  );
   app.use(express.json({ limit: '10mb' }));
   app.use(pinoHttp({ logger: rootLogger }));
 

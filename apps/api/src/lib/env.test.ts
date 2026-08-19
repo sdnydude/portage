@@ -6,6 +6,24 @@ const baseEnv = {
   ENCRYPTION_KEY: 'y'.repeat(64),
 };
 
+// Fully-populated production env: every key the prod boot guard requires.
+const prodEnv = {
+  ...baseEnv,
+  NODE_ENV: 'production',
+  CF_ACCESS_AUD: 'a'.repeat(64) + ',' + 'b'.repeat(64),
+  R2_ACCOUNT_ID: 'acct',
+  R2_ACCESS_KEY_ID: 'key',
+  R2_SECRET_ACCESS_KEY: 'secret',
+  R2_BUCKET_NAME: 'bucket',
+  R2_PUBLIC_URL: 'https://r2.example.com',
+  EBAY_CLIENT_ID: 'ebay-id',
+  EBAY_CLIENT_SECRET: 'ebay-secret',
+  STRIPE_SECRET_KEY: 'sk_live_x',
+  STRIPE_WEBHOOK_SECRET: 'whsec_x',
+  EBAY_DELETION_VERIFICATION_TOKEN: 'v'.repeat(40),
+  EBAY_DELETION_ENDPOINT_URL: 'https://portage-api.digitalharmonyai.com/marketplace/ebay/account-deletion',
+};
+
 describe('envSchema', () => {
   it('rejects a production environment without CF_ACCESS_AUD', () => {
     const result = envSchema.safeParse({ ...baseEnv, NODE_ENV: 'production' });
@@ -36,6 +54,62 @@ describe('envSchema', () => {
     expect(result.success && result.data.LANGFUSE_PUBLIC_KEY).toBe('pk-lf-1');
     expect(result.success && result.data.LANGFUSE_SECRET_KEY).toBe('sk-lf-1');
     expect(envSchema.safeParse(baseEnv).success).toBe(true);
+  });
+
+  it('rejects a production environment missing EBAY_DELETION_VERIFICATION_TOKEN by name', () => {
+    const result = envSchema.safeParse({ ...prodEnv, EBAY_DELETION_VERIFICATION_TOKEN: undefined });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(Object.keys(result.error.flatten().fieldErrors)).toContain('EBAY_DELETION_VERIFICATION_TOKEN');
+    }
+  });
+
+  it('names EVERY missing production key in one aggregate error, not just the first', () => {
+    const result = envSchema.safeParse({
+      ...prodEnv,
+      EBAY_DELETION_VERIFICATION_TOKEN: undefined,
+      EBAY_DELETION_ENDPOINT_URL: '',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const keys = Object.keys(result.error.flatten().fieldErrors);
+      expect(keys).toEqual(expect.arrayContaining(['EBAY_DELETION_VERIFICATION_TOKEN', 'EBAY_DELETION_ENDPOINT_URL']));
+    }
+  });
+
+  it('does not require the production-only keys outside production', () => {
+    const result = envSchema.safeParse({ ...baseEnv, NODE_ENV: 'development' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a fully-populated production environment', () => {
+    const result = envSchema.safeParse(prodEnv);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an EBAY_DELETION_VERIFICATION_TOKEN outside eBay\'s 32-80 char [A-Za-z0-9_-] rule', () => {
+    const short = envSchema.safeParse({ ...prodEnv, EBAY_DELETION_VERIFICATION_TOKEN: 'short' });
+    expect(short.success).toBe(false);
+    if (!short.success) {
+      expect(Object.keys(short.error.flatten().fieldErrors)).toContain('EBAY_DELETION_VERIFICATION_TOKEN');
+    }
+    const badChars = envSchema.safeParse({ ...prodEnv, EBAY_DELETION_VERIFICATION_TOKEN: 'x'.repeat(31) + '!' });
+    expect(badChars.success).toBe(false);
+  });
+
+  it('rejects an EBAY_DELETION_ENDPOINT_URL that is not https or points at localhost/an internal address (eBay rule)', () => {
+    for (const bad of ['http://portage-api.digitalharmonyai.com/x', 'https://localhost:8016/x', 'https://10.0.0.251:8016/x', 'https://127.0.0.1/x', 'not a url']) {
+      const r = envSchema.safeParse({ ...prodEnv, EBAY_DELETION_ENDPOINT_URL: bad });
+      expect(r.success, bad).toBe(false);
+      if (!r.success) expect(Object.keys(r.error.flatten().fieldErrors)).toContain('EBAY_DELETION_ENDPOINT_URL');
+    }
+    // Public hostnames that merely START with an IPv6-prefix-looking string are fine.
+    for (const good of ['https://fdx.example.com/x', 'https://fe80cdn.io/x', 'https://fcshop.com/x', 'https://portage-api.digitalharmonyai.com/marketplace/ebay/account-deletion']) {
+      expect(envSchema.safeParse({ ...prodEnv, EBAY_DELETION_ENDPOINT_URL: good }).success, good).toBe(true);
+    }
+    for (const badV6 of ['https://[::1]/x', 'https://[fe80::1]/x', 'https://[fd00::1]/x']) {
+      expect(envSchema.safeParse({ ...prodEnv, EBAY_DELETION_ENDPOINT_URL: badV6 }).success, badV6).toBe(false);
+    }
   });
 
   it('rejects a LANGFUSE_SAMPLE_RATE outside 0..1', () => {
