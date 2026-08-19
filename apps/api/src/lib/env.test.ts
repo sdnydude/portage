@@ -20,6 +20,9 @@ const prodEnv = {
   EBAY_CLIENT_SECRET: 'ebay-secret',
   STRIPE_SECRET_KEY: 'sk_live_x',
   STRIPE_WEBHOOK_SECRET: 'whsec_x',
+  STRIPE_PRICE_MONTHLY: 'price_m',
+  STRIPE_PRICE_ANNUAL: 'price_a',
+  STRIPE_PRICE_CREDITS: 'price_c',
   EBAY_DELETION_VERIFICATION_TOKEN: 'v'.repeat(40),
   EBAY_DELETION_ENDPOINT_URL: 'https://portage-api.digitalharmonyai.com/marketplace/ebay/account-deletion',
 };
@@ -109,6 +112,48 @@ describe('envSchema', () => {
     }
     for (const badV6 of ['https://[::1]/x', 'https://[fe80::1]/x', 'https://[fd00::1]/x']) {
       expect(envSchema.safeParse({ ...prodEnv, EBAY_DELETION_ENDPOINT_URL: badV6 }).success, badV6).toBe(false);
+    }
+  });
+
+  it('requires the R2 / eBay / Stripe keys in production, naming each missing one', () => {
+    const result = envSchema.safeParse({
+      ...prodEnv,
+      R2_ACCOUNT_ID: undefined,
+      R2_ACCESS_KEY_ID: undefined,
+      R2_SECRET_ACCESS_KEY: undefined,
+      R2_BUCKET_NAME: undefined,
+      R2_PUBLIC_URL: undefined,
+      EBAY_CLIENT_ID: undefined,
+      EBAY_CLIENT_SECRET: undefined,
+      STRIPE_SECRET_KEY: undefined,
+      STRIPE_WEBHOOK_SECRET: undefined,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(Object.keys(result.error.flatten().fieldErrors).sort()).toEqual([
+        'EBAY_CLIENT_ID|EBAY_PROD_CLIENT_ID', 'EBAY_CLIENT_SECRET|EBAY_PROD_CLIENT_SECRET',
+        'R2_ACCESS_KEY_ID', 'R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'R2_PUBLIC_URL', 'R2_SECRET_ACCESS_KEY',
+        'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',
+      ]);
+    }
+  });
+
+  it('accepts eBay credentials from EITHER the base or the PROD keyset (runtime falls back EBAY_PROD_* → EBAY_*), and requires the Stripe price ids', () => {
+    // prod keyset only — how a prod Doppler config may legitimately look
+    const prodOnly = envSchema.safeParse({ ...prodEnv, EBAY_CLIENT_ID: undefined, EBAY_CLIENT_SECRET: undefined, EBAY_PROD_CLIENT_ID: 'p-id', EBAY_PROD_CLIENT_SECRET: 'p-secret' });
+    expect(prodOnly.success).toBe(true);
+    // neither keyset → named as a group
+    const neither = envSchema.safeParse({ ...prodEnv, EBAY_CLIENT_ID: undefined, EBAY_CLIENT_SECRET: undefined });
+    expect(neither.success).toBe(false);
+    if (!neither.success) {
+      const keys = Object.keys(neither.error.flatten().fieldErrors);
+      expect(keys).toEqual(expect.arrayContaining(['EBAY_CLIENT_ID|EBAY_PROD_CLIENT_ID', 'EBAY_CLIENT_SECRET|EBAY_PROD_CLIENT_SECRET']));
+    }
+    // checkout dies at request time without price ids — same class the guard exists for
+    const noPrices = envSchema.safeParse({ ...prodEnv, STRIPE_PRICE_MONTHLY: undefined, STRIPE_PRICE_ANNUAL: '', STRIPE_PRICE_CREDITS: undefined });
+    expect(noPrices.success).toBe(false);
+    if (!noPrices.success) {
+      expect(Object.keys(noPrices.error.flatten().fieldErrors)).toEqual(expect.arrayContaining(['STRIPE_PRICE_MONTHLY', 'STRIPE_PRICE_ANNUAL', 'STRIPE_PRICE_CREDITS']));
     }
   });
 
