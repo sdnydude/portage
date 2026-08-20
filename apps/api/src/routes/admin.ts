@@ -813,7 +813,24 @@ adminRouter.get('/audit', async (req, res, next) => {
 
     const [{ total }] = await db.select({ total: count() }).from(adminAuditLog).where(where);
 
-    const rows = await db.select().from(adminAuditLog).where(where).orderBy(desc(adminAuditLog.createdAt)).limit(limit).offset(offset);
+    // LEFT JOIN: admin_user_id is NULL for system-actor rows (eBay account
+    // deletion), and the UI needs the actor email for the rest.
+    const rows = await db.select({
+      id: adminAuditLog.id,
+      adminUserId: adminAuditLog.adminUserId,
+      adminEmail: users.email,
+      action: adminAuditLog.action,
+      targetType: adminAuditLog.targetType,
+      targetId: adminAuditLog.targetId,
+      details: adminAuditLog.details,
+      createdAt: adminAuditLog.createdAt,
+    })
+      .from(adminAuditLog)
+      .leftJoin(users, eq(users.id, adminAuditLog.adminUserId))
+      .where(where)
+      .orderBy(desc(adminAuditLog.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     res.json({ entries: rows, total, page, limit });
   } catch (err) {

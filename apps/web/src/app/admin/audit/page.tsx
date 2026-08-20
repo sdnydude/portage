@@ -5,8 +5,9 @@ import { useAdminApi } from "@/hooks/use-admin";
 
 interface AuditEntry {
   id: string;
-  adminUserId: string;
-  adminEmail: string;
+  // null = system actor (e.g. eBay Marketplace Account Deletion notifications)
+  adminUserId: string | null;
+  adminEmail: string | null;
   action: string;
   targetType: string;
   targetId: string | null;
@@ -22,6 +23,7 @@ const actionLabels: Record<string, string> = {
   user_deleted: "Deleted User",
   user_usage_reset: "Reset Usage",
   setting_updated: "Updated Setting",
+  ebay_account_deletion: "eBay Account Deletion",
 };
 
 const actionColors: Record<string, string> = {
@@ -32,6 +34,7 @@ const actionColors: Record<string, string> = {
   user_deleted: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
   user_usage_reset: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
   setting_updated: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+  ebay_account_deletion: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
 };
 
 function DetailsSummary({ details }: { details: Record<string, unknown> | null }) {
@@ -94,7 +97,7 @@ export default function AdminAuditPage() {
                   <div className="text-xs text-text-secondary">{new Date(entry.createdAt).toLocaleString()}</div>
                 </div>
                 <div className="mt-1 text-xs text-text-placeholder">
-                  by <span className="text-text-secondary">{entry.adminEmail}</span>
+                  by <span className="text-text-secondary">{entry.adminUserId === null ? "System" : (entry.adminEmail ?? entry.adminUserId.slice(0, 8))}</span>
                 </div>
                 <DetailsSummary details={entry.details} />
               </div>
