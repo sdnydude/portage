@@ -1,0 +1,14 @@
+◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
+◇ injected env (0) from ../../.env // tip: ⌘ enable debugging { debug: true }
+Invalid environment variables:
+{
+  STRIPE_WEBHOOK_SECRET: [
+    'STRIPE_WEBHOOK_SECRET is required in production (boot guard). Check Doppler and resync the env file.'
+  ],
+  EBAY_DELETION_VERIFICATION_TOKEN: [
+    'EBAY_DELETION_VERIFICATION_TOKEN is required in production (boot guard). Check Doppler and resync the env file.'
+  ],
+  EBAY_DELETION_ENDPOINT_URL: [
+    'EBAY_DELETION_ENDPOINT_URL is required in production (boot guard). Check Doppler and resync the env file.'
+  ]
+}

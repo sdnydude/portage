@@ -1,0 +1,43 @@
+### PROOF — rebuilt image portage-e2e-api:latest (branch feat/deferral-p1-compliance @ cc1b07b+staged), NODE_ENV=production, e2e DB
+Wed Aug 19 06:36:32 AM UTC 2026
+== GET challenge
+{"challengeResponse":"62cd2127c96841f85cbb0f13468dec457fed58db10c14d269bb6e84f1a765dc5"} [200] ct=application/json; charset=utf-8
+   expected: 62cd2127c96841f85cbb0f13468dec457fed58db10c14d269bb6e84f1a765dc5
+== POST unsigned
+{"error":"signature verification failed","code":"INVALID_SIGNATURE"} [412]
+== POST >100kb
+{"error":"payload too large","code":"PAYLOAD_TOO_LARGE"} [413]
+== DB BEFORE
+order|ORD-DEL|Test_User|{"name": "Test User", "line1": "1 Main St"}
+order|ORD-KEEP|other_buyer|{"name": "Other", "line1": "2 Side St"}
+msg|m-del|test_user|test_user:777|Hi|my address is 1 Main St
+msg|m-keep|other_buyer|other_buyer:777|Yo|keep me
+notif|New message from test_user|my address is 1 Main St
+notif|New message from other_buyer|keep me
+acct|ma8vp1jySJC
+== POST eBay SDK VALID vector (username test_user, userId ma8vp1jySJC; kid 9936261a…)
+ [204]
+== DB AFTER
+order|ORD-DEL|deleted-ebay-user|{"redacted": "ebay-account-deletion"}
+order|ORD-KEEP|other_buyer|{"name": "Other", "line1": "2 Side St"}
+msg|m-del|deleted-ebay-user|deleted-ebay-user-95308048:777||[redacted: eBay account deletion]
+msg|m-keep|other_buyer|other_buyer:777|Yo|keep me
+notif|New message from other_buyer|keep me
+notif|New message from deleted-ebay-user|[redacted: eBay account deletion]
+acct|0
+identity|9530804840ab82243092d15743b558bbc16c93998764e6f6ab923955124f0472|ma8vp1jySJC
+audit||ebay_account_deletion|ebay_identity|{"counts": {"orders": 1, "accounts": 1, "messages": 1, "notifications": 1}, "status": "ok", "identityHash": "9530804840ab82243092d15743b558bbc16c93998764e6f6ab923955124f0472", "notificationId": "49feeaeb-4982-42d9-a377-9645b8479411_33f7e043-fed8-442b-9d44-791923bd9a6d"}
+== POST same vector again (redelivery)
+ [204]
+audit|{"counts": {"orders": 1, "accounts": 1, "messages": 1, "notifications": 1}, "status": "ok", "identityHash": "9530804840ab82243092d15743b558bbc16c93998764e6f6ab923955124f0472", "notificationId": "49feeaeb-4982-42d9-a377-9645b8479411_33f7e043-fed8-442b-9d44-791923bd9a6d"}
+audit|{"counts": {"orders": 0, "accounts": 0, "messages": 0, "notifications": 0}, "status": "duplicate", "identityHash": "9530804840ab82243092d15743b558bbc16c93998764e6f6ab923955124f0472", "notificationId": "49feeaeb-4982-42d9-a377-9645b8479411_33f7e043-fed8-442b-9d44-791923bd9a6d"}
+== metrics
+portage_ebay_deletion_notifications_total{result="invalid_sig"} 1
+portage_ebay_deletion_notifications_total{result="payload_too_large"} 1
+portage_ebay_deletion_notifications_total{result="ok"} 1
+portage_ebay_deletion_notifications_total{result="duplicate"} 1
+== container log (deletion)
+{"level":40,"time":1787121392715,"pid":1,"hostname":"cae38497f301","name":"ebay-account-deletion","bytes":102,"msg":"eBay deletion notification rejected: invalid or missing signature"}
+{"level":40,"time":1787121392723,"pid":1,"hostname":"cae38497f301","name":"ebay-account-deletion","ip":"::ffff:172.31.0.1","contentLength":"110000","msg":"eBay deletion endpoint: payload over 100kb rejected"}
+{"level":30,"time":1787121393236,"pid":1,"hostname":"cae38497f301","name":"ebay-account-deletion","notificationId":"49feeaeb-4982-42d9-a377-9645b8479411_33f7e043-fed8-442b-9d44-791923bd9a6d","outcome":"ok","counts":{"accounts":1,"
+{"level":30,"time":1787121393301,"pid":1,"hostname":"cae38497f301","name":"ebay-account-deletion","notificationId":"49feeaeb-4982-42d9-a377-9645b8479411_33f7e043-fed8-442b-9d44-791923bd9a6d","outcome":"duplicate","counts":{"accoun

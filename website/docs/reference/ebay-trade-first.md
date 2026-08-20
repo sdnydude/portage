@@ -199,6 +199,32 @@ Only the listing lifecycle moved to Trading. Orders still sync via the
 API**, comps from the **Browse API**, and per-category condition policies from the
 **Metadata API** — all unchanged by the migration.
 
+## Marketplace Account Deletion notifications
+
+eBay requires every production keyset that stores eBay user data to subscribe
+to **Marketplace Account Deletion / Closure** notifications and delete that
+user's data on request (deferral `c683b4bc`, shipped 2026-08-19). Portage exposes
+a **public** endpoint for it — the only unauthenticated path on the API host,
+carved out of Cloudflare Access by exact path:
+
+`GET|POST https://portage-api.digitalharmonyai.com/marketplace/ebay/account-deletion`
+
+| Step | Behaviour |
+|------|-----------|
+| Endpoint validation | `GET ?challenge_code=…` → `200 application/json {"challengeResponse": sha256hex(challengeCode + EBAY_DELETION_VERIFICATION_TOKEN + EBAY_DELETION_ENDPOINT_URL)}` — hash order per eBay's guide |
+| Signature check | `x-ebay-signature` (base64 JSON `{alg:"ecdsa", kid, signature, digest:"SHA1"}`) verified ECDSA-SHA1 over the body against the key from `GET /commerce/notification/v1/public_key/{kid}` (prod app token, 1 h cache, 5 min negative cache, ≤10 new-kid fetches/min, kid must be UUID-shaped). Invalid/missing → `412`, no processing. Key unavailable → `503` (eBay retries) |
+| Anonymization | Synchronous, one DB transaction: `marketplace_accounts` row for the seller identity deleted (tokens gone); `orders.buyer_username` → `deleted-ebay-user`, `shipping_address` → `{"redacted":"ebay-account-deletion"}`; `ebay_messages` buyer/subject/body redacted, `conversation_key` → `deleted-ebay-user-<hmac8>:<itemId>` (threads stay distinct, no plaintext); `buyer_message` notifications (title + body excerpt) redacted; `admin_audit_log` row with `admin_user_id NULL` (system actor) and per-table counts. Success → `204`; DB failure → `500` so eBay redelivers, plus a best-effort `failed` audit row. Outcomes: `ok`, `unknown_user`, `duplicate`, `partial` (eBay sent a userId but no username — buyer rows key on username only, since eBay's buyer APIs never expose a buyer userId), `no_identity` |
+| Idempotency + re-population guard | The identity is claimed insert-first in `ebay_deleted_identities` as `HMAC-SHA256(ENCRYPTION_KEY, lower(username))` — never plaintext; a redelivered notification reports `duplicate` but still runs the idempotent redaction sweep. Order sync and message sync check the table before writing (marker instead of live data) **and** re-check the batch after writing (`sweepDeletedBuyerRows`) so a deletion committing mid-sync cannot leave PII behind |
+| Abuse controls | Two-tier rate limit (300/min per socket IP, 60/min per `CF-Connecting-IP`), 100 kB raw-body cap (`413`), no auth (by design), Prometheus `portage_ebay_deletion_notifications_total{result}` |
+
+Operator setup: mint the token into Doppler, set the endpoint URL, add the
+Cloudflare Access bypass for the exact path, then register URL + token on the
+eBay developer portal (Application Keys → Notifications → Marketplace Account
+Deletion) and use *Send Test Notification*. Reference: eBay's
+[Marketplace User Account Deletion guide](https://developer.ebay.com/develop/guides/sell/marketplace-user-account-deletion)
+(unacknowledged notifications are resent until acked; 24 h unacked marks the
+endpoint down; 30 days → non-compliant).
+
 ## Related pages
 
 - [Marketplace Adapters](/docs/architecture/marketplace-adapters) — the adapter
