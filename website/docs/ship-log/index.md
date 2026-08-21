@@ -7,7 +7,7 @@ sidebar_position: 0
 # Ship Log
 
 Structured records of every `/ship` workflow run for **portage**.
-Total: **55** sessions.
+Total: **56** sessions.
 
 | # | Feature | Status | PR | Deferred |
 |---|---------|--------|----|----------|
@@ -66,3 +66,4 @@ Total: **55** sessions.
 | 53 | [Claude tooling + batch-enhance backend + eBay updateListing ](053-claude-tooling-batch-enhance-backend-ebay-updatelisting-pack) | complete | [#101](https://github.com/sdnydude/portage/pull/101) | 1 |
 | 54 | [Stage 2: pricing engine — R-7 percentile bands + seller tuna](054-stage-2-pricing-engine-r-7-percentile-bands-seller-tunables-) | complete | [#106](https://github.com/sdnydude/portage/pull/106) | 7 |
 | 55 | [Stage 2.5: photo-gallery strip + full-screen editor overlay ](055-stage-2-5-photo-gallery-strip-full-screen-editor-overlay-acr) | complete | [#108](https://github.com/sdnydude/portage/pull/108) | 3 |
+| 56 | [Deferral P1: eBay account-deletion compliance, fork-PR gati](056-deferral-p1-ebay-account-deletion-compliance-fork-pr-gating-b) | complete | [#309](https://github.com/sdnydude/portage/pull/309) | 0 |
