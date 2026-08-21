@@ -31,9 +31,9 @@ npm workspaces monorepo with three packages:
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 20 tables:
+Drizzle ORM, schema-push workflow (no migration files). 21 tables:
 
-users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages, faqs, export_tokens, marketplace_sync_log, sync_jobs
+users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages, faqs, export_tokens, marketplace_sync_log, sync_jobs, ebay_deleted_identities
 
 Notable JSONB columns: `items.photos`, `items.marketplaceData` (eBay category/title cache), `orders.shippingAddress`.
 
@@ -44,7 +44,7 @@ Cloudflare Access is the identity provider — no password. `GET /auth/session` 
 ### Marketplace Adapters
 
 Shared TypeScript interface in `packages/shared/src/marketplace.ts`. Three adapters:
-- **eBay:** OAuth2 auth code grant. Listing lifecycle runs on the **Trading API** (Trade-First, PR #133, live-proven): AddFixedPriceItem / ReviseFixedPriceItem / ReviseInventoryStatus / EndFixedPriceItem / GetItem, inline shipping terms — no Business Policies, no Inventory-API offers (`ebayOfferId` removed from the adapter interface; DB column inert). Insert-first idempotency on publish (`listings.idempotency_key`). Fulfillment API for orders, Taxonomy API for categories/aspects
+- **eBay:** OAuth2 auth code grant. Listing lifecycle runs on the **Trading API** (Trade-First, PR #133, live-proven): AddFixedPriceItem / ReviseFixedPriceItem / ReviseInventoryStatus / EndFixedPriceItem / GetItem, inline shipping terms — no Business Policies, no Inventory-API offers (`ebayOfferId` removed from the adapter interface; DB column inert). Insert-first idempotency on publish (`listings.idempotency_key`). Fulfillment API for orders, Taxonomy API for categories/aspects. **Marketplace Account Deletion** compliance endpoint (public `/marketplace/ebay/account-deletion`, challenge + ECDSA-SHA1 signature verify, synchronous anonymization, HMAC-keyed `ebay_deleted_identities` re-population guard — `apps/api/src/routes/marketplace/ebay-deletion.ts`)
 - **Etsy:** PARKED 2026-07-09 (tag `etsy-parked-2026-07`) pending API key approval — adapter/auth routes/UI removed; DB enum value remains, inert
 - **Reverb:** Publish path shipped + live-proven (PRs #173-#177, 2026-07-08): per-user PAT token auth, comps search, create/update listing — listings live and sold on the real shop since 2026-07-13
 
@@ -102,6 +102,8 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Scan flow | apps/web/src/components/capture/scan-flow.tsx |
 | Messages routes | apps/api/src/routes/messages.ts |
 | Trading API client | apps/api/src/marketplace/ebay-trading-client.ts |
+| eBay account-deletion endpoint | apps/api/src/routes/marketplace/ebay-deletion.ts (+ marketplace/ebay-notification-verify.ts, ebay-deletion-anonymize.ts) |
+| Prod boot guard | apps/api/src/lib/prod-env-guard.ts |
 | Messages hooks | apps/web/src/hooks/use-messages.ts |
 | Conversations list | apps/web/src/app/messages/page.tsx |
 | Conversation thread | apps/web/src/app/messages/[conversationKey]/page.tsx |
@@ -216,7 +218,11 @@ advisory banner in scan review + edit page (Use anyway / Find different /
 Don't use it, per-category dismissal memory), Tier-2 persisted
 visionCategory + publish-time self-heal warn-log — caught the live
 Baseball Jackets recurrence in scan-flow during PoD.
-Test suite: 973 API / 646 web as of 2026-08-13 (merged + wrap branch).
+Deferral program P1 (compliance/security) shipped 2026-08-19: eBay Marketplace
+Account Deletion endpoint (c683b4bc), self-hosted-runner fork-PR refusal in
+e2e.yml + claude-review.yml (223b0419), prod boot-guard widening to 14 requirements
+(73dd1664) — see docs/deferral-plan-2026-08-15.md for P2–P8.
+Test suite: 1009 API / 648 web as of 2026-08-19 (P1 branch).
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.

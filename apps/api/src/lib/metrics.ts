@@ -51,4 +51,10 @@ export const ebayTaxonomyCalls = new client.Counter({
   labelNames: ['operation'] as const,
 });
 
+export const ebayDeletionNotifications = new client.Counter({
+  name: 'portage_ebay_deletion_notifications_total',
+  help: 'eBay Marketplace Account Deletion notifications by outcome (ok|partial|duplicate|no_identity|unknown_user|invalid_sig|ignored_topic|key_unavailable|db_error|payload_too_large)',
+  labelNames: ['result'] as const,
+});
+
 export const metricsRegistry = client.register;

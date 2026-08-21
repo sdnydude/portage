@@ -263,6 +263,32 @@ describe('admin functional guards', () => {
     expect(vi.mocked(removeEmail)).toHaveBeenCalledWith('t@example.com');
   });
 
+  it('GET /admin/audit returns adminEmail via LEFT JOIN users (null for system-actor rows such as eBay account deletion)', async () => {
+    const chain = (rows: unknown[]) => {
+      const tail = { offset: vi.fn().mockResolvedValue(rows) };
+      const lim = { limit: vi.fn().mockReturnValue(tail) };
+      const ord = { orderBy: vi.fn().mockReturnValue(lim) };
+      const whr = { where: vi.fn().mockReturnValue(ord) };
+      const join = { leftJoin: vi.fn().mockReturnValue(whr), where: vi.fn().mockResolvedValue(rows) };
+      return { from: vi.fn().mockReturnValue(join) };
+    };
+    vi.mocked(db.select)
+      .mockReturnValueOnce(chain([{ total: 2 }]) as any)
+      .mockReturnValueOnce(chain([
+        { id: 'a1', adminUserId: adminId, adminEmail: 'admin@x.com', action: 'user_role_changed', targetType: 'user', targetId: null, details: null, createdAt: new Date() },
+        { id: 'a2', adminUserId: null, adminEmail: null, action: 'ebay_account_deletion', targetType: 'ebay_identity', targetId: null, details: { status: 'ok' }, createdAt: new Date() },
+      ]) as any);
+
+    const res = await request(app).get('/admin/audit').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.entries[0].adminEmail).toBe('admin@x.com');
+    expect(res.body.entries[1]).toMatchObject({ adminUserId: null, adminEmail: null, action: 'ebay_account_deletion' });
+    // the rows query joined users
+    const rowsSelect = vi.mocked(db.select).mock.results[1].value;
+    expect(rowsSelect.from.mock.results[0].value.leftJoin).toHaveBeenCalled();
+  });
+
   it('DELETE maps the audit-history FK (23503, ex-admin) to a typed 409 instead of a 500', async () => {
     const { db } = await import('../db/index.js');
     const targetId = '00000000-0000-0000-0000-000000000006';

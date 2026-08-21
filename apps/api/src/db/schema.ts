@@ -222,7 +222,9 @@ export const marketplaceAccounts = pgTable('marketplace_accounts', {
 
 export const adminAuditLog = pgTable('admin_audit_log', {
   id: uuid('id').defaultRandom().primaryKey(),
-  adminUserId: uuid('admin_user_id').notNull().references(() => users.id),
+  // Nullable: NULL = system actor (eBay Marketplace Account Deletion
+  // notifications write audit rows with no admin behind them).
+  adminUserId: uuid('admin_user_id').references(() => users.id),
   action: varchar('action', { length: 100 }).notNull(),
   targetType: varchar('target_type', { length: 50 }).notNull(),
   targetId: uuid('target_id'),
@@ -418,3 +420,14 @@ export const syncJobs = pgTable('sync_jobs', {
   index('idx_sync_jobs_due').on(t.status, t.nextRunAt),
   index('idx_sync_jobs_listing_id').on(t.listingId),
 ]);
+
+// eBay Marketplace Account Deletion compliance: identities we have already
+// anonymized. Keyed by HMAC-SHA256(ENCRYPTION_KEY, username) — never the
+// plaintext username eBay asked us to delete. Order/message sync consult this
+// table so a later re-import cannot re-populate a deleted buyer's PII, and the
+// deletion endpoint uses it as its idempotency gate.
+export const ebayDeletedIdentities = pgTable('ebay_deleted_identities', {
+  usernameHash: varchar('username_hash', { length: 64 }).primaryKey(),
+  ebayUserId: varchar('ebay_user_id', { length: 255 }),
+  deletedAt: timestamp('deleted_at').notNull().defaultNow(),
+});

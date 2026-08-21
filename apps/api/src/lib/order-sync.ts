@@ -5,6 +5,7 @@ import { orders, listings, items, marketplaceAccounts } from '../db/schema.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { createLogger } from './logger.js';
+import { EBAY_DELETED_MARKER, EBAY_REDACTED_ADDRESS, findDeletedEbayIdentities, sweepDeletedBuyerRows } from '../marketplace/ebay-deletion-anonymize.js';
 
 const logger = createLogger('order-sync');
 
@@ -57,7 +58,23 @@ export async function runOrderSync(userId: string): Promise<OrderSyncResult> {
     try {
       const marketplaceOrders = await adapter.getOrders(since);
 
+      // eBay Marketplace Account Deletion: buyers we already anonymized must
+      // not be re-imported with live PII from the Fulfillment API.
+      // Fail-closed: a guard failure aborts THIS account's sync (caught by the
+      // per-account handler below → errors[] + durable sync log); the distinct
+      // log line separates "guard broken" from ordinary marketplace failures.
+      let deletedBuyers = new Map<string, string>();
+      if (account.marketplace === 'ebay') {
+        try {
+          deletedBuyers = await findDeletedEbayIdentities(marketplaceOrders.map((o) => o.buyerUsername));
+        } catch (err) {
+          logger.error({ userId, err }, 'ebay_deleted_identities guard failed — eBay order sync aborted (fail-closed, compliance)');
+          throw err;
+        }
+      }
+
       for (const mOrder of marketplaceOrders) {
+        const buyerDeleted = deletedBuyers.has(mOrder.buyerUsername.trim().toLowerCase());
         const [existing] = await db.select({ id: orders.id, soldAt: orders.soldAt, marketplaceFees: orders.marketplaceFees, status: orders.status })
           .from(orders)
           .where(and(
@@ -179,12 +196,12 @@ export async function runOrderSync(userId: string): Promise<OrderSyncResult> {
           userId,
           marketplace: account.marketplace,
           marketplaceOrderId: mOrder.marketplaceOrderId,
-          buyerUsername: mOrder.buyerUsername,
+          buyerUsername: buyerDeleted ? EBAY_DELETED_MARKER : mOrder.buyerUsername,
           salePrice: mOrder.salePrice,
           shippingCost: mOrder.shippingCost,
           marketplaceFees: mOrder.marketplaceFees,
           currency: mOrder.currency,
-          shippingAddress: mOrder.shippingAddress,
+          shippingAddress: buyerDeleted ? EBAY_REDACTED_ADDRESS : mOrder.shippingAddress,
           soldAt: mOrder.soldAt ?? new Date(),
           // The marketplace knows whether the seller already shipped —
           // importing a FULFILLED order as "needs shipping" tells the seller
@@ -227,6 +244,19 @@ export async function runOrderSync(userId: string): Promise<OrderSyncResult> {
           marketplace: account.marketplace,
           marketplaceOrderId: mOrder.marketplaceOrderId,
         }, 'Order synced and listing marked sold');
+      }
+
+      // Post-write sweep: a deletion notice can commit between the guard check
+      // above and our inserts; re-check the batch and redact anything that
+      // slipped. Best-effort — this account's orders are already imported, so
+      // a sweep failure must not mark the account sync as failed (deletion
+      // redelivery re-runs the same redaction).
+      if (account.marketplace === 'ebay') {
+        try {
+          await sweepDeletedBuyerRows(marketplaceOrders.map((o) => o.buyerUsername));
+        } catch (sweepErr) {
+          logger.error({ userId, err: sweepErr }, 'post-sync deleted-buyer sweep failed — order import unaffected, deletion redelivery will heal');
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

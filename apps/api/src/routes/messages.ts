@@ -9,6 +9,13 @@ import { AppError } from '../middleware/error.js';
 import { createLogger } from '../lib/logger.js';
 import { getEbayAccessToken } from '../marketplace/token-manager.js';
 import { callTradingApi, parseGetMemberMessages, buildReplyXml } from '../marketplace/ebay-trading-client.js';
+import {
+  EBAY_DELETED_MARKER,
+  EBAY_REDACTED_BODY,
+  findDeletedEbayIdentities,
+  redactedConversationKey,
+  sweepDeletedBuyerRows,
+} from '../marketplace/ebay-deletion-anonymize.js';
 
 const logger = createLogger('messages');
 
@@ -150,18 +157,34 @@ messagesRouter.post('/sync', async (req, res, next) => {
 
     let synced = 0;
 
+    // eBay Marketplace Account Deletion: buyers we already anonymized must
+    // not be re-imported with live PII from GetMemberMessages.
+    // Fail-closed: if the guard itself cannot be evaluated, do not import
+    // anything (a bypass could re-write deleted PII); the distinct log line
+    // separates "guard broken" from ordinary eBay/API sync failures.
+    let deletedBuyers: Map<string, string>;
+    try {
+      deletedBuyers = await findDeletedEbayIdentities(parsed.map((m) => m.buyerUsername));
+    } catch (err) {
+      logger.error({ userId, err }, 'ebay_deleted_identities guard failed — message sync aborted (fail-closed, compliance)');
+      throw err;
+    }
+
     for (const msg of parsed) {
       try {
-        const convKey = `${msg.buyerUsername}:${msg.itemId}`;
+        const deletedHash = deletedBuyers.get(msg.buyerUsername.trim().toLowerCase());
+        const convKey = deletedHash
+          ? redactedConversationKey(deletedHash, msg.itemId)
+          : `${msg.buyerUsername}:${msg.itemId}`;
         const [inserted] = await db.insert(ebayMessages).values({
           userId,
           ebayMessageId: msg.ebayMessageId,
           conversationKey: convKey,
-          buyerUsername: msg.buyerUsername,
+          buyerUsername: deletedHash ? EBAY_DELETED_MARKER : msg.buyerUsername,
           itemId: msg.itemId,
           itemTitle: msg.itemTitle,
-          subject: msg.subject,
-          body: msg.body,
+          subject: deletedHash ? '' : msg.subject,
+          body: deletedHash ? EBAY_REDACTED_BODY : msg.body,
           direction: msg.direction,
           messageType: msg.messageType,
           ebayCreatedAt: new Date(msg.ebayCreatedAt),
@@ -170,7 +193,9 @@ messagesRouter.post('/sync', async (req, res, next) => {
         if (inserted && msg.direction === 'inbound') {
           synced++;
 
-          if (prefs?.buyer_message !== false) {
+          // No notification for a deleted buyer — its title/body would carry
+          // the PII the deletion notice told us to drop.
+          if (prefs?.buyer_message !== false && !deletedHash) {
             try {
               await db.insert(notifications).values({
                 userId,
@@ -186,6 +211,17 @@ messagesRouter.post('/sync', async (req, res, next) => {
       } catch (msgErr) {
         logger.error({ err: msgErr, messageId: msg.ebayMessageId }, 'Failed to sync message — skipping');
       }
+    }
+
+    // Post-write sweep: a deletion notice can commit between the guard check
+    // above and our inserts; re-check the batch and redact anything that
+    // slipped. Best-effort — the messages above are already committed, so a
+    // sweep failure must not 500 a successful sync (eBay redelivery of the
+    // deletion notice re-runs the same redaction anyway).
+    try {
+      await sweepDeletedBuyerRows(parsed.map((m) => m.buyerUsername));
+    } catch (sweepErr) {
+      logger.error({ userId, err: sweepErr }, 'post-sync deleted-buyer sweep failed — sync result unaffected, deletion redelivery will heal');
     }
 
     logger.info({ userId, synced, total: parsed.length }, 'Message sync complete');
