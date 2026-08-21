@@ -35,6 +35,23 @@ describe("AdminAuditPage — system-actor rows", () => {
     expect(screen.getByText("eBay Account Deletion")).toBeInTheDocument();
   });
 
+  it("renders object detail values as JSON, not [object Object]", () => {
+    adminApiMock.mockReturnValue({
+      data: {
+        entries: [{
+          id: "a9", adminUserId: null, adminEmail: null, action: "ebay_account_deletion", targetType: "ebay_identity", targetId: null,
+          details: { counts: { accounts: 1, orders: 2 } },
+          createdAt: "2026-08-19T00:00:00Z",
+        }],
+        total: 1, limit: 30,
+      },
+      isLoading: false,
+    });
+    render(<AdminAuditPage />);
+    expect(screen.queryByText(/object Object/)).toBeNull();
+    expect(screen.getByText('{"accounts":1,"orders":2}')).toBeInTheDocument();
+  });
+
   it("renders the joined admin email for human-actor rows, falling back to the id prefix when the join yields nothing", () => {
     adminApiMock.mockReturnValue({
       data: {

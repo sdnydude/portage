@@ -45,7 +45,7 @@ function DetailsSummary({ details }: { details: Record<string, unknown> | null }
   return (
     <div className="mt-1 text-xs text-text-placeholder space-x-3">
       {entries.map(([k, v]) => (
-        <span key={k}><span className="text-text-secondary">{k}:</span> {String(v)}</span>
+        <span key={k}><span className="text-text-secondary">{k}:</span> {typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
       ))}
     </div>
   );
