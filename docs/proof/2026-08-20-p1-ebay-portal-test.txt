@@ -1,0 +1,6 @@
+{"level":30,"time":1787274017903,"pid":1,"hostname":"9186c3f69fde","name":"ebay-account-deletion","notificationId":"49feeaeb-4982-42d9-a377-9645b8479411_33f7e043-fed8-442b-9d44-791923bd9a6d","outcome":"unknown_user","counts":{"accounts":0,"orders":0,"messages"
+== counter
+portage_ebay_deletion_notifications_total{result="invalid_sig"} 1
+portage_ebay_deletion_notifications_total{result="unknown_user"} 1
+== audit rows
+|ebay_account_deletion|{"counts": {"orders": 0, "accounts": 0, "messages": 0, "notifications": 0}, "status": "unknown_user", "identityHash": "9530804840ab82243092d15743b558bbc16c93998764e6f6ab923955124f0472", "notificationId": "49feeaeb-4982-42d9-a377-9645b8479411_33f7e043-fed8-442b-9d44-791923bd9a6d"}

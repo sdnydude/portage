@@ -1,0 +1,14 @@
+== challenge through CF (bypass + live code)
+200 ct=application/json; charset=utf-8
+{"challengeResponse":"91b03902cebdc862de00ec7f6702e9032afdfe78f07116e39455664bc96b05cf"}
+== unsigned POST
+412
+== path-confusion sweep (siblings must stay CF-protected: expect 302 to Access login, never app 401/200)
+302 /marketplace/ebay/status
+302 /marketplace/ebay/account-deletion/../status
+302 /marketplace/ebay/account-deletion%2f..%2fstatus
+302 //marketplace/ebay/account-deletion/../../admin/audit
+302 /admin/audit
+== health via app still fine
+302
+independent hash matches live response: True
