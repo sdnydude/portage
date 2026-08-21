@@ -73,4 +73,27 @@ describe('runOrderSync', () => {
     // Post-sync sweep re-checks the batch (closes the guard-check → deletion-commit race).
     expect(sweepDeletedBuyerRows).toHaveBeenCalledWith(['Gone_Buyer']);
   });
+
+  it('does not report an account error when only the post-sync sweep fails (orders already imported)', async () => {
+    (EbayAdapter as any).prototype.getOrders = vi.fn().mockResolvedValue([{
+      marketplaceOrderId: 'ORD-2', marketplaceListingId: 'L-1', buyerUsername: 'fine_buyer',
+      salePrice: 10, shippingCost: 0, marketplaceFees: 0, currency: 'USD',
+      shippingAddress: null, soldAt: new Date('2026-08-01T00:00:00Z'), fulfillmentStatus: 'not_shipped',
+    }]);
+    vi.mocked(findDeletedEbayIdentities).mockResolvedValueOnce(new Map());
+    vi.mocked(sweepDeletedBuyerRows).mockRejectedValueOnce(new Error('sweep blip'));
+    vi.mocked(db.select)
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: 'acct', userId: 'user-1', marketplace: 'ebay' }]) }) } as never)
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }) }) } as never)
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'listing-1', itemId: 'item-1' }]) }) }) } as never);
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'order-2' }]) }) }),
+    } as never);
+    vi.mocked(db.update).mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) } as never);
+
+    const result = await runOrderSync('user-1');
+
+    expect(result.synced).toBe(1);
+    expect(result.errors).toEqual([]);
+  });
 });

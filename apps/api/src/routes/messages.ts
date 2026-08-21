@@ -214,8 +214,15 @@ messagesRouter.post('/sync', async (req, res, next) => {
     }
 
     // Post-write sweep: a deletion notice can commit between the guard check
-    // above and our inserts; re-check the batch and redact anything that slipped.
-    await sweepDeletedBuyerRows(parsed.map((m) => m.buyerUsername));
+    // above and our inserts; re-check the batch and redact anything that
+    // slipped. Best-effort — the messages above are already committed, so a
+    // sweep failure must not 500 a successful sync (eBay redelivery of the
+    // deletion notice re-runs the same redaction anyway).
+    try {
+      await sweepDeletedBuyerRows(parsed.map((m) => m.buyerUsername));
+    } catch (sweepErr) {
+      logger.error({ userId, err: sweepErr }, 'post-sync deleted-buyer sweep failed — sync result unaffected, deletion redelivery will heal');
+    }
 
     logger.info({ userId, synced, total: parsed.length }, 'Message sync complete');
     res.json({ synced, total: parsed.length });

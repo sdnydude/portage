@@ -247,9 +247,16 @@ export async function runOrderSync(userId: string): Promise<OrderSyncResult> {
       }
 
       // Post-write sweep: a deletion notice can commit between the guard check
-      // above and our inserts; re-check the batch and redact anything that slipped.
+      // above and our inserts; re-check the batch and redact anything that
+      // slipped. Best-effort — this account's orders are already imported, so
+      // a sweep failure must not mark the account sync as failed (deletion
+      // redelivery re-runs the same redaction).
       if (account.marketplace === 'ebay') {
-        await sweepDeletedBuyerRows(marketplaceOrders.map((o) => o.buyerUsername));
+        try {
+          await sweepDeletedBuyerRows(marketplaceOrders.map((o) => o.buyerUsername));
+        } catch (sweepErr) {
+          logger.error({ userId, err: sweepErr }, 'post-sync deleted-buyer sweep failed — order import unaffected, deletion redelivery will heal');
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

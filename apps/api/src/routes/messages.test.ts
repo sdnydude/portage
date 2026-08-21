@@ -552,5 +552,28 @@ describe('messages routes', () => {
       // Post-sync sweep re-checks the batch (closes the guard-check → deletion-commit race).
       expect(sweepDeletedBuyerRows).toHaveBeenCalledWith(['Gone_Buyer']);
     });
+
+    it('still returns 200 with the sync result when the post-sync sweep itself fails (messages already committed)', async () => {
+      vi.mocked(getEbayAccessToken).mockResolvedValue('mock-token');
+      vi.mocked(callTradingApi).mockResolvedValue({ GetMemberMessagesResponse: { Ack: 'Success' } });
+      vi.mocked(parseGetMemberMessages).mockReturnValue([
+        { ebayMessageId: 'msg-ok-1', buyerUsername: 'fine_buyer', itemId: '1', itemTitle: 'T', subject: 's', body: 'b', direction: 'inbound', messageType: 'asq', ebayCreatedAt: '2026-05-18T10:00:00Z' },
+      ]);
+      vi.mocked(db.insert).mockReturnValueOnce({
+        values: vi.fn().mockReturnValue({
+          onConflictDoNothing: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'u1', ebayMessageId: 'msg-ok-1' }]) }),
+        }),
+      } as any);
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ notificationPreferences: null }]) }) }),
+      } as any);
+      vi.mocked(db.insert).mockReturnValueOnce({ values: vi.fn().mockResolvedValue([]) } as any);
+      vi.mocked(sweepDeletedBuyerRows).mockRejectedValueOnce(new Error('sweep db blip'));
+
+      const res = await request(app).post('/messages/sync').set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.synced).toBe(1);
+    });
   });
 });
