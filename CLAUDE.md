@@ -222,6 +222,15 @@ Deferral program P1 (compliance/security) shipped 2026-08-19: eBay Marketplace
 Account Deletion endpoint (c683b4bc), self-hosted-runner fork-PR refusal in
 e2e.yml + claude-review.yml (223b0419), prod boot-guard widening to 14 requirements
 (73dd1664) — see docs/deferral-plan-2026-08-15.md for P2–P8.
+Deferral P2 (capture-pipeline integrity) shipped 2026-08-22 across 3 repos
+(dhg-memreg#1, dhgaifactory3.5#26, portage#313): registry write-auth ENFORCE
+live (bearer token, ~/.claude/secrets/registry-write-token; reads + */search
+stay open), landing-verified captures (2xx-without-id dead-letters; idempotency
+rides natural-key upserts, no new column), DLQ sibling-lockfile + atomic-replace
+durability with 5-min timed replay, capture-guarantee landing-diff via
+GET /api/captures/lookup as a user-level Stop hook, stale portage capture-script
+copies deleted (canonical = ~/.claude/scripts symlinks to dhg-memreg). Ship-log
+057. NOTE: LangGraph retired going forward — Pydantic AI + Langfuse (e038a72a).
 Test suite: 1009 API / 648 web as of 2026-08-19 (P1 branch).
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
