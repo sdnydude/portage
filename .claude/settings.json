@@ -181,15 +181,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/swebber64/DHG/portage/.claude/hooks/capture-guarantee.py 2>/dev/null || true",
-            "timeout": 30
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "_agentlint": "v2",
             "command": "/home/swebber64/.local/bin/agentlint report",
             "timeout": 30
