@@ -49,3 +49,7 @@ graphify-out/
 
 # Local scratch notes (untracked working file, not a repo artifact)
 whats-next.md
+
+# stale env backups — never commit
+.env.bak.*
+.env.broken.*
