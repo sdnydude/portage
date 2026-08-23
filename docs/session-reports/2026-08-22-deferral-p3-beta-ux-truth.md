@@ -61,3 +61,21 @@ None. Nine registry items resolved; zero new deferrals.
 
 ## Numbers
 api 1011 → 1016 · web 649 → 674 · e2e +6 · 24 code files · 2 code commits + 1 e2e fix + 1 docs commit · ~40 review findings fixed · 14 proof PNGs.
+
+## Addendum (22:16 → 00:25 ET)
+
+- **Docs pass (PR #316, `81648a5`):** 9 stale pages corrected after an
+  18-file audit; P3 visual-guide appendix added as a native page plus a
+  standalone `guide.html` under `static/img` (CI only copies that tree);
+  deferral plan tracked and stamped. Found the docs site had **not deployed
+  since 08-13** — a bare `<11B` in the 08-11 proof page broke MDX on every
+  run. Fixed; deploy-docs green; dhg-docs needed a restart after a local
+  build (bind-mount inode ghost).
+- **agentlint:** local rules verified enforcing (probed deny/allow directly).
+  AgentChute key was two ESC bytes since Jun 23; cloud is a paid private beta
+  → disabled, queue purged, `doctor` clean.
+- **Housekeeping batch 1 opened:** 10 operator items, facts gathered, 3 design
+  decisions taken (price both directions; items.status manual for
+  non-marketplace states; est-value hidden, columns kept), 11-task plan +
+  per-item live-proof contract written. Branch created, zero code. Operator
+  bar restated: "red green tests are not proof of done."
