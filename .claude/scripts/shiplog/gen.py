@@ -55,23 +55,26 @@ def fetch_all(base_url: str, project: str, limit: int = 100) -> list[dict]:
 
 
 def escape_mdx(text: str) -> str:
-    """Escape MDX-significant characters in plain prose.
+    """Escape MDX/markdown-significant characters in registry prose.
 
     Bare `{expr}` is parsed as a JSX expression and `<11B`-style text as a
     tag; either one fails the whole Docusaurus build (5 silent failures on
-    2026-07-02, 9 days dark 2026-08-13). Backtick code spans are left intact —
-    MDX does not parse inside them.
+    2026-07-02, 9 days dark 2026-08-13). Markdown links/images (`[`, `!`) are
+    escaped too: registry text is data on a public site and must never
+    become a live anchor (javascript:) or an external image load. Only
+    well-formed backtick code spans are left intact; an odd number of
+    backticks means there is no code span at all.
     """
+    if text.count("`") % 2 == 1:
+        segments = [text]
+    else:
+        segments = re.split(r"(`[^`]*`)", text)
     out: list[str] = []
-    in_code = False
-    for ch in text:
-        if ch == "`":
-            in_code = not in_code
-            out.append(ch)
-        elif not in_code and ch in "{}<>":
-            out.append("\\" + ch)
+    for seg in segments:
+        if len(seg) >= 2 and seg.startswith("`") and seg.endswith("`") and text.count("`") % 2 == 0:
+            out.append(seg)
         else:
-            out.append(ch)
+            out.append(re.sub(r"([{}<>\[\]!])", r"\\\1", seg))
     return "".join(out)
 
 

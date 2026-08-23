@@ -20,14 +20,14 @@ generated: true
 
 ## Approach
 
-Phased A-E. A: scan AI-fills eBay specifics (2nd vision call). B/C: items.aspects column + carry into all publish paths + fix MPN-\>25002. D: scan UI persists aspects. E-core: AI aspects surface as confirmable [AI] chips in scan review.
+Phased A-E. A: scan AI-fills eBay specifics (2nd vision call). B/C: items.aspects column + carry into all publish paths + fix MPN-\>25002. D: scan UI persists aspects. E-core: AI aspects surface as confirmable \[AI\] chips in scan review.
 
 ## Commits
 
 - 43ff199 A: mpn + scan-time aspect prefill
 - 129b76c B+C: items.aspects + carry-through + MPN fix
 - e2c9c51 D: scan UI persists aspects
-- d001429 E-core: [AI] chips
+- d001429 E-core: \[AI\] chips
 
 ## Deferred Items
 

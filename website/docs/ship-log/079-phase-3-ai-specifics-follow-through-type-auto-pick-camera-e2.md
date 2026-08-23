@@ -20,7 +20,7 @@ generated: true
 
 ## Approach
 
-Worktree branch per protection model. Decisions: E-panel superseded by inline [AI] chips (PR #132 consumer), plan-doc PR #126 closed unmerged. 3.4: aspect-pick.ts constrained second pass inside generateListingFields (TDD, 7 tests) — live probe vs real LLM caught huge-enum+512-maxTokens empty-content bug, fixed with 120-value cap + 2048 tokens, then live-proven picking Form Factor from real 19-value enum. 3.3: camera e2e via canvas.captureStream getUserMedia polyfill (plain-HTTP has no mediaDevices), mocked AI boundary, real save asserted after reload + cleanup. 3.5: SKU proven in eBay record via GetItem (PRT-000016/17) — no new publish needed.
+Worktree branch per protection model. Decisions: E-panel superseded by inline \[AI\] chips (PR #132 consumer), plan-doc PR #126 closed unmerged. 3.4: aspect-pick.ts constrained second pass inside generateListingFields (TDD, 7 tests) — live probe vs real LLM caught huge-enum+512-maxTokens empty-content bug, fixed with 120-value cap + 2048 tokens, then live-proven picking Form Factor from real 19-value enum. 3.3: camera e2e via canvas.captureStream getUserMedia polyfill (plain-HTTP has no mediaDevices), mocked AI boundary, real save asserted after reload + cleanup. 3.5: SKU proven in eBay record via GetItem (PRT-000016/17) — no new publish needed.
 
 ## Commits
 

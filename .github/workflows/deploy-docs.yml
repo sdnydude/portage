@@ -6,16 +6,31 @@ on:
     paths:
       - 'website/**'
   workflow_dispatch:
+    inputs:
+      drill:
+        description: "Failure drill: fail immediately after checkout to prove the failure-issue alarm fires (touches nothing)"
+        type: boolean
+        default: false
 
 concurrency:
   group: docs-deploy
   cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   build-and-deploy:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
+
+      - name: Failure drill (workflow_dispatch drill=true)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.drill }}
+        run: |
+          echo "DRILL: simulated deploy failure — nothing below runs, the live site is untouched"
+          exit 1
 
       # Ship-log drift gate (P4, 2026-08-23): git is the source of truth for
       # website/docs/ship-log; the registry is the source of truth for ship
@@ -58,6 +73,23 @@ jobs:
           npm install
           npm run build
 
+      # P4: a build that would fail verification must never go live. Serve the
+      # fresh build/ from a throwaway static server and curl the same pages the
+      # post-restart verify step checks, BEFORE swapping the container.
+      - name: Smoke-test the build before it goes live
+        timeout-minutes: 2
+        run: |
+          cd /home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site/build
+          PORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+          python3 -m http.server "$PORT" --bind 127.0.0.1 >/tmp/docs-smoke.log 2>&1 &
+          SMOKE=$!
+          trap 'kill $SMOKE 2>/dev/null || true' EXIT
+          sleep 2
+          curl -sf "http://127.0.0.1:$PORT/portage/getting-started/" >/dev/null
+          curl -sf "http://127.0.0.1:$PORT/portage/ship-log/" >/dev/null
+          curl -sf "http://127.0.0.1:$PORT/portage/api/ebay/" >/dev/null
+          echo "smoke: getting-started, ship-log, api/ebay all serve from the new build"
+
       - name: Restart docs container
         run: |
           docker restart dhg-docs || docker run -d \
@@ -84,3 +116,28 @@ jobs:
           echo "Docs site: OK (port 8017)"
           TOTAL=$(curl -s http://localhost:8011/api/doc-pages?project_name=portage\&limit=1 | python3 -c "import sys,json; print(json.load(sys.stdin).get('total','?'))" 2>/dev/null || echo "?")
           echo "Registry: $TOTAL chunks indexed"
+
+      # P4: a failed docs deploy must never be silent again (08-13→08-22: nine
+      # days of failed runs nobody saw). On any failure, open — or comment on
+      # the existing open — "deploy-docs failing" issue with the run link and
+      # the step that failed. Uses the workflow token; no extra secret.
+      - name: Open or update a failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="deploy-docs failing on main"
+          body="Docs deploy failed for \`${GITHUB_SHA::7}\` — ${RUN_URL}
+
+          The live site still serves the previous good build (the container is only restarted after a green build + smoke test). Fix the cause, then re-run the workflow or push to \`website/**\`.
+
+          Common causes: ship-log drift (run \`.claude/scripts/generate-ship-log.sh\` locally and commit), MDX escaping in a proof page, registry unreachable."
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label ci --body "$body" \
+              || gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
+

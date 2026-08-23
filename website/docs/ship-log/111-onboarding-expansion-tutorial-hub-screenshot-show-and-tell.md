@@ -20,7 +20,7 @@ generated: true
 
 ## Approach
 
-11-task plan executed inline (subagent dispatch declined) in an isolated git worktree; tdd-guard bridged to worktree test output via approved symlink. 8 React-free topic modules + capture manifests, DeviceFrame (4 overlay animations), TutorialPlayer, /tutorials hub + [topic] route (first async server-component page), 3 entry points, carousel device-frames, Playwright capture pipeline, 24 committed demo-account PNGs, overlay coords verified against real captures. Manifest re-verification vs R0 shell applied 2 deviations (porter input-scoped selector, visible-filter locators) — both proven necessary live.
+11-task plan executed inline (subagent dispatch declined) in an isolated git worktree; tdd-guard bridged to worktree test output via approved symlink. 8 React-free topic modules + capture manifests, DeviceFrame (4 overlay animations), TutorialPlayer, /tutorials hub + \[topic\] route (first async server-component page), 3 entry points, carousel device-frames, Playwright capture pipeline, 24 committed demo-account PNGs, overlay coords verified against real captures. Manifest re-verification vs R0 shell applied 2 deviations (porter input-scoped selector, visible-filter locators) — both proven necessary live.
 
 ## Commits
 

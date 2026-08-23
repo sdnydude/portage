@@ -20,7 +20,7 @@ generated: true
 
 ## Approach
 
-Diagnosed H in two layers: swallowed errors (returned 200 \{synced:0\}) + the real blocker (orders for listings absent from local DB skipped at warn-level). Fix: errors[] surfacing + login-trigger + Sync button; GetItem backfill creating item+listing per eBay ItemID with lineItem-title fallback and in-run dedup. TDD throughout.
+Diagnosed H in two layers: swallowed errors (returned 200 \{synced:0\}) + the real blocker (orders for listings absent from local DB skipped at warn-level). Fix: errors\[\] surfacing + login-trigger + Sync button; GetItem backfill creating item+listing per eBay ItemID with lineItem-title fallback and in-run dedup. TDD throughout.
 
 ## Commits
 

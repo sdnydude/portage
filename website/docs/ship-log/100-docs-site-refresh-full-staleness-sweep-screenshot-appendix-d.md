@@ -20,7 +20,7 @@ generated: true
 
 ## Approach
 
-3 parallel agents swept 34 core pages verified against code (CF Access auth, Trade-First, Etsy parked, carrier/voice removal, rembg BG removal, Gemini vision chain, baked-image deploy); 117 root screenshots committed to website/static/img/screenshots with date-grouped appendix gallery; deploy-docs.yml gained ](/img/ to ](/portage/img/ rewrite fixing sitewide 404 doc images; 2 ship-log index links fixed (filenames vs frontmatter ids, broke build); local Docusaurus build validated pre-merge; CLAUDE.md files corrected (rembg, vision chain, 6-tab, 6 settings pages)
+3 parallel agents swept 34 core pages verified against code (CF Access auth, Trade-First, Etsy parked, carrier/voice removal, rembg BG removal, Gemini vision chain, baked-image deploy); 117 root screenshots committed to website/static/img/screenshots with date-grouped appendix gallery; deploy-docs.yml gained \](/img/ to \](/portage/img/ rewrite fixing sitewide 404 doc images; 2 ship-log index links fixed (filenames vs frontmatter ids, broke build); local Docusaurus build validated pre-merge; CLAUDE.md files corrected (rembg, vision chain, 6-tab, 6 settings pages)
 
 ## Commits
 

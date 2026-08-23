@@ -24,7 +24,7 @@ Subagent-driven development: 6 tasks, fresh sonnet implementer + reviewer per ta
 
 ## Commits
 
-- 9eca471 refactor(web): extract prop-driven ItemDetail from inventory/[id] route
+- 9eca471 refactor(web): extract prop-driven ItemDetail from inventory/\[id\] route
 - 6c8fa9a feat(web): useListNav — arrow-key selection hook for workbench panes
 - caf27fe feat(web): MasterDetail two-pane workbench layout (lg+)
 - 4a19749 feat(web): ItemCard workbench button mode — onOpen + selected ring

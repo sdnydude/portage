@@ -273,3 +273,13 @@ def test_scan_existing_accepts_four_digit_numbers_and_crlf_frontmatter(tmp_path)
     (tmp_path / "012-crlf.md").write_bytes(b'---\r\ntitle: "Windows page"\r\nregistry_id: win\r\n---\r\n\r\n# body\r\n')
     pages = gen.scan_existing(tmp_path)
     assert [(p.number, p.title) for p in pages] == [(12, "Windows page"), (1000, "Big")]
+
+
+def test_escape_mdx_treats_an_unbalanced_backtick_as_plain_text_and_neutralizes_links_and_images():
+    # odd backtick count: no code span exists, so everything stays escaped
+    assert gen.escape_mdx("use `useEffect, e.g. <script>x</script>") == "use `useEffect, e.g. \\<script\\>x\\</script\\>"
+    # markdown link / image syntax from registry prose never becomes a live element
+    assert gen.escape_mdx("see [here](javascript:alert(1)) now") == "see \\[here\\](javascript:alert(1)) now"
+    assert gen.escape_mdx("px ![](https://evil/p.gif)") == "px \\!\\[\\](https://evil/p.gif)"
+    # balanced code spans still protected
+    assert gen.escape_mdx("a `[x]` b") == "a `[x]` b"

@@ -258,7 +258,7 @@ page carries `registry_id:`, hand-written pages are never regenerated, and
 truth for `website/docs/ship-log`, the registry for sessions**; a session
 with no committed page fails the docs deploy (run the generator locally and
 commit). /ship Phase 7 hand-written pages must include `registry_id:`.
-Backfilled 74 sessions (134 pages). Also: /about page (+ links on avatar
+Backfilled 74 sessions (135 pages = 134 registry sessions + 1 hand-written). Also: /about page (+ links on avatar
 menu, sidebar, More), `rsync --delete` for static images, tutorials
 re-captured on the 4-tab app with a CI gate (`npm run check:tutorials`),
 `docs/api/ebay.md`. Ship-log 134; proof page 2026-08-23-p4-docs-truth.

@@ -17,15 +17,18 @@ registry KB hit for `ebay.md`) are recorded in the ship-log entry after merge.
 - Backfill: 74 pages created, 59 existing pages stamped with `registry_id:`
   (frontmatter-only; bodies byte-identical), 2 old generator duplicates
   removed (same sessions as hand-written pages), 1 duplicate registry row
-  deleted (backup in `docs/registry-backups/`). 134 pages on disk = 133
-  sessions + 1 hand-written page with no registry row.
+  deleted (backup in `docs/registry-backups/`). At backfill: 134 pages =
+  133 sessions + 1 hand-written page with no registry row. After this ship's
+  own session was posted and its page stamped: 135 pages = 134 sessions + 1.
+  Three stale generator duplicates of hand-written pages (040-voice…, 052-,
+  054-) were removed — their sessions keep the richer hand-written page.
 - `--check` (CI drift gate): in sync on the final tree; a second full run
   changes nothing; exit codes 1 drift / 2 ambiguous / 3 registry unreachable.
 - The replica build caught a real bug: MDX escaping applied to YAML
   frontmatter (`-\>`), fixed with YAML quoting. A fixture page titled
   `Fixture {expr} title <11B tag> test` rendered as literal text in the built
   HTML — the escaping works through the real build.
-- Index: 134 links on the built `/ship-log/` page.
+- Index: 134 links on the built `/ship-log/` page at backfill (135 once the P4 page was stamped).
 
 ## /about
 
