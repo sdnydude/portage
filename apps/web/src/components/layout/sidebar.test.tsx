@@ -11,11 +11,13 @@ vi.mock("@/components/capture/scan-flow", () => ({
 }));
 
 describe("Sidebar", () => {
-  it("renders 4 main tabs, Messages + Settings secondary items, and Scan — Listings is not in the nav", () => {
+  it("renders 4 main tabs, Messages + Settings + About secondary items, and Scan — Listings is not in the nav", () => {
     render(<Sidebar />);
-    for (const name of ["Home", "Inventory", "Porter", "Orders", "Messages", "Settings"])
+    for (const name of ["Home", "Inventory", "Porter", "Orders", "Messages", "Settings", "About"])
       expect(screen.getByRole("link", { name: new RegExp(name) })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Listings/ })).not.toBeInTheDocument();
+    // every secondary item renders an icon — /about must not fall through NavIcon's default
+    expect(screen.getByRole("link", { name: /About/ }).querySelector("svg")).not.toBeNull();
     expect(screen.queryByRole("link", { name: /Admin/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /scan/i })).toBeInTheDocument();
   });

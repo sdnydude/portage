@@ -2,6 +2,7 @@
 title: "eBay publish hardening — Calculated default + AI weight estimation + editable price on every publish path"
 sidebar_label: "eBay publish hardening — Calculated default + AI w"
 sidebar_position: 49
+registry_id: e61c9117-47c0-4dee-9dd0-4b1383cada88
 ---
 
 # eBay publish hardening — Calculated default + AI weight estimation + editable price on every publish path

@@ -17,6 +17,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Ship-log drift gate (P4, 2026-08-23): git is the source of truth for
+      # website/docs/ship-log; the registry is the source of truth for ship
+      # sessions. This step writes nothing — it fails the deploy when a
+      # session has no page (or a page lacks registry_id) so the ship-log can
+      # never silently stop, and tells you the one command that fixes it.
+      - name: Ship-log drift check (registry vs committed pages)
+        timeout-minutes: 2
+        env:
+          REGISTRY_URL: http://10.0.0.251:8011
+        run: bash .claude/scripts/generate-ship-log.sh --check portage website/docs/ship-log
+
       - name: Copy docs to AI Factory docs-site
         run: |
           DOCS_SITE="/home/swebber64/DHG/aifactory3.5/dhgaifactory3.5/docs-site"
@@ -28,11 +39,15 @@ jobs:
           # /portage/img/...), but repo docs reference /img/... — without this
           # rewrite every image 404s on the deployed site.
           find "$DOCS_SITE/projects/portage" -name "*.md" -exec sed -i 's|](/img/|](/portage/img/|g' {} \;
-          # Copy static assets referenced by docs (recursive: subdirs like
-          # img/sitemap and img/verification, plus PDFs — the old *.svg glob
-          # silently dropped everything in subdirectories)
+          # Sync static assets referenced by docs (recursive: subdirs like
+          # img/sitemap and img/verification, plus PDFs). rsync --delete so an
+          # image removed from the repo leaves the served site too (P4) —
+          # the old cp -r || true accumulated orphans forever. Trailing slash
+          # on the source is load-bearing: without it rsync nests img/img and
+          # --delete wipes the real images. --itemize-changes logs every
+          # add/update/delete so the run log shows exactly what moved.
           mkdir -p "$DOCS_SITE/static/portage/img"
-          cp -r website/static/img/. "$DOCS_SITE/static/portage/img/" 2>/dev/null || true
+          rsync -a --delete --itemize-changes website/static/img/ "$DOCS_SITE/static/portage/img/"
 
       - name: Build Docusaurus
         timeout-minutes: 15

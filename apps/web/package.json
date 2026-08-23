@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "capture:tutorials": "tsx scripts/capture-tutorials.ts"
+    "capture:tutorials": "tsx scripts/capture-tutorials.ts",
+    "check:tutorials": "tsx scripts/check-tutorial-captures.ts"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",

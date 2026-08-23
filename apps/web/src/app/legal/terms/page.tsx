@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function TermsOfServicePage() {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12 font-[family-name:var(--font-plus-jakarta)] text-[var(--color-text)]">
+    <main className="content-container compact-bar-clearance mx-auto px-6 py-12 font-[family-name:var(--font-plus-jakarta)] text-text-primary">
       <h1 className="mb-2 text-3xl font-bold font-[family-name:var(--font-instrument)]">
         Terms of Service
       </h1>

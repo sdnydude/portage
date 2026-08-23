@@ -2,6 +2,7 @@
 title: "Ship session intelligence pipeline + unified KB search"
 sidebar_label: "Ship session intelligence pipeline + unified KB se"
 sidebar_position: 16
+registry_id: 178ecd35-30ec-44b4-b321-1c34b22560b3
 ---
 
 # Ship session intelligence pipeline + unified KB search

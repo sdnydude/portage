@@ -2,6 +2,7 @@
 title: "Capture-guarantee V2 — decisions + deferred auto-fire, advisory logging"
 sidebar_label: "Capture-guarantee V2 — decisions + deferred auto-f"
 sidebar_position: 29
+registry_id: 514c23eb-d9f3-45d4-951f-bbd28ec5b62b
 ---
 
 # Capture-guarantee V2 — decisions + deferred auto-fire, advisory logging

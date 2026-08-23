@@ -2,6 +2,7 @@
 title: "C3 — Replace sql.raw() with parameterized Drizzle APIs to prevent SQL injection"
 sidebar_label: "C3 — Replace sql.raw() with parameterized Drizzle "
 sidebar_position: 7
+registry_id: ee196279-ca5b-41f5-86b6-8536e81fed14
 ---
 
 # C3 — Replace sql.raw() with parameterized Drizzle APIs to prevent SQL injection

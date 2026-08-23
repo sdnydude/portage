@@ -2,6 +2,7 @@
 title: "eBay return-policy diagnosis + 56-deferral audit + c3b3013c publish-wiring fix"
 sidebar_label: "eBay return-policy diagnosis + 56-deferral audit +"
 sidebar_position: 47
+registry_id: 69224ca9-73f9-451a-b923-d2e6056cf285
 ---
 
 # eBay return-policy diagnosis + 56-deferral audit + c3b3013c publish-wiring fix

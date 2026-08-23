@@ -2,6 +2,7 @@
 title: "Voice chat interface — Porter-powered home screen with streaming, voice input, and TTS"
 sidebar_label: "Voice chat interface — Porter-powered home screen"
 sidebar_position: 39
+registry_id: 0d0ec2f0-870f-4adf-b35a-f4665280bf4d
 ---
 
 # Voice chat interface — Porter-powered home screen with streaming, voice input, and TTS

@@ -2,6 +2,7 @@
 title: "Stage 2.5: photo-gallery strip + full-screen editor overlay across scan, item detail, and all listing flows"
 sidebar_label: "Stage 2.5: photo-gallery strip + full-screen edito"
 sidebar_position: 55
+registry_id: 16533353-73ce-45be-97c2-7dc7a38e7fe4
 ---
 
 # Stage 2.5: photo-gallery strip + full-screen editor overlay across scan, item detail, and all listing flows

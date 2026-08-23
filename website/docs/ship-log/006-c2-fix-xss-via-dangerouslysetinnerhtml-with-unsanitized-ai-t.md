@@ -2,6 +2,7 @@
 title: "C2 — Fix XSS via dangerouslySetInnerHTML with unsanitized AI text"
 sidebar_label: "C2 — Fix XSS via dangerouslySetInnerHTML with unsa"
 sidebar_position: 6
+registry_id: a3eada09-33bc-44f7-b81f-b1e99a288944
 ---
 
 # C2 — Fix XSS via dangerouslySetInnerHTML with unsanitized AI text

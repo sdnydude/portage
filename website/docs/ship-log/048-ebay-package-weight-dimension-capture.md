@@ -2,6 +2,7 @@
 title: "eBay package weight & dimension capture"
 sidebar_label: "eBay package weight & dimension capture"
 sidebar_position: 48
+registry_id: 745ab8ae-9ebc-4201-9c26-89642ba140e5
 ---
 
 # eBay package weight & dimension capture

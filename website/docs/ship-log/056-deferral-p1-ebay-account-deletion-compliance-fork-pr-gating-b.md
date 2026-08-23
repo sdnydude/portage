@@ -2,6 +2,7 @@
 title: "Deferral P1: eBay account-deletion compliance, fork-PR gating, prod boot guard"
 sidebar_label: "Deferral P1: eBay account-deletion compliance"
 sidebar_position: 56
+registry_id: 9d934543-2948-4f30-bd70-e59e4d798884
 ---
 
 # Deferral P1: eBay account-deletion compliance, fork-PR gating, prod boot guard

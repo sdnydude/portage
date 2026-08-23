@@ -2,6 +2,7 @@
 title: "eBay listing publish hardening — Phase 3 Plan"
 sidebar_label: "eBay listing publish hardening — Phase 3 Plan"
 sidebar_position: 44
+registry_id: d827c496-e6fc-457b-b0b7-3e89b0148d4d
 ---
 
 # eBay listing publish hardening — Phase 3 Plan

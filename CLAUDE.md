@@ -250,7 +250,19 @@ data-driven category chips (GET /items/categories) + case-insensitive filter
 condition notes. Live-proven (e2e/housekeeping-1.spec.ts, E2E_EBAY_LIVE=1);
 the live run caught a drizzle array-param bug the mocked tests could not.
 Ship-log 059; proof page 2026-08-23-housekeeping-1.
-Test suite: 1033 API / 696 web as of 2026-08-23 (Housekeeping-1, post-5befc45).
+Deferral P4 (docs & observability truth) built 2026-08-23 (feat/p4-docs-truth):
+ship-log generator revived as an additive, tested tool
+(`.claude/scripts/shiplog/gen.py`; wrapper `generate-ship-log.sh`): every
+page carries `registry_id:`, hand-written pages are never regenerated, and
+`deploy-docs.yml` runs `--check` as a drift gate — **git is the source of
+truth for `website/docs/ship-log`, the registry for sessions**; a session
+with no committed page fails the docs deploy (run the generator locally and
+commit). /ship Phase 7 hand-written pages must include `registry_id:`.
+Backfilled 74 sessions (134 pages). Also: /about page (+ links on avatar
+menu, sidebar, More), `rsync --delete` for static images, tutorials
+re-captured on the 4-tab app with a CI gate (`npm run check:tutorials`),
+`docs/api/ebay.md`. Ship-log 134; proof page 2026-08-23-p4-docs-truth.
+Test suite: 1033 API / 701 web / 26 generator as of 2026-08-23 (P4).
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
