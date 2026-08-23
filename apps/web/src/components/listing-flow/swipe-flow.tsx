@@ -691,10 +691,14 @@ const STRATEGY_CARDS: StrategyCard[] = [
 
 function ConfigurePhase({
   state,
+  error,
+  onRetry,
   onApplyStrategy,
   onNext,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
+  error?: string | null;
+  onRetry?: () => void;
   onApplyStrategy: (s: PricingStrategy) => void;
   onNext: () => void;
 }) {
@@ -751,6 +755,30 @@ function ConfigurePhase({
           gap: 20,
         }}
       >
+        {error && (
+          <div
+            role="alert"
+            style={{
+              background: "rgba(180,20,20,0.9)",
+              borderRadius: "10px",
+              padding: "12px 16px",
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: 12,
+              color: "#fff",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <span>{error}</span>
+            {onRetry && (
+              <button type="button" onClick={onRetry} style={{ background: "transparent", color: "#fff", border: "1px solid #fff", borderRadius: 6, padding: "4px 10px", fontFamily: "inherit", fontSize: 12 }}>
+                Retry
+              </button>
+            )}
+          </div>
+        )}
         {/* Title + current price */}
         <div>
           <SyneHeading size={20} style={{ display: "block", marginBottom: 4 }}>
@@ -1541,6 +1569,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const [phase, setPhase] = useState<Phase>("recognition");
   const [scanPercent, setScanPercent] = useState(0);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const [showCapture, setShowCapture] = useState(false);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasFetchedComps = useRef(false);
@@ -1602,13 +1631,27 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prepareListing.data]);
 
+  // P3 (c3b3013c): photo-first, same contract as hybrid-flow — a fresh scan
+  // has no inventoryItemId yet, so create the item now and prepare() on the
+  // returned id; an existing item short-circuits inside ensureItemCreated.
+  // Creation failure is shown in Configure — never a silent draft.
+  const { ensureItemCreated } = flow;
+  const { prepare } = prepareListing;
+  const createAndPrepare = useCallback(() => {
+    setConfirmError(null);
+    void ensureItemCreated()
+      .then((id) => { if (id) prepare(id, ['ebay']); })
+      .catch((e: unknown) => setConfirmError(e instanceof Error ? e.message : "Couldn't save the item — try again."));
+  }, [ensureItemCreated, prepare]);
   const handleConfirmRecognition = useCallback(() => {
     confirmRecognition(state.recognition.selectedIndex);
-    if (state.inventoryItemId) {
-      prepareListing.prepare(state.inventoryItemId, ['ebay']);
-    }
     setPhase("configure");
-  }, [confirmRecognition, state.recognition.selectedIndex, state.inventoryItemId, prepareListing]);
+    // Comps now, on the title — the configure-phase effect below must not
+    // fire a second fetch once inventoryItemId lands.
+    hasFetchedComps.current = true;
+    fetchComps();
+    createAndPrepare();
+  }, [confirmRecognition, state.recognition.selectedIndex, fetchComps, createAndPrepare]);
 
   const handleApplyStrategy = useCallback(
     (s: PricingStrategy) => {
@@ -1741,8 +1784,11 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
         {phase === "configure" && (
           <ConfigurePhase
             state={state}
+            error={confirmError}
+            onRetry={createAndPrepare}
             onApplyStrategy={handleApplyStrategy}
-            onNext={() => setPhase("details")}
+            // No forward path on an unsaved item — retry first.
+            onNext={() => { if (!confirmError) setPhase("details"); }}
           />
         )}
 

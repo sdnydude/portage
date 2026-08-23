@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
 import { useListings } from "@/hooks/use-listings";
@@ -49,6 +50,9 @@ export default function EditItemPage() {
   const [categoryUserResolved, setCategoryUserResolved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // P3 T4: the edit saved but a marketplace sync was refused/queued with a
+  // warning — stay here and say so instead of navigating away from the truth.
+  const [syncWarning, setSyncWarning] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (item) {
@@ -139,11 +143,12 @@ export default function EditItemPage() {
   const handleSave = async () => {
     setIsSaving(true);
     setSaveError(null);
+    setSyncWarning(null);
     try {
       // weight column is ounces; the route requires a positive weightOz, so a
       // sub-half-ounce or empty value is sent as undefined (left unchanged).
       const rawOz = weightDims.weight != null ? Math.round(weightDims.weight * 16) : 0;
-      await updateItem({
+      const saved = await updateItem({
         title: title.trim(),
         description: description.trim(),
         // eBay name persists only when the seller explicitly resolved it
@@ -167,6 +172,11 @@ export default function EditItemPage() {
         ebayPackageType: weightDims.ebayPackageType ?? undefined,
         weightEstimated,
       });
+      if (saved?.syncWarnings?.length) {
+        setSyncWarning(saved.syncWarnings);
+        setIsSaving(false);
+        return;
+      }
       router.back();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
@@ -219,6 +229,18 @@ export default function EditItemPage() {
         {saveError && (
           <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
             {saveError}
+          </div>
+        )}
+        {syncWarning && (
+          <div data-testid="sync-warning" className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm text-amber-800 dark:text-amber-300 flex flex-col gap-2">
+            <span className="font-medium">Saved — but a marketplace sync needs attention:</span>
+            <ul className="list-disc pl-4 space-y-1">
+              {syncWarning.map((w) => <li key={w}>{w}</li>)}
+            </ul>
+            <span className="flex gap-3">
+              <Link href={`/inventory/${item.id}`} className="font-medium underline">Fix offer settings</Link>
+              <button type="button" onClick={() => router.back()} className="font-medium underline">Back</button>
+            </span>
           </div>
         )}
 

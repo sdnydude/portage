@@ -8,6 +8,24 @@ import { callTradingApi, EbayTradingError } from './ebay-trading-client.js';
 // Stable eBay Trading codes for price-vs-threshold conflicts (BO-2):
 // 22003 = auto-decline amount >= Buy It Now price, 23004 = auto-accept >= price.
 const BEST_OFFER_THRESHOLD_CODES = new Set([22003, 23004]);
+
+// P3 (25afd214): every BEST_OFFER_CONFLICT throw carries the same structured
+// payload the route pre-flight produces, so the client's guided fix can
+// re-seed the offer fields. The adapter only knows what THIS call submitted —
+// values absent here mean "stored on the live listing"; the route enriches
+// from GetItem at conflict time and owns the `healed` flag.
+function boConflictDetails(input: {
+  bestOfferEnabled?: boolean;
+  bestOfferAutoAcceptPrice?: number;
+  minimumBestOfferPrice?: number;
+}): BestOfferConflictDetails[] {
+  return [{
+    bestOfferEnabled: input.bestOfferEnabled ?? null,
+    bestOfferAutoAcceptPrice: input.bestOfferAutoAcceptPrice ?? null,
+    minimumBestOfferPrice: input.minimumBestOfferPrice ?? null,
+    healed: false,
+  }];
+}
 import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml,
   buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
 import { EBAY_USER_AGENT } from './ebay-constants.js';
@@ -21,6 +39,7 @@ import type {
   CompResult,
   EbayPreparedFields,
   EbayListingShipping,
+  BestOfferConflictDetails,
 } from '@portage/shared';
 
 const logger = createLogger('ebay-adapter');
@@ -750,7 +769,8 @@ export class EbayAdapter implements MarketplaceAdapter {
       // operator decision 2026-08-03.
       if (err instanceof EbayTradingError && err.errorCodes.some((c) => BEST_OFFER_THRESHOLD_CODES.has(c))) {
         throw new AppError(422, 'BEST_OFFER_CONFLICT',
-          `The Best Offer settings conflict with the price $${tradingInput.price} — both thresholds must be below the price. eBay said: ${(err as Error).message}`);
+          `The Best Offer settings conflict with the price $${tradingInput.price} — both thresholds must be below the price. eBay said: ${(err as Error).message}`,
+          boConflictDetails(tradingInput));
       }
       if (wantsBestOffer && EbayAdapter.isBestOfferRejection(err)) {
         logger.warn({ userId: this.userId, sku, error: (err as Error).message }, 'eBay rejected Best Offer — retrying AddFixedPriceItem without it');
@@ -813,8 +833,13 @@ export class EbayAdapter implements MarketplaceAdapter {
         // listing even here — same typed contract as the full revise
         // (CodeRabbit, BO-6). Never a retry, never a deletion.
         if (err instanceof EbayTradingError && err.errorCodes.some((c) => BEST_OFFER_THRESHOLD_CODES.has(c))) {
+          // Unreachable from current callers (listings.ts + marketplace-sync
+          // always send title → full revise); kept typed so a future price-only
+          // caller still gets the structured payload. Thresholds live on eBay,
+          // not in this input — all null until the route's GetItem enrichment.
           throw new AppError(422, 'BEST_OFFER_CONFLICT',
-            `The price $${input.price} is at or below this listing's Best Offer settings on eBay — adjust the offer thresholds together with the price. eBay said: ${(err as Error).message}`);
+            `The price $${input.price} is at or below this listing's Best Offer settings on eBay — adjust the offer thresholds together with the price. eBay said: ${(err as Error).message}`,
+            boConflictDetails(input.marketplaceSpecific ?? {}));
         }
         throw err;
       }
@@ -862,7 +887,8 @@ export class EbayAdapter implements MarketplaceAdapter {
         ];
         const configured = parts.length > 0 ? ` (${parts.join(', ')})` : '';
         throw new AppError(422, 'BEST_OFFER_CONFLICT',
-          `The price $${tradingInput.price} is at or below this listing's Best Offer settings${configured} — adjust the offer thresholds together with the price. eBay said: ${(err as Error).message}`);
+          `The price $${tradingInput.price} is at or below this listing's Best Offer settings${configured} — adjust the offer thresholds together with the price. eBay said: ${(err as Error).message}`,
+          boConflictDetails(tradingInput));
       }
       // Category-level rejection (prose only — eBay has no stable id): the
       // seller turns offers off; the app never strips them on an update.

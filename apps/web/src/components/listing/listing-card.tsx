@@ -77,6 +77,10 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
   // the stored config on open; only sent when touched (server merges).
   const [boFields, setBoFields] = useState({ enabled: false, autoAccept: "", minimum: "" });
   const [boTouched, setBoTouched] = useState(false);
+  // P3 (cf6d2ce2): a BEST_OFFER_CONFLICT 422 carries the live thresholds —
+  // held here so the price editor renders a guided fix, not just prose.
+  const [boConflict, setBoConflict] = useState<(BestOfferConflictDetails & { message: string }) | null>(null);
+  const [boAdjusted, setBoAdjusted] = useState(false);
   const isEbay = listing.marketplace === "ebay";
   // RV-1: Reverb's offers is a single explicit per-listing override — the
   // post-publish parity surface for Reverb (eBay has the threshold fields).
@@ -92,6 +96,8 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       minimum: typeof stored.minimumBestOfferPrice === "number" ? String(stored.minimumBestOfferPrice) : "",
     });
     setBoTouched(false);
+    setBoConflict(null);
+    setBoAdjusted(false);
     // RV-1: explicit override wins; else the profile-driven stored value; else on.
     setReverbOffers(
       typeof stored.offersEnabledExplicit === "boolean" ? stored.offersEnabledExplicit
@@ -99,6 +105,58 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
         : true,
     );
     setReverbOffersTouched(false);
+  };
+
+  // P3 (cf6d2ce2): the price, shipping, archive and publish actions all
+  // re-sync the live listing and can trip a Best Offer conflict. One catch path:
+  // re-seed fields from details, open the price editor, show the guided fix.
+  const applyBoConflict = (err: unknown): boolean => {
+    if (!(err instanceof ApiError) || err.code !== "BEST_OFFER_CONFLICT") return false;
+    const conflictDetails = err.details?.[0] as BestOfferConflictDetails | undefined;
+    if (!conflictDetails) return false;
+    setBoFields({
+      enabled: conflictDetails.bestOfferEnabled === true,
+      autoAccept: typeof conflictDetails.bestOfferAutoAcceptPrice === "number" ? String(conflictDetails.bestOfferAutoAcceptPrice) : "",
+      minimum: typeof conflictDetails.minimumBestOfferPrice === "number" ? String(conflictDetails.minimumBestOfferPrice) : "",
+    });
+    // CR#3 / BO-5: only un-touch when the server HEALED (and persisted)
+    // these values. An unpersisted echo of the seller's own edit must
+    // stay touched, or a price-only retry silently drops their change.
+    setBoTouched(conflictDetails.healed !== true);
+    setBoConflict({ ...conflictDetails, message: err.message });
+    setBoAdjusted(false);
+    // The fix lives in the price editor — close any other open editor/sheet so
+    // two forms never stack, and seed the price input when the conflict came
+    // from a non-price action (adjust-to-fit computes from this value).
+    setEditingShipping(false);
+    setShowArchiveConfirm(false);
+    if (!editingPrice) setEditedPrice(String(listing.price));
+    setEditingPrice(true);
+    return true;
+  };
+
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  // Thresholds must sit strictly below the price (eBay 22003/23004) and
+  // auto-accept strictly above minimum (23005) — clamp so tiny prices can't
+  // round into a second conflict.
+  const handleAdjustToFit = () => {
+    const p = parsePriceInput(editedPrice);
+    if (p == null) return;
+    const accept = Math.max(0.01, Math.min(round2(p * 0.9), round2(p - 0.01)));
+    const minimum = Math.min(round2(p * 0.8), round2(accept - 0.01));
+    // A minimum is optional on eBay; below ~$0.03 there is no room for one
+    // under the auto-accept, so leave it empty rather than equal (23005).
+    setBoFields({ enabled: true, autoAccept: String(accept), minimum: minimum >= 0.01 ? String(minimum) : "" });
+    setBoTouched(true);
+    setBoConflict(null);
+    setBoAdjusted(true);
+  };
+
+  const handleTurnOffOffers = () => {
+    setBoFields((f) => ({ ...f, enabled: false }));
+    setBoTouched(true);
+    setBoConflict(null);
+    setBoAdjusted(true);
   };
 
   const handleSavePrice = async () => {
@@ -138,26 +196,13 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       });
       if (updated.warning) setActionWarning(updated.warning);
       setEditingPrice(false);
+      setBoConflict(null);
+      setBoAdjusted(false);
       onChanged();
     } catch (err) {
-      // 25afd214: a Best Offer conflict carries the live thresholds in
-      // details — re-seed the offer fields so the seller fixes them in place
-      // instead of reading the 422 as app breakage.
-      if (err instanceof ApiError && err.code === "BEST_OFFER_CONFLICT") {
-        const conflictDetails = err.details?.[0] as BestOfferConflictDetails | undefined;
-        if (conflictDetails) {
-          setBoFields({
-            enabled: conflictDetails.bestOfferEnabled === true,
-            autoAccept: typeof conflictDetails.bestOfferAutoAcceptPrice === "number" ? String(conflictDetails.bestOfferAutoAcceptPrice) : "",
-            minimum: typeof conflictDetails.minimumBestOfferPrice === "number" ? String(conflictDetails.minimumBestOfferPrice) : "",
-          });
-          // CR#3 / BO-5: only un-touch when the server HEALED (and persisted)
-          // these values. An unpersisted echo of the seller's own edit must
-          // stay touched, or a price-only retry silently drops their change.
-          setBoTouched(conflictDetails.healed !== true);
-        }
-      }
-      setActionError(err instanceof ApiError ? err.message : "Failed to save changes");
+      // The banner carries the server's own sentence (e.g. "Saved locally,
+      // but eBay rejected the price…") — don't render it twice below.
+      if (!applyBoConflict(err)) setActionError(err instanceof ApiError ? err.message : "Failed to save changes");
     } finally {
       setIsSaving(false);
     }
@@ -221,7 +266,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       setEditingShipping(false);
       onChanged();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Failed to save shipping");
+      if (!applyBoConflict(err)) setActionError(err instanceof ApiError ? err.message : "Failed to save shipping");
     } finally {
       setShippingSaving(false);
     }
@@ -279,7 +324,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       setShowArchiveConfirm(false);
       onChanged();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Failed to archive listing");
+      if (!applyBoConflict(err)) setActionError(err instanceof ApiError ? err.message : "Failed to archive listing");
     } finally {
       setIsArchiving(false);
     }
@@ -304,6 +349,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
     try {
       await publishAndRefresh();
     } catch (err) {
+      if (applyBoConflict(err)) return;
       // eBay needs category-required item specifics — collect them, then re-publish.
       if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
         setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);
@@ -461,6 +507,30 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       <div className="mt-2 flex items-center justify-between">
         {editingPrice ? (
           <div className="flex flex-col gap-2">
+            {boConflict && (
+              <div data-testid="bo-conflict-banner" className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-2 text-xs text-red-700 dark:text-red-300 flex flex-col gap-1.5">
+                <span className="font-medium">{boConflict.message}</span>
+                <span>
+                  Best Offer thresholds must be below the price
+                  {typeof boConflict.bestOfferAutoAcceptPrice === "number" && ` · auto-accept $${boConflict.bestOfferAutoAcceptPrice}`}
+                  {typeof boConflict.minimumBestOfferPrice === "number" && ` · minimum $${boConflict.minimumBestOfferPrice}`}.
+                  {boConflict.healed
+                    ? " These were refreshed from your live eBay listing."
+                    : " These are your current settings."}
+                </span>
+                <span className="flex gap-2">
+                  <button type="button" onClick={handleAdjustToFit} disabled={parsePriceInput(editedPrice) == null} className="px-2 py-0.5 rounded-lg border border-red-300 dark:border-red-700 font-medium disabled:opacity-50">
+                    Adjust to fit price
+                  </button>
+                  <button type="button" onClick={handleTurnOffOffers} className="px-2 py-0.5 rounded-lg border border-red-300 dark:border-red-700 font-medium">
+                    Turn off offers
+                  </button>
+                </span>
+              </div>
+            )}
+            {boAdjusted && (
+              <p className="text-xs text-amber-700 dark:text-amber-300">Offer settings adjusted — Save to confirm.</p>
+            )}
             <div className="flex items-center gap-2">
               <div className="relative">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
@@ -485,6 +555,8 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
                   // No re-seed needed: opening the editor always seeds fresh.
                   setEditingPrice(false);
                   setActionError(null);
+                  setBoConflict(null);
+                  setBoAdjusted(false);
                 }}
                 className="px-2 py-1.5 text-sm text-text-secondary"
               >

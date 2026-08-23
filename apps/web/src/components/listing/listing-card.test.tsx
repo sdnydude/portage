@@ -430,7 +430,7 @@ describe("ListingCard — Best Offer conflict guided fix (25afd214)", () => {
       if (path === "/listings/l1" && opts?.method === "PATCH") {
         throw new ApiError(422, "BEST_OFFER_CONFLICT", "Price conflicts with Best Offer thresholds", [
           { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199 },
-        ] as unknown as string[]);
+        ]);
       }
       return {};
     });
@@ -446,7 +446,134 @@ describe("ListingCard — Best Offer conflict guided fix (25afd214)", () => {
     // Editor stays open; offer fields now show the server-healed thresholds.
     expect(await screen.findByLabelText(/auto-accept/i)).toHaveValue(209);
     expect(screen.getByLabelText(/minimum offer/i)).toHaveValue(199);
-    expect(screen.getByText(/best offer/i, { selector: "p,div,span" })).toBeInTheDocument();
+    expect(screen.getByTestId("bo-conflict-banner")).toHaveTextContent(/best offer/i);
+  });
+
+  it("renders the guided-fix banner and 'Adjust to fit price' rewrites thresholds strictly below the form price (P3 cf6d2ce2)", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (path === "/listings/l1" && opts?.method === "PATCH") {
+        throw new ApiError(422, "BEST_OFFER_CONFLICT", "Saved locally, but eBay rejected the price", [
+          { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199, healed: true },
+        ]);
+      }
+      return {};
+    });
+    render(<ListingCard listing={LISTING} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    const priceInput = screen.getByLabelText(/^price$/i);
+    await user.clear(priceInput);
+    await user.type(priceInput, "199");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const banner = await screen.findByTestId("bo-conflict-banner");
+    expect(banner).toHaveTextContent(/auto-accept \$209/i);
+    expect(banner).toHaveTextContent(/minimum \$199/i);
+    expect(banner).toHaveTextContent(/refreshed from your live eBay listing/i);
+
+    await user.click(screen.getByRole("button", { name: /adjust to fit price/i }));
+    expect(screen.getByLabelText(/auto-accept/i)).toHaveValue(179.1);
+    expect(screen.getByLabelText(/minimum offer/i)).toHaveValue(159.2);
+    expect(screen.queryByTestId("bo-conflict-banner")).not.toBeInTheDocument();
+    expect(screen.getByText(/adjusted — save to confirm/i)).toBeInTheDocument();
+  });
+
+  it("'Adjust to fit price' on a $0.02 price sets auto-accept $0.01 and leaves minimum empty — never equal (23005)", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (path === "/listings/l1" && opts?.method === "PATCH") {
+        throw new ApiError(422, "BEST_OFFER_CONFLICT", "conflict", [
+          { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 5, minimumBestOfferPrice: 4, healed: false },
+        ]);
+      }
+      return {};
+    });
+    render(<ListingCard listing={LISTING} token="t" onChanged={() => {}} highlight={false} />);
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    const priceInput = screen.getByLabelText(/^price$/i);
+    await user.clear(priceInput);
+    await user.type(priceInput, "0.02");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await screen.findByTestId("bo-conflict-banner");
+    await user.click(screen.getByRole("button", { name: /adjust to fit price/i }));
+
+    expect(screen.getByLabelText(/auto-accept/i)).toHaveValue(0.01);
+    expect(screen.getByLabelText(/minimum offer/i)).toHaveValue(null);
+  });
+
+  it("a shipping save that trips the conflict closes the shipping form and opens the guided fix seeded with the listing price", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: Record<string, unknown> }) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (path === "/listings/l1" && opts?.method === "PATCH" && opts.body?.marketplaceSpecificFields) {
+        throw new ApiError(422, "BEST_OFFER_CONFLICT", "Saved locally, but eBay rejected the update", [
+          { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 1300, minimumBestOfferPrice: 1250, healed: true },
+        ]);
+      }
+      return {};
+    });
+    const listing = { ...LISTING, marketplaceSpecificFields: { ebayShipping: { method: "calculated" } } };
+    render(<ListingCard listing={listing} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit shipping/i }));
+    await user.click(screen.getByRole("button", { name: /save shipping/i }));
+
+    await screen.findByTestId("bo-conflict-banner");
+    expect(screen.queryByRole("button", { name: /save shipping/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^price$/i)).toHaveValue(1200); // seeded from listing.price, not stale state
+    await user.click(screen.getByRole("button", { name: /adjust to fit price/i }));
+    expect(screen.getByLabelText(/auto-accept/i)).toHaveValue(1080);
+  });
+
+  it("a publish that trips the conflict renders the guided fix and skips the aspects/weight sheets", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (String(path).includes("/publish")) {
+        throw new ApiError(422, "BEST_OFFER_CONFLICT", "conflict", [
+          { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 1300, minimumBestOfferPrice: 1250, healed: false },
+        ]);
+      }
+      return {};
+    });
+    render(<ListingCard listing={{ ...LISTING, status: "draft" }} token="t" onChanged={vi.fn()} highlight={false} />);
+    await user.click(screen.getByRole("button", { name: /publish/i }));
+
+    await screen.findByTestId("bo-conflict-banner");
+    expect(screen.queryByText(/requires these item specifics/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /add package weight/i })).not.toBeInTheDocument();
+  });
+
+  it("'Turn off offers' unchecks Accept offers so the retry sends the explicit disable triple (P3 cf6d2ce2)", async () => {
+    const user = userEvent.setup();
+    const patches: Array<Record<string, unknown>> = [];
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: Record<string, unknown> }) => {
+      if (path === "/seller-profile") return { profile: {} };
+      if (path === "/listings/l1" && opts?.method === "PATCH") {
+        patches.push(opts.body ?? {});
+        if (patches.length === 1) {
+          throw new ApiError(422, "BEST_OFFER_CONFLICT", "conflict", [
+            { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199, healed: false },
+          ]);
+        }
+        return { ...LISTING, price: 199 };
+      }
+      return {};
+    });
+    render(<ListingCard listing={LISTING} token="t" onChanged={() => {}} highlight={false} />);
+
+    await user.click(screen.getByRole("button", { name: /edit price/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await screen.findByTestId("bo-conflict-banner");
+    await user.click(screen.getByRole("button", { name: /turn off offers/i }));
+    expect(screen.queryByTestId("bo-conflict-banner")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/auto-accept/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(patches[1].marketplaceSpecificFields).toEqual({ bestOfferEnabled: false, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null });
   });
 
   it("re-seeds the configured threshold and clears the other to empty when details carries null", async () => {
@@ -456,7 +583,7 @@ describe("ListingCard — Best Offer conflict guided fix (25afd214)", () => {
       if (path === "/listings/l1" && opts?.method === "PATCH") {
         throw new ApiError(422, "BEST_OFFER_CONFLICT", "conflict", [
           { bestOfferEnabled: true, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: 199 },
-        ] as unknown as string[]);
+        ]);
       }
       return {};
     });
@@ -499,7 +626,7 @@ describe("ListingCard — Best Offer conflict guided fix (25afd214)", () => {
           // healed:false — server persisted NOTHING; these are the seller's own values echoed back.
           throw new ApiError(422, "BEST_OFFER_CONFLICT", "conflict", [
             { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199, healed: false },
-          ] as unknown as string[]);
+          ]);
         }
         return { id: "l1" };
       }
@@ -545,7 +672,7 @@ describe("ListingCard — Best Offer conflict guided fix (25afd214)", () => {
           // them on retry is safe (they're already the DB truth).
           throw new ApiError(422, "BEST_OFFER_CONFLICT", "conflict", [
             { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199, healed: true },
-          ] as unknown as string[]);
+          ]);
         }
         return { id: "l1" };
       }

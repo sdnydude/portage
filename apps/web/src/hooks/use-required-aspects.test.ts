@@ -32,4 +32,17 @@ describe("useRequiredAspects", () => {
 
     expect(Object.keys(result.current.aspects).sort()).toEqual(["Brand", "Screen Size"]);
   });
+
+  it("fetch failure sets isError (aspects empty) and refetch() clears it on success (P3 125cbc53)", async () => {
+    apiMock.mockRejectedValueOnce(new Error("503"));
+    const { result } = renderHook(() => useRequiredAspects("177"));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.aspects).toEqual({});
+    expect(result.current.isLoading).toBe(false);
+
+    apiMock.mockResolvedValueOnce({ aspects: { Brand: { required: true, values: null } } });
+    result.current.refetch();
+    await waitFor(() => expect(result.current.isError).toBe(false));
+    expect(Object.keys(result.current.aspects)).toEqual(["Brand"]);
+  });
 });

@@ -125,6 +125,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [isRotating, setIsRotating] = useState(false);
   const [comps, setComps] = useState<CompResult | null>(null);
   const [compsLoading, setCompsLoading] = useState(false);
+  // P3 (e955f1b9): a comps outage is told, not swallowed — pricing proceeds
+  // on the AI estimate alone.
+  const [compsError, setCompsError] = useState(false);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const [isListingForSale, setIsListingForSale] = useState(false);
   // F1: after "Save & List" creates the item, open the unified publish-confirm
@@ -171,6 +174,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     missingRequired,
     buildAspects,
     aspectsBlockPublish,
+    aspectsError,
+    refetchAspects,
+    resolveError,
     conditionIds,
     categoryMismatch,
     resolvedVisionCategory,
@@ -213,10 +219,26 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   // If the current condition (AI-suggested or comp-copied) is disallowed for
   // the resolved category, snap to the nearest allowed grade instead of
   // failing later at publish.
+  // P3 (62e1061e): the snap still happens, but it is told — the seller sees
+  // what changed and why instead of a silently different condition.
+  const [conditionNotice, setConditionNotice] = useState<{ from: PortageCondition; to: PortageCondition } | null>(null);
+  const conditionLabel = (c: string) => conditionOptions.find((o) => o.value === c)?.label ?? c;
+  // Every user-driven condition change goes through here so a stale notice
+  // never outlives the choice it described.
+  const chooseCondition = (c: string) => {
+    setConditionNotice(null);
+    setEditCondition(c);
+  };
+  // A new category starts clean — declared BEFORE the snap effect so a snap
+  // the new category causes still lands its own notice in the same commit.
+  useEffect(() => { setConditionNotice(null); }, [resolvedCategoryId]);
   useEffect(() => {
     if (availableConditions.length === 0) return;
     if (availableConditions.includes(editCondition as PortageCondition)) return;
-    setEditCondition(nearestAllowedCondition(editCondition as PortageCondition, availableConditions));
+    const next = nearestAllowedCondition(editCondition as PortageCondition, availableConditions);
+    if (next === editCondition) return;
+    setEditCondition(next);
+    setConditionNotice({ from: editCondition as PortageCondition, to: next });
   }, [availableConditions, editCondition]);
 
 
@@ -420,9 +442,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       setState("review");
 
       setCompsLoading(true);
+      setCompsError(false);
+      setConditionNotice(null);
       api<CompResult>(`/items/comps/search?q=${encodeURIComponent(resultCandidates[0].name)}`, { token })
         .then((c) => setComps(c))
-        .catch(() => {})
+        .catch(() => setCompsError(true))
         .finally(() => setCompsLoading(false));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
@@ -1182,6 +1206,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               </div>
 
               {/* eBay Comp Price */}
+              {compsError && !compsLoading && (
+                <p data-testid="comps-error" className="text-xs text-[var(--accent-warning)] px-1">
+                  Comps unavailable — using AI estimate only.
+                </p>
+              )}
               {compsLoading ? (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface border border-border">
                   <div className="w-4 h-4 border-2 border-[var(--teal)] border-t-transparent rounded-full animate-spin" />
@@ -1269,7 +1298,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                                 <div className="px-2.5 pb-2.5 space-y-2 border-t border-border pt-2">
                                   <div className="flex gap-2">
                                     <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Title</button>
-                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
+                                    <button onClick={() => chooseCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
                                   </div>
                                   <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="block text-center py-2 rounded-lg border border-border text-xs font-medium text-text-secondary">View on eBay</a>
                                 </div>
@@ -1310,7 +1339,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                                 <div className="px-2.5 pb-2.5 space-y-2 border-t border-border pt-2">
                                   <div className="flex gap-2">
                                     <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Title</button>
-                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
+                                    <button onClick={() => chooseCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
                                   </div>
                                   <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="block text-center py-2 rounded-lg border border-border text-xs font-medium text-text-secondary">View on eBay</a>
                                 </div>
@@ -1332,11 +1361,16 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                     This eBay category uses condition grades Portage doesn&apos;t map yet — condition will be captured at listing time.
                   </p>
                 )}
+                {conditionNotice && (
+                  <p data-testid="condition-notice" className="mb-1 text-xs text-[var(--accent-warning)]">
+                    {`Condition adjusted to ${conditionLabel(conditionNotice.to)} — ${conditionLabel(conditionNotice.from)} isn't offered in this category.`}
+                  </p>
+                )}
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                   {conditionOptions.filter((opt) => availableConditions.includes(opt.value)).map((opt) => (
                     <button
                       key={opt.value}
-                      onClick={() => setEditCondition(opt.value)}
+                      onClick={() => chooseCondition(opt.value)}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                         editCondition === opt.value
                           ? "bg-[var(--teal)] text-white"
@@ -1438,9 +1472,26 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                     Find category
                   </button>
                 </div>
-                {!isCategoryResolving && resolvedCategoryId === null && (
+                {/* P3 truth split (125cbc53 / 2b8aefb1 / a5a2b944) — three
+                    independent states, never one ambiguous line:
+                    [1] lookup failed (any resolution state, prior one retained)
+                    [2] genuinely no match
+                    [3] category known, but its required-details schema failed */}
+                {resolveError && !isCategoryResolving && (
+                  <p data-testid="resolve-error" className="mt-1 text-xs text-[var(--accent-warning)] flex items-center gap-2">
+                    <span>Category lookup failed — specifics may be skipped.</span>
+                    <button type="button" onClick={() => { void resolveCategory(editName); }} className="underline font-medium">Retry lookup</button>
+                  </p>
+                )}
+                {!isCategoryResolving && !resolveError && resolvedCategoryId === null && (
                   <p className="mt-1 text-xs text-text-secondary">
-                    eBay category unresolved — specifics captured at listing time.
+                    No eBay category matched — specifics captured at listing time.
+                  </p>
+                )}
+                {aspectsError && !isAspectsLoading && (
+                  <p data-testid="aspects-error" className="mt-1 text-xs text-[var(--accent-warning)] flex items-center gap-2">
+                    <span>eBay category details unavailable — required specifics can&apos;t be checked.</span>
+                    <button type="button" onClick={refetchAspects} className="underline font-medium">Retry</button>
                   </p>
                 )}
               </div>
@@ -1457,6 +1508,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 isCategoryResolving={isCategoryResolving}
                 isAspectsLoading={isAspectsLoading}
                 categoryResolved={resolvedCategoryId !== null}
+                aspectsError={aspectsError}
               />
 
               {/* Brand & Model */}
@@ -1526,7 +1578,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 aspectsBlockPublish
                   ? missingRequired.length > 0
                     ? `Complete ${missingRequired.length} required eBay detail${missingRequired.length === 1 ? "" : "s"} first`
-                    : "Checking eBay requirements…"
+                    : aspectsError
+                      ? "eBay category details unavailable — retry before listing"
+                      : "Checking eBay requirements…"
                   : null
               }
             />

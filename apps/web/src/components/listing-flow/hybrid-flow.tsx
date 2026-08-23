@@ -398,6 +398,9 @@ function ChatMode({
   const { state, lastStep, setField, updateWeightDims, confirmRecognition, fetchComps, applyPricingStrategy } = flow;
   const bottomRef = useRef<HTMLDivElement>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
+  // P3 T5b: confirm-time item creation can fail — say so, with a Retry (the
+  // "Looks right" pill unmounts on confirm, so the retry must live here).
+  const [createError, setCreateError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   // Once the review card is on screen, the editable Item Details card collapses
   // to a one-line summary (the visible duplication confused sellers); this
@@ -635,13 +638,14 @@ function ChatMode({
             <Pill primary onClick={() => {
               confirmRecognition(state.recognition.selectedIndex);
               fetchComps();
+              setCreateError(null);
               // Fresh scans have no inventoryItemId yet — create the item now
               // so prepare() (AI fields + comps + preview card) runs on every
-              // path. Creation failure degrades to the old manual flow;
-              // prepare failures surface via prepareListing.error.
+              // path. Creation failure is surfaced below (P3 T5b); prepare
+              // failures surface via prepareListing.error.
               void flow.ensureItemCreated()
                 .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
-                .catch(() => {});
+                .catch((e: unknown) => setCreateError(e instanceof Error ? e.message : "Couldn't save the item — try again."));
             }}>
               Looks right
             </Pill>
@@ -782,6 +786,24 @@ function ChatMode({
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 0", gap: 12 }}>
           <div style={{ width: 40, height: 40, border: "3px solid #E8E5DE", borderTopColor: ACCENT, borderRadius: "50%", animation: "shimmer 1s linear infinite" }} />
           <p style={{ fontSize: 13, color: SECONDARY }}>Preparing your listing...</p>
+        </div>
+      )}
+
+      {createError && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }} role="alert">
+          <PorterMessage>
+            I couldn&apos;t save this item — {createError}.
+          </PorterMessage>
+          <div style={{ marginLeft: 34 }}>
+            <Pill primary onClick={() => {
+              setCreateError(null);
+              void flow.ensureItemCreated()
+                .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+                .catch((e: unknown) => setCreateError(e instanceof Error ? e.message : "Couldn't save the item — try again."));
+            }}>
+              Retry
+            </Pill>
+          </div>
         </div>
       )}
 

@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import EditItemPage from "./page";
 
+const routerBack = vi.fn();
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "i1" }),
-  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), back: routerBack, replace: vi.fn() }),
 }));
 
 vi.mock("@/hooks/use-auth", () => ({
@@ -73,6 +74,24 @@ vi.mock("@/hooks/use-listings", () => ({
 
 beforeEach(() => {
   updateItemMock.mockClear();
+  updateItemMock.mockResolvedValue({});
+  routerBack.mockClear();
+});
+
+describe("EditItemPage — marketplace sync warnings (P3 T4)", () => {
+  it("stays on the page and shows the warning instead of navigating back when the save returns syncWarnings", async () => {
+    updateItemMock.mockResolvedValueOnce({ ...ITEM, price: 80, syncWarnings: ["ebay: listing 1100 — The Best Offer auto-accept price $85 must be a positive amount below the listing price $80"] });
+    render(<EditItemPage />);
+    fireEvent.change(screen.getByLabelText("Price (USD)"), { target: { value: "80" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(updateItemMock).toHaveBeenCalledTimes(1));
+    const notice = await screen.findByTestId("sync-warning");
+    expect(notice).toHaveTextContent(/auto-accept price \$85/);
+    expect(notice).toHaveTextContent(/saved/i);
+    expect(routerBack).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: /fix offer settings/i })).toHaveAttribute("href", "/inventory/i1");
+  });
 });
 
 describe("EditItemPage — shared-fields notice (listing-hub)", () => {

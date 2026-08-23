@@ -395,6 +395,23 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
     expect(calls).toBe(1); // no downgrade — the seller fixes the numbers
   });
 
+  it('publish-time conflict carries structured details with absent thresholds as null (P3 25afd214, create)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></AddFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 500 },
+    } as any).catch((e: unknown) => e);
+
+    expect((err as AppError).details).toEqual([
+      { bestOfferEnabled: null, bestOfferAutoAcceptPrice: 500, minimumBestOfferPrice: null, healed: false },
+    ]);
+  });
+
   it('the narrowed prose backstop ignores unrelated errors that merely mention auto-accept wording (BO-M)', async () => {
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
       if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
@@ -1126,6 +1143,37 @@ describe('EbayAdapter.updateListing — Best Offer threshold conflict (BO-2)', (
     expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
     expect((err as AppError).message).toMatch(/209|199/); // actionable: carries the conflicting numbers
     expect(calls).toBe(1); // no deletion retry — user config is never destroyed
+  });
+
+  it('price-only ReviseInventoryStatus conflict carries all-null details — thresholds live on eBay (P3 25afd214, fast path)', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<ReviseInventoryStatusResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></ReviseInventoryStatusResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307034606520', { price: 25, quantity: 1, currency: 'USD' }).catch((e: unknown) => e);
+
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+    expect((err as AppError).details).toEqual([
+      { bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null, healed: false },
+    ]);
+  });
+
+  it('carries the submitted thresholds as structured BestOfferConflictDetails (P3 25afd214, full revise)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Auto decline amount cannot be greater than or equal to the Buy It Now price.</ShortMessage><ErrorCode>22003</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307100136291', {
+      ...baseInput, price: 199, title: 'New', ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 199, bestOfferAutoAcceptPrice: 209 },
+    } as any).catch((e: unknown) => e);
+
+    expect((err as AppError).details).toEqual([
+      { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199, healed: false },
+    ]);
   });
 });
 

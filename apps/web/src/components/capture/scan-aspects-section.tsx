@@ -25,6 +25,8 @@ interface ScanAspectsSectionProps {
   isCategoryResolving: boolean;
   isAspectsLoading: boolean;
   categoryResolved: boolean;
+  /** P3 (125cbc53): schema fetch failed — an empty map means "unknown", never "complete". */
+  aspectsError?: boolean;
 }
 
 /**
@@ -42,6 +44,7 @@ export function ScanAspectsSection({
   isCategoryResolving,
   isAspectsLoading,
   categoryResolved,
+  aspectsError = false,
 }: ScanAspectsSectionProps) {
   // Collapsed by default; required-missing blocks publish, so the section
   // opens itself (and stays user-toggleable afterwards).
@@ -189,6 +192,10 @@ export function ScanAspectsSection({
           {missingRequired.length > 0 ? (
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[var(--accent-error-soft)] text-[var(--accent-error)]">
               {missingRequired.length} required
+            </span>
+          ) : aspectsError ? (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[color-mix(in_srgb,var(--accent-warning)_15%,transparent)] text-[var(--accent-warning)]">
+              Unavailable
             </span>
           ) : (
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[var(--accent-success-soft)] text-[var(--accent-success)]">
