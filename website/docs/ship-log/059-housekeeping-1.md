@@ -12,7 +12,7 @@ sidebar_position: 59
 | **Complexity** | complex (schema enum + column, api + web, 10 operator items, 11 tasks) |
 | **TDD** | yes (one test per write, red → green) |
 | **Branch** | `feat/housekeeping-1` |
-| **PR** | pending |
+| **PR** | [#317](https://github.com/sdnydude/portage/pull/317) (merged 2026-08-23 11:28 ET, `2607211`) |
 | **Tests** | api 1016 → 1033 · web 674 → 695 · e2e +8 (live, incl. wiring audit) |
 | **Proof** | [2026-08-23 Housekeeping batch 1](/docs/proof/2026-08-23-housekeeping-1) |
 
