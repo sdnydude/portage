@@ -210,9 +210,15 @@ export default function InventoryPage() {
   const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<typeof items[number]>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // P3 (14efa906): the whole two-pane workbench is `hidden lg:flex`
+  // (master-detail.tsx), so below lg a deep-linked selection would mount ItemDetail
+  // invisibly and fire its fetches for nothing. Only select when the pane can
+  // actually show; absent matchMedia (non-browser) fails open to desktop.
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("item");
-    if (id) setSelectedId(id);
+    if (!id) return;
+    const paneVisible = typeof window.matchMedia !== "function" || window.matchMedia("(min-width: 1024px)").matches;
+    if (paneVisible) setSelectedId(id);
   }, []);
 
   const selectItem = useCallback((id: string) => {

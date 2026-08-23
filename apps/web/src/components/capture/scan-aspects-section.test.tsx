@@ -60,6 +60,13 @@ describe("ScanAspectsSection", () => {
     expect(props.confirmSuggestion).toHaveBeenCalledWith("Brand", "Fender");
   });
 
+  it("never claims Complete when the aspect schema failed to load — shows Unavailable instead (P3 125cbc53)", () => {
+    const props = { ...baseProps(), aspectsError: true };
+    render(<ScanAspectsSection {...props} />);
+    expect(screen.queryByText("Complete")).not.toBeInTheDocument();
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+  });
+
   it("collapses by default when complete, and hides optional aspects behind a disclosure", () => {
     const props = baseProps();
     props.aspects = {

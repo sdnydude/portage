@@ -1306,6 +1306,82 @@ describe('PATCH /listings/:id', () => {
     expect(res.body.warning).toMatch(/leaf category/i);
   });
 
+  it('rethrows a post-save BEST_OFFER_CONFLICT as 422 with live-healed details — never a 200 warning (P3 25afd214)', async () => {
+    // No stored thresholds → the local pre-flight passes; eBay still rejects
+    // on thresholds Portage never learned (the 2026-08-05 live case).
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // footer lookup — no seller profile
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+    mockUpdateListing.mockRejectedValueOnce(new AppError(422, 'BEST_OFFER_CONFLICT', 'eBay said: Invalid AutoAccept price.', [
+      { bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null, healed: false },
+    ]));
+    mockGetEbayItemVerification.mockResolvedValueOnce({
+      found: true, sku: 'PRT-000001', aspects: {}, mpn: null, brand: null, status: 'Active', listingId: '110012345678', price: '199',
+      bestOfferEnabled: true, bestOfferAutoAcceptPrice: 180, minimumBestOfferPrice: 150,
+    });
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('BEST_OFFER_CONFLICT');
+    expect(res.body.error).toMatch(/^Saved locally, but eBay rejected the update/);
+    expect(res.body.details).toEqual([{ bestOfferEnabled: true, bestOfferAutoAcceptPrice: 180, minimumBestOfferPrice: 150, healed: true }]);
+    // The heal is PERSISTED (second update after the price save) so the next edit sees eBay's truth.
+    expect(updateSet).toHaveBeenCalledTimes(2);
+    expect(updateSet.mock.calls[1][0]).toMatchObject({ marketplaceSpecificFields: expect.anything() });
+    expect(valuesSpy).toHaveBeenCalledTimes(1); // one failure row — the rethrow must not log again
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ listingId: 'listing-1', status: 'failure', message: expect.stringMatching(/Invalid AutoAccept/) }));
+  });
+
+  it('post-save conflict with no live read-back keeps stored values and healed:false — no DB heal write (P3 25afd214)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032', bestOfferEnabled: true, minimumBestOfferPrice: 150 },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032', bestOfferEnabled: true, minimumBestOfferPrice: 150 },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]);
+    vi.mocked(db.insert).mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) } as any);
+    mockUpdateListing.mockRejectedValueOnce(new AppError(422, 'BEST_OFFER_CONFLICT', 'eBay said: Invalid AutoAccept price.', [
+      { bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null, healed: false },
+    ]));
+    mockGetEbayItemVerification.mockResolvedValueOnce({ found: false });
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(422);
+    expect(res.body.details).toEqual([{ bestOfferEnabled: true, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: 150, healed: false }]);
+    expect(updateSet).toHaveBeenCalledTimes(1); // the price save only — no heal write
+  });
+
   it('writes a marketplace_sync_log failure row when the PATCH sync fails (P1)', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "./use-auth";
 
@@ -34,27 +34,34 @@ function withoutPhysicalDimensions(
 /**
  * Fetches the eBay category's item-specific schema (which aspects are required
  * and their allowed values) so the listing flow can collect them up front
- * instead of failing at publish. Returns an empty map on any failure — the
- * server-side publish gate remains the backstop.
+ * instead of failing at publish. A fetch failure yields an empty map AND
+ * `isError: true` (P3 125cbc53) — callers must not read "no aspects" as
+ * "nothing required"; `refetch()` retries. The server-side publish gate
+ * remains the backstop.
  */
 export function useRequiredAspects(categoryId: string | null) {
   const { token } = useAuth();
   const [aspects, setAspects] = useState<Record<string, RequiredAspect>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isError, setIsError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const refetch = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
     if (!token || !categoryId) {
       setAspects({});
+      setIsError(false);
       return;
     }
     let active = true;
     setIsLoading(true);
+    setIsError(false);
     api<{ aspects: Record<string, RequiredAspect> }>(`/marketplace/ebay/category-aspects/${categoryId}`, { token })
       .then((d) => { if (active) setAspects(withoutPhysicalDimensions(d.aspects ?? {})); })
-      .catch(() => { if (active) setAspects({}); })
+      .catch(() => { if (active) { setAspects({}); setIsError(true); } })
       .finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
-  }, [token, categoryId]);
+  }, [token, categoryId, attempt]);
 
-  return { aspects, isLoading };
+  return { aspects, isLoading, isError, refetch };
 }

@@ -933,6 +933,44 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             durationMs: Date.now() - syncStartedAt,
           });
         } catch (err) {
+          // P3 (25afd214): eBay rejected the price on thresholds the local
+          // pre-flight never saw (stored on the live listing, not in our row).
+          // The local save landed, but a 200+warning hides the numbers the
+          // seller needs — heal from live (same conflict-time GetItem as the
+          // pre-flight), persist, and rethrow 422 with the real thresholds so
+          // the guided fix renders. Never delete seller config.
+          if (err instanceof AppError && err.code === 'BEST_OFFER_CONFLICT') {
+            void logSyncAttempt({
+              userId, itemId: updated.itemId, listingId: updated.id, marketplace: updated.marketplace,
+              trigger: 'listing_edit', status: 'failure', message: err.message, durationMs: Date.now() - syncStartedAt,
+            });
+            const healResult = await healBestOfferFromLive(
+              getAdapter(userId, 'ebay') as EbayAdapter, ebaySyncId!, (updated.marketplaceSpecificFields ?? {}) as Record<string, unknown>,
+            );
+            // One normalized triple serves both the atomic DB patch (null = delete key) and the client payload.
+            const live = {
+              bestOfferEnabled: (healResult.specific.bestOfferEnabled as boolean | undefined) ?? null,
+              bestOfferAutoAcceptPrice: (healResult.specific.bestOfferAutoAcceptPrice as number | undefined) ?? null,
+              minimumBestOfferPrice: (healResult.specific.minimumBestOfferPrice as number | undefined) ?? null,
+            };
+            // `healed` promises the client these values are PERSISTED — only
+            // claim it once the write landed; a failed heal write still yields
+            // the informative 422, never an opaque 500 after a saved edit.
+            let healed = false;
+            if (healResult.healed) {
+              try {
+                await db.update(listings)
+                  .set({ marketplaceSpecificFields: specificsMergeExpression(live), updatedAt: new Date() })
+                  .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)));
+                healed = true;
+              } catch (healErr) {
+                logger.warn({ listingId: updated.id, error: (healErr as Error).message }, 'Best Offer heal persist failed after conflict');
+              }
+            }
+            throw new AppError(422, 'BEST_OFFER_CONFLICT', `Saved locally, but eBay rejected the update: ${err.message}`, [
+              { ...live, healed } satisfies BestOfferConflictDetails,
+            ]);
+          }
           // The local write already landed above — a parked marketplace (stray
           // etsy row) can never sync, so throwing 400 would tell the client
           // nothing saved when the change is persisted. Report the truth.

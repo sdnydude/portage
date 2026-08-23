@@ -626,4 +626,68 @@ describe("useScanAspects", () => {
     expect(result.current.categoryMismatch).toBe(false);
     expect(result.current.resolvedCategoryName).toBe("Cables, Snakes & Interconnects");
   });
+
+  it("aspect schema fetch failure surfaces aspectsError and keeps publish blocked — empty is not 'nothing required' (P3 125cbc53)", async () => {
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) return Promise.resolve({ suggestion: SUGGESTION });
+      if (path.startsWith("/marketplace/ebay/category-aspects/")) return Promise.reject(new Error("503"));
+      return Promise.reject(new Error(`unexpected path: ${path}`));
+    });
+    const { result, rerender } = renderHook(
+      ({ name, text }) => useScanAspects(name, text),
+      { initialProps: { name: "", text: "" } },
+    );
+    rerender({ name: "Fender Stratocaster", text: "Fender Stratocaster" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+
+    expect(result.current.resolvedCategoryId).toBe("33034");
+    expect(result.current.aspectsError).toBe(true);
+    expect(result.current.missingRequired).toEqual([]);
+    expect(result.current.aspectsBlockPublish).toBe(true);
+  });
+
+  it("category lookup failure sets resolveError while RETAINING the prior resolution; a successful retry clears it (P3 a5a2b944)", async () => {
+    mockRoutes();
+    const { result, rerender } = renderHook(
+      ({ name, text }) => useScanAspects(name, text),
+      { initialProps: { name: "", text: "" } },
+    );
+    rerender({ name: "Fender Stratocaster", text: "Fender Stratocaster" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(result.current.resolvedCategoryId).toBe("33034");
+    expect(result.current.resolveError).toBe(false);
+
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) return Promise.reject(new Error("503"));
+      return Promise.resolve({ aspects: ASPECTS });
+    });
+    await act(async () => { await result.current.resolveCategory("Fender Stratocaster"); });
+    expect(result.current.resolveError).toBe(true);
+    expect(result.current.resolvedCategoryId).toBe("33034"); // retained, per decision
+
+    mockRoutes();
+    await act(async () => { await result.current.resolveCategory("Fender Stratocaster"); });
+    expect(result.current.resolveError).toBe(false);
+  });
+
+  it("a STALE lookup rejection never flags a newer successful lookup (seq guard)", async () => {
+    let rejectFirst: (e: Error) => void = () => {};
+    let calls = 0;
+    apiMock.mockImplementation((path: string) => {
+      if (path.startsWith("/marketplace/ebay/category-suggestion")) {
+        calls += 1;
+        if (calls === 1) return new Promise((_, reject) => { rejectFirst = reject; }); // A: left pending
+        return Promise.resolve({ suggestion: SUGGESTION }); // B: succeeds
+      }
+      return Promise.resolve({ aspects: ASPECTS });
+    });
+    const { result } = renderHook(() => useScanAspects("", ""));
+    let a!: Promise<void>;
+    act(() => { a = result.current.resolveCategory("Gibson Les Paul"); });
+    await act(async () => { await result.current.resolveCategory("Fender Stratocaster"); });
+    expect(result.current.resolvedCategoryId).toBe("33034");
+
+    await act(async () => { rejectFirst(new Error("503")); await a; });
+    expect(result.current.resolveError).toBe(false);
+  });
 });

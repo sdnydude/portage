@@ -36,13 +36,14 @@ export function useScanAspects(
   // Ref mirror of resolvedCategoryId so dismissCategoryMismatch keeps a stable identity.
   const resolvedIdRef = useRef<string | null>(null);
   const [isCategoryResolving, setIsCategoryResolving] = useState(false);
+  const [resolveError, setResolveError] = useState(false);
   const [aspectValues, setAspectValues] = useState<Record<string, string>>({});
   // Names whose current value was auto-filled from the AI scan and not yet edited
   // by the seller — drives the [AI] provenance tag on the filled field.
   const [aiFilledNames, setAiFilledNames] = useState<string[]>([]);
 
   // Aspect schema comes from the existing hook — no duplicate fetch here.
-  const { aspects, isLoading: isAspectsLoading } = useRequiredAspects(resolvedCategoryId);
+  const { aspects, isLoading: isAspectsLoading, isError: aspectsError, refetch: refetchAspects } = useRequiredAspects(resolvedCategoryId);
 
   // Stale-aspect publish corruption guard: confirmed values belong to a
   // category's schema; when the resolved category changes they must be cleared.
@@ -126,9 +127,11 @@ export function useScanAspects(
         setConditionIds([]);
         setCategoryMismatch(false);
         setIsCategoryResolving(false);
+        setResolveError(false); // nothing to look up → no stale failure notice
         return;
       }
       setIsCategoryResolving(true);
+      setResolveError(false);
       try {
         const visionParam = visionCategory?.trim()
           ? `&visionCategory=${encodeURIComponent(visionCategory)}`
@@ -159,7 +162,10 @@ export function useScanAspects(
         // Transient failure (network, 5xx): retain the previous resolution.
         // Clearing here would cascade into the aspect-value wipe effect and
         // destroy user-confirmed values; only a confirmed "no match"
-        // (suggestion: null) resets the resolved state.
+        // (suggestion: null) resets the resolved state. P3 (a5a2b944): the
+        // failure is still TOLD — seq-guarded so a stale rejection can't
+        // flag a newer, successful lookup.
+        if (seq === requestSeq.current) setResolveError(true);
       } finally {
         if (seq === requestSeq.current) setIsCategoryResolving(false);
       }
@@ -215,6 +221,12 @@ export function useScanAspects(
     }, []),
     isCategoryResolving,
     isAspectsLoading,
+    // P3 (125cbc53): the schema fetch failed — `aspects` is empty because we
+    // don't KNOW, not because nothing is required. Surfaces as outage copy.
+    aspectsError,
+    refetchAspects,
+    // P3 (a5a2b944): last category lookup failed (prior resolution retained).
+    resolveError,
     aspects,
     aspectValues,
     setAspectValue,
@@ -224,9 +236,11 @@ export function useScanAspects(
     missingRequired,
     buildAspects,
     // Gating stays true through resolution so the publish button cannot be
-    // pressed against a not-yet-loaded (or about-to-change) aspect schema.
+    // pressed against a not-yet-loaded (or about-to-change) aspect schema; a
+    // FAILED fetch (aspectsError) blocks the same way — "we don't know" must
+    // never read as "nothing required" (P3 125cbc53).
     aspectsBlockPublish:
-      missingRequired.length > 0 || isCategoryResolving || isAspectsLoading,
+      missingRequired.length > 0 || isCategoryResolving || isAspectsLoading || aspectsError,
     resolveCategory,
   };
 }
