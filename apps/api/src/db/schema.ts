@@ -13,6 +13,9 @@ export const conditionEnum = pgEnum('item_condition', ['new', 'like_new', 'good'
 // value, so it stays here inert — no adapter, no routes, no UI offer it.
 export const marketplaceEnum = pgEnum('marketplace_type', ['ebay', 'etsy', 'reverb']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'active', 'sold', 'archived']);
+// Item-level status for non-marketplace states (Housekeeping-1). active/draft
+// are never stored here — they are derived from listings at read time.
+export const itemStatusEnum = pgEnum('item_status', ['unlisted', 'asset', 'sold', 'archived']);
 export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered', 'canceled']);
 export const notificationTypeEnum = pgEnum('notification_type', ['sale', 'buyer_message', 'listing_expiry', 'price_alert', 'shipping_reminder']);
 export const referenceTypeEnum = pgEnum('reference_type', ['order', 'listing', 'item']);
@@ -77,6 +80,10 @@ export const items = pgTable('items', {
   description: text('description').notNull().default(''),
   category: varchar('category', { length: 255 }).notNull().default(''),
   condition: conditionEnum('condition').notNull().default('good'),
+  // Manual status for items with no live listing: unlisted (default) / asset
+  // (not for sale) / sold (off-platform) / archived. Reads project displayStatus
+  // = listings override (active, draft) else this column.
+  status: itemStatusEnum('status').notNull().default('unlisted'),
   conditionNotes: text('condition_notes').notNull().default(''),
   brand: varchar('brand', { length: 255 }).notNull().default(''),
   model: varchar('model', { length: 255 }).notNull().default(''),

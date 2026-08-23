@@ -68,8 +68,9 @@ vi.mock("@/hooks/use-scan-aspects", () => ({
 }));
 
 let mockEditListings: Array<{ status: string }> = [];
+let mockEditListingsLoading = false;
 vi.mock("@/hooks/use-listings", () => ({
-  useListings: () => ({ listings: mockEditListings, isLoading: false, error: null, refetch: vi.fn(), createListing: vi.fn() }),
+  useListings: () => ({ listings: mockEditListings, isLoading: mockEditListingsLoading, error: null, refetch: vi.fn(), createListing: vi.fn() }),
 }));
 
 beforeEach(() => {
@@ -102,6 +103,61 @@ describe("EditItemPage — shared-fields notice (listing-hub)", () => {
       expect(screen.getByText(/shared across marketplaces/i)).toBeInTheDocument();
     } finally {
       mockEditListings = [];
+    }
+  });
+});
+
+describe("EditItemPage — condition notes (Housekeeping-1 T9)", () => {
+  it("renders Condition Notes as a 5-row textarea capped at 2000 chars (matches the server cap)", () => {
+    render(<EditItemPage />);
+    const notes = screen.getByPlaceholderText(/scratches, wear, defects/i) as HTMLTextAreaElement;
+    expect(notes.tagName).toBe("TEXTAREA");
+    expect(notes.rows).toBe(5);
+    expect(notes.maxLength).toBe(2000);
+  });
+});
+
+describe("EditItemPage — item status (Housekeeping-1 T6)", () => {
+  it("saves a manual status change, and locks the control to Active when a live listing exists", async () => {
+    updateItemMock.mockClear();
+    const { unmount } = render(<EditItemPage />);
+    const select = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(select.disabled).toBe(false);
+    fireEvent.change(select, { target: { value: "asset" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(updateItemMock).toHaveBeenCalledTimes(1));
+    expect(updateItemMock).toHaveBeenCalledWith(expect.objectContaining({ status: "asset" }));
+    unmount();
+
+    mockEditListings = [{ status: "active" }];
+    try {
+      render(<EditItemPage />);
+      const locked = screen.getByLabelText("Status") as HTMLSelectElement;
+      expect(locked.disabled).toBe(true);
+      expect(locked.value).toBe("active");
+    } finally {
+      mockEditListings = [];
+    }
+  });
+});
+
+describe("EditItemPage — item status, remaining lock branches (review)", () => {
+  it("locks to Draft / Sold from listings and stays disabled while listings are still loading", () => {
+    for (const [status, expected] of [["draft", "draft"], ["sold", "sold"]] as const) {
+      mockEditListings = [{ status }];
+      const { unmount } = render(<EditItemPage />);
+      const locked = screen.getByLabelText("Status") as HTMLSelectElement;
+      expect(locked.disabled).toBe(true);
+      expect(locked.value).toBe(expected);
+      unmount();
+    }
+    mockEditListings = [];
+    mockEditListingsLoading = true;
+    try {
+      render(<EditItemPage />);
+      expect((screen.getByLabelText("Status") as HTMLSelectElement).disabled).toBe(true);
+    } finally {
+      mockEditListingsLoading = false;
     }
   });
 });

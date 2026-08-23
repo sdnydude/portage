@@ -630,7 +630,6 @@ function ChatMode({
               <KVRow label="Category" value={candidate.category} />
               <KVRow label="Condition" value={candidate.condition} />
               {candidate.brand && <KVRow label="Brand" value={candidate.brand} />}
-              <KVRow label="Est. value" value={`$${candidate.estimatedValueLow}–$${candidate.estimatedValueHigh}`} />
             </div>
           </InlineCard>
 
@@ -889,17 +888,9 @@ function ChatMode({
         </div>
       )}
 
-      {/* ── Ready for review trigger ── */}
-      {showConfirmed && state.title && state.price === null && lastStep === "confirmed" && (
-        <div style={{ marginLeft: 34 }}>
-          <Pill
-            primary
-            onClick={() => flow.setField("price", candidate?.estimatedValueLow ?? 0)}
-          >
-            Set a price →
-          </Pill>
-        </div>
-      )}
+      {/* The old "Set a price →" pill prefilled the AI low estimate; with the
+          range retired it would only write a sentinel 0 (dead end). The
+          always-visible Pricing input above is the path. */}
 
       <div ref={bottomRef} />
 

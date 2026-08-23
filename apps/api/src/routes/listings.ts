@@ -843,17 +843,32 @@ listingsRouter.patch('/:id', async (req, res, next) => {
       }
     }
 
-    const [updated] = await db.update(listings)
-      .set({
-        ...updates,
-        // C2: specifics ride the atomic merge expression, not the JS preview.
-        ...(specificsPatch !== undefined
-          ? { marketplaceSpecificFields: specificsMergeExpression(specificsPatch) as unknown as Record<string, unknown> }
-          : {}),
-        updatedAt: new Date(),
-      })
-      .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.update(listings)
+        .set({
+          ...updates,
+          // C2: specifics ride the atomic merge expression, not the JS preview.
+          ...(specificsPatch !== undefined
+            ? { marketplaceSpecificFields: specificsMergeExpression(specificsPatch) as unknown as Record<string, unknown> }
+            : {}),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
+        .returning();
+
+      // Price truth (Housekeeping-1): listings.price and items.price are ONE
+      // value — a card price edit must land on the item too, or the edit page
+      // and item header keep showing the stale number. Only a row that still
+      // owns the item's price (active/draft) writes back: an archived or sold
+      // row's price is history, and mirroring it would later ride the
+      // item-edit mirror onto a LIVE listing. Same scope as the forward mirror.
+      if (body.price !== undefined && (row.status === 'active' || row.status === 'draft')) {
+        await tx.update(items)
+          .set({ price: body.price, updatedAt: new Date() })
+          .where(and(eq(items.id, row.itemId), eq(items.userId, userId)));
+      }
+      return row;
+    });
 
     // Skip marketplace sync when archiving — the listing was already removed above.
     // Sync edits (e.g. price) to the marketplace only for a published listing. Under

@@ -8,7 +8,7 @@ import { ViewControls } from "@/components/inventory/view-controls";
 import { ItemCard } from "@/components/inventory/item-card";
 import { BulkActionBar } from "@/components/inventory/bulk-action-bar";
 import { ExportActionSheet } from "@/components/inventory/export-action-sheet";
-import { useItems } from "@/hooks/use-items";
+import { useItems, useItemCategories } from "@/hooks/use-items";
 import type { Item } from "@/hooks/use-items";
 import { useAuth } from "@/hooks/use-auth";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
@@ -195,6 +195,7 @@ export default function InventoryPage() {
   const { exportItems } = useExport();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
+  const [status, setStatus] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -206,7 +207,8 @@ export default function InventoryPage() {
   // Export action sheet state
   const [showExportSheet, setShowExportSheet] = useState(false);
 
-  const { items, total, isLoading, error, refetch } = useItems({ search, category });
+  const { items, total, isLoading, error, refetch } = useItems({ search, category, status });
+  const { categories, refetch: refetchCategories } = useItemCategories();
   const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<typeof items[number]>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -306,13 +308,13 @@ export default function InventoryPage() {
       });
       clearSelection();
       setPendingCategory("");
-      await refetch();
+      await Promise.all([refetch(), refetchCategories()]);
     } catch (err) {
       setBulkError(err instanceof ApiError ? err.message : "Failed to update category");
     } finally {
       setBulkLoading(false);
     }
-  }, [pendingCategory, selectedIds, token, clearSelection, refetch]);
+  }, [pendingCategory, selectedIds, token, clearSelection, refetch, refetchCategories]);
 
   if (!isAuthenticated) {
     return (
@@ -373,6 +375,9 @@ export default function InventoryPage() {
             total={total}
             category={category}
             onCategoryChange={setCategory}
+            categories={categories}
+            status={status}
+            onStatusChange={setStatus}
           />
 
           {bulkError && (
@@ -401,10 +406,10 @@ export default function InventoryPage() {
                 </svg>
               </div>
               <h2 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary mb-2">
-                {search || category ? "No matching items" : "No items yet"}
+                {search || category || status ? "No matching items" : "No items yet"}
               </h2>
               <p className="text-sm text-text-secondary max-w-xs">
-                {search || category
+                {search || category || status
                   ? "Try adjusting your search or filters."
                   : "Tap the camera button to photograph your first item. Porter will identify it automatically."}
               </p>
@@ -489,7 +494,7 @@ export default function InventoryPage() {
       <MasterDetail
         listLabel="Inventory list"
         list={
-          <DesktopIngestPanel>
+          <DesktopIngestPanel onSaved={() => { void refetch(); void refetchCategories(); }}>
           <div
             ref={listPaneRef}
             className="space-y-3 p-4 outline-none"
@@ -524,6 +529,9 @@ export default function InventoryPage() {
               total={total}
               category={category}
               onCategoryChange={setCategory}
+              categories={categories}
+              status={status}
+              onStatusChange={setStatus}
             />
 
             {isLoading && (
@@ -541,10 +549,10 @@ export default function InventoryPage() {
             {!isLoading && !error && items.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <h2 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary mb-2">
-                  {search || category ? "No matching items" : "No items yet"}
+                  {search || category || status ? "No matching items" : "No items yet"}
                 </h2>
                 <p className="text-sm text-text-secondary max-w-xs">
-                  {search || category
+                  {search || category || status
                     ? "Try adjusting your search or filters."
                     : "Tap the camera button to photograph your first item. Porter will identify it automatically."}
                 </p>

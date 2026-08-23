@@ -56,7 +56,8 @@ test("item detail shows the Marketplace Listings section and survives reload", a
 
     const heading = page.getByRole("heading", { name: "Marketplace Listings" });
     await expect(heading).toBeVisible();
-    await expect(page.getByText("Draft").first()).toBeVisible();
+    // exact: the item-status <select> now carries a hidden "Draft (listing)" option (Housekeeping-1).
+    await expect(page.getByText("Draft", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("$1,200").first()).toBeVisible();
 
     // Cross-list demotion: the section replaces the primary CTA once a listing exists.

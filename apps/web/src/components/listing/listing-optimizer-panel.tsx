@@ -40,6 +40,26 @@ export function ListingOptimizerPanel({ itemId, onFilled }: ListingOptimizerPane
     }
   }, [api, itemId, token, refetch, onFilled]);
 
+  // Aspect removal (Housekeeping-1): null deletes the key server-side (item +
+  // its live listings), then the item-edit sync pushes the change to eBay.
+  const remove = useCallback(async (name: string) => {
+    if (!token) return;
+    setPending(name);
+    setFillError(null);
+    try {
+      const saved = await api<{ syncWarnings?: string[] }>(`/items/${itemId}`, { method: "PATCH", body: { aspects: { [name]: null } }, token });
+      await refetch();
+      onFilled?.();
+      // The removal saved, but the marketplace re-sync may not have queued —
+      // never report that as a clean success (use-item contract).
+      if (saved?.syncWarnings?.length) setFillError(saved.syncWarnings.join(" "));
+    } catch (err) {
+      setFillError(err instanceof ApiError ? err.message : `Couldn't remove ${name}`);
+    } finally {
+      setPending(null);
+    }
+  }, [api, itemId, token, refetch, onFilled]);
+
   if (isLoading) {
     return (
       <div className="rounded-2xl border border-border bg-surface/50 p-4 flex items-center gap-2 text-sm text-text-secondary">
@@ -114,6 +134,19 @@ export function ListingOptimizerPanel({ itemId, onFilled }: ListingOptimizerPane
               <span className="text-[var(--forest-green,#2D5A27)] shrink-0" aria-hidden>✓</span>
               <span className="text-text-secondary">{a.name}</span>
               <span className="text-text-primary font-medium truncate">{a.values.join(", ")}</span>
+              {/* A category-required specific cannot be removed — eBay refuses
+                  the next revise without it (EBAY_ASPECTS_REQUIRED). */}
+              {!a.required && (
+              <button
+                type="button"
+                aria-label={`Remove ${a.name}`}
+                disabled={pending === a.name}
+                onClick={() => remove(a.name)}
+                className="ml-auto shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-text-secondary hover:text-[var(--accent-error)] hover:bg-background disabled:opacity-50"
+              >
+                ✕
+              </button>
+              )}
             </div>
           ))}
 

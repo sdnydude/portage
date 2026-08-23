@@ -84,6 +84,9 @@ test("scan review tells the truth: comps outage, condition snap, aspect-schema o
   await scanToReview(page);
 
   await expect(page.getByTestId("comps-error")).toHaveText(/Comps unavailable — using AI estimate only/);
+  // Housekeeping-1 retired the AI-estimate price fallback: with comps down the
+  // price is empty and the Save gate would mask the List gate — give it a price.
+  await page.getByLabel("Price (USD)").fill("25");
   await expect(page.getByTestId("condition-notice")).toHaveText(/Condition adjusted to New — Good isn't offered in this category/);
   await expect(page.getByTestId("aspects-error")).toContainText(/eBay category details unavailable/);
   // The specifics header must not claim "Complete" for a schema it never got.

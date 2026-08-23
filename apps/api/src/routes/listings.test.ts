@@ -76,6 +76,9 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: run a transaction callback against db itself so per-test
+  // update/insert mocks keep working inside the PATCH write transaction.
+  vi.mocked(db.transaction).mockImplementation((async (fn: (tx: unknown) => unknown) => fn(db)) as any);
   // Default: resolver finds nothing new, so publish behaves as before unless a test overrides.
   mockResolveEbayCategoryId.mockResolvedValue({ categoryId: null, categoryName: null, newlyResolved: false });
   // Default db.update for the insert-first→update publish path (R3): the create route
@@ -1343,9 +1346,9 @@ describe('PATCH /listings/:id', () => {
     expect(res.body.code).toBe('BEST_OFFER_CONFLICT');
     expect(res.body.error).toMatch(/^Saved locally, but eBay rejected the update/);
     expect(res.body.details).toEqual([{ bestOfferEnabled: true, bestOfferAutoAcceptPrice: 180, minimumBestOfferPrice: 150, healed: true }]);
-    // The heal is PERSISTED (second update after the price save) so the next edit sees eBay's truth.
-    expect(updateSet).toHaveBeenCalledTimes(2);
-    expect(updateSet.mock.calls[1][0]).toMatchObject({ marketplaceSpecificFields: expect.anything() });
+    // The heal is PERSISTED (third update: listing price save, items.price write-back, heal) so the next edit sees eBay's truth.
+    expect(updateSet).toHaveBeenCalledTimes(3);
+    expect(updateSet.mock.calls[2][0]).toMatchObject({ marketplaceSpecificFields: expect.anything() });
     expect(valuesSpy).toHaveBeenCalledTimes(1); // one failure row — the rethrow must not log again
     expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ listingId: 'listing-1', status: 'failure', message: expect.stringMatching(/Invalid AutoAccept/) }));
   });
@@ -1379,7 +1382,7 @@ describe('PATCH /listings/:id', () => {
 
     expect(res.status).toBe(422);
     expect(res.body.details).toEqual([{ bestOfferEnabled: true, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: 150, healed: false }]);
-    expect(updateSet).toHaveBeenCalledTimes(1); // the price save only — no heal write
+    expect(updateSet).toHaveBeenCalledTimes(2); // listing price save + items.price write-back only — no heal write
   });
 
   it('writes a marketplace_sync_log failure row when the PATCH sync fails (P1)', async () => {
@@ -1566,6 +1569,90 @@ function mockSelectBulk(rows: unknown[]) {
 }
 
 const LISTING_1 = '10000000-0000-0000-0000-000000000001';
+
+describe('PATCH /listings/:id — price truth (Housekeeping-1 T1)', () => {
+  it('writes a listing price edit back onto items.price', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: null, marketplaceSpecificFields: null,
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'draft', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: null, marketplaceSpecificFields: null,
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(db.update).toHaveBeenCalledTimes(2);
+    expect(updateSet).toHaveBeenNthCalledWith(2, expect.objectContaining({ price: 179 }));
+  });
+});
+
+describe('PATCH /listings/:id — price truth on the common path (review gap 2)', () => {
+  it('an ACTIVE eBay listing price edit writes items.price back AND still syncs the new price to eBay', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'active', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD',
+      marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'active', marketplace: 'ebay',
+        itemId: ITEM_ID, price: 179, currency: 'USD',
+        marketplaceListingId: '110012345678', marketplaceSpecificFields: { categoryId: '15032' },
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([{ footer: null }]);
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '110012345678', status: 'active' });
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 179 });
+
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenNthCalledWith(1, expect.objectContaining({ price: 179 })); // listing row
+    expect(updateSet).toHaveBeenNthCalledWith(2, expect.objectContaining({ price: 179 })); // items.price write-back
+    expect(mockUpdateListing).toHaveBeenCalledWith('110012345678', expect.objectContaining({ price: 179 }));
+  });
+});
+
+describe('PATCH /listings/:id — price truth guard (review)', () => {
+  it('does NOT write an archived listing\'s price back onto items.price — only active/draft rows own the item price', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'archived', marketplace: 'reverb',
+      itemId: ITEM_ID, price: 60, currency: 'USD',
+      marketplaceListingId: '100000001', marketplaceSpecificFields: null,
+    }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{
+        id: 'listing-1', status: 'archived', marketplace: 'reverb',
+        itemId: ITEM_ID, price: 65, currency: 'USD',
+        marketplaceListingId: '100000001', marketplaceSpecificFields: null,
+      }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+
+    const res = await request(app)
+      .patch('/listings/listing-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 65 });
+
+    expect(res.status).toBe(200);
+    expect(db.update).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('PATCH /listings/:id — price change syncs to the live eBay listing', () => {
   const LID = '00000000-0000-0000-0000-0000000000d2';

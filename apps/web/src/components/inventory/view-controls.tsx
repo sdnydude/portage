@@ -1,37 +1,62 @@
 "use client";
 
+import type { ItemCategory } from "@/hooks/use-items";
+
 interface ViewControlsProps {
   view: "grid" | "list";
   onViewChange: (view: "grid" | "list") => void;
   total: number;
   category: string;
   onCategoryChange: (category: string) => void;
+  /** The inventory's own categories (GET /items/categories) — items.category
+   *  holds the eBay leaf name, so a static bucket list matched nothing. */
+  categories?: ItemCategory[];
+  /** Derived item status filter (Housekeeping-1 T6). "" = all. */
+  status?: string;
+  onStatusChange?: (status: string) => void;
 }
 
-const categories = [
+const statuses = [
   { value: "", label: "All" },
-  { value: "electronics", label: "Electronics" },
-  { value: "clothing", label: "Clothing" },
-  { value: "furniture", label: "Furniture" },
-  { value: "collectibles", label: "Collectibles" },
-  { value: "sports", label: "Sports" },
-  { value: "home", label: "Home" },
-  { value: "books", label: "Books" },
-  { value: "toys", label: "Toys" },
-  { value: "tools", label: "Tools" },
-  { value: "jewelry", label: "Jewelry" },
-  { value: "art", label: "Art" },
-  { value: "music", label: "Music" },
-  { value: "other", label: "Other" },
+  { value: "active", label: "Active" },
+  { value: "draft", label: "Draft" },
+  { value: "unlisted", label: "Unlisted" },
+  { value: "asset", label: "Asset" },
+  { value: "sold", label: "Sold" },
+  { value: "archived", label: "Archived" },
 ];
 
-export function ViewControls({ view, onViewChange, total, category, onCategoryChange }: ViewControlsProps) {
+
+export function ViewControls({ view, onViewChange, total, category, onCategoryChange, categories = [], status = "", onStatusChange }: ViewControlsProps) {
+  const chips = [{ value: "", label: "All", count: null as number | null }, ...categories];
   return (
+    <div className="space-y-2">
+    {onStatusChange && (
+      <div role="group" aria-label="Filter by status" className="flex items-center gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+        {statuses.map((st) => (
+          <button
+            key={st.value}
+            type="button"
+            aria-pressed={status === st.value}
+            onClick={() => onStatusChange(st.value)}
+            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+              status === st.value
+                ? "bg-forest-green text-white"
+                : "bg-muted text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            {st.label}
+          </button>
+        ))}
+      </div>
+    )}
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
-        {categories.slice(0, 5).map((cat) => (
+      <div role="group" aria-label="Filter by category" className="flex items-center gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+        {chips.map((cat) => (
           <button
             key={cat.value}
+            type="button"
+            aria-pressed={category === cat.value}
             onClick={() => onCategoryChange(cat.value)}
             className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
               category === cat.value
@@ -39,19 +64,9 @@ export function ViewControls({ view, onViewChange, total, category, onCategoryCh
                 : "bg-muted text-text-secondary hover:text-text-primary"
             }`}
           >
-            {cat.label}
+            {cat.label}{cat.count != null && <span className="ml-1 opacity-70">{` ${cat.count}`}</span>}
           </button>
         ))}
-        <select
-          value={category}
-          onChange={(e) => onCategoryChange(e.target.value)}
-          className="px-2 py-1 rounded-full text-xs bg-muted text-text-secondary border-none focus:outline-none cursor-pointer"
-        >
-          <option value="">More...</option>
-          {categories.slice(5).map((cat) => (
-            <option key={cat.value} value={cat.value}>{cat.label}</option>
-          ))}
-        </select>
       </div>
 
       <div className="flex items-center gap-1 flex-shrink-0 ml-2">
@@ -78,6 +93,7 @@ export function ViewControls({ view, onViewChange, total, category, onCategoryCh
           </svg>
         </button>
       </div>
+    </div>
     </div>
   );
 }

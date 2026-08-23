@@ -95,6 +95,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // PATCH /listings/:id now writes inside db.transaction — pass db through as tx.
+  vi.mocked(db.transaction).mockImplementation((async (fn: (tx: unknown) => unknown) => fn(db)) as any);
   vi.mocked(db.update).mockReturnValue({
     set: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),

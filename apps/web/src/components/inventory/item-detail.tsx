@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
+import type { Item } from "@/hooks/use-items";
 import { useListings } from "@/hooks/use-listings";
 import { ListingCard } from "@/components/listing/listing-card";
 import { useSyncStatus } from "@/hooks/use-sync-status";
@@ -63,6 +64,8 @@ export function ItemDetail({
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCrop, setShowCrop] = useState(false);
@@ -220,7 +223,9 @@ export function ItemDetail({
       <ListingCard
         listing={l}
         token={token}
-        onChanged={refetchListings}
+        // Price truth (Housekeeping-1): a card price edit writes back to
+        // items.price, so the item header must refetch too, not just listings.
+        onChanged={() => { refetchListings(); refetchItem(); }}
         highlight={l.id === highlightId}
         itemBrand={item?.brand || undefined}
         itemModel={item?.model || undefined}
@@ -465,16 +470,25 @@ export function ItemDetail({
     );
   }
 
+  // Status lock: a live/draft/sold listing derives the item's status (T6) —
+  // same precedence as the API's displayStatus. While listings are still
+  // loading the lock is unknown, so the control stays disabled.
+  const lockedStatus = itemListings.some((l) => l.status === "active")
+    ? "active"
+    : itemListings.some((l) => l.status === "draft")
+      ? "draft"
+      : itemListings.some((l) => l.status === "sold")
+        ? "sold"
+        : null;
+
   // pendingPhotos first: the strip/sheet must render the optimistic order
   // DURING the drag, not after the PATCH round-trip.
   const photos = pendingPhotos ?? item.photos ?? [];
   const currentPhoto = photos[photoIndex];
 
-  const valueDisplay = item.estimatedValueMin && item.estimatedValueMax
-    ? `$${item.estimatedValueMin} – $${item.estimatedValueMax}`
-    : item.estimatedValueRecommended
-      ? `~$${item.estimatedValueRecommended}`
-      : null;
+  // Price truth (Housekeeping-1): the header shows the seller's one price
+  // (items.price ⇄ listings.price); the AI estimated-value range is retired.
+  const valueDisplay = item.price != null ? `$${item.price}` : null;
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -659,6 +673,43 @@ export function ItemDetail({
                 )}
               </div>
 
+              {/* Item status (Housekeeping-1): manual for non-marketplace
+                  states; a live listing owns it (Active/Draft read-only). */}
+              <div className="flex items-center gap-2">
+                <label htmlFor="item-status" className="text-xs font-medium text-text-secondary">Status</label>
+                <select
+                  id="item-status"
+                  value={lockedStatus ?? item.status ?? "unlisted"}
+                  disabled={!!lockedStatus || listingsLoading || statusSaving}
+                  onChange={async (e) => {
+                    const next = e.target.value as NonNullable<Item["status"]>;
+                    setStatusSaving(true);
+                    setStatusError(null);
+                    try {
+                      // syncWarnings must never be discarded (use-item contract).
+                      const saved = (await updateItem({ status: next })) as { syncWarnings?: string[] } | undefined;
+                      if (saved?.syncWarnings?.length) setStatusError(saved.syncWarnings.join(" "));
+                    } catch (err) {
+                      setStatusError(err instanceof Error ? err.message : "Failed to update status");
+                    } finally {
+                      setStatusSaving(false);
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-text-primary border-none focus:outline-none disabled:opacity-70"
+                >
+                  {lockedStatus && (
+                    <option value={lockedStatus}>
+                      {lockedStatus === "active" ? "Active (live listing)" : lockedStatus === "draft" ? "Draft (listing)" : "Sold (listing)"}
+                    </option>
+                  )}
+                  <option value="unlisted">Unlisted</option>
+                  <option value="asset">Not for sale — Asset</option>
+                  <option value="sold">Sold</option>
+                  <option value="archived">Archived</option>
+                </select>
+                {statusError && <span className="text-xs text-accent-error">{statusError}</span>}
+              </div>
+
               {/* Condition + Category */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${conditionColors[item.condition] ?? "bg-muted text-text-secondary"}`}>
@@ -714,33 +765,6 @@ export function ItemDetail({
                     {feature}
                   </span>
                 ))}
-              </div>
-            </div>
-          )}
-
-          {/* Value Breakdown */}
-          {item.estimatedValueMin && item.estimatedValueMax && (
-            <div className="bg-forest-green-50 dark:bg-forest-green/10 rounded-xl p-4">
-              <h2 className="text-xs font-medium text-forest-green uppercase tracking-wider mb-2">Estimated Value</h2>
-              <div className="flex items-baseline gap-3">
-                <div>
-                  <span className="text-xs text-text-secondary">Low</span>
-                  <p className="text-sm font-medium text-text-primary">${item.estimatedValueMin}</p>
-                </div>
-                <div className="flex-1 h-px bg-forest-green/20" />
-                {item.estimatedValueRecommended && (
-                  <>
-                    <div className="text-center">
-                      <span className="text-xs text-forest-green font-medium">Recommended</span>
-                      <p className="text-lg font-semibold text-forest-green">${item.estimatedValueRecommended}</p>
-                    </div>
-                    <div className="flex-1 h-px bg-forest-green/20" />
-                  </>
-                )}
-                <div>
-                  <span className="text-xs text-text-secondary">High</span>
-                  <p className="text-sm font-medium text-text-primary">${item.estimatedValueMax}</p>
-                </div>
               </div>
             </div>
           )}

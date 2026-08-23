@@ -262,6 +262,27 @@ describe('processDueSyncJobs — Best Offer conflict is terminal (BO-3)', () => 
   });
 });
 
+describe('processDueSyncJobs — deterministic aspect failures (Housekeeping-1 review)', () => {
+  it('fails the job immediately on EBAY_ASPECTS_REQUIRED — a missing required specific cannot be fixed by retrying', async () => {
+    mockSelectChainOnce([JOB]);
+    const returningSpy = vi.fn().mockResolvedValue([{ ...JOB, status: 'running' }]);
+    const whereSpy = vi.fn().mockReturnValue({ returning: returningSpy });
+    const setSpy = vi.fn().mockReturnValue({ where: whereSpy });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectChainOnce([ITEM_ROW]);
+    mockSelectChainOnce([LISTING_ROW]);
+    const err = Object.assign(new Error('eBay requires: Brand'), { name: 'AppError', statusCode: 422, code: 'EBAY_ASPECTS_REQUIRED' });
+    Object.setPrototypeOf(err, (await import("../middleware/error.js")).AppError.prototype);
+    mockSyncItemListingRow.mockRejectedValueOnce(err);
+
+    await processDueSyncJobs();
+
+    const calls = setSpy.mock.calls.map(c => c[0] as Record<string, unknown>);
+    expect(calls.find(v => v.status === 'failed')?.lastError).toMatch(/requires: Brand/);
+    expect(calls.find(v => v.status === 'pending' && 'attempts' in v)).toBeUndefined();
+  });
+});
+
 describe('processDueSyncJobs — re-entrancy (audit M6)', () => {
   it('a second call while one is in flight is a no-op — overlapping ticks must not double-claim', async () => {
     let resolveSelect!: (rows: unknown[]) => void;

@@ -452,11 +452,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
           </div>
           {priceSource && (
             <p className="mt-1 text-xs text-text-secondary">
-              {priceSource === "item"
-                ? "From your price"
-                : priceSource === "comps"
-                  ? "From market comps"
-                  : "Estimated"}
+              {priceSource === "item" ? "From your price" : "From market comps"}
             </p>
           )}
         </div>
