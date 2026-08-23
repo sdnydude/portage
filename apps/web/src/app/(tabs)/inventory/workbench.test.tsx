@@ -28,6 +28,7 @@ const useItemsMock = vi.fn(() => ({
 }));
 vi.mock("@/hooks/use-items", () => ({
   useItems: () => useItemsMock(),
+  useItemCategories: () => ({ categories: [], refetch: vi.fn() }),
 }));
 vi.mock("@/hooks/use-export", () => ({
   useExport: () => ({ exportItems: vi.fn(), isExporting: false }),

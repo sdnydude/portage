@@ -8,7 +8,7 @@ import { ViewControls } from "@/components/inventory/view-controls";
 import { ItemCard } from "@/components/inventory/item-card";
 import { BulkActionBar } from "@/components/inventory/bulk-action-bar";
 import { ExportActionSheet } from "@/components/inventory/export-action-sheet";
-import { useItems } from "@/hooks/use-items";
+import { useItems, useItemCategories } from "@/hooks/use-items";
 import type { Item } from "@/hooks/use-items";
 import { useAuth } from "@/hooks/use-auth";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
@@ -208,6 +208,7 @@ export default function InventoryPage() {
   const [showExportSheet, setShowExportSheet] = useState(false);
 
   const { items, total, isLoading, error, refetch } = useItems({ search, category, status });
+  const { categories, refetch: refetchCategories } = useItemCategories();
   const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<typeof items[number]>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -307,13 +308,13 @@ export default function InventoryPage() {
       });
       clearSelection();
       setPendingCategory("");
-      await refetch();
+      await Promise.all([refetch(), refetchCategories()]);
     } catch (err) {
       setBulkError(err instanceof ApiError ? err.message : "Failed to update category");
     } finally {
       setBulkLoading(false);
     }
-  }, [pendingCategory, selectedIds, token, clearSelection, refetch]);
+  }, [pendingCategory, selectedIds, token, clearSelection, refetch, refetchCategories]);
 
   if (!isAuthenticated) {
     return (
@@ -374,6 +375,7 @@ export default function InventoryPage() {
             total={total}
             category={category}
             onCategoryChange={setCategory}
+            categories={categories}
             status={status}
             onStatusChange={setStatus}
           />
@@ -492,7 +494,7 @@ export default function InventoryPage() {
       <MasterDetail
         listLabel="Inventory list"
         list={
-          <DesktopIngestPanel>
+          <DesktopIngestPanel onSaved={() => { void refetch(); void refetchCategories(); }}>
           <div
             ref={listPaneRef}
             className="space-y-3 p-4 outline-none"
@@ -527,6 +529,7 @@ export default function InventoryPage() {
               total={total}
               category={category}
               onCategoryChange={setCategory}
+              categories={categories}
               status={status}
               onStatusChange={setStatus}
             />

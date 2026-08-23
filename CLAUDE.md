@@ -245,7 +245,8 @@ listing-row strip in one transaction; estimated-value range retired from every
 surface (columns kept); items.status enum (unlisted|asset|sold|archived) with
 derived displayStatus + ?status= filter + detail/edit control; shared
 StatusChip/MarketplaceChip on --chip-* tokens (≥6.3:1 both themes);
-case-insensitive category filter + lowercase-trim writes; 5-row/2000-char
+data-driven category chips (GET /items/categories) + case-insensitive filter
++ lowercase-trim writes; 5-row/2000-char
 condition notes. Live-proven (e2e/housekeeping-1.spec.ts, E2E_EBAY_LIVE=1);
 the live run caught a drizzle array-param bug the mocked tests could not.
 Ship-log 059; proof page 2026-08-23-housekeeping-1.

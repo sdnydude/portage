@@ -327,6 +327,33 @@ describe('GET /items', () => {
   });
 });
 
+describe('GET /items/categories — data-driven filter chips (Housekeeping-1 [9])', () => {
+  it('returns the caller\'s distinct categories with counts, case-folded so Electronics and electronics are one chip', async () => {
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          groupBy: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockResolvedValue([
+              { category: 'solid state drives', label: 'Solid State Drives', count: 28 },
+              { category: 'electronics', label: 'Electronics', count: 3 },
+            ]),
+          }),
+        }),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .get('/items/categories')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.categories).toEqual([
+      { value: 'solid state drives', label: 'Solid State Drives', count: 28 },
+      { value: 'electronics', label: 'Electronics', count: 3 },
+    ]);
+  });
+});
+
 describe('GET /items/:id', () => {
   it('returns a single item when found', async () => {
     mockSelectReturns([MOCK_ITEM]);

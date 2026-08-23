@@ -13,7 +13,7 @@ sidebar_position: 59
 | **TDD** | yes (one test per write, red → green) |
 | **Branch** | `feat/housekeeping-1` |
 | **PR** | pending |
-| **Tests** | api 1016 → 1026 · web 674 → 689 · e2e +7 (live) |
+| **Tests** | api 1016 → 1033 · web 674 → 695 · e2e +8 (live, incl. wiring audit) |
 | **Proof** | [2026-08-23 Housekeeping batch 1](/docs/proof/2026-08-23-housekeeping-1) |
 
 ## What shipped
@@ -47,9 +47,13 @@ Ten operator-reported beta annoyances, each built, live-proven, and closed.
   were not readable in light mode). Listings page rows and inventory cards
   use them; the card shows one marketplace chip per live listing via a new
   `liveMarketplaces` projection.
-- **Category filter.** `ILIKE` with escaped wildcards (case-insensitive exact
-  match); create, update and bulk-update normalize category to lowercase-trim;
-  `automotive` chip added (the AI prompt could already emit it).
+- **Category filter.** The static 13-bucket chip list matched 5 of 156
+  items — `items.category` holds the eBay leaf name since the taxonomy
+  change. New `GET /items/categories` returns the seller's own categories
+  with counts (case-folded); the chips render from it; the match is a
+  case-insensitive `ILIKE` with escaped wildcards; create/update/bulk
+  normalize writes to lowercase-trim. Caught by the operator after the first
+  proof passed on a forced row — the proof was rewritten against real data.
 - **Condition notes.** Five-row textarea, 2,000-char cap, on scan review and
   the edit page (server cap was already 2,000).
 

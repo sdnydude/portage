@@ -314,6 +314,28 @@ itemsRouter.get('/export', async (req, res, next) => {
   }
 });
 
+// Filter chips come from the data (Housekeeping-1 [9]): items.category holds
+// the eBay leaf name since the taxonomy change, so a static bucket list
+// ("electronics", "clothing"…) matched almost nothing. Case-folded so legacy
+// capitalized rows and normalized ones collapse into one chip; the label is
+// the most recent spelling.
+itemsRouter.get('/categories', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    const rows = await db.select({
+      category: sql<string>`lower(${items.category})`,
+      label: sql<string>`(array_agg(${items.category} order by ${items.createdAt} desc))[1]`,
+      count: sql<number>`count(*)::int`,
+    }).from(items)
+      .where(and(eq(items.userId, userId), sql`${items.category} <> ''`))
+      .groupBy(sql`lower(${items.category})`)
+      .orderBy(sql`count(*) desc`, sql`lower(${items.category})`);
+    res.json({ categories: rows.map((r) => ({ value: r.category, label: r.label, count: Number(r.count) })) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 itemsRouter.get('/:id', async (req, res, next) => {
   try {
     const userId = req.user!.sub;

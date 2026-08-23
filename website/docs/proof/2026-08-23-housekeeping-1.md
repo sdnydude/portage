@@ -78,12 +78,18 @@ returns it. The live-listed item shows **Active (live listing)** read-only.
 ![Asset filter](/img/verification/housekeeping-1/8b-inventory-asset-filter.png)
 ![Locked Active on a live item](/img/verification/housekeeping-1/8c-live-item-status-locked-active.png)
 
-## 9. Category filter is case-insensitive
+## 9. Category chips come from the inventory
 
-A row stored as `Electronics` (capital E, forced via SQL — writes are now
-normalized) is returned by the Electronics chip; the Automotive chip exists.
+First proof used a row forced to `Electronics` and passed — the operator
+pointed out the chips still did nothing. Root cause: `items.category` holds
+the eBay leaf name since the taxonomy change, so the static 13-bucket chip
+list matched 5 of 156 items. Rebuilt: `GET /items/categories` returns the
+seller's own categories with counts (case-folded), the chips render from it,
+and the filter is a case-insensitive exact match. Live: 53 chips, "Solid
+State Drives" → 28 items; a legacy upper-cased spelling merges into the same
+chip and is returned by its filter.
 
-![Electronics chip matches the capitalized row](/img/verification/housekeeping-1/9a-electronics-chip-matches-capitalized-row.png)
+![Data-driven chips, filtered](/img/verification/housekeeping-1/9a-data-driven-category-chips-filtered.png)
 
 ## 10. Condition notes
 
@@ -92,3 +98,21 @@ stored at `length(condition_notes) = 2000`.
 
 ![Scan review notes](/img/verification/housekeeping-1/10a-scan-review-notes-5-rows.png)
 ![Edit page notes with 2000 chars](/img/verification/housekeeping-1/10b-edit-notes-5-rows-2000-chars.png)
+
+## W. Wiring audit on the real inventory
+
+Operator ask after the category-chip miss: "check all wiring." The `[W]`
+test compares every control against Postgres on the real inventory, not a
+fixture: each status chip's API total equals the derived-status count in
+the database (active 35 · draft 2 · sold 74 · unlisted 39 · asset 2 ·
+archived 0 at run time), and `liveMarketplaces` matched the active-listing
+set for all 100 items checked. Screens per status chip, a Reverb-listed card,
+and the listings page's Reverb row. Five fixture rows orphaned by earlier
+failed runs were found by this audit and deleted; the spec now sweeps its
+own fixtures after every test.
+
+![Active filter](/img/verification/housekeeping-1/W-inventory-status-active.png)
+![Sold filter](/img/verification/housekeeping-1/W-inventory-status-sold.png)
+![Unlisted filter](/img/verification/housekeeping-1/W-inventory-status-unlisted.png)
+![Reverb card chip](/img/verification/housekeeping-1/W-inventory-card-reverb-chip.png)
+![Listings Reverb row](/img/verification/housekeeping-1/W-listings-reverb-row.png)

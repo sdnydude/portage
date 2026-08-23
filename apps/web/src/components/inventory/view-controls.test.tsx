@@ -12,10 +12,22 @@ function baseProps() {
   };
 }
 
-describe("ViewControls — category chips (Housekeeping-1 T8)", () => {
-  it("offers an Automotive category (the AI prompt can emit it, so the filter must too)", () => {
-    render(<ViewControls {...baseProps()} />);
-    expect(screen.getByRole("option", { name: "Automotive" })).toHaveValue("automotive");
+describe("ViewControls — category chips (Housekeeping-1 [9])", () => {
+  it("renders the chips from the inventory's own categories (with counts) — no static bucket list", () => {
+    const props = {
+      ...baseProps(),
+      categories: [
+        { value: "solid state drives", label: "Solid State Drives", count: 28 },
+        { value: "guitar amplifiers", label: "Guitar Amplifiers", count: 3 },
+      ],
+    };
+    render(<ViewControls {...props} />);
+    const row = screen.getByRole("group", { name: "Filter by category" });
+    fireEvent.click(within(row).getByRole("button", { name: /Solid State Drives\s*28/ }));
+    expect(props.onCategoryChange).toHaveBeenCalledWith("solid state drives");
+    expect(within(row).getByRole("button", { name: /Guitar Amplifiers\s*3/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Electronics" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Automotive" })).not.toBeInTheDocument();
   });
 
   it("renders status chips (All / Active / Draft / Unlisted / Asset / Sold / Archived) and reports a selection (Housekeeping-1 T6)", () => {

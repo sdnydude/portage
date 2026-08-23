@@ -14,8 +14,11 @@ import type { IngestGroupingMode } from "@/lib/desktop-ingest";
  */
 export function DesktopIngestPanel({
   children,
+  onSaved,
 }: {
   children: React.ReactNode;
+  /** Fires after an item is created so the list + category chips refresh. */
+  onSaved?: () => void;
 }) {
   const { queue, addFiles, save, updateFields, remove } = useDesktopIngest();
   const [mode, setMode] = useState<IngestGroupingMode>("separate");
@@ -45,7 +48,7 @@ export function DesktopIngestPanel({
       </div>
       <IngestQueue
         items={queue}
-        onSave={save}
+        onSave={async (id) => { if (await save(id)) onSaved?.(); }}
         onRemove={remove}
         onUpdateTitle={(id, name) => updateFields(id, { name })}
       />

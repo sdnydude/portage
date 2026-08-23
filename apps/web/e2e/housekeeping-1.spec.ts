@@ -25,6 +25,16 @@ function visibleCard(page: Page, itemId: string) {
   return page.locator(`a[href="/inventory/${itemId}"], [data-item-id="${itemId}"]`).filter({ visible: true }).first();
 }
 
+// A failed run must not leave fixture rows in the real inventory.
+test.afterEach(async ({ page, request }) => {
+  const api = await authed(page, request);
+  const res = await request.get(`${API_BASE}/items?search=${encodeURIComponent("E2E HK1")}&limit=100`, { headers: api.headers });
+  if (!res.ok()) return;
+  for (const it of ((await res.json()).items ?? []) as { id: string; title: string }[]) {
+    if (it.title.startsWith("E2E HK1")) await request.delete(`${API_BASE}/items/${it.id}`, { headers: api.headers });
+  }
+});
+
 async function authed(page: Page, request: APIRequestContext) {
   const token = (await page.context().storageState()).origins
     .flatMap((o) => o.localStorage)
@@ -267,26 +277,36 @@ test("[8] item status: set an unlisted item to Asset, persists after reload, Ass
   await request.delete(`${API_BASE}/items/${created.id}`, { headers: api.headers });
 });
 
-test("[9] category filter is case-insensitive: a stored 'Electronics' row matches the electronics chip; Automotive chip exists", async ({ page, request }) => {
+test("[9] category chips come from the inventory itself and filter case-insensitively", async ({ page, request }) => {
   test.setTimeout(180_000);
   await installSessionStub(page);
   const api = await authed(page, request);
-  const created = await (await request.post(`${API_BASE}/items`, {
-    headers: api.headers,
-    data: { title: "E2E HK1 Capitalized Category", description: "", category: "electronics", condition: "good", quantity: 1, photos: [] },
-  })).json();
-  // Writes are normalized now, so force the legacy capitalized value straight into the row.
-  execFileSync("docker", ["exec", "portage-db", "psql", "-U", "portage", "-d", "portage", "-c",
-    `update items set category='Electronics' where id='${created.id}'`]);
-  const stored = execFileSync("docker", ["exec", "portage-db", "psql", "-U", "portage", "-d", "portage", "-At", "-c",
-    `select category from items where id='${created.id}'`]).toString().trim();
-  expect(stored).toBe("Electronics");
+  const { categories } = await (await request.get(`${API_BASE}/items/categories`, { headers: api.headers })).json();
+  expect(categories.length).toBeGreaterThan(3);
+  const top = categories[0] as { value: string; label: string; count: number };
+  console.log(`[live] ${categories.length} chips; top = ${top.label} (${top.count})`);
 
   await page.goto("/inventory");
-  await page.getByRole("group", { name: "Filter by category" }).filter({ visible: true }).first().getByRole("button", { name: "Electronics" }).click();
-  await expect(visibleCard(page, created.id)).toBeVisible({ timeout: 30_000 });
-  await shot(page, "9a-electronics-chip-matches-capitalized-row.png");
-  expect(await page.getByRole("option", { name: "Automotive" }).count()).toBeGreaterThanOrEqual(1);
+  const row = page.getByRole("group", { name: "Filter by category" }).filter({ visible: true }).first();
+  await expect(row.getByRole("button", { name: new RegExp(`^${top.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*${top.count}$`) })).toBeVisible();
+  // The old static buckets are gone.
+  await expect(row.getByRole("button", { name: "Clothing" })).toHaveCount(0);
+  await row.getByRole("button", { name: new RegExp(`^${top.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) }).click();
+  await expect(page.getByText(`${top.count} item${top.count === 1 ? "" : "s"}`).first()).toBeVisible({ timeout: 30_000 });
+  await shot(page, "9a-data-driven-category-chips-filtered.png");
+
+  // Case-insensitive: a legacy capitalized spelling is the SAME chip (forced via SQL — writes normalize now).
+  const created = await (await request.post(`${API_BASE}/items`, {
+    headers: api.headers,
+    data: { title: "E2E HK1 Capitalized Category", description: "", category: top.value, condition: "good", quantity: 1, photos: [] },
+  })).json();
+  execFileSync("docker", ["exec", "portage-db", "psql", "-U", "portage", "-d", "portage", "-c",
+    `update items set category=upper(category) where id='${created.id}'`]);
+  const after = await (await request.get(`${API_BASE}/items/categories`, { headers: api.headers })).json();
+  const merged = (after.categories as typeof categories).find((c: { value: string }) => c.value === top.value);
+  expect(merged.count).toBe(top.count + 1);
+  const filtered = await (await request.get(`${API_BASE}/items?category=${encodeURIComponent(top.value)}`, { headers: api.headers })).json();
+  expect((filtered.items as { id: string }[]).some((i) => i.id === created.id)).toBe(true);
   await request.delete(`${API_BASE}/items/${created.id}`, { headers: api.headers });
 });
 
@@ -320,4 +340,64 @@ test("[10] condition notes: 5-row textareas on scan review + edit page; a 2000-c
   expect(len).toBe("2000");
   console.log(`[live] condition_notes length=${len}`);
   await request.delete(`${API_BASE}/items/${created.id}`, { headers: api.headers });
+});
+
+test("[W] wiring audit on the real inventory: every status chip and marketplace chip matches the database", async ({ page, request }) => {
+  test.setTimeout(300_000);
+  await installSessionStub(page);
+  const api = await authed(page, request);
+  const psql = (q: string) => execFileSync("docker", ["exec", "portage-db", "psql", "-U", "portage", "-d", "portage", "-At", "-c", q]).toString().trim();
+  const me = "c19b95dc-0d37-4d4b-9c00-fe86861c7034";
+  const displayCase = `case
+    when exists (select 1 from listings l where l.item_id=i.id and l.status='active') then 'active'
+    when exists (select 1 from listings l where l.item_id=i.id and l.status='draft') then 'draft'
+    when exists (select 1 from listings l where l.item_id=i.id and l.status='sold') then 'sold'
+    else i.status::text end`;
+
+  // 1. Status filter: API total per chip == DB count per derived status.
+  const report: string[] = [];
+  for (const status of ["active", "draft", "sold", "unlisted", "asset", "archived"]) {
+    const apiTotal = (await (await request.get(`${API_BASE}/items?status=${status}&limit=1`, { headers: api.headers })).json()).total;
+    const dbCount = Number(psql(`select count(*) from items i where i.user_id='${me}' and (${displayCase})='${status}'`));
+    report.push(`${status}: api=${apiTotal} db=${dbCount}`);
+    expect(apiTotal, `status=${status}`).toBe(dbCount);
+  }
+  console.log(`[wiring] status ${report.join(" | ")}`);
+
+  // 2. liveMarketplaces per item == DB active listings per item (whole inventory).
+  const all = (await (await request.get(`${API_BASE}/items?limit=100`, { headers: api.headers })).json()).items as Array<{ id: string; liveMarketplaces: string[]; displayStatus: string; price: number | null }>;
+  const rows = psql(`select i.id||'|'||coalesce((select string_agg(distinct l.marketplace::text, ',' order by l.marketplace::text) from listings l where l.item_id=i.id and l.status='active'),'') from items i where i.user_id='${me}'`).split("\n");
+  const dbLive = new Map(rows.map((r) => { const [id, m] = r.split("|"); return [id, m ? m.split(",").sort() : []]; }));
+  let checked = 0;
+  for (const it of all) {
+    expect([...(it.liveMarketplaces ?? [])].sort(), `liveMarketplaces ${it.id}`).toEqual(dbLive.get(it.id) ?? []);
+    checked++;
+  }
+  console.log(`[wiring] liveMarketplaces matched DB on ${checked} items`);
+
+  // 3. Screens: each status chip on the real inventory, plus a Reverb card and the listings page with Reverb/Sold rows.
+  await page.goto("/inventory");
+  for (const [label, value] of [["Active", "active"], ["Draft", "draft"], ["Sold", "sold"], ["Unlisted", "unlisted"]] as const) {
+    const group = page.getByRole("group", { name: "Filter by status" }).filter({ visible: true }).first();
+    await group.getByRole("button", { name: label }).click();
+    const total = (await (await request.get(`${API_BASE}/items?status=${value}&limit=1`, { headers: api.headers })).json()).total;
+    await expect(page.getByText(`${total} item${total === 1 ? "" : "s"}`).first()).toBeVisible({ timeout: 30_000 });
+    await shot(page, `W-inventory-status-${value}.png`);
+  }
+  const reverbItem = all.find((i) => (i.liveMarketplaces ?? []).includes("reverb"));
+  if (reverbItem) {
+    await page.getByRole("group", { name: "Filter by status" }).filter({ visible: true }).first().getByRole("button", { name: "Active" }).click();
+    const card = visibleCard(page, reverbItem.id);
+    await card.scrollIntoViewIfNeeded();
+    await expect(card.getByText("Reverb", { exact: true })).toBeVisible();
+    await shot(page, "W-inventory-card-reverb-chip.png");
+  }
+  const noPrice = all.find((i) => i.price == null);
+  console.log(`[wiring] reverb-card=${reverbItem ? "yes" : "none"} no-price-card=${noPrice ? "yes" : "none"}`);
+
+  await page.goto("/listings");
+  const rowsLoc = page.getByRole("link").filter({ hasText: /eBay|Reverb/ });
+  await expect(rowsLoc.first()).toBeVisible({ timeout: 30_000 });
+  const reverbRow = rowsLoc.filter({ hasText: "Reverb" }).first();
+  if (await reverbRow.count()) { await reverbRow.scrollIntoViewIfNeeded(); await shot(page, "W-listings-reverb-row.png"); }
 });

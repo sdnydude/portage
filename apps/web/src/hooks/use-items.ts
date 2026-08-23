@@ -115,3 +115,25 @@ export function useItems(options: UseItemsOptions = {}) {
 
   return { items, total, isLoading, error, refetch: fetchItems };
 }
+
+export interface ItemCategory { value: string; label: string; count: number }
+
+/** The caller's own categories with counts (GET /items/categories) — drives the
+ *  inventory filter chips. Refetch after anything that rewrites categories. */
+export function useItemCategories() {
+  const { token } = useAuth();
+  const [categories, setCategories] = useState<ItemCategory[]>([]);
+  const fetchCategories = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await api<{ categories: ItemCategory[] }>("/items/categories", { token });
+      setCategories(data.categories);
+    } catch {
+      // Chips are a convenience — a failed load leaves "All" only; the list
+      // itself still renders from useItems.
+      setCategories([]);
+    }
+  }, [token]);
+  useEffect(() => { fetchCategories(); }, [fetchCategories]);
+  return { categories, refetch: fetchCategories };
+}
