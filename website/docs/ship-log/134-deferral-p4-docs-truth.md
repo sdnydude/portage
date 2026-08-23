@@ -2,6 +2,7 @@
 title: "Deferral P4: docs & observability truth — ship-log generator revival, /about, rsync --delete, tutorials, eBay API reference"
 sidebar_label: "Deferral P4: docs truth"
 sidebar_position: 134
+registry_id: 6315f965-af72-4f9d-afee-4935a2f50abb
 ---
 
 # Deferral P4: docs & observability truth
