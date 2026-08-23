@@ -50,14 +50,14 @@ idle → recognizing → recognition → confirmed → details → pricing → p
 | `startFromPhoto(photos)` | Begin flow with captured photos |
 | `startFromItem(itemId)` | Begin flow from an existing inventory item |
 | `resumeDraft(draftId)` | Continue a saved draft |
-| `confirmRecognition(index)` | Accept an AI identification candidate by index |
+| `confirmRecognition(index)` | Accept an AI identification candidate by index. Both Hybrid and Swipe follow this with `ensureItemCreated()` → `prepare()` + comps (photo-first, P3); a creation failure is shown with a Retry, never a silent draft |
 | `fetchComps(query)` | Load eBay comparable sales |
 | `applyPricingStrategy(strategy)` | Set pricing from comp data |
 | `addPhotos(files)` | Add more photos to the listing |
 | `publish()` | Submit to marketplace |
 | `cancel()` | Exit the flow |
 
-`publish()` creates the inventory item first if needed (`ensureItemCreated`), runs prepare-listing for marketplace-specific fields (non-fatal on failure), and sends a scoped idempotency key per publish attempt so retries and replays cannot create duplicate listings. eBay supports both `draft` and `live` publish modes (defaulted from the seller profile's `ebayPublishMode`, with a per-publish toggle).
+`publish()` calls `ensureItemCreated` as a no-op fallback (the item is normally created at confirm time since P3), runs prepare-listing for marketplace-specific fields (non-fatal on failure), and sends a scoped idempotency key per publish attempt so retries and replays cannot create duplicate listings. eBay supports both `draft` and `live` publish modes (defaulted from the seller profile's `ebayPublishMode`, with a per-publish toggle).
 
 ## Auto-Draft Persistence
 

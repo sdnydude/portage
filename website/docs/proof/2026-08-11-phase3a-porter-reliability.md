@@ -144,7 +144,7 @@ INFO ai-client provider=local elapsed=4796 msg="Chat stream complete"
 
 Model decision: **granite4.1:8b** primary (`CHAT_PROVIDERS=local:granite4.1:8b,gemini`),
 superseding the gemma4:12b recommendation. Basis: 4-source research pass
-(HuggingFace / Ollama / LM Studio / NVIDIA, <11B, released Feb–Aug 2026),
+(HuggingFace / Ollama / LM Studio / NVIDIA, under 11B, released Feb–Aug 2026),
 then the same eval harness used for gemma — 25-prompt realistic battery ×3
 passes (24/25 each; sole fail was a harness iteration-cap artifact that
 completes at prod's 10-iteration cap) + a 50-prompt soak (50/50 after two

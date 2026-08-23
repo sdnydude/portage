@@ -66,7 +66,7 @@ Cloudflare Access is the identity/session layer — no password, no refresh toke
 
 ## Hook Contract
 
-All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. Key hooks:
+All data hooks return `{ isLoading: boolean, error: string | null, ...data }` — except the scan-aspects pair, which expose typed error *signals* instead of a string (`isError` / `aspectsError` / `resolveError`) because the UI branches on them. Key hooks:
 
 | Hook | Purpose |
 |------|---------|
@@ -93,6 +93,8 @@ All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. K
 | `usePhotoDrag` | Touch-capable long-press drag reorder for photo grids/strips |
 | `useDesktopIngest` | R2 desktop drag-drop file ingest + queue state |
 | `useSyncStatus` | Marketplace sync status polling + retry (sync-log badges, settings screen) |
+| `useRequiredAspects` | eBay category aspect schema: `{ aspects, isLoading, isError, refetch }` — `isError` means "unknown", never "nothing required" (P3) |
+| `useScanAspects` | Scan-time category resolution + aspect values; exposes `aspectsError`, `refetchAspects`, `resolveError` (seq-guarded, prior resolution retained) and `aspectsBlockPublish` (includes the error) |
 
 ## Listing Flow Modes
 

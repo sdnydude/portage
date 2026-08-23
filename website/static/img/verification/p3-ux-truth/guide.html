@@ -1,0 +1,75 @@
+<title>P3 Visual Guide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{--bg:#F6F7F4;--surface:#FFFFFF;--ink:#1B1F1A;--ink-2:#56605A;--line:#DCE1DA;--accent:#2D5A27;--accent-soft:#E3EDE0;--ok:#2D5A27;--ok-bg:#E3EDE0;--warn:#8A5A00;--warn-bg:#FBEFD6;--crit:#9B2C2C;--crit-bg:#F9E2E2;--wait:#56605A;--wait-bg:#ECEFEA;--build:#1F4E79;--build-bg:#DFE9F3}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141714;--surface:#1C201C;--ink:#E6E9E3;--ink-2:#A3AB9F;--line:#2C322C;--accent:#7FB877;--accent-soft:#24331F;--ok:#8FCB86;--ok-bg:#24331F;--warn:#E4B45C;--warn-bg:#3A2E12;--crit:#F08C8C;--crit-bg:#3E1E1E;--wait:#A3AB9F;--wait-bg:#262B26;--build:#8FBCE6;--build-bg:#1B2A3A}}
+:root[data-theme="dark"]{--bg:#141714;--surface:#1C201C;--ink:#E6E9E3;--ink-2:#A3AB9F;--line:#2C322C;--accent:#7FB877;--accent-soft:#24331F;--ok:#8FCB86;--ok-bg:#24331F;--warn:#E4B45C;--warn-bg:#3A2E12;--crit:#F08C8C;--crit-bg:#3E1E1E;--wait:#A3AB9F;--wait-bg:#262B26;--build:#8FBCE6;--build-bg:#1B2A3A}
+body{background:var(--bg);color:var(--ink);font-family:"Plus Jakarta Sans",system-ui,sans-serif;font-size:15px;line-height:1.55;margin:0}
+.wrap{max-width:880px;margin:0 auto;padding:40px 24px 80px}
+h1,h2,h3{font-family:"Instrument Sans",system-ui,sans-serif;text-wrap:balance;margin:0}
+h1{font-size:30px;font-weight:700;letter-spacing:-.01em}
+.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);font-weight:600}
+.sub{color:var(--ink-2);margin-top:6px;max-width:65ch}
+.meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:14px;font-size:13px;color:var(--ink-2)}
+.meta b{color:var(--ink);font-weight:600}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12.5px}
+.progress{margin:28px 0 8px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px}
+.bar{height:8px;background:var(--wait-bg);border-radius:4px;overflow:hidden;display:flex;margin-top:10px}
+.bar span{display:block;height:100%}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--ink-2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:6px}
+section{margin-top:32px}
+section h2{font-size:18px;font-weight:600;display:flex;align-items:baseline;gap:12px}
+section h2 small{font-family:"Plus Jakarta Sans",sans-serif;font-size:13px;font-weight:400;color:var(--ink-2)}
+.task{display:grid;grid-template-columns:56px 1fr auto;gap:6px 14px;padding:14px 0;border-top:1px solid var(--line);align-items:start}
+.task:last-child{border-bottom:1px solid var(--line)}
+.id{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--ink-2);padding-top:2px}
+.title{font-weight:600}
+.what{color:var(--ink-2);font-size:13.5px;grid-column:2;max-width:70ch}
+.proof{grid-column:2;font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.proof b{color:var(--ink);font-weight:500}
+.chip{font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;white-space:nowrap;font-family:"Plus Jakarta Sans",sans-serif}
+.c-green{color:var(--ok);background:var(--ok-bg)}.c-build{color:var(--build);background:var(--build-bg)}.c-wait{color:var(--wait);background:var(--wait-bg)}.c-block{color:var(--crit);background:var(--crit-bg)}.c-gate{color:var(--warn);background:var(--warn-bg)}
+.log{margin-top:36px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px}
+.log h2{font-size:15px;margin-bottom:8px}
+.log ul{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.log li{display:grid;grid-template-columns:64px 1fr;gap:12px}
+.log time{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ink-2)}
+.gate{margin-top:28px;border-left:3px solid var(--accent);padding:4px 0 4px 14px;font-size:13.5px;color:var(--ink-2)}
+.gate b{color:var(--ink)}
+
+.change{margin-top:40px;padding-top:24px;border-top:1px solid var(--line)}
+.change h2{font-size:20px;font-weight:600}
+.where{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ink-2);margin-top:4px}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+@media (max-width:640px){.ba{grid-template-columns:1fr}}
+.ba>div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;font-size:14px}
+.ba .lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;margin-bottom:6px}
+.before .lbl{color:var(--crit)}.after .lbl{color:var(--ok)}
+figure{margin:16px 0 0;background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+figure img{display:block;max-width:100%;height:auto}
+figcaption{font-size:12.5px;color:var(--ink-2);padding:8px 12px;border-top:1px solid var(--line)}
+.figs{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:640px){.figs{grid-template-columns:1fr}}
+.figs figure{margin-top:16px}
+.toc{margin-top:20px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.toc a{color:var(--accent);text-decoration:none}
+.toc a:focus-visible,.toc a:hover{text-decoration:underline}
+.note{font-size:13.5px;color:var(--ink-2);margin-top:10px}
+</style>
+<div class="wrap">
+<div class="eyebrow">Portage · Deferral P3 · what changed</div>
+<h1>P3 Visual Guide</h1>
+<p class="sub">Five places where the app used to fail quietly or change things without saying so. Each entry shows what a seller saw before, what they see now, and the screenshot the automated proof run captured against the rebuilt containers on 2026-08-22.</p>
+<div class="toc"><a href="#live">0 · Live proof on a real eBay listing</a><a href="#bo">1 · Best Offer conflicts get a guided fix</a><a href="#scan">2 · Scan review tells the truth about outages</a><a href="#cond">3 · Condition changes are announced</a><a href="#swipe">4 · Swipe flow gets the same AI prep as Hybrid</a><a href="#mobile">5 · Mobile deep links stop fetching a hidden pane</a></div>
+<p class="note">Branch <code>feat/p3-beta-ux-truth</code> · 24 files · api 1016 / web 674 tests · e2e 5/5 · screenshots from <code>apps/web/e2e/p3-ux-truth.spec.ts</code> + live <code>p3-bo-live.spec.ts</code></p>
+<section class="change" id="live"><h2>0 · Live proof — the 2026-08-05 blocked price-save, on a real listing</h2><div class="where">NETGEAR GSM4212P · eBay 307139861284 · $599, auto-accept $579 / minimum $549 · real Trading API revises</div>
+<div class="ba"><div class="before"><div class="lbl">Before (08-05)</div>Lowering the price under the auto-accept produced a prose error and a stuck save — no numbers, no way forward from the card.</div><div class="after"><div class="lbl">After (tonight)</div>Price set to $560 → eBay's thresholds shown in the banner with both actions. <b>Adjust to fit price</b> rewrote them under $560 and the save synced to eBay (1.95 s). Price restored to $599 in-run, thresholds restored to $579/$549 right after — the listing ended exactly as it started.</div></div>
+<div class="figs"><figure><img src="./L2-live-bo-conflict-banner.png" alt="Live conflict on the real listing — the banner with eBay's numbers" loading="lazy"><figcaption>Live conflict on the real listing — the banner with eBay's numbers</figcaption></figure><figure><img src="./L3-live-adjusted-to-fit.png" alt="Adjust to fit price → $504 / $448 under $560, Save to confirm" loading="lazy"><figcaption>Adjust to fit price → $504 / $448 under $560, Save to confirm</figcaption></figure><figure><img src="./L4-live-saved-after-fix.png" alt="Saved — revise accepted by eBay" loading="lazy"><figcaption>Saved — revise accepted by eBay</figcaption></figure><figure><img src="./L5-live-price-restored.png" alt="Restored to $599 after reload" loading="lazy"><figcaption>Restored to $599 after reload</figcaption></figure></div>
+<p class="note">The post-save path (eBay holding thresholds Portage never stored) could not be induced live — the only candidate listing had no live thresholds and accepted the lower price; covered by route tests instead.</p></section><section class="change" id="bo"><h2>1 · Best Offer conflicts get a guided fix</h2><div class="where">ListingCard price editor · apps/api ebay-adapter + listings route</div>
+<div class="ba"><div class="before"><div class="lbl">Before</div>A price eBay rejected over its Best Offer thresholds came back as a paragraph of prose — and if the rejection happened <em>after</em> the local save, the app reported success with a warning string. No numbers, no action, and on the item edit page the warning was thrown away on navigation.</div><div class="after"><div class="lbl">After</div>Every conflict now carries the live thresholds. The price editor shows a banner with the exact auto-accept / minimum values, says whether they were refreshed from eBay, and offers two one-tap fixes: <b>Adjust to fit price</b> (rewrites both thresholds below the new price) or <b>Turn off offers</b>. A conflict tripped from shipping, archive or publish opens the same fix. The edit page keeps you on the page with the warning instead of silently leaving.</div></div><div class="figs"><figure><img src="./6-bo-conflict-guided-banner.png" alt="Price save blocked: banner with the real thresholds and both actions" loading="lazy"><figcaption>Price save blocked: banner with the real thresholds and both actions</figcaption></figure><figure><img src="./7-bo-adjusted-to-fit.png" alt="After Adjust to fit price: 179.10 / 159.20 under a $199 price, Save to confirm" loading="lazy"><figcaption>After Adjust to fit price: 179.10 / 159.20 under a $199 price, Save to confirm</figcaption></figure><figure><img src="./8-bo-fix-persisted-after-reload.png" alt="Reloaded: the adjusted thresholds persisted" loading="lazy"><figcaption>Reloaded: the adjusted thresholds persisted</figcaption></figure></div></section><section class="change" id="scan"><h2>2 · Scan review tells the truth about outages</h2><div class="where">Scan → Review screen</div>
+<div class="ba"><div class="before"><div class="lbl">Before</div>Comps search failing looked identical to “no comps found”. The eBay category details (required specifics) failing to load left the header claiming <b>Complete</b> and the List button enabled. A category lookup failure looked like “no category matched”.</div><div class="after"><div class="lbl">After</div>Three separate notices, each with its own retry: <b>Comps unavailable — using AI estimate only</b>; <b>eBay category details unavailable</b> (header now reads <b>Unavailable</b>, Save &amp; List is blocked with that reason until Retry succeeds); <b>Category lookup failed — Retry lookup</b>, kept apart from the genuine no-match message.</div></div><div class="figs"><figure><img src="./1-scan-review-outages-told.png" alt="Comps outage notice and condition-snap notice in the pricing/condition area" loading="lazy"><figcaption>Comps outage notice and condition-snap notice in the pricing/condition area</figcaption></figure><figure><img src="./1b-scan-review-aspects-outage.png" alt="Category details outage: Unavailable chip, Retry, List blocked with the honest reason" loading="lazy"><figcaption>Category details outage: Unavailable chip, Retry, List blocked with the honest reason</figcaption></figure><figure><img src="./2-aspects-retry-cleared.png" alt="After Retry: notice gone, header back to Complete" loading="lazy"><figcaption>After Retry: notice gone, header back to Complete</figcaption></figure><figure><img src="./3-category-lookup-failed.png" alt="Category lookup failure with its own Retry — distinct from no-match" loading="lazy"><figcaption>Category lookup failure with its own Retry — distinct from no-match</figcaption></figure><figure><img src="./4-category-no-match-after-retry.png" alt="A real no-match after retry: plain no-match copy, no outage notice" loading="lazy"><figcaption>A real no-match after retry: plain no-match copy, no outage notice</figcaption></figure></div></section><section class="change" id="cond"><h2>3 · Condition changes are announced</h2><div class="where">Scan → Review · Condition chips</div>
+<div class="ba"><div class="before"><div class="lbl">Before</div>When the resolved eBay category didn't accept the AI-detected condition, the app quietly switched it (e.g. Good → New). Sellers listed at the wrong condition without knowing.</div><div class="after"><div class="lbl">After</div>The switch still happens, but a notice says exactly what and why: <b>Condition adjusted to New — Good isn't offered in this category.</b> It clears the moment you pick a chip, use a comp's condition, or the category changes. (Visible in screenshot 1 above.)</div></div></section><section class="change" id="swipe"><h2>4 · Swipe flow gets the same AI prep as Hybrid</h2><div class="where">Listing flow · Swipe mode, Configure step</div>
+<div class="ba"><div class="before"><div class="lbl">Before</div>On a fresh scan the Swipe flow never created the item before the prepare step, so the AI-prepared eBay fields, comps and Best Offer floor silently never arrived. If item creation failed, both Swipe and Hybrid swallowed the error.</div><div class="after"><div class="lbl">After</div>Confirming recognition now creates the item first, then runs prepare and comps — the same contract Hybrid uses. A creation failure is shown with a <b>Retry</b> in both flows, and Swipe's Next is held until the item exists. (No screenshot — this is the data path behind the Configure step; proven by component tests.)</div></div></section><section class="change" id="mobile"><h2>5 · Mobile deep links stop fetching a hidden pane</h2><div class="where">Inventory page with <code>?item=</code> in the URL</div>
+<div class="ba"><div class="before"><div class="lbl">Before</div>Opening <code>/inventory?item=…</code> on a phone mounted the desktop detail pane invisibly and fired its item fetches for nothing.</div><div class="after"><div class="lbl">After</div>Below the desktop breakpoint (1024px) the deep link is ignored; the grid renders as usual and no detail fetch is made. On desktop the pane opens exactly as before. Side effect worth knowing: the mobile grid no longer highlights the deep-linked card.</div></div><figure><img src="./5-mobile-deep-link-no-pane.png" alt="390px viewport with ?item= — grid only, zero detail fetches (asserted in the e2e)" loading="lazy"><figcaption>390px viewport with ?item= — grid only, zero detail fetches (asserted in the e2e)</figcaption></figure></section>
+</div>
