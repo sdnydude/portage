@@ -2,6 +2,7 @@
 title: "eBay listing publish hardening (PLANNED — checkpointed at Phase 2)"
 sidebar_label: "eBay listing publish hardening (PLANNED — checkpoi"
 sidebar_position: 43
+registry_id: 58ad9066-48e8-4876-a639-ca6385dcd8be
 ---
 
 # eBay listing publish hardening (PLANNED — checkpointed at Phase 2)

@@ -2,6 +2,7 @@
 title: "Housekeeping batch 1 — price truth, aspect removal, est-value retirement, item status, chips, category filter, condition notes"
 sidebar_label: "Housekeeping batch 1"
 sidebar_position: 59
+registry_id: 8429d568-f757-4283-8f89-862f28cdf86c
 ---
 
 # Housekeeping batch 1

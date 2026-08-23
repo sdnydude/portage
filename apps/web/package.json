@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "capture:tutorials": "tsx scripts/capture-tutorials.ts"
+    "capture:tutorials": "tsx scripts/capture-tutorials.ts",
+    "check:tutorials": "tsx scripts/check-tutorial-captures.ts"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
@@ -32,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "^16.2.10",
     "jsdom": "^29.1.1",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.1",
     "typescript": "^5",

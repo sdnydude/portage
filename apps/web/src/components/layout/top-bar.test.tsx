@@ -50,6 +50,8 @@ describe("TopBar", () => {
     await user.keyboard("{ArrowDown}");
     expect(screen.getByRole("menuitem", { name: "Settings" })).toHaveFocus();
     await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "About" })).toHaveFocus(); // P4: /about link
+    await user.keyboard("{ArrowDown}");
     expect(screen.getByRole("menuitem", { name: "Log out" })).toHaveFocus();
     await user.keyboard("{ArrowDown}");
     expect(screen.getByRole("menuitem", { name: "Profile" })).toHaveFocus();

@@ -2,6 +2,7 @@
 title: "Hook-driven capture — guaranteed registry ingest via session hooks"
 sidebar_label: "Hook-driven capture — guaranteed registry ingest v"
 sidebar_position: 28
+registry_id: 9b9948b6-c11e-4709-b60d-51d6e27780d3
 ---
 
 # Hook-driven capture — guaranteed registry ingest via session hooks

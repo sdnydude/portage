@@ -11,6 +11,7 @@ describe("navigation", () => {
 
   it("pageTitle: longest-prefix match with Portage fallback", () => {
     expect(pageTitle("/settings/seller-profile")).toBe("Seller Profile");
+    expect(pageTitle("/about")).toBe("About"); // P4
     expect(pageTitle("/inventory/abc")).toBe("Inventory");
     expect(pageTitle("/unknown/thing")).toBe("Portage");
   });

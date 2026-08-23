@@ -2,6 +2,7 @@
 title: "Fix Dependabot vulnerabilities + clean up website/ tooling"
 sidebar_label: "Fix Dependabot vulnerabilities + clean up website/"
 sidebar_position: 15
+registry_id: 2225dafa-8e61-4461-9065-b65b86b33f5e
 ---
 
 # Fix Dependabot vulnerabilities + clean up website/ tooling

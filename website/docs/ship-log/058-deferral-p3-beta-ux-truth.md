@@ -2,6 +2,7 @@
 title: "Deferral P3: beta UX truth — guided Best Offer fix, scan/swipe outage surfacing, mobile deep-link guard"
 sidebar_label: "Deferral P3: beta UX truth"
 sidebar_position: 58
+registry_id: f25fb10a-787f-45ba-90d8-0764c5a4d58a
 ---
 
 # Deferral P3: beta UX truth

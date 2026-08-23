@@ -2,6 +2,7 @@
 title: "Voice chat interface — Porter-powered voice control with redesigned home screen"
 sidebar_label: "Voice chat interface — Porter-powered voice contro"
 sidebar_position: 39
+registry_id: 40dcee7b-ea53-407c-bc31-d1ac8f6bbbe0
 ---
 
 # Voice chat interface — Porter-powered voice control with redesigned home screen

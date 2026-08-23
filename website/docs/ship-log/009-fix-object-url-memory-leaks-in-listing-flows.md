@@ -2,6 +2,7 @@
 title: "Fix Object URL memory leaks in listing flows"
 sidebar_label: "Fix Object URL memory leaks in listing flows"
 sidebar_position: 9
+registry_id: 30d894e1-301d-4008-bb77-91f2c953e28d
 ---
 
 # Fix Object URL memory leaks in listing flows

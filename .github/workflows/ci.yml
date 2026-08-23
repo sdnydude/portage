@@ -79,6 +79,11 @@ jobs:
           JWT_SECRET: ci-test-secret-that-is-at-least-32-chars
           ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
+      # P4: tutorial screenshots are published assets — every step's PNG must
+      # exist, be 780x1688, and not be a blank frame (scripts/check-tutorial-captures.ts).
+      - name: Check tutorial captures
+        run: npm run check:tutorials -w apps/web
+
       - name: Run web unit tests
         run: npm run test -w apps/web
 

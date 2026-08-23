@@ -8,8 +8,11 @@
  *   npm run capture:tutorials            # app on :3002, API on :8016
  *   CAPTURE_BASE_URL=... CAPTURE_API_URL=... npm run capture:tutorials
  *
- * Auth mirrors e2e/auth.setup.ts: GET /auth/session (CF_ACCESS_DEV_EMAIL dev
- * bypass on LAN, or CF Access service token via E2E_CF_CLIENT_ID/SECRET),
+ * Auth: primary path reuses the Playwright storage state at e2e/.auth/user.json
+ * (minted locally — the prod-mode API has no dev bypass and the LAN has no CF
+ * edge); fallback mirrors e2e/auth.setup.ts: GET /auth/session with the
+ * CF_ACCESS_DEV_EMAIL dev bypass or a CF Access service token via
+ * E2E_CF_CLIENT_ID/SECRET,
  * localStorage injection, plus the session-stub route so the app's mount-time
  * edge exchange can't wipe the injected token. NOT run in CI.
  */
@@ -19,13 +22,26 @@ import path from "node:path";
 import { installSessionStub } from "../e2e/session-stub";
 import { CAPTURE_MANIFESTS } from "../src/lib/tutorials/index";
 import type { CaptureAction } from "../src/lib/tutorials/types";
+import { TUTORIAL_VIEWPORT } from "../src/lib/tutorials/capture-check";
 
 const BASE_URL = process.env.CAPTURE_BASE_URL ?? "http://10.0.0.251:3002";
 const API_URL = process.env.CAPTURE_API_URL ?? "https://10.0.0.251:8016";
 const OUT_ROOT = path.resolve(__dirname, "../public/tutorials");
-const VIEWPORT = { width: 390, height: 844 };
+const VIEWPORT = TUTORIAL_VIEWPORT;
 
 async function getSession(): Promise<{ token: string; user: unknown }> {
+  // Against the prod-mode API there is no dev bypass and no CF edge on the
+  // LAN — reuse the session the live e2e specs use (e2e/.auth/user.json,
+  // minted locally). Set CAPTURE_STORAGE_STATE to point elsewhere.
+  const stateFile = process.env.CAPTURE_STORAGE_STATE ?? path.resolve(__dirname, "../e2e/.auth/user.json");
+  if (fs.existsSync(stateFile)) {
+    const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { origins: { localStorage: { name: string; value: string }[] }[] };
+    const ls = state.origins.flatMap((o) => o.localStorage);
+    const token = ls.find((e) => e.name === "portage_token")?.value;
+    const user = ls.find((e) => e.name === "portage_user")?.value;
+    if (token) return { token, user: user ? JSON.parse(user) : null };
+    console.warn(`storage state ${stateFile} has no portage_token — falling back to GET /auth/session`);
+  }
   const headers: Record<string, string> = {};
   if (process.env.E2E_CF_CLIENT_ID && process.env.E2E_CF_CLIENT_SECRET) {
     headers["CF-Access-Client-Id"] = process.env.E2E_CF_CLIENT_ID;

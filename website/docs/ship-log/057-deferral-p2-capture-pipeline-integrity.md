@@ -2,6 +2,7 @@
 title: "Deferral P2: capture-pipeline integrity — landing-verified captures, DLQ durability, write-auth"
 sidebar_label: "Deferral P2: capture-pipeline integrity"
 sidebar_position: 57
+registry_id: 5bbfedca-6d0e-409f-88e5-bfca8a3ae367
 ---
 
 # Deferral P2: capture-pipeline integrity
