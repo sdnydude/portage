@@ -239,7 +239,7 @@ live-proven on a real listing; swipe flow photo-first with Retry; scan review
 surfaces comps/category/aspect outages with retries, condition-snap notice,
 "Unavailable" instead of a false "Complete"; mobile ?item= deep link no longer
 mounts the hidden pane. Ship-log 058; proof page 2026-08-22-p3-beta-ux-truth.
-Housekeeping batch 1 shipped 2026-08-23 (feat/housekeeping-1): items.price ⇄
+Housekeeping batch 1 shipped 2026-08-23 (PR #317, 2607211): items.price ⇄
 listings.price one value both directions; aspect null-delete on items PATCH +
 listing-row strip in one transaction; estimated-value range retired from every
 surface (columns kept); items.status enum (unlisted|asset|sold|archived) with
@@ -250,7 +250,7 @@ data-driven category chips (GET /items/categories) + case-insensitive filter
 condition notes. Live-proven (e2e/housekeeping-1.spec.ts, E2E_EBAY_LIVE=1);
 the live run caught a drizzle array-param bug the mocked tests could not.
 Ship-log 059; proof page 2026-08-23-housekeeping-1.
-Test suite: 1026 API / 689 web as of 2026-08-23 (Housekeeping-1).
+Test suite: 1033 API / 696 web as of 2026-08-23 (Housekeeping-1, post-5befc45).
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
