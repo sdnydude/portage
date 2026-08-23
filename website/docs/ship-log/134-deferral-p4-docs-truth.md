@@ -13,9 +13,9 @@ registry_id: 6315f965-af72-4f9d-afee-4935a2f50abb
 | **Complexity** | complex (CI + web + docs + scripts, 5 registry items, 15 tasks) |
 | **TDD** | yes (one test per write; 26 generator tests, 10 web tests) |
 | **Branch** | `feat/p4-docs-truth` |
-| **PR** | pending |
+| **PR** | [#319](https://github.com/sdnydude/portage/pull/319) (merged 2026-08-23 14:08 ET, `efdf4bd`) |
 | **Registry items** | `2e2201ce` (+`f25bc5f5`) · `610ee575` · `db5e046a` · `2dcca6ef` · `b77e2423` |
-| **Tests** | api 1033 · web 696 → 701 · generator 0 → 26 · e2e +1 |
+| **Tests** | api 1033 · web 696 → 701 · generator 0 → 27 · e2e +1 |
 | **Proof** | [2026-08-23 P4 docs truth](/docs/proof/2026-08-23-p4-docs-truth) |
 
 ## What shipped
@@ -53,6 +53,15 @@ orphan deletion requires `--prune`, no-PR sessions never dedupe, pipes escaped
 in tables, registry outage exits 3, body PR fallback reads only a labelled PR
 line, 4-digit numbering and CRLF pages handled, `/about` nav icon and page
 title, dead `GetMyMessages` row removed from the eBay doc).
+
+## After merge
+
+First deploy on `main` green (drift check in sync, smoke gate, rsync
++14/−0, 1,982 chunks ingested); live ship-log 135 entries; `ebay.md`
+served + KB hit; failure drill opened issue #320 automatically (closed as a
+drill). Pre-merge advisor round added `escape_mdx` hardening (unbalanced
+backtick bypass, markdown link/image neutralization), a pre-restart smoke
+gate, the failure-issue alarm + drill input, and the `sharp` dependency.
 
 ## Operator decisions
 

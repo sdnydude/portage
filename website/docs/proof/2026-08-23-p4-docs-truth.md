@@ -56,3 +56,16 @@ on-canvas. Renders of the three topics whose copy changed:
 
 `/api/ebay` builds and serves on the replica (RuName paragraph present); the
 registry KB hit is checked after the merged deploy ingests it.
+
+## After merge (PR #319, `efdf4bd`, 2026-08-23 14:08 ET)
+
+- First `deploy-docs` run on `main`: drift check **in sync**, Docusaurus build
+  green, pre-restart smoke gate passed, rsync itemized log added the 14 new
+  proof images with **zero deletions**, registry ingest 1,982 chunks.
+- Live: `/portage/ship-log/` lists **135** entries; `/portage/api/ebay/`
+  serves with the RuName section; KB search for the RuName trap returns the
+  new page; tutorials PNGs served from the rebuilt app; prod `/about` answers
+  behind Cloudflare Access.
+- **Failure drill:** `workflow_dispatch drill=true` failed the run at step 1
+  and the alarm opened issue #320 automatically with the run link and fix
+  instructions; the site kept serving; issue closed as a drill.

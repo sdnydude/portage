@@ -144,4 +144,4 @@ Every `/ship` run, generated from the DHG Registry `ship_sessions` table plus ha
 | 131 | [Ship-program Phase 2 — marketplace-truth sync (status sweep + Reverb order sync/backfill) + 10-finding review-fix batch + Reverb blank-model publish fix](ship-31c6404f) | [#299](https://github.com/sdnydude/portage/pull/299) |
 | 132 | [Phase 3a Porter reliability + granite switch (PR #303) and category-mismatch guard (PR #304, stacked)](ship-47cb5195) | [#303](https://github.com/sdnydude/portage/pull/303) |
 | 133 | [Wrap PR #305 — rich-vision guard fix + Porter totals nudge + docs refresh](ship-9c2d6aad) | [#305](https://github.com/sdnydude/portage/pull/305) |
-| 134 | [Deferral P4: docs & observability truth — ship-log generator revival, /about, rsync --delete, tutorials, eBay API reference](134-deferral-p4-docs-truth) | no PR recorded |
+| 134 | [Deferral P4: docs & observability truth — ship-log generator revival, /about, rsync --delete, tutorials, eBay API reference](134-deferral-p4-docs-truth) | [#319](https://github.com/sdnydude/portage/pull/319) |
