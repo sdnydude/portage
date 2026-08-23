@@ -231,7 +231,15 @@ durability with 5-min timed replay, capture-guarantee landing-diff via
 GET /api/captures/lookup as a user-level Stop hook, stale portage capture-script
 copies deleted (canonical = ~/.claude/scripts symlinks to dhg-memreg). Ship-log
 057. NOTE: LangGraph retired going forward — Pydantic AI + Langfuse (e038a72a).
-Test suite: 1009 API / 648 web as of 2026-08-19 (P1 branch).
+Deferral P3 (beta UX truth) shipped 2026-08-22 (PR #315, 734ae42): Best Offer
+conflicts carry structured details from every adapter throw, the post-save
+PATCH catch heals from live and rethrows 422 instead of a 200+warning, and
+ListingCard renders a guided fix (Adjust to fit price / Turn off offers) —
+live-proven on a real listing; swipe flow photo-first with Retry; scan review
+surfaces comps/category/aspect outages with retries, condition-snap notice,
+"Unavailable" instead of a false "Complete"; mobile ?item= deep link no longer
+mounts the hidden pane. Ship-log 058; proof page 2026-08-22-p3-beta-ux-truth.
+Test suite: 1016 API / 674 web as of 2026-08-22 (P3 merged).
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
