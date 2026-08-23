@@ -208,6 +208,87 @@ describe('GET /items', () => {
     expect(res.body.items[0].listed).toBe(false);
   });
 
+  it('projects displayStatus on the list and detail selects, and filters the list by ?status= (Housekeeping-1 T5)', async () => {
+    mockSelectForList([{ ...MOCK_ITEM, listed: false, displayStatus: 'asset' }], [{ count: '1' }]);
+
+    const res = await request(app)
+      .get('/items?status=asset')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    const listSelectArg = vi.mocked(db.select).mock.calls[0][0] as Record<string, unknown>;
+    expect(listSelectArg).toHaveProperty('displayStatus');
+    expect(res.body.items[0].displayStatus).toBe('asset');
+
+    vi.clearAllMocks();
+    mockSelectReturns([{ ...MOCK_ITEM, displayStatus: 'unlisted' }]);
+    const one = await request(app)
+      .get('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(one.status).toBe(200);
+    const detailSelectArg = vi.mocked(db.select).mock.calls[0][0] as Record<string, unknown>;
+    expect(detailSelectArg).toHaveProperty('displayStatus');
+
+    const bad = await request(app)
+      .get('/items?status=bogus')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(bad.status).toBe(400);
+  });
+
+  it('matches the category filter case-insensitively and normalizes category writes to lowercase-trim (Housekeeping-1 T8)', async () => {
+    const { categoryFilterExpr } = await import('./items.js');
+    const { drizzle } = await import('drizzle-orm/postgres-js');
+    const { items } = await import('../db/schema.js');
+    const mockDb = drizzle.mock();
+    const { sql: text, params } = mockDb.select({ id: items.id }).from(items).where(categoryFilterExpr('Electronics')).toSQL();
+    expect(text.toLowerCase()).toContain('ilike');
+    expect(params).toEqual(['electronics']);
+    // wildcards in the value are literal, not pattern chars
+    expect(mockDb.select({ id: items.id }).from(items).where(categoryFilterExpr('50%_off')).toSQL().params).toEqual(['50\\%\\_off']);
+
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, category: 'electronics' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectReturnOnce([]);
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ category: '  Electronics ' });
+    expect(res.status).toBe(200);
+    expect(setSpy.mock.calls[0][0]).toMatchObject({ category: 'electronics' });
+  });
+
+  it('projects liveMarketplaces (distinct marketplaces with an active listing) for the inventory card chips (Housekeeping-1 T7)', async () => {
+    mockSelectForList([{ ...MOCK_ITEM, listed: true, displayStatus: 'active', liveMarketplaces: ['ebay'] }], [{ count: '1' }]);
+    const res = await request(app).get('/items').set('Authorization', `Bearer ${authToken}`);
+    expect(res.status).toBe(200);
+    const listSelectArg = vi.mocked(db.select).mock.calls[0][0] as Record<string, unknown>;
+    expect(listSelectArg).toHaveProperty('liveMarketplaces');
+
+    const { itemLiveMarketplacesExpr } = await import('./items.js');
+    const { drizzle } = await import('drizzle-orm/postgres-js');
+    const { items } = await import('../db/schema.js');
+    const { sql: text } = drizzle.mock().select({ m: itemLiveMarketplacesExpr }).from(items).toSQL();
+    expect(text).toContain('"item_id" = "items"."id"');
+    expect(text.toLowerCase()).toContain("'active'");
+  });
+
+  it('composes the ?status= CASE comparison with the category filter inside one and() — a single bound status param, enum cast to text (review gap 4)', async () => {
+    const { itemDisplayStatusExpr, categoryFilterExpr } = await import('./items.js');
+    const { drizzle } = await import('drizzle-orm/postgres-js');
+    const { and, sql } = await import('drizzle-orm');
+    const { items } = await import('../db/schema.js');
+    const { sql: text, params } = drizzle.mock().select({ id: items.id }).from(items)
+      .where(and(categoryFilterExpr('Electronics'), sql`${itemDisplayStatusExpr} = ${'asset'}`))
+      .toSQL();
+    const norm = text.toLowerCase().replace(/\s+/g, ' ');
+    expect(norm).toContain('ilike');
+    expect(norm).toContain('"items"."status"::text end = $');
+    expect(params).toEqual(['electronics', 'asset']);
+  });
+
   it('renders the listed EXISTS subquery with a qualified outer items.id correlation', async () => {
     // Regression: drizzle strips table qualifiers on single-table selects, so an
     // interpolated ${items.id} inside the subquery rendered as bare "id", which
@@ -221,6 +302,28 @@ describe('GET /items', () => {
     const { sql: text } = mockDb.select({ listed: itemListedExpr }).from(items).toSQL();
 
     expect(text).toContain('"item_id" = "items"."id"');
+  });
+
+  it('renders displayStatus as a CASE: a live active listing wins, then a draft listing, else items.status (Housekeeping-1 T5)', async () => {
+    const { itemDisplayStatusExpr } = await import('./items.js');
+    const { drizzle } = await import('drizzle-orm/postgres-js');
+    const { items } = await import('../db/schema.js');
+
+    const mockDb = drizzle.mock();
+    const { sql: text } = mockDb.select({ displayStatus: itemDisplayStatusExpr }).from(items).toSQL();
+
+    const norm = text.toLowerCase().replace(/\s+/g, ' ');
+    const activeAt = norm.indexOf("'active'");
+    const draftAt = norm.indexOf("'draft'");
+    const statusAt = norm.indexOf('"items"."status"');
+    const soldAt = norm.indexOf("'sold'");
+    expect(norm).toContain('case when exists');
+    expect(activeAt).toBeGreaterThan(-1);
+    expect(draftAt).toBeGreaterThan(activeAt);
+    // A sold listing is marketplace truth too (set by the status sweep, never
+    // by hand) — it must derive before the manual items.status fallback.
+    expect(soldAt).toBeGreaterThan(draftAt);
+    expect(statusAt).toBeGreaterThan(soldAt);
   });
 });
 
@@ -520,9 +623,12 @@ describe('PATCH /items/:id', () => {
     mockSelectReturnOnce([{ id: 'item-1' }]); // existence
     mockUpdateReturns([{ ...MOCK_ITEM, title: 'Saved' }]);
     mockSelectReturnOnce([{ id: 'row-e1', marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001', ebaySku: 'PRT-X', marketplaceSpecificFields: {}, currency: 'USD' }]);
-    vi.mocked(db.transaction).mockRejectedValueOnce(
-      new Error('insert or update on table "sync_jobs" violates foreign key constraint "sync_jobs_listing_id_fkey"'),
-    );
+    // First transaction = the item write (passes through); second = enqueue (fails).
+    vi.mocked(db.transaction)
+      .mockImplementationOnce((async (fn: (tx: unknown) => unknown) => fn(db)) as any)
+      .mockRejectedValueOnce(
+        new Error('insert or update on table "sync_jobs" violates foreign key constraint "sync_jobs_listing_id_fkey"'),
+      );
 
     const res = await request(app)
       .patch('/items/item-1')
@@ -594,6 +700,99 @@ describe('PATCH /items/:id', () => {
     expect(res.status).toBe(200);
     const written = setSpy.mock.calls[0][0].aspects;
     expect(written).toEqual({ Brand: ['Sony'], Model: ['WH-1000XM4'], Color: ['Red'] });
+  });
+
+  it('deletes an aspect key when the PATCH sends it as null (Housekeeping-1 T3 aspect removal)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1', aspects: { Brand: ['Sony'], Color: ['Red'] } }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'] } }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ aspects: { Color: null } });
+
+    expect(res.status).toBe(200);
+    expect(setSpy.mock.calls[0][0].aspects).toEqual({ Brand: ['Sony'] });
+  });
+
+  it('strips a removed aspect key from the item\'s draft/active listings too — stored listing aspects would otherwise resurrect it on sync (T3)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1', aspects: { Brand: ['Sony'], Color: ['Red'] } }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'] } }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectReturnOnce([]); // no syncable listings
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ aspects: { Color: null } });
+
+    expect(res.status).toBe(200);
+    expect(db.update).toHaveBeenCalledTimes(2);
+    expect(setSpy.mock.calls[1][0]).toHaveProperty('marketplaceSpecificFields');
+  });
+
+  it('accepts a manual status (asset) on PATCH and rejects derived states like active (Housekeeping-1 T5)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, status: 'asset' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectReturnOnce([]);
+
+    const ok = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ status: 'asset' });
+    expect(ok.status).toBe(200);
+    expect(setSpy.mock.calls[0][0]).toMatchObject({ status: 'asset' });
+
+    const bad = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ status: 'active' });
+    expect(bad.status).toBe(400);
+  });
+
+  it('handles a null aspect AND a price in one PATCH: item write, listing aspect strip, listing price mirror — three writes, all scoped to the user (review gap 1)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1', aspects: { Brand: ['Sony'], Color: ['Red'] } }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'] }, price: 42 }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectReturnOnce([]); // no syncable listings
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ aspects: { Color: null }, price: 42 });
+
+    expect(res.status).toBe(200);
+    expect(db.update).toHaveBeenCalledTimes(3);
+    expect(setSpy.mock.calls[0][0]).toMatchObject({ aspects: { Brand: ['Sony'] }, price: 42 });
+    expect(setSpy.mock.calls[1][0]).toHaveProperty('marketplaceSpecificFields');
+    expect(setSpy.mock.calls[2][0]).toMatchObject({ price: 42 });
+  });
+
+  it('refuses a manual status with 409 STATUS_LOCKED while a listing owns it (active/draft/sold) — the UI lock is not the only guard (review)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    mockSelectReturnOnce([{ status: 'active' }]); // owning listing
+    vi.mocked(db.update).mockReturnValue({ set: vi.fn() } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ status: 'asset' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('STATUS_LOCKED');
+    expect(db.update).not.toHaveBeenCalled();
   });
 
   it('persists marketplaceData.ebay.categoryId so publish can resolve the eBay leaf category', async () => {
@@ -792,6 +991,26 @@ describe('PATCH /items/:id — outbox enqueue (P2)', () => {
   });
 });
 
+describe('PATCH /items/:id — price truth (Housekeeping-1 T1)', () => {
+  it('writes the new price onto the item\'s draft/active listings rows before enqueue', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, price: 42 }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectReturnOnce([]); // no syncable listings
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 42 });
+
+    expect(res.status).toBe(200);
+    expect(db.update).toHaveBeenCalledTimes(2);
+    expect(setSpy).toHaveBeenNthCalledWith(2, expect.objectContaining({ price: 42 }));
+  });
+});
+
 describe('PATCH /items/:id — eBay picture URL budget warning (F2)', () => {
   it('warns when total photo URL length exceeds the eBay 3975-char PictureURL budget', async () => {
     mockSelectReturnOnce([{ id: 'item-1' }]);
@@ -805,6 +1024,24 @@ describe('PATCH /items/:id — eBay picture URL budget warning (F2)', () => {
       .send({ photos });
     expect(res.status).toBe(200);
     expect(res.body.syncWarnings?.some((w: string) => /3975|picture url/i.test(w))).toBe(true);
+  });
+});
+
+describe('POST /items/bulk/update — category normalization (Housekeeping-1 T8)', () => {
+  it('writes the bulk category as lowercase-trim so the chip filter matches it', async () => {
+    mockSelectWhere([{ id: '11111111-1111-4111-8111-111111111111' }]); // ownership check
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: '11111111-1111-4111-8111-111111111111' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    const res = await request(app)
+      .post('/items/bulk/update')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: ['11111111-1111-4111-8111-111111111111'], updates: { category: ' Automotive ' } });
+
+    expect(res.status).toBe(200);
+    expect(setSpy.mock.calls[0][0]).toMatchObject({ category: 'automotive' });
   });
 });
 

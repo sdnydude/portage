@@ -345,10 +345,6 @@ function deriveMessages(
   // 4. Recognition complete
   if (state.recognition.status === "complete" && candidate) {
     const conf = Math.round(state.recognition.confidence * 100);
-    const priceRange =
-      candidate.estimatedValueLow && candidate.estimatedValueHigh
-        ? ` I'd estimate it's worth **$${candidate.estimatedValueLow}–$${candidate.estimatedValueHigh}**.`
-        : "";
 
     const reasoningBullets =
       state.recognition.reasoning.length > 0
@@ -361,7 +357,7 @@ function deriveMessages(
     msgs.push({
       id: "recognition",
       role: "porter",
-      content: `Got it! This looks like a **${candidate.name}**${candidate.brand ? ` by **${candidate.brand}**` : ""}. Condition: **${formatCondition(candidate.condition)}**.${priceRange} (${conf}% confidence)${reasoningBullets}`,
+      content: `Got it! This looks like a **${candidate.name}**${candidate.brand ? ` by **${candidate.brand}**` : ""}. Condition: **${formatCondition(candidate.condition)}**. (${conf}% confidence)${reasoningBullets}`,
       pills: !hasConfirmed
         ? [
             {

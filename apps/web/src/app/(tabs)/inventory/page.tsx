@@ -195,6 +195,7 @@ export default function InventoryPage() {
   const { exportItems } = useExport();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
+  const [status, setStatus] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -206,7 +207,7 @@ export default function InventoryPage() {
   // Export action sheet state
   const [showExportSheet, setShowExportSheet] = useState(false);
 
-  const { items, total, isLoading, error, refetch } = useItems({ search, category });
+  const { items, total, isLoading, error, refetch } = useItems({ search, category, status });
   const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<typeof items[number]>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -373,6 +374,8 @@ export default function InventoryPage() {
             total={total}
             category={category}
             onCategoryChange={setCategory}
+            status={status}
+            onStatusChange={setStatus}
           />
 
           {bulkError && (
@@ -401,10 +404,10 @@ export default function InventoryPage() {
                 </svg>
               </div>
               <h2 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary mb-2">
-                {search || category ? "No matching items" : "No items yet"}
+                {search || category || status ? "No matching items" : "No items yet"}
               </h2>
               <p className="text-sm text-text-secondary max-w-xs">
-                {search || category
+                {search || category || status
                   ? "Try adjusting your search or filters."
                   : "Tap the camera button to photograph your first item. Porter will identify it automatically."}
               </p>
@@ -524,6 +527,8 @@ export default function InventoryPage() {
               total={total}
               category={category}
               onCategoryChange={setCategory}
+              status={status}
+              onStatusChange={setStatus}
             />
 
             {isLoading && (
@@ -541,10 +546,10 @@ export default function InventoryPage() {
             {!isLoading && !error && items.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <h2 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary mb-2">
-                  {search || category ? "No matching items" : "No items yet"}
+                  {search || category || status ? "No matching items" : "No items yet"}
                 </h2>
                 <p className="text-sm text-text-secondary max-w-xs">
-                  {search || category
+                  {search || category || status
                     ? "Try adjusting your search or filters."
                     : "Tap the camera button to photograph your first item. Porter will identify it automatically."}
                 </p>

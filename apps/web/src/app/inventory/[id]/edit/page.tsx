@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
+import type { Item } from "@/hooks/use-items";
 import { useListings } from "@/hooks/use-listings";
 import { useAuth } from "@/hooks/use-auth";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
@@ -27,7 +28,7 @@ export default function EditItemPage() {
   const { item, isLoading, error, updateItem } = useItem(params.id);
   // Shared-fields notice: title/description edits propagate to live eBay
   // listings via the PATCH /items sync (items.ts) — tell the seller.
-  const { listings: itemListings } = useListings({ itemId: params.id });
+  const { listings: itemListings, isLoading: listingsLoading } = useListings({ itemId: params.id });
   const hasLiveListing = itemListings.some((l) => l.status !== "archived");
 
   const [title, setTitle] = useState("");
@@ -43,6 +44,17 @@ export default function EditItemPage() {
   });
   const [weightEstimated, setWeightEstimated] = useState(false);
   const [price, setPrice] = useState<number | null>(null);
+  // Item status (Housekeeping-1): manual only; a live/draft listing locks it.
+  const [status, setStatus] = useState<NonNullable<Item["status"]>>("unlisted");
+  const lockedStatus = itemListings.some((l) => l.status === "active")
+    ? "active"
+    : itemListings.some((l) => l.status === "draft")
+      ? "draft"
+      : itemListings.some((l) => l.status === "sold")
+        ? "sold"
+        : null;
+  // Unknown until listings load — never send a manual status on that window.
+  const statusLocked = !!lockedStatus || listingsLoading;
   const [categorySearch, setCategorySearch] = useState("");
   // Auto-resolution from the title is display/constraint-only; the resolved
   // eBay name is persisted ONLY after the seller explicitly invokes Find
@@ -61,6 +73,7 @@ export default function EditItemPage() {
       setCategory(item.category);
       setCondition(item.condition);
       setConditionNotes(item.conditionNotes);
+      setStatus(item.status ?? "unlisted");
       setBrand(item.brand);
       setModel(item.model);
       setQuantity(item.quantity ?? 1);
@@ -161,6 +174,7 @@ export default function EditItemPage() {
           : {}),
         condition,
         conditionNotes: conditionNotes.trim(),
+        ...(statusLocked ? {} : { status }),
         brand: brand.trim(),
         model: model.trim(),
         quantity,
@@ -192,6 +206,7 @@ export default function EditItemPage() {
     category !== item.category ||
     condition !== item.condition ||
     conditionNotes !== item.conditionNotes ||
+    (!statusLocked && status !== (item.status ?? "unlisted")) ||
     brand !== item.brand ||
     model !== item.model ||
     quantity !== (item.quantity ?? 1) ||
@@ -288,6 +303,29 @@ export default function EditItemPage() {
           </FieldGroup>
         </div>
 
+        <FieldGroup label="Status" htmlFor="item-status">
+          <select
+            id="item-status"
+            value={lockedStatus ?? status}
+            disabled={statusLocked}
+            onChange={(e) => setStatus(e.target.value as NonNullable<Item["status"]>)}
+            className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none disabled:opacity-70"
+          >
+            {lockedStatus && (
+              <option value={lockedStatus}>
+                {lockedStatus === "active" ? "Active (live listing)" : lockedStatus === "draft" ? "Draft (listing)" : "Sold (listing)"}
+              </option>
+            )}
+            <option value="unlisted">Unlisted</option>
+            <option value="asset">Not for sale — Asset</option>
+            <option value="sold">Sold</option>
+            <option value="archived">Archived</option>
+          </select>
+          {lockedStatus && (
+            <p className="mt-1 text-xs text-text-secondary">Set by the listing — archive or end it to change the item status.</p>
+          )}
+        </FieldGroup>
+
         <FieldGroup label="Category">
           <div className="px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary">
             {isCategoryResolving
@@ -355,8 +393,8 @@ export default function EditItemPage() {
           <textarea
             value={conditionNotes}
             onChange={(e) => setConditionNotes(e.target.value)}
-            maxLength={500}
-            rows={2}
+            maxLength={2000}
+            rows={5}
             placeholder="Any scratches, wear, defects..."
             className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary placeholder:text-text-placeholder border border-transparent focus:border-border-focus focus:outline-none resize-none"
           />
@@ -412,10 +450,10 @@ export default function EditItemPage() {
   );
 }
 
-function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
+function FieldGroup({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+      <label htmlFor={htmlFor} className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
         {label}
       </label>
       {children}

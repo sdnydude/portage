@@ -429,7 +429,11 @@ async function processDueSyncJobsInner(limit: number): Promise<void> {
       // BO-3: a Best Offer conflict is deterministic — retries cannot fix a
       // price-vs-threshold collision, so terminal-fail immediately instead of
       // burning the 5-attempt backoff (~15 min of misleading "Syncing…").
-      if (err instanceof AppError && (err.code === 'BEST_OFFER_CONFLICT' || err.code === 'BEST_OFFER_UNSUPPORTED')) {
+      // Same for a category-required specific the item no longer carries
+      // (Housekeeping-1 aspect removal): eBay refuses every revise until the
+      // seller fills it back in — the badge must say so now, not in 15 min.
+      const DETERMINISTIC = new Set(['BEST_OFFER_CONFLICT', 'BEST_OFFER_UNSUPPORTED', 'EBAY_ASPECTS_REQUIRED']);
+      if (err instanceof AppError && DETERMINISTIC.has(err.code)) {
         await db.update(syncJobs)
           .set({ status: 'failed', lastError: err.message, updatedAt: new Date() })
           .where(eq(syncJobs.id, job.id));

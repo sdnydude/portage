@@ -152,7 +152,8 @@ describe("Inventory workbench (lg master-detail)", () => {
     render(<InventoryPage />);
     const workbench = screen.getByTestId("workbench");
     expect(within(workbench).getByPlaceholderText("Search items...")).toBeInTheDocument();
-    expect(within(workbench).getByRole("button", { name: "All" })).toBeInTheDocument();
+    const categoryRow = within(workbench).getByRole("group", { name: "Filter by category" });
+    expect(within(categoryRow).getByRole("button", { name: "All" })).toBeInTheDocument();
   });
 
   it("shows a loading spinner in the list pane while items are loading", () => {

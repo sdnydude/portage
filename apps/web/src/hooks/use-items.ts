@@ -18,6 +18,12 @@ export interface Item {
   /** From GET /items: item has an active or sold listing. Absent on other
    *  endpoints — the Unlisted chip only renders on an explicit false. */
   listed?: boolean;
+  /** Manual status for non-marketplace states (Housekeeping-1). */
+  status?: "unlisted" | "asset" | "sold" | "archived";
+  /** Derived on read: active/draft from listings, else `status`. */
+  displayStatus?: "active" | "draft" | "unlisted" | "asset" | "sold" | "archived";
+  /** From GET /items: marketplaces with an active listing (one chip each). */
+  liveMarketplaces?: string[];
   title: string;
   description: string;
   category: string;
@@ -65,6 +71,8 @@ interface UseItemsOptions {
   search?: string;
   category?: string;
   condition?: string;
+  /** Derived display status filter (Housekeeping-1 T6). */
+  status?: string;
   limit?: number;
   offset?: number;
 }
@@ -86,6 +94,7 @@ export function useItems(options: UseItemsOptions = {}) {
       if (options.search) params.set("search", options.search);
       if (options.category) params.set("category", options.category);
       if (options.condition) params.set("condition", options.condition);
+      if (options.status) params.set("status", options.status);
       if (options.limit != null) params.set("limit", String(options.limit));
       if (options.offset != null) params.set("offset", String(options.offset));
 
@@ -98,7 +107,7 @@ export function useItems(options: UseItemsOptions = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [token, options.search, options.category, options.condition, options.limit, options.offset]);
+  }, [token, options.search, options.category, options.condition, options.status, options.limit, options.offset]);
 
   useEffect(() => {
     fetchItems();

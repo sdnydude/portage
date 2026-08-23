@@ -37,12 +37,10 @@ describe("resolvePublishPrice — prefill precedence for the publish price field
     ).toBe(110);
   });
 
-  it("falls back to the AI recommended estimate when there are no comps", () => {
-    expect(resolvePublishPrice({ ...base, estimatedValueRecommended: 80 }, null)).toBe(80);
-  });
-
-  it("falls back to the minimum estimate when nothing better exists", () => {
-    expect(resolvePublishPrice({ ...base, estimatedValueMin: 40 })).toBe(40);
+  // Housekeeping-1 T4: the AI estimated-value range is retired — it never
+  // prefills a price. item.price → comps → null.
+  it("ignores the AI estimates even when no comps exist", () => {
+    expect(resolvePublishPrice({ ...base, estimatedValueRecommended: 80, estimatedValueMin: 40 }, null)).toBeNull();
   });
 
   it("returns null when nothing is known", () => {
@@ -62,8 +60,7 @@ describe("resolvePublishPriceWithSource — prefill price + provenance", () => {
     expect(resolvePublishPriceWithSource({ ...base, price: 50 }, { soldMedian: 95 })).toEqual({ price: 50, source: "item" });
     expect(resolvePublishPriceWithSource(base, { soldMedian: 95 })).toEqual({ price: 95, source: "comps" });
     expect(resolvePublishPriceWithSource(base, { soldMedian: null, activeMedian: 110 })).toEqual({ price: 110, source: "comps" });
-    expect(resolvePublishPriceWithSource({ ...base, estimatedValueRecommended: 80 }, null)).toEqual({ price: 80, source: "estimate" });
-    expect(resolvePublishPriceWithSource({ ...base, estimatedValueMin: 40 }, null)).toEqual({ price: 40, source: "estimate" });
+    expect(resolvePublishPriceWithSource({ ...base, estimatedValueRecommended: 80 }, null)).toEqual({ price: null, source: null });
     expect(resolvePublishPriceWithSource(base, null)).toEqual({ price: null, source: null });
   });
 });

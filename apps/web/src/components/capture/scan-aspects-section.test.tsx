@@ -131,6 +131,18 @@ describe("ScanAspectsSection", () => {
     expect(screen.queryByRole("button", { name: "Brand 0" })).not.toBeInTheDocument();
   });
 
+  it("shows an explicit clear (✕) on a filled text aspect that empties it via setAspectValue (Housekeeping-1 T3)", () => {
+    const props = baseProps();
+    props.aspects = { Model: { required: true, values: null } };
+    props.aspectValues = { Model: "AE-1" };
+
+    render(<ScanAspectsSection {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /eBay item specifics/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear Model" }));
+    expect(props.setAspectValue).toHaveBeenCalledWith("Model", "");
+  });
+
   it("toggles a selected chip off, marks AI-suggested chips, and scrolls focused text inputs into view", () => {
     const scrollSpy = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollSpy;

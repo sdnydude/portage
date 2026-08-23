@@ -13,25 +13,8 @@ import type { Listing } from "@/hooks/use-listings";
 import { ItemDetail } from "@/components/inventory/item-detail";
 import { MasterDetail } from "@/components/workbench/master-detail";
 import { useListNav } from "@/hooks/use-list-nav";
+import { StatusChip, MarketplaceChip } from "@/components/inventory/status-chip";
 
-const statusLabels: Record<string, string> = {
-  draft: "Draft",
-  active: "Active",
-  sold: "Sold",
-  archived: "Archived",
-};
-
-const statusColors: Record<string, string> = {
-  draft: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  active: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-  sold: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  archived: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
-};
-
-const marketplaceIcons: Record<string, string> = {
-  ebay: "eBay",
-  reverb: "Reverb",
-};
 
 interface ListingCardProps {
   listing: Listing;
@@ -63,12 +46,8 @@ function ListingCard({ listing, isSelecting, isSelected, onToggle, onOpen, isAct
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColors[listing.status]}`}>
-            {statusLabels[listing.status]}
-          </span>
-          <span className="text-[10px] font-medium text-text-secondary uppercase">
-            {marketplaceIcons[listing.marketplace]}
-          </span>
+          <MarketplaceChip marketplace={listing.marketplace} />
+          <StatusChip status={listing.status} />
         </div>
         <div className="text-sm font-medium text-text-primary truncate">
           {listing.itemTitle ?? "Untitled item"}

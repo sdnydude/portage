@@ -600,35 +600,6 @@ function RecognitionPhase({
               {candidate.category} &bull; {formatCondition(candidate.condition)}
             </p>
 
-            {/* Price range */}
-            {(candidate.estimatedValueLow > 0 || candidate.estimatedValueHigh > 0) && (
-              <div
-                style={{
-                  background: "#151515",
-                  borderRadius: "12px",
-                  padding: "12px 16px",
-                  marginBottom: 20,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span style={{ color: "#666", fontSize: "12px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}>
-                  EST. VALUE
-                </span>
-                <span
-                  style={{
-                    fontFamily: "'Syne', sans-serif",
-                    fontWeight: 800,
-                    fontSize: "22px",
-                    color: "#F15A22",
-                    letterSpacing: "-0.5px",
-                  }}
-                >
-                  ${candidate.estimatedValueLow}–${candidate.estimatedValueHigh}
-                </span>
-              </div>
-            )}
 
             {/* Actions */}
             <div style={{ display: "flex", gap: 10 }}>

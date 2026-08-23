@@ -31,7 +31,7 @@ npm workspaces monorepo with three packages:
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 21 tables:
+Drizzle ORM, schema-push workflow (no migration files). 21 tables (items.status enum added 2026-08-23):
 
 users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages, faqs, export_tokens, marketplace_sync_log, sync_jobs, ebay_deleted_identities
 
@@ -239,7 +239,17 @@ live-proven on a real listing; swipe flow photo-first with Retry; scan review
 surfaces comps/category/aspect outages with retries, condition-snap notice,
 "Unavailable" instead of a false "Complete"; mobile ?item= deep link no longer
 mounts the hidden pane. Ship-log 058; proof page 2026-08-22-p3-beta-ux-truth.
-Test suite: 1016 API / 674 web as of 2026-08-22 (P3 merged).
+Housekeeping batch 1 shipped 2026-08-23 (feat/housekeeping-1): items.price ⇄
+listings.price one value both directions; aspect null-delete on items PATCH +
+listing-row strip in one transaction; estimated-value range retired from every
+surface (columns kept); items.status enum (unlisted|asset|sold|archived) with
+derived displayStatus + ?status= filter + detail/edit control; shared
+StatusChip/MarketplaceChip on --chip-* tokens (≥6.3:1 both themes);
+case-insensitive category filter + lowercase-trim writes; 5-row/2000-char
+condition notes. Live-proven (e2e/housekeeping-1.spec.ts, E2E_EBAY_LIVE=1);
+the live run caught a drizzle array-param bug the mocked tests could not.
+Ship-log 059; proof page 2026-08-23-housekeeping-1.
+Test suite: 1026 API / 689 web as of 2026-08-23 (Housekeeping-1).
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.

@@ -26,6 +26,30 @@ const logger = createLogger('items');
 // inside the subquery — an always-false correlation.
 export const itemListedExpr = sql<boolean>`exists (select 1 from ${listings} where ${listings.itemId} = ${sql.raw('"items"."id"')} and ${listings.status} in ('active', 'sold'))`;
 
+// Display status (Housekeeping-1): marketplace state wins — a live listing
+// makes the item Active, a DB-only draft makes it Draft, a listing the status
+// sweep marked sold makes it Sold; otherwise the seller's manual items.status. Same qualified-correlation rule as above.
+export type ItemDisplayStatus = 'active' | 'draft' | 'unlisted' | 'asset' | 'sold' | 'archived';
+export const itemDisplayStatusExpr = sql<ItemDisplayStatus>`case
+  when exists (select 1 from ${listings} where ${listings.itemId} = ${sql.raw('"items"."id"')} and ${listings.status} = 'active') then 'active'
+  when exists (select 1 from ${listings} where ${listings.itemId} = ${sql.raw('"items"."id"')} and ${listings.status} = 'draft') then 'draft'
+  when exists (select 1 from ${listings} where ${listings.itemId} = ${sql.raw('"items"."id"')} and ${listings.status} = 'sold') then 'sold'
+  else ${sql.raw('"items"."status"')}::text end`;
+
+// Marketplaces with a live (active) listing for this item — drives the one
+// marketplace chip per live listing on the inventory card (Housekeeping-1).
+export const itemLiveMarketplacesExpr = sql<string[]>`coalesce((select array_agg(distinct ${listings.marketplace}::text) from ${listings} where ${listings.itemId} = ${sql.raw('"items"."id"')} and ${listings.status} = 'active'), '{}'::text[])`;
+
+// Category filter (Housekeeping-1): case-insensitive exact match — legacy rows
+// and bulk edits wrote capitalized categories that the lowercase chips never
+// matched. Wildcards are escaped so the value is literal, never a pattern.
+export function categoryFilterExpr(category: string) {
+  const escaped = category.trim().toLowerCase().replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+  return ilike(items.category, escaped);
+}
+// Writes normalize the same way so new rows always match their chip.
+const normalizeCategory = (s: string) => s.trim().toLowerCase();
+
 const photoSchema = z.object({
   url: z.string(),
   // Optional: GetItem-imported photos (orphan-order backfill) carry only a
@@ -75,7 +99,7 @@ const marketplaceDataSchema = z.object({
 const createItemSchema = z.object({
   title: z.string().min(1).max(500),
   description: z.string().max(2000).optional(),
-  category: z.string().max(255).optional(),
+  category: z.string().max(255).transform(normalizeCategory).optional(),
   condition: z.enum(validConditions).optional(),
   // 2000 to match `description`. Condition notes are resale-honesty content —
   // a tighter cap silently cut real defect disclosure from verbose refine scans
@@ -103,12 +127,22 @@ const createItemSchema = z.object({
   marketplaceData: marketplaceDataSchema.optional(),
 });
 
-const updateItemSchema = createItemSchema.partial();
+const updateItemSchema = createItemSchema.partial().extend({
+  // Aspect removal (Housekeeping-1): a null value deletes that key on merge —
+  // same null-delete semantic as listings' marketplaceSpecificFields.
+  aspects: z.record(z.string(), z.array(z.string()).nullable()).optional(),
+  // Manual item status only — active/draft are derived from listings and
+  // can never be set by hand.
+  status: z.enum(['unlisted', 'asset', 'sold', 'archived']).optional(),
+});
 
+const itemDisplayStatuses = ['active', 'draft', 'unlisted', 'asset', 'sold', 'archived'] as const;
 const listQuerySchema = z.object({
   search: z.string().optional(),
   category: z.string().optional(),
   condition: z.enum(['new', 'like_new', 'good', 'fair', 'poor']).optional(),
+  // Filters on the derived display status (listings override, else items.status).
+  status: z.enum(itemDisplayStatuses).optional(),
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).default(0),
 });
@@ -188,16 +222,21 @@ itemsRouter.get('/', async (req, res, next) => {
       conditions.push(ilike(items.title, `%${escaped}%`));
     }
     if (query.category) {
-      conditions.push(eq(items.category, query.category));
+      conditions.push(categoryFilterExpr(query.category));
     }
     if (query.condition) {
       conditions.push(eq(items.condition, query.condition));
+    }
+    if (query.status) {
+      conditions.push(sql`${itemDisplayStatusExpr} = ${query.status}`);
     }
 
     const [results, countResult] = await Promise.all([
       db.select({
         ...getTableColumns(items),
         listed: itemListedExpr,
+        displayStatus: itemDisplayStatusExpr,
+        liveMarketplaces: itemLiveMarketplacesExpr,
       }).from(items)
         .where(and(...conditions))
         .orderBy(desc(items.createdAt))
@@ -243,7 +282,7 @@ itemsRouter.get('/export', async (req, res, next) => {
     }
 
     if (query.category) {
-      conditions.push(eq(items.category, query.category));
+      conditions.push(categoryFilterExpr(query.category));
     }
 
     if (query.condition) {
@@ -278,7 +317,10 @@ itemsRouter.get('/export', async (req, res, next) => {
 itemsRouter.get('/:id', async (req, res, next) => {
   try {
     const userId = req.user!.sub;
-    const [item] = await db.select().from(items)
+    const [item] = await db.select({
+      ...getTableColumns(items),
+      displayStatus: itemDisplayStatusExpr,
+    }).from(items)
       .where(and(eq(items.id, req.params.id), eq(items.userId, userId)))
       .limit(1);
 
@@ -478,6 +520,23 @@ itemsRouter.patch('/:id', async (req, res, next) => {
       throw new AppError(404, 'NOT_FOUND', 'Item not found');
     }
 
+    // Item status (Housekeeping-1): a listing that is active, draft or sold
+    // owns the item's status — refuse a manual value rather than store one
+    // that only surfaces once the listing ends. The UI disables the control;
+    // this is the guard for the loading window, a second tab, or a raw call.
+    if (body.status !== undefined) {
+      const [owning] = await db.select({ status: listings.status }).from(listings)
+        .where(and(
+          eq(listings.itemId, req.params.id),
+          eq(listings.userId, userId),
+          inArray(listings.status, ['active', 'draft', 'sold']),
+        ))
+        .limit(1);
+      if (owning) {
+        throw new AppError(409, 'STATUS_LOCKED', `Status is set by the item's ${owning.status} listing — archive or end the listing to change it.`);
+      }
+    }
+
     // marketplaceData is a per-marketplace JSONB cache; a partial PATCH must merge,
     // not wholesale-replace. A category-only edit (the only thing the edit flow sends)
     // would otherwise wipe sibling marketplace entries and null the AI-optimized eBay
@@ -505,13 +564,60 @@ itemsRouter.patch('/:id', async (req, res, next) => {
     // are silently wiped. Incoming keys win; existing keys are preserved.
     if (body.aspects) {
       const current = (existing.aspects as Record<string, string[]> | null) ?? {};
-      updates.aspects = { ...current, ...body.aspects };
+      const merged: Record<string, string[]> = { ...current };
+      for (const [k, v] of Object.entries(body.aspects)) {
+        if (v === null) delete merged[k];
+        else merged[k] = v;
+      }
+      updates.aspects = merged;
     }
 
-    const [updated] = await db.update(items)
-      .set(updates)
-      .where(eq(items.id, req.params.id))
-      .returning();
+    // Item write + listing mirrors (aspect strip, price) land atomically:
+    // a failed mirror must not leave the item changed and its listings not.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.update(items)
+        .set(updates)
+        .where(and(eq(items.id, req.params.id), eq(items.userId, userId)))
+        .returning();
+
+      // Aspect removal (Housekeeping-1): the sync merge lets a listing's STORED
+      // aspects override the item's, so a key deleted on the item would come
+      // back on the next sync unless it is stripped from the live rows too.
+      const removedAspectKeys = body.aspects
+        ? Object.entries(body.aspects).filter(([, v]) => v === null).map(([k]) => k)
+        : [];
+      if (removedAspectKeys.length > 0) {
+        let expr = sql`coalesce(${listings.marketplaceSpecificFields}, '{}'::jsonb)`;
+        for (const k of removedAspectKeys) {
+          // One bound parameter holding a Postgres array literal — drizzle
+          // expands a JS array into ($1, $2), which is not a text[] value.
+          const pathLiteral = `{aspects,"${k.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"}`;
+          expr = sql`${expr} #- ${pathLiteral}::text[]`;
+        }
+        await tx.update(listings)
+          .set({ marketplaceSpecificFields: expr as unknown as Record<string, unknown>, updatedAt: new Date() })
+          .where(and(
+            eq(listings.itemId, row.id),
+            eq(listings.userId, userId),
+            inArray(listings.status, ['active', 'draft']),
+          ));
+      }
+
+      // Price truth (Housekeeping-1): items.price and listings.price are ONE
+      // value. The outbox sync pushes the new price to the marketplace but never
+      // touched the local listings rows, so the listing card kept showing the
+      // old price. Mirror it onto every draft/active row before enqueue.
+      if (body.price !== undefined) {
+        await tx.update(listings)
+          .set({ price: body.price, updatedAt: new Date() })
+          .where(and(
+            eq(listings.itemId, row.id),
+            eq(listings.userId, userId),
+            inArray(listings.status, ['active', 'draft']),
+          ));
+      }
+      return row;
+    });
 
     logger.info({ userId, itemId: updated.id }, 'Item updated');
 
@@ -645,7 +751,7 @@ const validBulkConditions = ['new', 'like_new', 'good', 'fair', 'poor'] as const
 const bulkUpdateSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(50),
   updates: z.object({
-    category: z.string().max(255).optional(),
+    category: z.string().max(255).transform(normalizeCategory).optional(),
     condition: z.enum(validBulkConditions).optional(),
   }).refine((u) => u.category !== undefined || u.condition !== undefined, {
     message: 'At least one update field (category or condition) must be provided',

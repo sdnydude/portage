@@ -563,12 +563,14 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   // ─── Save to inventory ────────────────────────────────────────────────────
 
   // Resolve the price shown/used in the review step: the seller's edited value
-  // wins, else fall back to comps/estimate via the unit-tested helper.
+  // wins, else fall back to comps via the unit-tested helper. The AI value
+  // range (editValueLow/High) is retired from the UI (Housekeeping-1) but is
+  // still written to the item silently from the candidate.
   const valueLowNum = parseFloat(editValueLow) || 0;
   const valueHighNum = parseFloat(editValueHigh) || 0;
   const recommendedNum = Math.round((valueLowNum + valueHighNum) / 2) || null;
   const { price: reviewPrice, source: reviewPriceSource } = resolvePublishPriceWithSource(
-    { price: listPrice, estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
+    { price: listPrice },
     comps?.stats,
   );
 
@@ -1183,28 +1185,6 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 />
               </div>
 
-              {/* Value range */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Value Low ($)</label>
-                  <input
-                    type="number"
-                    value={editValueLow}
-                    onChange={(e) => setEditValueLow(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary focus:border-border-focus focus:outline-none transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Value High ($)</label>
-                  <input
-                    type="number"
-                    value={editValueHigh}
-                    onChange={(e) => setEditValueHigh(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary focus:border-border-focus focus:outline-none transition-colors"
-                  />
-                </div>
-              </div>
-
               {/* eBay Comp Price */}
               {compsError && !compsLoading && (
                 <p data-testid="comps-error" className="text-xs text-[var(--accent-warning)] px-1">
@@ -1386,12 +1366,13 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               {/* Condition Notes */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Condition Notes</label>
-                <input
-                  type="text"
+                <textarea
                   value={editConditionNotes}
                   onChange={(e) => setEditConditionNotes(e.target.value)}
+                  rows={5}
+                  maxLength={2000}
                   placeholder="e.g. Minor scuff on left side"
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors"
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors resize-none"
                 />
               </div>
 

@@ -134,6 +134,9 @@ async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: 
   fireEvent.click(screen.getByText("Choose from Gallery"));
   fireEvent.click(await screen.findByText(/Scan 1 Photo with Porter/));
   await screen.findByText("Review");
+  // Housekeeping-1 T4: the AI value range no longer prefills a price, so the
+  // review fixture enters one the way a seller does (Price is a required field).
+  fireEvent.change(screen.getByLabelText("Price (USD)"), { target: { value: "75" } });
   return view;
 }
 
@@ -577,14 +580,27 @@ describe("ScanFlow review wiring", () => {
     expect(selects.map((s) => s.value)).toEqual(["flat", "flat"]);
   });
 
-  it("opens the confirm sheet with a price provenance hint (estimate fallback)", async () => {
+  it("review Condition Notes is a 5-row textarea capped at 2000 chars (Housekeeping-1 T9)", async () => {
+    await renderInReview();
+    const notes = screen.getByPlaceholderText(/minor scuff/i) as HTMLTextAreaElement;
+    expect(notes.tagName).toBe("TEXTAREA");
+    expect(notes.rows).toBe(5);
+    expect(notes.maxLength).toBe(2000);
+  });
+
+  it("review shows no AI value-range inputs (Housekeeping-1 T4)", async () => {
+    await renderInReview();
+    expect(screen.queryByText("Value Low ($)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Value High ($)")).not.toBeInTheDocument();
+  });
+
+  it("opens the confirm sheet with a price provenance hint (seller price — the AI estimate never prefills)", async () => {
     await renderInReview();
     fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
 
     expect(await screen.findByText("Create Listing")).toBeInTheDocument();
-    // No seller price + no comps in this fixture → the prefill falls back to the
-    // AI estimate, and the sheet labels its provenance.
-    expect(screen.getByText("Estimated")).toBeInTheDocument();
+    expect(screen.getByText("From your price")).toBeInTheDocument();
+    expect(screen.queryByText("Estimated")).not.toBeInTheDocument();
   });
 
   it("defaults the confirm sheet to draft (publish-now off) when the seller-profile fetch fails — no accidental live", async () => {

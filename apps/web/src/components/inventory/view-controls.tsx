@@ -6,7 +6,20 @@ interface ViewControlsProps {
   total: number;
   category: string;
   onCategoryChange: (category: string) => void;
+  /** Derived item status filter (Housekeeping-1 T6). "" = all. */
+  status?: string;
+  onStatusChange?: (status: string) => void;
 }
+
+const statuses = [
+  { value: "", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "draft", label: "Draft" },
+  { value: "unlisted", label: "Unlisted" },
+  { value: "asset", label: "Asset" },
+  { value: "sold", label: "Sold" },
+  { value: "archived", label: "Archived" },
+];
 
 const categories = [
   { value: "", label: "All" },
@@ -22,13 +35,34 @@ const categories = [
   { value: "jewelry", label: "Jewelry" },
   { value: "art", label: "Art" },
   { value: "music", label: "Music" },
+  { value: "automotive", label: "Automotive" },
   { value: "other", label: "Other" },
 ];
 
-export function ViewControls({ view, onViewChange, total, category, onCategoryChange }: ViewControlsProps) {
+export function ViewControls({ view, onViewChange, total, category, onCategoryChange, status = "", onStatusChange }: ViewControlsProps) {
   return (
+    <div className="space-y-2">
+    {onStatusChange && (
+      <div role="group" aria-label="Filter by status" className="flex items-center gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+        {statuses.map((st) => (
+          <button
+            key={st.value}
+            type="button"
+            aria-pressed={status === st.value}
+            onClick={() => onStatusChange(st.value)}
+            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+              status === st.value
+                ? "bg-forest-green text-white"
+                : "bg-muted text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            {st.label}
+          </button>
+        ))}
+      </div>
+    )}
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+      <div role="group" aria-label="Filter by category" className="flex items-center gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
         {categories.slice(0, 5).map((cat) => (
           <button
             key={cat.value}
@@ -78,6 +112,7 @@ export function ViewControls({ view, onViewChange, total, category, onCategoryCh
           </svg>
         </button>
       </div>
+    </div>
     </div>
   );
 }

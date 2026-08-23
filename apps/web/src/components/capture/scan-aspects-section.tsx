@@ -140,21 +140,35 @@ export function ScanAspectsSection({
           </div>
         ) : (
           <>
-            <input
-              type="text"
-              value={value}
-              onChange={(e) => setAspectValue(name, e.target.value)}
-              // iOS: keep the focused field visible above the keyboard.
-              onFocus={(e) => e.target.scrollIntoView?.({ behavior: "smooth", block: "center" })}
-              placeholder={`Enter ${name}`}
-              aria-required={aspect.required}
-              aria-invalid={isMissing}
-              className={`w-full min-h-[44px] px-3 py-2 rounded-xl bg-background border text-text-primary text-sm focus:outline-none ${
-                isMissing
-                  ? "border-[var(--accent-error)] focus:border-[var(--accent-error)]"
-                  : "border-border focus:border-border-focus"
-              }`}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={value}
+                onChange={(e) => setAspectValue(name, e.target.value)}
+                // iOS: keep the focused field visible above the keyboard.
+                onFocus={(e) => e.target.scrollIntoView?.({ behavior: "smooth", block: "center" })}
+                placeholder={`Enter ${name}`}
+                aria-required={aspect.required}
+                aria-invalid={isMissing}
+                className={`w-full min-h-[44px] px-3 py-2 ${value ? "pr-11" : ""} rounded-xl bg-background border text-text-primary text-sm focus:outline-none ${
+                  isMissing
+                    ? "border-[var(--accent-error)] focus:border-[var(--accent-error)]"
+                    : "border-border focus:border-border-focus"
+                }`}
+              />
+              {/* Aspect removal (Housekeeping-1): an explicit clear so a wrong
+                  AI-filled value can be dropped, not just overtyped. */}
+              {value !== "" && (
+                <button
+                  type="button"
+                  aria-label={`Clear ${name}`}
+                  onClick={() => setAspectValue(name, "")}
+                  className="absolute right-0 top-0 h-full min-w-[44px] flex items-center justify-center text-text-secondary hover:text-text-primary"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             {value.trim() === "" && aspectSuggestions.length > 0 && (
               <div className="flex flex-wrap gap-2" aria-label={`AI suggestions for ${name}`}>
                 {aspectSuggestions.map((s) => (
