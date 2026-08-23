@@ -67,3 +67,5 @@ Total: **56** sessions.
 | 54 | [Stage 2: pricing engine — R-7 percentile bands + seller tuna](054-stage-2-pricing-engine-r-7-percentile-bands-seller-tunables-) | complete | [#106](https://github.com/sdnydude/portage/pull/106) | 7 |
 | 55 | [Stage 2.5: photo-gallery strip + full-screen editor overlay ](055-stage-2-5-photo-gallery-strip-full-screen-editor-overlay-acr) | complete | [#108](https://github.com/sdnydude/portage/pull/108) | 3 |
 | 56 | [Deferral P1: eBay account-deletion compliance, fork-PR gati](056-deferral-p1-ebay-account-deletion-compliance-fork-pr-gating-b) | complete | [#309](https://github.com/sdnydude/portage/pull/309) | 0 |
+| 57 | [Deferral P2: capture-pipeline integrity — landing-verified captures, DLQ durability, write-auth](057-deferral-p2-capture-pipeline-integrity) | complete | [#313](https://github.com/sdnydude/portage/pull/313) | 0 |
+| 58 | [Deferral P3: beta UX truth — guided Best Offer fix, scan/swipe outage surfacing](058-deferral-p3-beta-ux-truth) | complete | [#315](https://github.com/sdnydude/portage/pull/315) | 0 |

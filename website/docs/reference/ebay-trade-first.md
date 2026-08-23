@@ -50,11 +50,15 @@ Two behaviors around `AddFixedPriceItem` are worth knowing:
   `Failure` — so `parseAddItemResponse()` extracts the ItemID from any non-fatal
   response and the listing is treated as live. A parsed response with **no** ItemID
   is a hard `502 EBAY_PUBLISH_FAILED`.
-- **Best Offer downgrade retry.** eBay publishes no stable error id for
-  category-level Best Offer support, so if an Add (or Revise) fails with a
-  best-offer-shaped message, the adapter retries once without `bestOfferTerms`
-  and surfaces a "Listed without Best Offer auto-accept" warning instead of
-  failing the whole publish.
+- **Best Offer: two different failures.** A *threshold* conflict (stable eBay
+  codes 22003 auto-decline / 23004 auto-accept at or above the price) is never
+  retried or downgraded — the adapter throws `422 BEST_OFFER_CONFLICT` carrying
+  `BestOfferConflictDetails` so the client can render a guided fix (P3,
+  2026-08-22; BO-2 decision: seller config is never deleted to force an edit).
+  Only the *category-unsupported* case (prose-only, no stable id) keeps the
+  publish-time downgrade: Add retries once without `bestOfferTerms` and surfaces
+  a "Listed without Best Offer auto-accept" warning; Revise never downgrades
+  and throws `422 BEST_OFFER_UNSUPPORTED` instead.
 
 A sixth call, `VerifyAddFixedPriceItem`, exists as an operator dry-run only: the
 standalone script `apps/api/src/scripts/ebay-verify-dryrun.ts` sends the exact

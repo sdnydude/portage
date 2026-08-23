@@ -2,7 +2,7 @@
 
 **Progress: 48/49 ledger tasks complete · 1 superseded (Task 21, carrier APIs) · Reverb OAuth code-grant obsolete (PAT auth ships selling, live-proven PRs #173–#177)**
 **Last updated:** 2026-07-18
-**Test suite:** 687/687 API · 526/526 web (run 2026-07-18, post-#237 merge)
+**Test suite:** 1016/1016 API · 674/674 web (run 2026-08-22, post-#315 Deferral P3 merge)
 
 > **Recount 2026-07-17:** this ledger lists **49** numbered task lines (task **#53** appears twice — voice-era Home redesign and the listing detail page; #22, #26, #28–#31 never existed on this ledger). 48 are `[x]`, 1 is `[~]` superseded (Task 21). The earlier "50/52" (here) and "51/52" (CLAUDE.md) figures used a 52-task denominator this file does not support.
 

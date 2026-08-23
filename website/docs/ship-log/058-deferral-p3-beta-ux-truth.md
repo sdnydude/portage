@@ -12,7 +12,7 @@ sidebar_position: 58
 | **Complexity** | complex (api + web, 9 registry items, 13 tasks) |
 | **TDD** | yes |
 | **Branch** | `feat/p3-beta-ux-truth` |
-| **PR** | _pending_ |
+| **PR** | [#315](https://github.com/sdnydude/portage/pull/315) (merged 2026-08-22 22:12 ET, `734ae42`) |
 | **Registry items** | `25afd214` `cf6d2ce2` `c3b3013c` `e955f1b9` `62e1061e` `125cbc53` `14efa906` `2b8aefb1` `a5a2b944` + adapter-path BO enrichment |
 | **Tests** | api 1011 → 1016 · web 649 → 674 · e2e +6 |
 
