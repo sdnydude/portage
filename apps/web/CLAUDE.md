@@ -13,6 +13,7 @@ src/app/
 │   ├── orders/      # Sold list (thumbnail/title/date/price; Ship-It → eBay)
 │   ├── porter/      # AI assistant
 │   └── more/        # Settings hub — reached via avatar menu, not a bottom-nav tab
+├── about/           # Beta terms + liability summary (P4)
 ├── admin/           # Separate layout tree (sidebar nav)
 ├── inventory/[id]/  # Item detail + edit + Marketplace Listings section (ListingCard) + /preview PNG-share subroute
 ├── listings/[id]/   # Redirect → /inventory/[itemId]?listing=[id] (hub)
