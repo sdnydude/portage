@@ -264,13 +264,20 @@ re-captured on the 4-tab app with a CI gate (`npm run check:tutorials`),
 `docs/api/ebay.md`; deploy-docs now has a pre-restart smoke gate and auto-opens
 a GitHub issue on failure (drill: `gh workflow run deploy-docs.yml -f drill=true`).
 Ship-log 134; proof page 2026-08-23-p4-docs-truth.
-Test suite: 1033 API / 701 web / 27 generator as of 2026-08-23 (P4).
+Test suite: 1038 API / 701 web / 27 generator as of 2026-08-25 (P5 build).
 Deferral P5 (log program) SPEC approved 2026-08-23 (PR #323, ship-log 135):
 docs/log-program-architecture-2026-08-23.md rev 3 — keep-all retention (operator
 directive: no automatic deletion, operator-only), 2-layer redaction (pino
 redact + promtail stages), SecretLeakDetected/LokiStoreGrowth alerts, dashboard
 v2, local-only log-chat + web panel (B9). Build B0–B9 is the next /ship
 (stopped at Phase 1 on 2026-08-23; resume Phase 2).
+P5 BUILD shipped 2026-08-25 (dhgaifactory3.5#27 + portage#325): Loki 3.7.6
++ Alloy keep-all foundation (promtail EOL'd out), ruler→Alertmanager v2 fix
+(prod 410 black hole, 13,652 dropped), 2-layer redaction live-proven
+(pino redact + Alloy stages; seeded proof), SecretLeak/LokiStoreGrowth/
+AlloyDown/LokiDown alerts drilled to incidents, logs-chat (granite4.1:8b
+local-only, audited) + /logs panel in dhg-frontend. Ship-log 136; runbook
+operations/log-program-runbook. Registry items 13699992/c9c15852 resolved.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
