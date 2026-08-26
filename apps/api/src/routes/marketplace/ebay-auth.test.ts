@@ -333,7 +333,7 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
 
     const metric = await metrics.ebayTaxonomyCalls.get();
     expect(metric.values).toEqual([
-      { labels: { operation: 'category_suggestion' }, value: 1 },
+      { labels: { operation: 'category_suggestion', result: 'request' }, value: 1 },
     ]);
   });
 
