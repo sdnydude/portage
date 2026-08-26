@@ -657,7 +657,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         {/* Disclaimer — shown when publish is toggled on */}
         {publishNow && showDisclaimer && (
           <DisclaimerSheet
-            listingId={itemId}
+            itemId={itemId}
             isFirstTime={true}
             onAccept={async (suppress7d: boolean) => {
               await handleCreate(suppress7d);

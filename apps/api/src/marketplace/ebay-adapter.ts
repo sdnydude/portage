@@ -1,4 +1,5 @@
 import { createLogger } from '../lib/logger.js';
+import { ebayTaxonomyCalls } from '../lib/metrics.js';
 import { computePriceBands } from '../lib/pricing.js';
 import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
@@ -232,7 +233,12 @@ export function resolveEbayCategoryCondition(
   portageCondition: string,
   validConditionIds: string[],
 ): { condition?: string; warning?: string } {
-  if (validConditionIds.length === 0) return {};
+  if (validConditionIds.length === 0) {
+    // Metadata API gave nothing — keep the static default, but say so (P7 8f94d453).
+    return {
+      warning: 'eBay condition could not be verified for this category — review the condition before publishing.',
+    };
+  }
   const selected = selectValidEbayCondition(portageCondition, validConditionIds);
   if (!selected) {
     return {
@@ -1371,7 +1377,11 @@ export class EbayAdapter implements MarketplaceAdapter {
 
   static async getRequiredAspects(categoryId: string): Promise<Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>> {
     const cached = requiredAspectsCache.get(categoryId);
-    if (cached && Date.now() - cached.cachedAt < REQUIRED_ASPECTS_TTL) return cached.value;
+    if (cached && Date.now() - cached.cachedAt < REQUIRED_ASPECTS_TTL) {
+      ebayTaxonomyCalls.labels('required_aspects', 'cache_hit').inc();
+      return cached.value;
+    }
+    ebayTaxonomyCalls.labels('required_aspects', 'cache_miss').inc();
 
     const token = await getEbayProdAppToken();
 
@@ -1417,7 +1427,11 @@ export class EbayAdapter implements MarketplaceAdapter {
   // transient Metadata hiccup never blocks listing preparation.
   static async getValidConditions(categoryId: string): Promise<string[]> {
     const cached = validConditionsCache.get(categoryId);
-    if (cached && Date.now() - cached.cachedAt < VALID_CONDITIONS_TTL) return cached.value;
+    if (cached && Date.now() - cached.cachedAt < VALID_CONDITIONS_TTL) {
+      ebayTaxonomyCalls.labels('valid_conditions', 'cache_hit').inc();
+      return cached.value;
+    }
+    ebayTaxonomyCalls.labels('valid_conditions', 'cache_miss').inc();
 
     const token = await getEbayProdAppToken();
 

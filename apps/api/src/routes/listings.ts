@@ -724,7 +724,10 @@ listingsRouter.post('/', async (req, res, next) => {
     const response: Record<string, unknown> = { ...listing };
     if (adapterWarning) {
       response.warning = adapterWarning;
-    } else if (body.publishImmediately && status === 'draft') {
+    } else if (shouldPublish && status === 'draft') {
+      // Keys on shouldPublish (publishMode-aware), not the legacy
+      // publishImmediately flag — a publishMode:'live' client falling back to
+      // draft must see the warning too (P7 17c90eea).
       response.warning = 'Listing was created but could not be published. It has been saved as a draft.';
     }
 

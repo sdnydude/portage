@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { createLogger } from '../lib/logger.js';
+import { EbayTradingError } from '../marketplace/ebay-trading-client.js';
 
 const logger = createLogger('error-handler');
 
@@ -29,6 +30,18 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
   if (err instanceof ZodError) {
     const messages = err.errors.map(e => `${e.path.join('.')}: ${e.message}`);
     res.status(400).json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: messages });
+    return;
+  }
+
+  if (err instanceof EbayTradingError) {
+    // eBay's rejection text is actionable seller guidance — surface it as a
+    // 422 instead of a generic 500 (prod incident 2026-08-25: error 240
+    // "accessory in tablet title" reached the UI as "Internal server error").
+    res.status(422).json({
+      error: err.message,
+      code: 'EBAY_REJECTED',
+      details: err.errorCodes,
+    });
     return;
   }
 

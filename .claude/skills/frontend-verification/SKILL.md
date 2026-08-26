@@ -19,7 +19,7 @@ This skill enforces two gates for every `apps/web` change. The second is load-be
 - Before saying "done", "works", "fixed", "ready", or creating a PR for FE work.
 - Reviewing a frontend change for correctness.
 
-**When NOT to use:** pure backend (`apps/api`) work (that has its own tdd-guard + Vitest), or docs/config-only edits with no runtime behavior.
+**When NOT to use:** pure backend (`apps/api`) work, or docs/config-only edits with no runtime behavior. (tdd-guard covers BOTH workspaces — see the truth note under Gate 1.)
 
 ## The Two Gates
 
@@ -29,7 +29,7 @@ Write Vitest tests for branching logic only: hooks, state machines, reducers, th
 
 **Do NOT** test presentational components (markup, class names, static JSX). That noise is what got the tdd-guard validator resented — keep signal high.
 
-`apps/web` stays **exempt** in `.claude/tdd-guard/data/config.json` (no red-first-on-every-tsx). These logic tests are written *voluntarily and deliberately*, not forced per-file.
+**Truth note (reconciled 2026-08-25, P7 90ca92c2):** the `apps/web` exemption was REMOVED — `.claude/tdd-guard/data/config.json` has no path exemption and `apps/web/vitest.config.ts` runs the tdd-guard reporter, so red-first applies to web edits too (see `.claude/rules/tdd-one-test-per-write.md`). The guidance above still holds for WHAT to test: branching logic, not presentational markup — the guard enforces rhythm, not pixel tests.
 
 ### Gate 2 — Deterministic e2e against the rebuilt container (non-negotiable)
 
@@ -131,4 +131,4 @@ Portage facts (verified): app on **:3002**, IP **10.0.0.251**. Demo login: **dem
 
 ## Why this exists
 
-Encodes Stephen's 2026-06-05 directive after a year of integration failures: targeted logic tests + a mandatory run-the-app proof gate, chosen over blanket tdd-guard on `apps/web`. See memory `feedback_frontend_verification_gate`.
+Encodes Stephen's 2026-06-05 directive after a year of integration failures: targeted logic tests + a mandatory run-the-app proof gate. (The original decision paired this with a blanket tdd-guard exemption for `apps/web`; that exemption was later removed — the guard now covers web too, and the two gates still define what "proof" means.) See memory `feedback_frontend_verification_gate`.

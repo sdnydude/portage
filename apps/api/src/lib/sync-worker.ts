@@ -1,6 +1,6 @@
 import { and, eq, lte, asc, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { syncJobs, items, listings, marketplaceSyncLog, marketplaceAccounts } from '../db/schema.js';
+import { syncJobs, items, listings, marketplaceSyncLog, marketplaceAccounts, exportTokens } from '../db/schema.js';
 import { createLogger } from './logger.js';
 import { syncItemListingRow, type ItemSyncSource, type ItemSyncTarget } from './marketplace-sync.js';
 import { logSyncAttempt } from './sync-log.js';
@@ -70,6 +70,11 @@ export async function runRetentionSweep(): Promise<void> {
       lte(syncJobs.updatedAt, cutoff),
     ));
     await db.delete(marketplaceSyncLog).where(lte(marketplaceSyncLog.createdAt, cutoff));
+    // Expired export tokens are dead security artifacts (single-use ZIP links,
+    // 3-use cap, minutes-long TTL) — swept once they are 7 days past expiry.
+    // P7 d65d1e9e; named operator approval 2026-08-25 (post keep-all directive).
+    const tokenCutoff = new Date(Date.now() - 7 * 24 * 60 * 60_000);
+    await db.delete(exportTokens).where(lte(exportTokens.expiresAt, tokenCutoff));
     logger.debug({ cutoff }, 'sync retention sweep completed');
   } catch (err) {
     logger.warn({ error: (err as Error).message }, 'sync retention sweep failed');

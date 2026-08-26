@@ -70,6 +70,23 @@ describe('chat: gemini non-streaming call params', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe('none');
   });
+
+  it('sets response_format json_object on the no-tools path and never alongside tools (P7 3b00baeb — Lever A hardening)', async () => {
+    mockCreate.mockResolvedValue(CHAT_OK);
+    // No-tools path (chatText): structured text-only generation gets JSON mode.
+    await chat([{ role: 'user', content: 'return json' }], 'system', [], async () => '');
+    expect(mockCreate.mock.calls[0][0].response_format).toEqual({ type: 'json_object' });
+
+    // Tools path: response_format must NOT be combined with tools.
+    mockCreate.mockResolvedValue(CHAT_OK);
+    await chat(
+      [{ role: 'user', content: 'hi' }],
+      'system',
+      [{ name: 't', description: 'd', parameters: { type: 'object', properties: {} } }],
+      async () => '',
+    );
+    expect(mockCreate.mock.calls[1][0].response_format).toBeUndefined();
+  });
 });
 
 describe('chat: empty content is a failed call', () => {

@@ -849,6 +849,9 @@ async function chatOpenAI(
     max_tokens: maxTokens,
     ...(options?.temperature !== undefined && { temperature: options.temperature }),
     ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort as 'low' } : {}),
+    // No-tools (chatText) calls are structured text generation — force JSON
+    // mode. Never combined with tools (P7 3b00baeb, Lever A hardening).
+    ...(openaiTools.length === 0 ? { response_format: { type: 'json_object' as const } } : {}),
     tools: openaiTools,
     messages,
   });

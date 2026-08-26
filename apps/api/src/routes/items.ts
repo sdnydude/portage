@@ -289,11 +289,22 @@ itemsRouter.get('/export', async (req, res, next) => {
       conditions.push(eq(items.condition, query.condition));
     }
 
-    const results = await db.select().from(items)
+    // Row cap (P7 668ee616): fetch cap+1 to detect overflow, respond with at
+    // most EXPORT_ROW_CAP rows and an explicit truncation header (both
+    // formats — headers are the existing X-Portage-* metadata channel).
+    const EXPORT_ROW_CAP = 10_000;
+    const fetched = await db.select().from(items)
       .where(and(...conditions))
-      .orderBy(desc(items.createdAt));
+      .orderBy(desc(items.createdAt))
+      .limit(EXPORT_ROW_CAP + 1);
 
-    logger.info({ userId, count: results.length, format: query.format }, 'Items export requested');
+    const truncated = fetched.length > EXPORT_ROW_CAP;
+    const results = truncated ? fetched.slice(0, EXPORT_ROW_CAP) : fetched;
+    if (truncated) {
+      res.setHeader('X-Portage-Truncated', 'true');
+    }
+
+    logger.info({ userId, count: results.length, truncated, format: query.format }, 'Items export requested');
 
     if (query.format === 'ebay_csv') {
       const date = new Date().toISOString().slice(0, 10);

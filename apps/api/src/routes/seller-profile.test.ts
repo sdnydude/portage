@@ -52,6 +52,32 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('GET /seller-profile auto-create race (P7 6adfadb4)', () => {
+  it('re-selects and returns the existing row when a concurrent request already created the profile (unique violation, not a 500)', async () => {
+    const existing = { id: 'sp-1', userId: 'test-user-id' };
+    mockSelectOnce([]); // first read: no profile yet
+    // Concurrent request won the insert — ours hits the userId unique index.
+    // Drizzle wraps driver errors: the pg code lives at err.cause.code.
+    const uniqueViolation = Object.assign(new Error('duplicate key value violates unique constraint'), {
+      cause: { code: '23505' },
+    });
+    vi.mocked(db.insert).mockReturnValueOnce({
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+        returning: vi.fn().mockRejectedValue(uniqueViolation),
+      }),
+    } as any);
+    mockSelectOnce([existing]); // re-select finds the winner's row
+
+    const res = await request(app)
+      .get('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.profile).toEqual(existing);
+  });
+});
+
 describe('PATCH /seller-profile', () => {
   it('accepts ebayPublishMode in the update schema', async () => {
     mockSelectOnce([{ id: 'sp-1' }]);

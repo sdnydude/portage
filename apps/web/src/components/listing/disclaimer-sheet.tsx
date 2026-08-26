@@ -54,14 +54,14 @@ const DISCLAIMER_CLAUSES = [
 ];
 
 interface DisclaimerSheetProps {
-  listingId: string;
+  itemId: string;
   isFirstTime: boolean;
   /** suppress7d = the seller ticked "don't show again for 7 days" (display only). */
   onAccept: (suppress7d: boolean) => void;
   onCancel: () => void;
 }
 
-export function DisclaimerSheet({ listingId, isFirstTime, onAccept, onCancel }: DisclaimerSheetProps) {
+export function DisclaimerSheet({ itemId, isFirstTime, onAccept, onCancel }: DisclaimerSheetProps) {
   const [isExpanded, setIsExpanded] = useState(isFirstTime);
   const [isChecked, setIsChecked] = useState(false);
   // F3b: opt-in to skip this sheet for 7 days. Unchecked by default.
@@ -72,7 +72,7 @@ export function DisclaimerSheet({ listingId, isFirstTime, onAccept, onCancel }: 
     setIsChecked(false);
     setSuppress7d(false);
     setIsExpanded(isFirstTime);
-  }, [listingId, isFirstTime]);
+  }, [itemId, isFirstTime]);
 
   return (
     <div className="rounded-2xl border border-border bg-surface p-4" style={{ boxShadow: "var(--shadow-subtle)" }}>
