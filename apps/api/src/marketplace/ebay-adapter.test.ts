@@ -582,6 +582,23 @@ describe('EbayAdapter.getValidConditions — Metadata API condition policies', (
 });
 
 describe('eBay taxonomy TTL caches', () => {
+  it('counts taxonomy cache lookups with cache_miss/cache_hit labels (P7 7107c1b8)', async () => {
+    const { ebayTaxonomyCalls } = await import('../lib/metrics.js');
+    ebayTaxonomyCalls.reset();
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      itemConditionPolicies: [{ itemConditions: [{ conditionId: '1000' }] }],
+    }), { status: 200 }));
+
+    await EbayAdapter.getValidConditions('555555'); // cold → miss
+    await EbayAdapter.getValidConditions('555555'); // warm → hit
+
+    const metric = await ebayTaxonomyCalls.get();
+    const value = (labels: Record<string, string>) =>
+      metric.values.find((v) => Object.entries(labels).every(([k, val]) => (v.labels as Record<string, string>)[k] === val))?.value ?? 0;
+    expect(value({ operation: 'valid_conditions', result: 'cache_miss' })).toBe(1);
+    expect(value({ operation: 'valid_conditions', result: 'cache_hit' })).toBe(1);
+  });
+
   it('serves getValidConditions from cache within the TTL — one upstream fetch for two calls', async () => {
     fetchMock.mockImplementation(async () => new Response(JSON.stringify({
       itemConditionPolicies: [{ itemConditions: [{ conditionId: '1000' }, { conditionId: '3000' }] }],
@@ -965,9 +982,12 @@ describe('resolveEbayCategoryCondition — auto-correct decision + warning polic
     expect(r.warning).toMatch(/USED_EXCELLENT/);
   });
 
-  it('does nothing (no override, no warning) when the supported list is empty', () => {
-    // Metadata API unavailable → keep the static default silently
-    expect(resolveEbayCategoryCondition('good', [])).toEqual({});
+  it('keeps the static default but warns when the supported list is empty (P7 8f94d453)', () => {
+    // Metadata API unavailable → no override, but the seller must know the
+    // condition was not validated against the category.
+    const r = resolveEbayCategoryCondition('good', []);
+    expect(r.condition).toBeUndefined();
+    expect(r.warning).toMatch(/could not be verified/);
   });
 
   it('warns without overriding when no supported grade matches (e.g. used item, NEW-only category)', () => {
