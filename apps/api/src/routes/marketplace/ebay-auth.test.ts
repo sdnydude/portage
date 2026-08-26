@@ -159,6 +159,29 @@ describe('POST /marketplace/ebay/callback identity capture', () => {
     expect((tokenInit.headers as Record<string, string>)['User-Agent']).toBe(EBAY_USER_AGENT);
   });
 
+  it('still connects when the Identity fetch THROWS (network error), leaving marketplaceUserId null (P7 d56aff62)', async () => {
+    const setMock = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const state = await getValidState();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 7200 }) })
+        .mockRejectedValueOnce(new TypeError('fetch failed: getaddrinfo ENOTFOUND apiz.ebay.com')),
+    );
+
+    const res = await request(app)
+      .post('/marketplace/ebay/callback')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ code: 'auth-code', state });
+
+    expect(res.status).toBe(200);
+    expect(res.body.connected).toBe(true);
+    expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ marketplaceUserId: null }));
+  });
+
   it('still connects when the Identity API fails, leaving marketplaceUserId null', async () => {
     const setMock = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
     vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
