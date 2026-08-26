@@ -352,7 +352,17 @@ describe('runRetentionSweep (audit m3)', () => {
 
     await runRetentionSweep();
 
-    expect(db.delete).toHaveBeenCalledTimes(2); // sync_jobs + marketplace_sync_log
+    expect(db.delete).toHaveBeenCalledTimes(3); // sync_jobs + marketplace_sync_log + export_tokens
+  });
+
+  it('also sweeps export_tokens expired more than 7 days ago (P7 d65d1e9e — named operator approval 2026-08-25)', async () => {
+    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.delete).mockReturnValue({ where: whereSpy } as any);
+
+    await runRetentionSweep();
+
+    // sync_jobs + marketplace_sync_log + export_tokens
+    expect(db.delete).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -378,7 +388,7 @@ describe('startSyncWorker', () => {
       startSyncWorker(1000);
       await vi.advanceTimersByTimeAsync(0); // flush the boot-time microtasks
 
-      expect(db.delete).toHaveBeenCalledTimes(2); // sync_jobs + marketplace_sync_log
+      expect(db.delete).toHaveBeenCalledTimes(3); // sync_jobs + marketplace_sync_log + export_tokens
     } finally {
       stopSyncWorker();
       vi.useRealTimers();
@@ -395,11 +405,11 @@ describe('startSyncWorker', () => {
 
       startSyncWorker(1000, 2500);
       await vi.advanceTimersByTimeAsync(2500);
-      expect(db.delete).toHaveBeenCalledTimes(4); // boot sweep + one interval sweep, 2 tables each
+      expect(db.delete).toHaveBeenCalledTimes(6); // boot sweep + one interval sweep, 3 tables each
 
       stopSyncWorker();
       await vi.advanceTimersByTimeAsync(5000);
-      expect(db.delete).toHaveBeenCalledTimes(4); // timer cleared — no further sweeps
+      expect(db.delete).toHaveBeenCalledTimes(6); // timer cleared — no further sweeps
     } finally {
       stopSyncWorker();
       vi.useRealTimers();
