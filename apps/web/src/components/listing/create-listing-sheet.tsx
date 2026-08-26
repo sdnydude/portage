@@ -179,6 +179,11 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // network error) so the server resumes the insert-first row instead of
   // inserting an orphan draft per attempt; cleared on success below.
   const idempotencyKeyRef = useRef<string | null>(null);
+  // Synchronous re-entry guard (2026-08-26: six taps on Accept & Publish on
+  // iPhone → six POSTs sharing one key → two live eBay listings). React state
+  // reaches the DOM's `disabled` a paint late; iOS double-fires inside that
+  // window, so the guard must be a ref checked before anything else.
+  const inFlightRef = useRef(false);
 
   // Single create-and-publish call; `aspects` carries seller-filled item
   // specifics on a retry after EBAY_ASPECTS_REQUIRED.
@@ -273,6 +278,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   };
 
   const handleCreate = async (suppress7d = false) => {
+    if (inFlightRef.current) return;
     const priceNum = parseFloat(price);
     if (!priceNum || priceNum <= 0) {
       setError("Enter a valid price");
@@ -295,6 +301,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       }
     }
 
+    inFlightRef.current = true;
     setIsCreating(true);
     setError(null);
 
@@ -313,6 +320,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       }
       setError(err instanceof ApiError ? err.message : "Failed to create listing");
       setIsCreating(false);
+    } finally {
+      inFlightRef.current = false;
     }
   };
 
@@ -659,6 +668,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
           <DisclaimerSheet
             itemId={itemId}
             isFirstTime={true}
+            busy={isCreating}
             onAccept={async (suppress7d: boolean) => {
               await handleCreate(suppress7d);
             }}

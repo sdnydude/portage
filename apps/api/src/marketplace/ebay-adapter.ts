@@ -27,7 +27,7 @@ function boConflictDetails(input: {
     healed: false,
   }];
 }
-import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml,
+import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml, buildGetMyeBaySellingXml,
   buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
 import { EBAY_USER_AGENT } from './ebay-constants.js';
 import type {
@@ -959,6 +959,43 @@ export class EbayAdapter implements MarketplaceAdapter {
     } catch {
       return { sku: null, found: false, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null };
     }
+  }
+
+  /**
+   * Find a live listing by the SKU (eBay "Custom label") Portage stamps at
+   * create. Used by the stale publish-claim resume: a crash between the
+   * AddFixedPriceItem 200 and the ItemID write leaves a claimed row with no
+   * ItemID — adopt the live listing instead of creating it again. Scans the
+   * seller's ActiveList (200/page) and matches client-side: GetSellerList's
+   * SKUArray filter needs InventoryTrackingMethod=SKU, which we do not set.
+   * Throws on read failure — the caller must not treat "unknown" as "absent".
+   */
+  async findListingBySku(sku: string): Promise<string | null> {
+    const token = await getEbayAccessToken(this.userId);
+    // Bounded like getOrders: 10 × 200 = 2,000 active listings covers the
+    // pre-launch reality by two orders of magnitude; beyond it we warn and
+    // report not-found rather than chase TotalNumberOfPages indefinitely
+    // inside a publish request.
+    const MAX_PAGES = 10;
+    let totalPagesSeen = 1;
+    for (let pageNumber = 1, totalPages = 1; pageNumber <= totalPages; pageNumber++) {
+      if (pageNumber > MAX_PAGES) {
+        logger.warn({ userId: this.userId, sku, totalPages: totalPagesSeen }, 'findListingBySku: page bound hit — treating as not found');
+        return null;
+      }
+      const parsed = await callTradingApi('GetMyeBaySelling', buildGetMyeBaySellingXml(pageNumber, token), token);
+      const active = ((parsed as { GetMyeBaySellingResponse?: { ActiveList?: Record<string, unknown> } })
+        .GetMyeBaySellingResponse?.ActiveList) ?? {};
+      const items = (active.ItemArray as { Item?: unknown } | undefined)?.Item;
+      for (const it of Array.isArray(items) ? items : items ? [items] : []) {
+        const row = it as { ItemID?: unknown; SKU?: unknown };
+        if (String(row.SKU ?? '') === sku && row.ItemID != null) return String(row.ItemID);
+      }
+      const total = Number((active.PaginationResult as { TotalNumberOfPages?: unknown } | undefined)?.TotalNumberOfPages);
+      totalPages = Number.isFinite(total) && total > 0 ? total : 1;
+      totalPagesSeen = totalPages;
+    }
+    return null;
   }
 
   /**
