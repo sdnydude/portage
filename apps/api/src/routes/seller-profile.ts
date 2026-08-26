@@ -23,10 +23,20 @@ sellerProfileRouter.get('/', async (req, res, next) => {
       .limit(1);
 
     if (!profile) {
+      // Concurrent first-GETs race this insert (userId is unique) — swallow
+      // the conflict and re-select the winner's row (P7 6adfadb4).
       [profile] = await db.insert(sellerProfiles)
         .values({ userId })
+        .onConflictDoNothing()
         .returning();
-      logger.info({ userId }, 'Created default seller profile');
+      if (profile) {
+        logger.info({ userId }, 'Created default seller profile');
+      } else {
+        [profile] = await db.select()
+          .from(sellerProfiles)
+          .where(eq(sellerProfiles.userId, userId))
+          .limit(1);
+      }
     }
 
     res.json({ profile });
