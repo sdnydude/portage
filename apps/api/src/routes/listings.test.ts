@@ -113,6 +113,28 @@ describe('POST /listings', () => {
     }));
   });
 
+  it('warns when a publishMode:"live" publish falls back to draft — the fallback warning keys on shouldPublish, not the legacy publishImmediately flag (P7 17c90eea)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // ship-from origin
+    mockSelectOnce([]); // footer
+    mockInsertCapture();
+    // Adapter returns a non-active result with no warning of its own.
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'draft' });
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'draft' }]) }),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live' });
+
+    expect(res.status).toBe(201);
+    expect(String(res.body.warning)).toMatch(/could not be published/i);
+  });
+
   it('rejects publish with Best Offer thresholds at/above the price — 422 before any adapter call, never a silent drop (BO-3)', async () => {
     mockSelectOnce([MOCK_ITEM]);
 
