@@ -54,7 +54,9 @@ const suggestionQuerySchema = z.object({
 ebayAuthRouter.get('/category-suggestion', async (req, res, next) => {
   try {
     const { q, visionCategory } = suggestionQuerySchema.parse(req.query);
-    ebayTaxonomyCalls.inc({ operation: 'category_suggestion' });
+    // Route-level count; the adapter's own cache is opaque here, so the
+    // result label is 'request' rather than cache_hit|cache_miss.
+    ebayTaxonomyCalls.labels('category_suggestion', 'request').inc();
     const suggestion = await EbayAdapter.getCategorySuggestion(q);
     if (!suggestion) {
       res.json({ suggestion: null });
