@@ -149,6 +149,32 @@ describe('GET /items/photos/export', () => {
     expect(res.body.code).toBe('PHOTO_FETCH_FAILED');
   });
 
+  it('never fetches a photo from a disallowed origin — SSRF guard regression (P7 b9c43cd4)', async () => {
+    mockSelectTokenReturns([MOCK_TOKEN_ROW]);
+    vi.mocked(db.update).mockReturnValueOnce({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{
+          id: MOCK_TOKEN_ROW.itemIds[0],
+          title: 'Test Item',
+          photos: [{ url: 'https://169.254.169.254/latest/meta-data', key: 'evil' }],
+        }]),
+      }),
+    } as any);
+    const fetchSpy = vi.spyOn(global, 'fetch');
+
+    const res = await request(app).get(`/items/photos/export?token=${VALID_TOKEN}`);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // The disallowed photo is skipped before totalPhotos++, so the export
+    // degrades to an empty ZIP rather than a fetch attempt.
+    expect(res.status).toBe(200);
+  });
+
   it('increments use_count before streaming', async () => {
     mockSelectTokenReturns([MOCK_TOKEN_ROW]);
     vi.mocked(db.update).mockReturnValueOnce({
