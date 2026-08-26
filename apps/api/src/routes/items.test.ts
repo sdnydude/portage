@@ -1146,6 +1146,34 @@ const ITEM_UUID_1 = '00000000-0000-0000-0000-000000000001';
 const ITEM_UUID_2 = '00000000-0000-0000-0000-000000000002';
 const MOCK_PHOTOS = [{ url: 'https://portage-images.digitalharmonyai.com/photo1.jpg', key: 'photo1.jpg' }];
 
+describe('GET /items/export row cap (P7 668ee616)', () => {
+  it('caps the JSON export at 10000 rows and flags the truncation in a response header', async () => {
+    const rows = Array.from({ length: 10_001 }, (_, i) => ({
+      id: `00000000-0000-0000-0000-${String(i).padStart(12, '0')}`,
+      userId: 'test-user-id',
+      title: `Item ${i}`,
+      photos: [],
+    }));
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue(rows.slice(0, 10_001)),
+          }),
+        }),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .get('/items/export')
+      .set('Authorization', `Bearer ${createTestToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['x-portage-truncated']).toBe('true');
+    expect(res.body.length).toBe(10_000);
+  });
+});
+
 describe('POST /items/photos/export/prepare', () => {
   it('returns 401 without auth', async () => {
     const res = await request(app)
