@@ -34,7 +34,7 @@ const mockStripeInstance = {
 };
 
 vi.mock('stripe', () => {
-  return { default: vi.fn(() => mockStripeInstance) };
+  return { default: vi.fn(function () { return mockStripeInstance; }) };
 });
 
 let app: ReturnType<typeof createApp>;

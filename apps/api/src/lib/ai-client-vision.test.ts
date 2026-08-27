@@ -4,9 +4,9 @@ import { resetEnv, loadEnv } from './env.js';
 // Mock the OpenAI SDK so we can inspect the params passed to chat.completions.create
 const mockCreate = vi.fn();
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return ({
     chat: { completions: { create: mockCreate } },
-  })),
+  }); }),
 }));
 
 const OK_RESPONSE = {

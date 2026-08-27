@@ -867,6 +867,9 @@ describe('resolveEbayCategoryId — self-healing leaf category for publish', () 
   it('resolves by priority: explicit field > item cache > Taxonomy API (explicit/cache skip the API)', async () => {
     const spy = vi.spyOn(EbayAdapter, 'getCategorySuggestion')
       .mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops', rootCategoryId: null, rootCategoryName: null });
+    // vitest 4: spyOn returns the existing spy (with prior call history) when the
+    // method is already spied — clear the previous test's calls before asserting.
+    spy.mockClear();
 
     // 1. an explicit categoryId on the listing wins and never calls the API (user/listing intent preserved)
     const explicit = await resolveEbayCategoryId({ categoryId: '177' }, { title: 'X', marketplaceData: null });

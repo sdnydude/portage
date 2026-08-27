@@ -4,9 +4,9 @@ import { resetEnv, loadEnv } from './env.js';
 // Mock the OpenAI SDK so no real network calls happen on the chat path
 const mockCreate = vi.fn();
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return ({
     chat: { completions: { create: mockCreate } },
-  })),
+  }); }),
 }));
 
 // Pass-through observeOpenAI that records its config (per-purpose naming, 3a.3)
@@ -21,9 +21,9 @@ vi.mock('@langfuse/openai', () => ({
 // Anthropic mock so chatStream's forceProvider filtering is observable
 const mockAnthropicStream = vi.fn();
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return ({
     messages: { stream: mockAnthropicStream },
-  })),
+  }); }),
 }));
 
 describe('chat: provider chain availability', () => {

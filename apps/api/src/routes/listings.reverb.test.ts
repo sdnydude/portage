@@ -17,14 +17,14 @@ const { mockReverbCreateListing, mockReverbUpdateListing, mockReverbDeleteListin
     mockReverbSearchCategories,
     mockReverbGetListingStatus,
     mockReverbSetBump,
-    ReverbAdapterMock: vi.fn(() => ({
+    ReverbAdapterMock: vi.fn(function () { return ({
       createListing: mockReverbCreateListing,
       updateListing: mockReverbUpdateListing,
       deleteListing: mockReverbDeleteListing,
       searchCategories: mockReverbSearchCategories,
       getListingStatus: mockReverbGetListingStatus,
       setBump: mockReverbSetBump,
-    })),
+    }); }),
   };
 });
 
