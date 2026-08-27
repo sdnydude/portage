@@ -31,8 +31,8 @@ Directories mirror feature areas, not component types:
 
 | Directory | Contents |
 |-----------|----------|
-| `capture/` | ScanFlow, ScanFab, CameraCapture, CaptureSheet, ImagePicker |
-| `listing-flow/` | HybridFlow, ConversationalFlow, SwipeFlow, PhotoCaptureFlow, PhotoEditor, CropTool, PhotoGrid, PricingStrategyPicker |
+| `capture/` | ScanFlow, ScanFab, CameraCapture, CaptureSheet, ImagePicker, PhotoEditPanel |
+| `listing-flow/` | HybridFlow, ConversationalFlow, SwipeFlow, PhotoCaptureFlow, CropTool, PhotoGrid, PricingStrategyPicker |
 | `listing/` | ListingCard, ListingPreviewCard, CompsPricingWidget, CreateListingSheet, BulkListingBar |
 | `inventory/` | ItemCard, SearchBar, ViewControls, BulkActionBar |
 | `layout/` | AppShell (route-aware responsive shell), Sidebar (desktop/iPad collapsible nav rail), TopBar (desktop header), PageHeader (sticky top, mobile), TabBar (floating glass bottom nav + scan FAB) |

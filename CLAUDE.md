@@ -264,7 +264,7 @@ re-captured on the 4-tab app with a CI gate (`npm run check:tutorials`),
 `docs/api/ebay.md`; deploy-docs now has a pre-restart smoke gate and auto-opens
 a GitHub issue on failure (drill: `gh workflow run deploy-docs.yml -f drill=true`).
 Ship-log 134; proof page 2026-08-23-p4-docs-truth.
-Test suite: 1047 API / 701 web / 27 generator as of 2026-08-26 (P7).
+Test suite: 1060 API / 704 web / 27 generator as of 2026-08-26.
 Deferral P5 (log program) SPEC approved 2026-08-23 (PR #323, ship-log 135):
 docs/log-program-architecture-2026-08-23.md rev 3 — keep-all retention (operator
 directive: no automatic deletion, operator-only), 2-layer redaction (pino
