@@ -98,7 +98,7 @@ const updateOrderSchema = z.object({
   status: z.enum(['payment_received', 'label_purchased', 'shipped', 'delivered', 'canceled']).optional(),
   trackingNumber: z.string().optional(),
   carrier: z.string().optional(),
-  shippingLabelUrl: z.string().url().optional(),
+  shippingLabelUrl: z.url().optional(),
 });
 
 ordersRouter.patch('/:id', async (req, res, next) => {

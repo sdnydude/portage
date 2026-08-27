@@ -51,6 +51,18 @@ describe('POST /survey/design-review (unauthenticated by design)', () => {
     expect(vi.mocked(db.insert)).not.toHaveBeenCalled();
   });
 
+  it('400 details keep the flattened { formErrors, fieldErrors } shape (API contract across zod 3→4)', async () => {
+    const res = await request(app)
+      .post('/survey/design-review')
+      .send({ preferredDirection: 'Z' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toEqual({
+      formErrors: [],
+      fieldErrors: { preferredDirection: [expect.any(String)] },
+    });
+  });
+
   it('caps free-text fields (2000 chars) — oversize input is rejected, not truncated', async () => {
     const res = await request(app)
       .post('/survey/design-review')

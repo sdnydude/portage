@@ -130,7 +130,7 @@ const ListingFieldsOutputSchema = z.object({
     ]).optional().default({ value: 0, unit: 'oz' }),
     dimensions: z.object({ length: z.number(), width: z.number(), height: z.number(), unit: z.string() }).optional().default({ length: 0, width: 0, height: 0, unit: 'in' }),
     packageType: z.string().optional().default('LETTER'),
-  }).passthrough().nullable().optional().default(null),
+  }).loose().nullable().optional().default(null),
   reverb: z.object({
     make: z.string().optional().default(''),
     model: z.string().optional().default(''),
@@ -143,8 +143,8 @@ const ListingFieldsOutputSchema = z.object({
     year: z.union([z.string(), z.number().transform(String)]).nullable().optional().default(null),
     finish: z.string().nullable().optional().default(null),
     description: z.string().optional().default(''),
-  }).passthrough().nullable().optional().default(null),
-}).passthrough();
+  }).loose().nullable().optional().default(null),
+}).loose();
 
 export interface VisionResult {
   name: string;
@@ -205,7 +205,7 @@ function extractJSON(raw: string): string {
  *  under at least one of the given schemas. Runs inside the provider loop, so a
  *  throw fails over to the next provider instead of 502ing the request
  *  (gemini-3.5-flash weight drift outage, 2026-08-05). */
-function schemaValidator(schemas: Array<{ name: string; schema: z.ZodTypeAny }>): (raw: string) => void {
+function schemaValidator(schemas: Array<{ name: string; schema: z.ZodType }>): (raw: string) => void {
   return (raw) => {
     const parsed = safeParseJSON(raw);
     const failures: string[] = [];

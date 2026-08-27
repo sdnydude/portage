@@ -12,7 +12,7 @@ import { sendBetaInvite } from '../lib/email.js';
 const logger = createLogger('admin');
 
 const allowlistEmailSchema = z.object({
-  email: z.string().email().transform((e) => e.toLowerCase().trim()),
+  email: z.email().transform((e) => e.toLowerCase().trim()),
 });
 
 export const adminRouter = Router();
@@ -183,7 +183,7 @@ adminRouter.get('/users', async (req, res, next) => {
 
 
 const adminUserCreateSchema = z.object({
-  email: z.string().trim().email().max(255),
+  email: z.string().trim().pipe(z.email().max(255)),
   displayName: z.string().max(255).optional(),
   role: z.enum(['user', 'admin']).optional(),
   subscriptionTier: z.enum(['free', 'pro', 'beta-tester']).optional(),
@@ -304,12 +304,12 @@ const TIER_LIMIT_KEYS = ['aiScansPerMonth', 'aiListingsPerMonth', 'bgRemovalsPer
 const adminUserUpdateSchema = z.object({
   displayName: z.string().max(255).nullable().optional(),
   // Grant/extend/clear a trial; ISO string or null.
-  trialEndsAt: z.string().datetime().nullable().optional(),
+  trialEndsAt: z.iso.datetime().nullable().optional(),
   aiListingCredits: z.number().int().min(0).max(100000).optional(),
   // Partial per-meter overrides: number wins over tier, null = unlimited,
   // absent = tier default. Whole-object null clears every override.
-  limitOverrides: z.record(z.enum(TIER_LIMIT_KEYS), z.number().int().min(0).max(1000000).nullable()).nullable().optional(),
-}).passthrough();
+  limitOverrides: z.partialRecord(z.enum(TIER_LIMIT_KEYS), z.number().int().min(0).max(1000000).nullable()).nullable().optional(),
+}).loose();
 
 adminRouter.patch('/users/:id', async (req, res, next) => {
   try {
@@ -903,7 +903,7 @@ adminRouter.get('/faqs', async (_req, res, next) => {
 });
 
 const faqReorderSchema = z.object({
-  ids: z.array(z.string().uuid().or(z.string().min(1))).min(1).max(200),
+  ids: z.array(z.guid().or(z.string().min(1))).min(1).max(200),
 });
 
 adminRouter.put('/faqs/reorder', async (req, res, next) => {

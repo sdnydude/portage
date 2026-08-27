@@ -164,18 +164,18 @@ function buildRefineSchema() {
     logger.error('R2_PUBLIC_URL is not set — /scan/refine will reject all image URLs');
     return z.object({
       imageUrls: z.array(
-        z.string().url().refine(
+        z.url().refine(
           () => false,
-          { message: 'Image storage is not configured. Contact support.' },
+          { error: 'Image storage is not configured. Contact support.' },
         ),
       ).min(1).max(3),
     });
   }
   return z.object({
     imageUrls: z.array(
-      z.string().url().refine(
+      z.url().refine(
         (url) => url.startsWith(r2Prefix),
-        { message: 'Image URLs must reference the application storage origin' },
+        { error: 'Image URLs must reference the application storage origin' },
       ),
     ).min(1).max(3),
   });

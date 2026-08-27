@@ -83,7 +83,7 @@ const updateSchema = z.object({
   bestOfferAutoAcceptEnabled: z.boolean().optional(),
   gtcAutoEnd: z.boolean().optional(),
   defaultListingFooter: z.string().max(2000).nullable().optional(),
-}).refine(data => Object.keys(data).length > 0, { message: 'At least one field required' });
+}).refine(data => Object.keys(data).length > 0, { error: 'At least one field required' });
 
 sellerProfileRouter.patch('/', async (req, res, next) => {
   try {

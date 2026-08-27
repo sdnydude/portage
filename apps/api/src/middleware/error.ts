@@ -28,7 +28,7 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
   }
 
   if (err instanceof ZodError) {
-    const messages = err.errors.map(e => `${e.path.join('.')}: ${e.message}`);
+    const messages = err.issues.map((e) => `${e.path.join('.')}: ${e.message}`);
     res.status(400).json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: messages });
     return;
   }
