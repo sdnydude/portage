@@ -264,7 +264,7 @@ re-captured on the 4-tab app with a CI gate (`npm run check:tutorials`),
 `docs/api/ebay.md`; deploy-docs now has a pre-restart smoke gate and auto-opens
 a GitHub issue on failure (drill: `gh workflow run deploy-docs.yml -f drill=true`).
 Ship-log 134; proof page 2026-08-23-p4-docs-truth.
-Test suite: 1047 API / 701 web / 27 generator as of 2026-08-26 (P7).
+Test suite: 1061 API / 705 web / 27 generator as of 2026-08-27 (P6).
 Deferral P5 (log program) SPEC approved 2026-08-23 (PR #323, ship-log 135):
 docs/log-program-architecture-2026-08-23.md rev 3 — keep-all retention (operator
 directive: no automatic deletion, operator-only), 2-layer redaction (pino
@@ -292,6 +292,20 @@ errors, stale-claim adopt-by-SKU via GetMyeBaySelling, stuck-claim sweep),
 web in-flight guard + DisclaimerSheet busy. Live-proven on the real account
 (bursts → one AddFixedPriceItem). Ship-log 138; proof page
 2026-08-26-publish-claim-race. Tests: 1060 API / 704 web.
+Deferral P6 (dependency majors) shipped 2026-08-27: Node 24 runtime
+(Dockerfiles, CI, .nvmrc, engines) + @types/node 24, TypeScript ~6.0 (TS 7
+blocked: typescript-eslint peer <6.1 until TS 7.1's compiler API), vitest 4 /
+vite 8 (constructor-style mocks must be `function`, spyOn reuses spies),
+zod 4 (`.issues`, two-arg `z.record`, `z.partialRecord` for enum-keyed
+limitOverrides, `z.guid()` = v3-permissive uuid, `z.flattenError`), pino 10 +
+pino-http 11 (`@pinojs/redact`; redaction re-proven live), eslint 10 with a
+composed plugin stack replacing eslint-config-next (`@next/eslint-plugin-next`
++ `@eslint-react` + `react-hooks` + `jsx-a11y` forced past its eslint-9 peer +
+`import-x`; all `@eslint-react` recommended rules enforced — 72 sites fixed,
+lint 0 errors / 27 warnings = prior baseline), `npm audit` 0 high (next
+16.3.3). Dependabot ignores TS >=6.1 and @types/node >=25. Live-proven on the
+deployed branch: home, Porter stream, inventory/detail, draft payload, scan →
+review, AddFixedPriceItem. Proof page 2026-08-27-p6-dependency-majors.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
