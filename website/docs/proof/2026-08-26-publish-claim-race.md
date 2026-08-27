@@ -72,3 +72,17 @@ req1 409   12ms {"error":"This listing is already being published — wait for t
   before commit; record `.claude/review-records/2f95725e….md`.
 - Worker boot on the rebuilt container: `sync worker started`, stuck-claim
   sweep wired (boot + 5 min).
+
+## Proof 3 — web double-tap (real app, `apps/web/e2e/publish-claim-race.spec.ts`)
+
+Against the rebuilt `portage-app` with the seller's real session (terms sheet
+suppressed by the 7-day opt-in, so the direct **Publish** button is the entry
+point). The network boundary is stubbed only to hold `POST /listings` open
+2.5 s and answer `409 PUBLISH_IN_PROGRESS` — no listing is created; every tap
+runs the real `CreateListingSheet`.
+
+- Two taps → `posts === 1` (asserted).
+- Button disabled and relabelled while in flight; 409 rendered as a notice.
+
+![Creating… disabled](./proof-publish-claim-busy.jpg)
+![409 rendered](./proof-publish-claim-409.jpg)
