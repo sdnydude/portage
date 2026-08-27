@@ -278,6 +278,14 @@ P5 BUILD shipped 2026-08-25 (dhgaifactory3.5#27 + portage#325): Loki 3.7.6
 AlloyDown/LokiDown alerts drilled to incidents, logs-chat (granite4.1:8b
 local-only, audited) + /logs panel in dhg-frontend. Ship-log 136; runbook
 operations/log-program-runbook. Registry items 13699992/c9c15852 resolved.
+Publish claim race fixed 2026-08-26 (PR #331, c81916d): six same-key
+POST /listings from an iPhone passed the R3 resume claim (latent since 07-09)
+and double-listed on eBay. `listings.publishClaimedAt` claim on both publish
+routes (409 PUBLISH_IN_PROGRESS on in-flight loss, release only on definitive
+errors, stale-claim adopt-by-SKU via GetMyeBaySelling, stuck-claim sweep),
+web in-flight guard + DisclaimerSheet busy. Live-proven on the real account
+(bursts → one AddFixedPriceItem). Ship-log 138; proof page
+2026-08-26-publish-claim-race. Tests: 1060 API / 704 web.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
