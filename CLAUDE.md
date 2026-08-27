@@ -264,7 +264,7 @@ re-captured on the 4-tab app with a CI gate (`npm run check:tutorials`),
 `docs/api/ebay.md`; deploy-docs now has a pre-restart smoke gate and auto-opens
 a GitHub issue on failure (drill: `gh workflow run deploy-docs.yml -f drill=true`).
 Ship-log 134; proof page 2026-08-23-p4-docs-truth.
-Test suite: 1038 API / 701 web / 27 generator as of 2026-08-25 (P5 build).
+Test suite: 1047 API / 701 web / 27 generator as of 2026-08-26 (P7).
 Deferral P5 (log program) SPEC approved 2026-08-23 (PR #323, ship-log 135):
 docs/log-program-architecture-2026-08-23.md rev 3 — keep-all retention (operator
 directive: no automatic deletion, operator-only), 2-layer redaction (pino
@@ -278,6 +278,12 @@ P5 BUILD shipped 2026-08-25 (dhgaifactory3.5#27 + portage#325): Loki 3.7.6
 AlloyDown/LokiDown alerts drilled to incidents, logs-chat (granite4.1:8b
 local-only, audited) + /logs panel in dhg-frontend. Ship-log 136; runbook
 operations/log-program-runbook. Registry items 13699992/c9c15852 resolved.
+Deferral P7 (paper-cuts) shipped 2026-08-26 (PRs #327-#329): all 14 §P7
+items — publish-fallback warning fix, seller-profile race, export row cap,
+export-token sweep, SSRF/identity regression tests, json_object no-tools
+mode, taxonomy cache hit/miss metrics, tdd-guard docs reconcile, gh 2.98 —
+plus EbayTradingError → 422 EBAY_REJECTED (prod-incident fix, deployed).
+Ship-log 137. Program remaining: P6 (dependency majors), P8 (settle pass).
 Publish claim race fixed 2026-08-26 (PR #331, c81916d): six same-key
 POST /listings from an iPhone passed the R3 resume claim (latent since 07-09)
 and double-listed on eBay. `listings.publishClaimedAt` claim on both publish
