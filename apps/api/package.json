@@ -16,13 +16,13 @@
     "admin:promote": "tsx src/scripts/promote-admin.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.111.0",
+    "@anthropic-ai/sdk": "^0.120.0",
     "@arizeai/openinference-instrumentation-anthropic": "^0.1.15",
     "@aws-sdk/client-s3": "^3.1086.0",
     "@langfuse/openai": "^5.9.1",
     "@langfuse/otel": "^5.9.1",
     "@langfuse/tracing": "^5.9.1",
-    "@opentelemetry/sdk-node": "^0.220.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
     "@portage/shared": "*",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
