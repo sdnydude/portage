@@ -175,18 +175,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "_agentlint": "v2",
-            "command": "/home/swebber64/.local/bin/agentlint report",
-            "timeout": 30
-          }
-        ]
-      }
     ]
   }
 }
