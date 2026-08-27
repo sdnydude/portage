@@ -175,9 +175,9 @@ export function CompsSearchSheet({ onClose }: CompsSearchSheetProps) {
                     Sold ({results.sold.length})
                   </p>
                   <div className="space-y-1">
-                    {results.sold.map((listing, i) => (
+                    {results.sold.map((listing) => (
                       <a
-                        key={i}
+                        key={listing.listingUrl}
                         href={listing.listingUrl}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -221,9 +221,9 @@ export function CompsSearchSheet({ onClose }: CompsSearchSheetProps) {
                     Active ({results.active.length})
                   </p>
                   <div className="space-y-1">
-                    {results.active.map((listing, i) => (
+                    {results.active.map((listing) => (
                       <a
-                        key={i}
+                        key={listing.listingUrl}
                         href={listing.listingUrl}
                         target="_blank"
                         rel="noopener noreferrer"

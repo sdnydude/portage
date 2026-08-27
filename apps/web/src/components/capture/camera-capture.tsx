@@ -17,8 +17,8 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   // Shutter-flash timer must be cancelled on unmount — a stray setTimeout
   // fires after teardown (vitest flags it as an unhandled error; in the app
   // it's a setState-after-unmount warning).
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (flashTimerRef.current) clearTimeout(flashTimerRef.current); }, []);
 
   // One measurement drives BOTH the on-screen guide square and the capture
   // crop mapping (guideCaptureRect) — they can never disagree.
@@ -102,8 +102,8 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
       const file = new File([blob], `capture-${Date.now()}.jpg`, { type: "image/jpeg" });
       setShotCount((n) => n + 1);
       setFlash(true);
-      if (flashTimer.current) clearTimeout(flashTimer.current);
-      flashTimer.current = setTimeout(() => setFlash(false), 150);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => setFlash(false), 150);
       onCapture(file);
     }
     setIsCapturing(false);
@@ -161,9 +161,9 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
               { top: 0, right: 0, borderWidth: "2px 2px 0 0" },
               { bottom: 0, left: 0, borderWidth: "0 0 2px 2px" },
               { bottom: 0, right: 0, borderWidth: "0 2px 2px 0" },
-            ].map((pos, i) => (
+            ].map((pos) => (
               <span
-                key={i}
+                key={pos.borderWidth}
                 className="absolute w-6 h-6 border-white/90"
                 style={{ ...pos, borderStyle: "solid", borderColor: "rgba(255,255,255,0.9)" }}
               />

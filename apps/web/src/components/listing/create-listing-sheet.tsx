@@ -59,14 +59,14 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // Once the user types their own price it is authoritative — a late-arriving AI
   // suggestion (comps resolve async after mount) must never overwrite it. Adopt
   // the prefill only while the field is still untouched.
-  const userEditedPrice = useRef(false);
+  const userEditedPriceRef = useRef(false);
   // A new item gets its own suggestion — clear the edit guard so the sheet doesn't
   // carry the previous item's typed price if it's reused without remounting.
   useEffect(() => {
-    userEditedPrice.current = false;
+    userEditedPriceRef.current = false;
   }, [itemId]);
   useEffect(() => {
-    if (userEditedPrice.current) return;
+    if (userEditedPriceRef.current) return;
     setPrice(suggestedPrice?.toString() ?? "");
   }, [suggestedPrice]);
   const [publishNow, setPublishNow] = useState(initialPublishNow);
@@ -90,7 +90,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // Touched PER MARKETPLACE (review finding 2026-08-02): an eBay flip must not
   // ride a later Reverb POST as offersEnabledExplicit (or vice versa). An
   // initialBestOffer seed counts as touched (BO-5, same as initialShipping).
-  const offersTouched = useRef<{ ebay: boolean; reverb: boolean }>({ ebay: initialBestOffer != null, reverb: false });
+  const offersTouchedRef = useRef<{ ebay: boolean; reverb: boolean }>({ ebay: initialBestOffer != null, reverb: false });
   const acceptOffers = marketplace === "ebay" ? offers.ebay.enabled : offers.reverb.enabled;
   const setAcceptOffers = (v: boolean) =>
     setOffers((o) => marketplace === "ebay" ? { ...o, ebay: { ...o.ebay, enabled: v } } : { ...o, reverb: { enabled: v } });
@@ -107,7 +107,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // nothing: the server keeps its calculated-shipping defaults and legacy rows
   // keep profile-driven behavior (same contract as offersTouched above).
   const [shipFields, setShipFields] = useState<ShippingFieldsValue>(initialShipping ?? SHIPPING_FIELDS_DEFAULT);
-  const shippingTouched = useRef(initialShipping != null);
+  const shippingTouchedRef = useRef(initialShipping != null);
   // Reverb per-listing shipping: profile select ("" = seller-profile default),
   // or "pickup" for local-pickup-only. Same touched contract as eBay above.
   const [reverbProfiles, setReverbProfiles] = useState<Array<{ id: string; name: string }>>([]);
@@ -115,8 +115,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   const [reverbLocalPickup, setReverbLocalPickup] = useState(false);
   // Pickup toggle touched separately: only then does the explicit boolean
   // ride the POST (so a profile-only change never overrides the default).
-  const reverbPickupTouched = useRef(false);
-  const reverbShippingTouched = useRef(false);
+  const reverbPickupTouchedRef = useRef(false);
+  const reverbShippingTouchedRef = useRef(false);
   // Reverb category cascade — an explicit pick overrides server enrichment
   // (AI/prepare-cache/profile); null = untouched, nothing sent.
   const [reverbCategory, setReverbCategory] = useState<{ uuid: string; fullName: string } | null>(null);
@@ -127,10 +127,10 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // default must survive marketplace toggles (review finding 2026-08-02) —
   // reverbCategory truthiness alone can't distinguish "never seeded" from
   // "seeded then deliberately cleared".
-  const reverbSeedAttempted = useRef(false);
+  const reverbSeedAttemptedRef = useRef(false);
   useEffect(() => {
-    if (marketplace !== "reverb" || !token || reverbCategory || reverbSeedAttempted.current) return;
-    reverbSeedAttempted.current = true;
+    if (marketplace !== "reverb" || !token || reverbCategory || reverbSeedAttemptedRef.current) return;
+    reverbSeedAttemptedRef.current = true;
     let cancelled = false;
     (async () => {
       try {
@@ -207,7 +207,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     if (effectiveAspects && Object.keys(effectiveAspects).length > 0) fields.aspects = effectiveAspects;
     // Offers ride only on an explicit user flip — untouched keeps server/profile
     // defaults, and pre-toggle rows keep profile-driven sync behavior.
-    if (offersTouched.current[marketplace]) {
+    if (offersTouchedRef.current[marketplace]) {
       if (marketplace === "ebay") {
         fields.bestOfferEnabled = acceptOffers;
         if (acceptOffers) {
@@ -222,7 +222,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     }
     // Shipping rides only on an explicit user interaction (shippingTouched) —
     // untouched keeps the server's calculated defaults.
-    if (shippingTouched.current && marketplace === "ebay") {
+    if (shippingTouchedRef.current && marketplace === "ebay") {
       const cost = parseFloat(shipFields.flatCost);
       const days = parseInt(shipFields.handlingDays, 10);
       fields.ebayShipping = {
@@ -233,10 +233,10 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         ...(shipFields.localPickup ? { localPickup: true } : {}),
       };
     }
-    if (reverbShippingTouched.current && marketplace === "reverb" && (reverbPickupTouched.current || reverbShipChoice)) {
+    if (reverbShippingTouchedRef.current && marketplace === "reverb" && (reverbPickupTouchedRef.current || reverbShipChoice)) {
       fields.reverbShipping = {
         ...(reverbShipChoice ? { profileId: reverbShipChoice } : {}),
-        ...(reverbPickupTouched.current ? { localPickup: reverbLocalPickup } : {}),
+        ...(reverbPickupTouchedRef.current ? { localPickup: reverbLocalPickup } : {}),
       };
     }
     // Explicit cascade pick wins over server enrichment (applyReverbEnrichment
@@ -286,7 +286,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
     }
     // Server rejects flat-with-no-cost (EBAY_FLAT_COST_REQUIRED) — catch it
     // here with the same message so the seller never round-trips for it.
-    if (marketplace === "ebay" && shippingTouched.current && shipFields.method === "flat" && !(parseFloat(shipFields.flatCost) > 0)) {
+    if (marketplace === "ebay" && shippingTouchedRef.current && shipFields.method === "flat" && !(parseFloat(shipFields.flatCost) > 0)) {
       setError("Flat-rate shipping needs a buyer cost above $0 — enter the rate or switch to free shipping.");
       return;
     }
@@ -450,7 +450,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
               type="number"
               value={price}
               onChange={(e) => {
-                userEditedPrice.current = true;
+                userEditedPriceRef.current = true;
                 setPrice(e.target.value);
               }}
               placeholder="0.00"
@@ -486,7 +486,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
             auto-decline/auto-accept floors; Reverb offers_enabled override. */}
         <label className="flex items-center gap-3 py-2 cursor-pointer">
           <div
-            onClick={() => { offersTouched.current[marketplace] = true; setAcceptOffers(!acceptOffers); }}
+            onClick={() => { offersTouchedRef.current[marketplace] = true; setAcceptOffers(!acceptOffers); }}
             className={`w-10 h-6 rounded-full transition-colors flex items-center ${
               acceptOffers ? "bg-forest-green" : "bg-muted border border-border"
             }`}
@@ -598,7 +598,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         {marketplace === "ebay" && (
           <ShippingFieldsSection
             value={shipFields}
-            onChange={(v) => { shippingTouched.current = true; setShipFields(v); }}
+            onChange={(v) => { shippingTouchedRef.current = true; setShipFields(v); }}
           />
         )}
 
@@ -615,7 +615,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
             <select
               id="reverb-shipping-profile"
               value={reverbShipChoice}
-              onChange={(e) => { reverbShippingTouched.current = true; setReverbShipChoice(e.target.value); }}
+              onChange={(e) => { reverbShippingTouchedRef.current = true; setReverbShipChoice(e.target.value); }}
               className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
             >
               <option value="">Seller profile default</option>
@@ -627,7 +627,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
                 it rides ALONGSIDE the shipping choice, never replaces it. */}
             <label className="flex items-center gap-3 py-2 mt-1 cursor-pointer">
               <div
-                onClick={() => { reverbShippingTouched.current = true; reverbPickupTouched.current = true; setReverbLocalPickup(!reverbLocalPickup); }}
+                onClick={() => { reverbShippingTouchedRef.current = true; reverbPickupTouchedRef.current = true; setReverbLocalPickup(!reverbLocalPickup); }}
                 className={`w-10 h-6 rounded-full transition-colors flex items-center ${
                   reverbLocalPickup ? "bg-forest-green" : "bg-muted border border-border"
                 }`}

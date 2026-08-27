@@ -10,7 +10,7 @@ interface TutorialPlayerProps {
 
 export function TutorialPlayer({ topic }: TutorialPlayerProps) {
   const [stepIndex, setStepIndex] = useState(0);
-  const touchStartX = useRef<number | null>(null);
+  const touchStartXRef = useRef<number | null>(null);
   const step = topic.steps[stepIndex];
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === topic.steps.length - 1;
@@ -31,12 +31,12 @@ export function TutorialPlayer({ topic }: TutorialPlayerProps) {
       className="mx-auto flex max-w-lg flex-col items-center px-4 py-4 compact-bar-clearance"
       // Carousel idiom: swipe on touch devices, chevrons on desktop.
       onTouchStart={(e) => {
-        touchStartX.current = e.touches[0].clientX;
+        touchStartXRef.current = e.touches[0].clientX;
       }}
       onTouchEnd={(e) => {
-        if (touchStartX.current == null) return;
-        const dx = e.changedTouches[0].clientX - touchStartX.current;
-        touchStartX.current = null;
+        if (touchStartXRef.current == null) return;
+        const dx = e.changedTouches[0].clientX - touchStartXRef.current;
+        touchStartXRef.current = null;
         if (dx <= -48) goNext();
         else if (dx >= 48) goPrev();
       }}

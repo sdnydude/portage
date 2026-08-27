@@ -439,7 +439,7 @@ function ChatMode({
   const [weightNeeded, setWeightNeeded] = useState(false);
   const [weightSaving, setWeightSaving] = useState(false);
   const [weightError, setWeightError] = useState<string | null>(null);
-  const pendingPublishOpts = useRef<PublishOpts | undefined>(undefined);
+  const pendingPublishOptsRef = useRef<PublishOpts | undefined>(undefined);
 
   const runPublish = async (opts?: PublishOpts) => {
     const fillingAspects = !!opts?.aspects;
@@ -462,11 +462,11 @@ function ChatMode({
       setWeightNeeded(false);
       onPublish();
     } else if (result.aspectsRequired) {
-      pendingPublishOpts.current = opts;
+      pendingPublishOptsRef.current = opts;
       setAspectsNeeded(result.aspectsRequired);
       if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
     } else if (result.weightRequired) {
-      pendingPublishOpts.current = opts;
+      pendingPublishOptsRef.current = opts;
       setWeightNeeded(true);
       if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
     } else if (fillingAspects) {
@@ -622,8 +622,8 @@ function ChatMode({
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {state.recognition.reasoning.length > 0 && (
                 <ul style={{ margin: "0 0 10px 0", paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3 }}>
-                  {state.recognition.reasoning.map((r, i) => (
-                    <li key={i} style={{ fontSize: 12, color: SECONDARY, lineHeight: 1.4 }}>{r}</li>
+                  {state.recognition.reasoning.map((r) => (
+                    <li key={r} style={{ fontSize: 12, color: SECONDARY, lineHeight: 1.4 }}>{r}</li>
                   ))}
                 </ul>
               )}
@@ -907,7 +907,7 @@ function ChatMode({
             setAspectsNeeded(null);
             setAspectError(null);
           }}
-          onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+          onSave={(aspects) => runPublish({ ...pendingPublishOptsRef.current, aspects })}
         />
       )}
 
@@ -926,7 +926,7 @@ function ChatMode({
             setWeightNeeded(false);
             setWeightError(null);
           }}
-          onSave={(value) => runPublish({ ...pendingPublishOpts.current, weightDims: value })}
+          onSave={(value) => runPublish({ ...pendingPublishOptsRef.current, weightDims: value })}
         />
       )}
     </div>
@@ -1205,12 +1205,12 @@ export function HybridFlow({ itemId }: HybridFlowProps) {
   const [localCompact, setLocalCompact] = useState<boolean | null>(null);
   const [showCapture, setShowCapture] = useState(false);
   const isCompact = localCompact !== null ? localCompact : compactMode;
-  const initialized = useRef(false);
+  const initializedRef = useRef(false);
 
   // Load from item if itemId provided
   useEffect(() => {
-    if (itemId && !initialized.current) {
-      initialized.current = true;
+    if (itemId && !initializedRef.current) {
+      initializedRef.current = true;
       flow.startFromItem(itemId);
     }
   }, [itemId, flow]);

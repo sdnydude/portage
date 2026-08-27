@@ -150,7 +150,7 @@ export function ReverbCategorySection({ value, onChange, token, idPrefix = "", o
         </p>
       )}
       {levels.map((lvl, i) => (
-        <div key={`${lvl.label}-${i}`}>
+        <div key={lvl.label}>
           <label htmlFor={`${idPrefix}reverb-cat-${i}`} className={labelClass}>{lvl.label}</label>
           <select
             id={`${idPrefix}reverb-cat-${i}`}

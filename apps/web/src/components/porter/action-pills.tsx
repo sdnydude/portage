@@ -12,9 +12,9 @@ export function ActionPills({ pills, onSelect }: ActionPillsProps) {
 
   return (
     <div className="flex gap-2 overflow-x-auto py-1 animate-[spring-in_0.3s_ease]">
-      {pills.map((pill, i) => (
+      {pills.map((pill) => (
         <button
-          key={i}
+          key={pill.message}
           onClick={() => onSelect(pill.message)}
           className="shrink-0 rounded-full border border-[var(--forest-green)] px-3 py-1 text-sm text-[var(--forest-green)] hover:bg-[color-mix(in_srgb,var(--forest-green)_10%,transparent)] transition-colors"
         >

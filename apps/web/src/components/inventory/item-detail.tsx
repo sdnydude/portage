@@ -189,6 +189,7 @@ export function ItemDetail({
   // "handled" any earlier would silently drop the deep link.
   const scrolledRef = useRef(false);
   useEffect(() => {
+    let highlightTimer: ReturnType<typeof setTimeout> | undefined;
     if (scrolledRef.current || !focusListingId || listingsLoading || isLoading) return;
     const target = itemListings.find((l) => l.id === focusListingId);
     if (target?.status === "archived" && !showArchived) {
@@ -203,8 +204,9 @@ export function ItemDetail({
       scrolledRef.current = true;
       el.scrollIntoView({ block: "center" });
       setHighlightId(focusListingId);
-      setTimeout(() => setHighlightId(null), 2000);
+      highlightTimer = setTimeout(() => setHighlightId(null), 2000);
     }));
+    return () => clearTimeout(highlightTimer);
   }, [focusListingId, listingsLoading, isLoading, itemListings, showArchived]);
 
   const orderedListings = [...itemListings].sort(
@@ -757,9 +759,9 @@ export function ItemDetail({
             <div>
               <h2 className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-2">Features</h2>
               <div className="flex flex-wrap gap-1.5">
-                {item.features.map((feature, i) => (
+                {item.features.map((feature) => (
                   <span
-                    key={i}
+                    key={feature}
                     className="px-2.5 py-1 bg-muted rounded-lg text-xs text-text-primary"
                   >
                     {feature}
@@ -865,7 +867,7 @@ export function ItemDetail({
                           <span className="text-xs text-text-secondary">Sold Avg</span>
                           <p className="text-lg font-semibold text-text-primary">${comps.stats.soldAvg.toFixed(0)}</p>
                           <span className="text-xs text-text-secondary">
-                            median ${comps.stats.soldMedian?.toFixed(0)}
+                            median {"$"}{comps.stats.soldMedian?.toFixed(0)}
                           </span>
                         </div>
                       )}
@@ -874,7 +876,7 @@ export function ItemDetail({
                           <span className="text-xs text-text-secondary">Active Avg</span>
                           <p className="text-lg font-semibold text-text-primary">${comps.stats.activeAvg.toFixed(0)}</p>
                           <span className="text-xs text-text-secondary">
-                            median ${comps.stats.activeMedian?.toFixed(0)}
+                            median {"$"}{comps.stats.activeMedian?.toFixed(0)}
                           </span>
                         </div>
                       )}

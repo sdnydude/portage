@@ -79,8 +79,8 @@ export default function AdminAuditPage() {
       <div className="bg-surface rounded-xl border border-border">
         <div className="divide-y divide-border">
           {isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-64" /></div>
+            Array.from({ length: 5 }, (_, i) => `skeleton-${i}`).map((k) => (
+              <div key={k} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-64" /></div>
             ))
           ) : data?.entries.length ? (
             data.entries.map(entry => (

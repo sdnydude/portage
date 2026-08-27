@@ -167,9 +167,9 @@ export function ListingPreviewCard({
             )}
             {photos.length > 1 && (
               <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
-                {photos.map((_, i) => (
+                {photos.map((photo, i) => (
                   <button
-                    key={i}
+                    key={photo.key}
                     onClick={() => setPhotoIndex(i)}
                     className="w-2 h-2 rounded-full transition-colors"
                     style={{ background: i === photoIndex ? "white" : "rgba(255,255,255,0.5)" }}
@@ -297,8 +297,8 @@ export function ListingPreviewCard({
 
         {data.warnings.length > 0 && (
           <div className="space-y-1">
-            {data.warnings.map((w, i) => (
-              <p key={i} className="text-xs px-2 py-1 rounded" style={{ background: "rgba(204,51,51,0.08)", color: "#CC3333" }}>
+            {data.warnings.map((w) => (
+              <p key={w} className="text-xs px-2 py-1 rounded" style={{ background: "rgba(204,51,51,0.08)", color: "#CC3333" }}>
                 {w}
               </p>
             ))}

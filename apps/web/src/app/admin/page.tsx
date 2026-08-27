@@ -82,8 +82,8 @@ export default function AdminDashboard() {
 
       {statsLoading ? (
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-surface rounded-xl border border-border p-4 animate-pulse">
+          {Array.from({ length: 6 }, (_, i) => `skeleton-${i}`).map((k) => (
+            <div key={k} className="bg-surface rounded-xl border border-border p-4 animate-pulse">
               <div className="h-3 w-16 bg-muted rounded" />
               <div className="h-7 w-12 bg-muted rounded mt-2" />
             </div>
@@ -106,13 +106,13 @@ export default function AdminDashboard() {
         </div>
         <div className="px-4 divide-y divide-border">
           {activityLoading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="py-3 animate-pulse">
+            Array.from({ length: 5 }, (_, i) => `skeleton-${i}`).map((k) => (
+              <div key={k} className="py-3 animate-pulse">
                 <div className="h-4 w-48 bg-muted rounded" />
               </div>
             ))
           ) : activity && activity.length > 0 ? (
-            activity.map((event, i) => <ActivityItem key={i} event={event} />)
+            activity.map((event) => <ActivityItem key={`${event.type}:${event.timestamp}:${JSON.stringify(event.data)}`} event={event} />)
           ) : (
             <div className="py-8 text-center text-sm text-text-placeholder">No activity yet</div>
           )}

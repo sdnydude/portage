@@ -62,6 +62,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {/* Set the theme class before paint: stored override, else OS preference. */}
         <script
+          // eslint-disable-next-line @eslint-react/dom-no-dangerously-set-innerhtml -- static developer-authored theme bootstrap, no user input
           dangerouslySetInnerHTML={{
             __html:
               "(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();",

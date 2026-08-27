@@ -110,10 +110,10 @@ const GLOBAL_STYLES = `
 `;
 
 function GlobalStyles() {
-  const injected = useRef(false);
+  const injectedRef = useRef(false);
   useEffect(() => {
-    if (injected.current) return;
-    injected.current = true;
+    if (injectedRef.current) return;
+    injectedRef.current = true;
     const tag = document.createElement("style");
     tag.textContent = GLOBAL_STYLES;
     document.head.appendChild(tag);
@@ -496,9 +496,9 @@ function RecognitionPhase({
             { top: "12%", right: "10%", borderTop: "2px solid #F15A22", borderRight: "2px solid #F15A22" },
             { bottom: "30%", left: "10%", borderBottom: "2px solid #F15A22", borderLeft: "2px solid #F15A22" },
             { bottom: "30%", right: "10%", borderBottom: "2px solid #F15A22", borderRight: "2px solid #F15A22" },
-          ].map((s, i) => (
+          ].map((s) => (
             <div
-              key={i}
+              key={Object.keys(s).join("-")}
               style={{
                 position: "absolute",
                 width: 24,
@@ -1022,9 +1022,9 @@ function DetailsPhase({
               Features <AiBadge />
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {state.features.map((f, i) => (
+              {state.features.map((f) => (
                 <span
-                  key={i}
+                  key={f}
                   style={{
                     background: "#151515",
                     border: "1px solid #222",
@@ -1543,7 +1543,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [showCapture, setShowCapture] = useState(false);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const hasFetchedComps = useRef(false);
+  const hasFetchedCompsRef = useRef(false);
 
   // On mount: if itemId provided, start from item
   useEffect(() => {
@@ -1583,8 +1583,8 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
 
   // Fetch comps when entering configure phase
   useEffect(() => {
-    if (phase === "configure" && !hasFetchedComps.current && state.inventoryItemId) {
-      hasFetchedComps.current = true;
+    if (phase === "configure" && !hasFetchedCompsRef.current && state.inventoryItemId) {
+      hasFetchedCompsRef.current = true;
       fetchComps();
     }
   }, [phase, fetchComps, state.inventoryItemId]);
@@ -1619,7 +1619,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     setPhase("configure");
     // Comps now, on the title — the configure-phase effect below must not
     // fire a second fetch once inventoryItemId lands.
-    hasFetchedComps.current = true;
+    hasFetchedCompsRef.current = true;
     fetchComps();
     createAndPrepare();
   }, [confirmRecognition, state.recognition.selectedIndex, fetchComps, createAndPrepare]);
@@ -1637,7 +1637,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const [weightNeeded, setWeightNeeded] = useState(false);
   const [weightSaving, setWeightSaving] = useState(false);
   const [weightError, setWeightError] = useState<string | null>(null);
-  const pendingPublishOpts = useRef<PublishOpts | undefined>(undefined);
+  const pendingPublishOptsRef = useRef<PublishOpts | undefined>(undefined);
 
   const runPublish = useCallback(async (opts?: PublishOpts) => {
     const fillingAspects = !!opts?.aspects;
@@ -1659,12 +1659,12 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
       setWeightNeeded(false);
       setPhase("success");
     } else if (result.aspectsRequired) {
-      pendingPublishOpts.current = opts;
+      pendingPublishOptsRef.current = opts;
       setAspectsNeeded(result.aspectsRequired);
       if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
       else setPhase("review");
     } else if (result.weightRequired) {
-      pendingPublishOpts.current = opts;
+      pendingPublishOptsRef.current = opts;
       setWeightNeeded(true);
       if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
       else setPhase("review");
@@ -1696,7 +1696,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
 
   const handleListAnother = useCallback(() => {
     reset();
-    hasFetchedComps.current = false;
+    hasFetchedCompsRef.current = false;
     setPhase("recognition");
   }, [reset]);
 
@@ -1857,7 +1857,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
             setAspectsNeeded(null);
             setAspectError(null);
           }}
-          onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+          onSave={(aspects) => runPublish({ ...pendingPublishOptsRef.current, aspects })}
         />
       )}
 
@@ -1876,7 +1876,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
             setWeightNeeded(false);
             setWeightError(null);
           }}
-          onSave={(value) => runPublish({ ...pendingPublishOpts.current, weightDims: value })}
+          onSave={(value) => runPublish({ ...pendingPublishOptsRef.current, weightDims: value })}
         />
       )}
     </div>

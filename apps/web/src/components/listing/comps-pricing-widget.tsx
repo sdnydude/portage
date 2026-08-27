@@ -78,7 +78,7 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
         {pricing.basedOn > 0 && (
           <div className="mt-2 flex items-center gap-2">
             <p className="text-sm" style={{ color: "rgba(0,0,0,0.6)" }}>
-              Range: ${pricing.low.toFixed(0)} — ${pricing.high.toFixed(0)}
+              Range: {`$${pricing.low.toFixed(0)}`} — {`$${pricing.high.toFixed(0)}`}
             </p>
             <span className="text-xs px-1.5 py-0.5 rounded" style={confidenceStyle}>
               {pricing.basedOn} sold comps ({confidenceLabel})
@@ -142,15 +142,15 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
             <p className="text-xs font-medium mb-1" style={{ color: "rgba(0,0,0,0.5)" }}>Sold</p>
             <p className="text-xs font-medium mb-1" style={{ color: "rgba(0,0,0,0.5)" }}>Active</p>
             {Array.from({ length: Math.max(comps.ebay.sold.length, comps.ebay.active.length) }).map((_, i) => (
-              <div key={i} className="contents">
+              <div key={`${comps.ebay!.sold[i]?.listingUrl ?? ""}|${comps.ebay!.active[i]?.listingUrl ?? ""}`} className="contents">
                 <div className="text-sm py-0.5">
                   {comps.ebay!.sold[i] && (
-                    <span>${comps.ebay!.sold[i].price.toFixed(0)} <span className="text-xs" style={{ color: "rgba(0,0,0,0.4)" }}>{comps.ebay!.sold[i].condition}</span></span>
+                    <span>{`$${comps.ebay!.sold[i].price.toFixed(0)}`} <span className="text-xs" style={{ color: "rgba(0,0,0,0.4)" }}>{comps.ebay!.sold[i].condition}</span></span>
                   )}
                 </div>
                 <div className="text-sm py-0.5">
                   {comps.ebay!.active[i] && (
-                    <span>${comps.ebay!.active[i].price.toFixed(0)} <span className="text-xs" style={{ color: "rgba(0,0,0,0.4)" }}>{comps.ebay!.active[i].condition}</span></span>
+                    <span>{`$${comps.ebay!.active[i].price.toFixed(0)}`} <span className="text-xs" style={{ color: "rgba(0,0,0,0.4)" }}>{comps.ebay!.active[i].condition}</span></span>
                   )}
                 </div>
               </div>
@@ -159,9 +159,9 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
         )}
         {activeTab === "reverb" && comps.reverb && (
           <div className="space-y-1">
-            {comps.reverb.listings.map((comp, i) => (
-              <div key={i} className="text-sm py-0.5">
-                ${comp.price.toFixed(0)} <span className="text-xs" style={{ color: "rgba(0,0,0,0.4)" }}>{comp.condition}</span>
+            {comps.reverb.listings.map((comp) => (
+              <div key={comp.listingUrl} className="text-sm py-0.5">
+                {`$${comp.price.toFixed(0)}`} <span className="text-xs" style={{ color: "rgba(0,0,0,0.4)" }}>{comp.condition}</span>
               </div>
             ))}
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo } from "react";
+import { messageKeys } from "@/lib/porter-keys";
 import { StreamingMessage } from "./streaming-message";
 import { ActionPills } from "./action-pills";
 import type { RichMessage, ActionPill } from "@portage/shared";
@@ -38,6 +39,7 @@ export function FullChat({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, streamingBlocks]);
+  const keys = useMemo(() => messageKeys(messages), [messages]);
 
   return (
     <div className="fixed inset-0 z-[55] flex flex-col bg-[var(--background)] animate-slide-up-full">
@@ -83,11 +85,11 @@ export function FullChat({
             <p className="text-[var(--text-secondary)] text-sm">Ask Porter anything about your inventory</p>
           </div>
         )}
-        {messages.map((msg, i) => (
+        {messages.map((msg) => (
           <StreamingMessage
-            key={i}
+            key={keys.get(msg)}
             message={msg}
-            pills={i === messages.length - 1 ? pills : []}
+            pills={msg === messages[messages.length - 1] ? pills : []}
             onPillSelect={onPillSelect}
           />
         ))}
