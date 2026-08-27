@@ -16,6 +16,17 @@ describe("DisclaimerSheet — F3b suppress checkbox", () => {
     expect(onAccept).toHaveBeenCalledWith(true);
   });
 
+  it("disables Accept and shows 'Publishing…' while busy, even with the agree box ticked", () => {
+    const onAccept = vi.fn();
+    render(<DisclaimerSheet itemId="i1" isFirstTime={true} busy onAccept={onAccept} onCancel={() => {}} />);
+
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    const btn = screen.getByRole("button", { name: "Publishing…" }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    fireEvent.click(btn);
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
   it("passes suppress7d=false when the suppression box is left unchecked", () => {
     const onAccept = vi.fn();
     render(<DisclaimerSheet itemId="i1" isFirstTime={true} onAccept={onAccept} onCancel={() => {}} />);

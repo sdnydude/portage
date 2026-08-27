@@ -59,9 +59,12 @@ interface DisclaimerSheetProps {
   /** suppress7d = the seller ticked "don't show again for 7 days" (display only). */
   onAccept: (suppress7d: boolean) => void;
   onCancel: () => void;
+  /** Publish in flight — disables Accept so a second tap cannot re-submit
+   *  (UX layer; the parent's synchronous in-flight ref is the real guard). */
+  busy?: boolean;
 }
 
-export function DisclaimerSheet({ itemId, isFirstTime, onAccept, onCancel }: DisclaimerSheetProps) {
+export function DisclaimerSheet({ itemId, isFirstTime, onAccept, onCancel, busy = false }: DisclaimerSheetProps) {
   const [isExpanded, setIsExpanded] = useState(isFirstTime);
   const [isChecked, setIsChecked] = useState(false);
   // F3b: opt-in to skip this sheet for 7 days. Unchecked by default.
@@ -173,10 +176,10 @@ export function DisclaimerSheet({ itemId, isFirstTime, onAccept, onCancel }: Dis
         </button>
         <button
           onClick={() => onAccept(suppress7d)}
-          disabled={!isChecked}
+          disabled={!isChecked || busy}
           className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium disabled:opacity-50"
         >
-          Accept & Publish
+          {busy ? "Publishing…" : "Accept & Publish"}
         </button>
       </div>
     </div>

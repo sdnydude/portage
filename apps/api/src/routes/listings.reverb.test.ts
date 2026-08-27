@@ -564,7 +564,13 @@ describe('POST /listings/:id/publish — reverb', () => {
     const listingUpdateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: LISTING_ID, status: 'active' }]) }),
     });
+    // Publish-claim UPDATE (2026-08-26) runs first on this route, before the
+    // self-heal persist-back.
+    const claimSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: LISTING_ID, status: 'draft' }]) }),
+    });
     vi.mocked(db.update)
+      .mockReturnValueOnce({ set: claimSet } as any)
       .mockReturnValueOnce({ set: itemUpdateSet } as any)
       .mockReturnValueOnce({ set: listingUpdateSet } as any);
     mockReverbCreateListing.mockResolvedValueOnce({
