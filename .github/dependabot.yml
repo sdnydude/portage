@@ -42,9 +42,9 @@ updates:
       # P6 (2026-08-27): typescript-eslint peers cap TS at <6.1 until TS 7.1 ships a compiler API
       - dependency-name: typescript
         versions: [">=6.1"]
-      # Track the Node 24 LTS runtime (Dockerfiles/CI), not the newest types major
+      # web stays on @types/node 25 (vitest 4 peer); ignore the next major only
       - dependency-name: "@types/node"
-        versions: [">=25"]
+        versions: [">=26"]
     groups:
       minor-and-patch:
         update-types: [minor, patch]

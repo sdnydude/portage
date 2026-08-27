@@ -43,7 +43,8 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["**/*.{jsx,tsx}"],
+    // .ts included so hook files get the react-hooks-extra rules too.
+    files: ["**/*.{js,jsx,ts,tsx}"],
     ...react.configs.recommended,
     rules: {
       ...react.configs.recommended.rules,
@@ -51,6 +52,14 @@ const eslintConfig = defineConfig([
       // above; everything else in the recommended set is enforced (P6, 08-27).
       "@eslint-react/set-state-in-effect": "off", // mirrors react-hooks/set-state-in-effect off above
       "@eslint-react/exhaustive-deps": "off", // duplicate of react-hooks/exhaustive-deps (kept)
+      // eslint-plugin-react recommended rules that @eslint-react's recommended
+      // set does not carry — re-enabled where an equivalent exists:
+      "@eslint-react/no-missing-component-display-name": "warn", // react/display-name
+      // No @eslint-react equivalent exists for react/no-unescaped-entities and
+      // react/jsx-no-duplicate-props; react/no-string-refs and react/no-deprecated
+      // are moot on React 19 (string refs removed). Documented, not silently dropped.
+      // (@eslint-react/no-leaked-conditional-rendering would cover `{count && <X/>}`
+      // but needs typed linting — a separate decision, not part of the ESLint 10 bump.)
     },
   },
   globalIgnores([
