@@ -293,19 +293,26 @@ web in-flight guard + DisclaimerSheet busy. Live-proven on the real account
 (bursts → one AddFixedPriceItem). Ship-log 138; proof page
 2026-08-26-publish-claim-race. Tests: 1060 API / 704 web.
 Deferral P6 (dependency majors) shipped 2026-08-27: Node 24 runtime
-(Dockerfiles, CI, .nvmrc, engines) + @types/node 24, TypeScript ~6.0 (TS 7
-blocked: typescript-eslint peer <6.1 until TS 7.1's compiler API), vitest 4 /
-vite 8 (constructor-style mocks must be `function`, spyOn reuses spies),
-zod 4 (`.issues`, two-arg `z.record`, `z.partialRecord` for enum-keyed
-limitOverrides, `z.guid()` = v3-permissive uuid, `z.flattenError`), pino 10 +
-pino-http 11 (`@pinojs/redact`; redaction re-proven live), eslint 10 with a
-composed plugin stack replacing eslint-config-next (`@next/eslint-plugin-next`
-+ `@eslint-react` + `react-hooks` + `jsx-a11y` forced past its eslint-9 peer +
-`import-x`; all `@eslint-react` recommended rules enforced — 72 sites fixed,
-lint 0 errors / 27 warnings = prior baseline), `npm audit` 0 high (next
-16.3.3). Dependabot ignores TS >=6.1 and @types/node >=25. Live-proven on the
-deployed branch: home, Porter stream, inventory/detail, draft payload, scan →
-review, AddFixedPriceItem. Proof page 2026-08-27-p6-dependency-majors.
+(Dockerfiles ×6, CI ×4, .nvmrc, engines) + @types/node 24 (api; web stays 25),
+TypeScript ~6.0 (TS 7 blocked: typescript-eslint peer <6.1 until TS 7.1's
+compiler API), vitest 4 / vite 8 (constructor-style mocks must be `function`,
+spyOn reuses spies), zod 4 (`.issues`, two-arg `z.record`, `z.partialRecord`
+for enum-keyed limitOverrides, `z.guid()` = v3-permissive uuid,
+`z.flattenError`), pino 10 + pino-http 11 (`@pinojs/redact`; redaction
+re-proven live), eslint 10 — `eslint` is now a ROOT devDependency so one copy
+hoists; `eslint-plugin-jsx-a11y` (peer ≤9) was installed with `--force` and
+the lockfile records it (`npm ci` replays cleanly; a future `npm install` of
+jsx-a11y needs `--force` until it ships v10 support); eslint-config-next
+replaced by a composed stack (`@next/eslint-plugin-next` + `@eslint-react`
++ `react-hooks` + `jsx-a11y` ×6 rules + `import-x`); every `@eslint-react`
+recommended rule enforced except the two that duplicate react-hooks rules —
+72 sites fixed, `withKeys()` (`apps/web/src/lib/list-keys.ts`) for
+occurrence-safe list keys, lint 0 errors / 27 warnings = prior baseline; CI
+has a plugin-load canary. `npm audit` 0 high (next 16.3.3; postcss override
+^8.5.23 — 8.5.26 does not resolve under next's exact pin). Dependabot ignores
+TS >=6.1, @types/node >=25 (api) / >=26 (web). Live-proven on the deployed
+branch: home, Porter stream, inventory/detail, draft payload, scan → review,
+AddFixedPriceItem. Proof page 2026-08-27-p6-dependency-majors.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
