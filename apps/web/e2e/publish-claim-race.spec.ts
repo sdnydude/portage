@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import fs from "node:fs";
 import path from "node:path";
 
 // Publish-claim race (2026-08-26): the terms sheet's Accept button must be a
@@ -22,7 +23,7 @@ test("double-tap on Accept & Publish sends one POST, shows Publishing…, render
   // assertion from Playwright, so answer it with the pre-minted token instead
   // of letting it log the page out. Every other request reaches the real API.
   await page.route("**/auth/session", async (route) => {
-    const state = JSON.parse(require("node:fs").readFileSync(path.join(__dirname, ".auth", "user.json"), "utf8"));
+    const state = JSON.parse(fs.readFileSync(path.join(__dirname, ".auth", "user.json"), "utf8"));
     const ls = Object.fromEntries(state.origins[0].localStorage.map((e: { name: string; value: string }) => [e.name, e.value]));
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ token: ls.portage_token, user: JSON.parse(ls.portage_user) }) });
   });
