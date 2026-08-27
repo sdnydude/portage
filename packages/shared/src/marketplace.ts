@@ -94,4 +94,9 @@ export interface MarketplaceAdapter {
   /** Optional: adapters that can read a live listing implement this for
    *  orphan-order backfill; callers must handle its absence. */
   getItemDetail?(marketplaceListingId: string): Promise<MarketplaceItemDetail>;
+  /** Optional: find a live listing by the seller SKU Portage stamped at create
+   *  time. Used by the stale publish-claim resume to adopt a listing whose
+   *  create landed but whose ItemID write was lost (crash mid-publish) instead
+   *  of creating it again. Adapters without SKU carriage omit it. */
+  findListingBySku?(sku: string): Promise<string | null>;
 }

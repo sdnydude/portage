@@ -284,6 +284,14 @@ export-token sweep, SSRF/identity regression tests, json_object no-tools
 mode, taxonomy cache hit/miss metrics, tdd-guard docs reconcile, gh 2.98 —
 plus EbayTradingError → 422 EBAY_REJECTED (prod-incident fix, deployed).
 Ship-log 137. Program remaining: P6 (dependency majors), P8 (settle pass).
+Publish claim race fixed 2026-08-26 (PR #331, c81916d): six same-key
+POST /listings from an iPhone passed the R3 resume claim (latent since 07-09)
+and double-listed on eBay. `listings.publishClaimedAt` claim on both publish
+routes (409 PUBLISH_IN_PROGRESS on in-flight loss, release only on definitive
+errors, stale-claim adopt-by-SKU via GetMyeBaySelling, stuck-claim sweep),
+web in-flight guard + DisclaimerSheet busy. Live-proven on the real account
+(bursts → one AddFixedPriceItem). Ship-log 138; proof page
+2026-08-26-publish-claim-race. Tests: 1060 API / 704 web.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.

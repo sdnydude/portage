@@ -6,7 +6,7 @@ sidebar_position: 0
 
 # Portage Ship Log
 
-Every `/ship` run, generated from the DHG Registry `ship_sessions` table plus hand-written entries. Total: 135 sessions.
+Every `/ship` run, generated from the DHG Registry `ship_sessions` table plus hand-written entries. Total: 139 sessions.
 
 | # | Feature | PR |
 |---|---------|----|
@@ -145,3 +145,7 @@ Every `/ship` run, generated from the DHG Registry `ship_sessions` table plus ha
 | 132 | [Phase 3a Porter reliability + granite switch (PR #303) and category-mismatch guard (PR #304, stacked)](ship-47cb5195) | [#303](https://github.com/sdnydude/portage/pull/303) |
 | 133 | [Wrap PR #305 — rich-vision guard fix + Porter totals nudge + docs refresh](ship-9c2d6aad) | [#305](https://github.com/sdnydude/portage/pull/305) |
 | 134 | [Deferral P4: docs & observability truth — ship-log generator revival, /about, rsync --delete, tutorials, eBay API reference](134-deferral-p4-docs-truth) | [#319](https://github.com/sdnydude/portage/pull/319) |
+| 135 | [Deferral P5 — log program spec (keep-all retention, redaction, analysis service, B0-B9)](ship-2b1d29bd) | no PR recorded |
+| 136 | [Deferral P5 build — Loki 3.7.6 + Alloy keep-all foundation, redaction, alert revival, logs-chat](ship-eabb7b57) | no PR recorded |
+| 137 | [Deferral P7 — paper-cuts batch (14 items) + EBAY_REJECTED error surfacing](ship-4a295888) | no PR recorded |
+| 138 | [Publish claim race — publishClaimedAt claim, selective release, stale-claim SKU adopt, /:id/publish claim, stuck-claim sweep, web in-flight guard](ship-8ecd3f27) | [#331](https://github.com/sdnydude/portage/pull/331) |

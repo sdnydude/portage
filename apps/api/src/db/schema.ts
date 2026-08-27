@@ -139,6 +139,12 @@ export const listings = pgTable('listings', {
   // index below serializes concurrent submits that share a key so a non-idempotent
   // AddFixedPriceItem can't double-list. Null for non-publish drafts / legacy rows.
   idempotencyKey: varchar('idempotency_key', { length: 255 }),
+  // In-flight publish claim (2026-08-26 double-publish incident): stamped by the
+  // request that is about to call the marketplace create, cleared on a
+  // definitive outcome. A contender may only claim a row whose stamp is null or
+  // stale (>5 min); the unique index above only serializes the INSERT, not the
+  // window between insert and the ItemID write.
+  publishClaimedAt: timestamp('publish_claimed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   publishedAt: timestamp('published_at'),

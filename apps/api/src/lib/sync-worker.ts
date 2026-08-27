@@ -1,4 +1,4 @@
-import { and, eq, lte, asc, inArray, isNotNull } from 'drizzle-orm';
+import { and, eq, lt, lte, asc, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { syncJobs, items, listings, marketplaceSyncLog, marketplaceAccounts, exportTokens } from '../db/schema.js';
 import { createLogger } from './logger.js';
@@ -83,6 +83,58 @@ export async function runRetentionSweep(): Promise<void> {
 
 let workerTimer: NodeJS.Timeout | null = null;
 let retentionTimer: NodeJS.Timeout | null = null;
+
+// ————— Stuck publish-claim sweep (2026-08-26 double-publish incident) —————
+// A publisher that died between the marketplace create 200 and the ItemID
+// write (container rebuild mid-publish) leaves a draft with a stale claim and
+// no ItemID. Nothing else touches such rows (the status sweep only reads
+// active+ItemID). Resolve them proactively: adopt the live listing found by
+// SKU, otherwise release the claim so the next publish can proceed. Adapters
+// without SKU carriage (Reverb) can only be released, warn-logged.
+const STUCK_CLAIM_SWEEP_MS = 5 * 60_000;
+const STUCK_CLAIM_STALE_MS = 5 * 60_000;
+let stuckClaimTimer: NodeJS.Timeout | null = null;
+
+export async function runStuckClaimSweep(): Promise<number> {
+  const staleBefore = new Date(Date.now() - STUCK_CLAIM_STALE_MS);
+  // listings.ebaySku is written only WITH the ItemID — for a stuck row it is
+  // always null. The SKU the crashed create carried is items.ebaySku (minted
+  // by ensureItemEbaySku before the marketplace call), so join for it.
+  const rows = await db.select({ listing: listings, itemSku: items.ebaySku }).from(listings)
+    .innerJoin(items, eq(items.id, listings.itemId))
+    .where(and(
+      eq(listings.status, 'draft'),
+      isNull(listings.marketplaceListingId),
+      lt(listings.publishClaimedAt, staleBefore),
+    ))
+    .limit(50);
+  let resolved = 0;
+  for (const { listing: row, itemSku } of rows as Array<{ listing: typeof listings.$inferSelect; itemSku: string | null }>) {
+    try {
+      let found: string | null = null;
+      if (row.marketplace === 'ebay' && itemSku) {
+        found = await new EbayAdapter(row.userId).findListingBySku(itemSku);
+      } else {
+        logger.warn({ listingId: row.id, marketplace: row.marketplace }, 'stuck publish claim: no SKU recheck available — releasing claim');
+      }
+      if (found) {
+        await db.update(listings)
+          .set({ marketplaceListingId: found, status: 'active', publishedAt: new Date(), publishClaimedAt: null, updatedAt: new Date() })
+          .where(eq(listings.id, row.id));
+        logger.warn({ listingId: row.id, marketplaceListingId: found, sku: itemSku }, 'stuck publish claim: adopted live listing found by SKU');
+      } else {
+        await db.update(listings)
+          .set({ publishClaimedAt: null, updatedAt: new Date() })
+          .where(eq(listings.id, row.id));
+      }
+      resolved++;
+    } catch (err) {
+      // Lookup failed (token/outage): leave the claim — ambiguous ≠ absent.
+      logger.warn({ listingId: row.id, error: (err as Error).message }, 'stuck publish claim: recheck failed, claim kept');
+    }
+  }
+  return resolved;
+}
 
 // ————— Status reconciliation sweep (b6536cc1, ship-program Phase 2) —————
 // Externally-ended/sold listings sat stale-active locally (08-05 incident:
@@ -302,6 +354,17 @@ export function startSyncWorker(intervalMs = 5000, retentionIntervalMs = RETENTI
     });
   }, ORDER_SYNC_MS);
   orderSyncTimer.unref();
+  // Stuck publish claims: at boot (a rebuild is exactly when one appears — runs LAST so
+  // the boot select order of the other sweeps is unchanged), then periodically.
+  void runStuckClaimSweep().catch((err) => {
+    logger.warn({ error: (err as Error).message }, 'stuck claim sweep failed');
+  });
+  stuckClaimTimer = setInterval(() => {
+    void runStuckClaimSweep().catch((err) => {
+      logger.warn({ error: (err as Error).message }, 'stuck claim sweep failed');
+    });
+  }, STUCK_CLAIM_SWEEP_MS);
+  stuckClaimTimer.unref();
   logger.info({ intervalMs }, 'sync worker started');
 }
 
@@ -313,6 +376,10 @@ export function stopSyncWorker(): void {
   if (retentionTimer) {
     clearInterval(retentionTimer);
     retentionTimer = null;
+  }
+  if (stuckClaimTimer) {
+    clearInterval(stuckClaimTimer);
+    stuckClaimTimer = null;
   }
   if (statusScanTimer) {
     clearInterval(statusScanTimer);

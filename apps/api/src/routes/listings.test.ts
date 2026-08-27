@@ -3,7 +3,8 @@ import { createApp } from '../app.js';
 import { db } from '../db/index.js';
 import { createTestToken } from '../test/helpers.js';
 import { AppError } from '../middleware/error.js';
-const { mockCreateListing, mockPromoteListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId, mockGetEbayItemVerification, mockDeleteListing, mockWithdrawOffer } = vi.hoisted(() => ({
+import { PgDialect } from 'drizzle-orm/pg-core';
+const { mockFindListingBySku, mockCreateListing, mockPromoteListing, mockUpdateListing, mockBulkPublishOffers, mockResolveEbayCategoryId, mockGetEbayItemVerification, mockDeleteListing, mockWithdrawOffer } = vi.hoisted(() => ({
   mockCreateListing: vi.fn(),
   mockPromoteListing: vi.fn(),
   mockUpdateListing: vi.fn(),
@@ -12,6 +13,7 @@ const { mockCreateListing, mockPromoteListing, mockUpdateListing, mockBulkPublis
   mockGetEbayItemVerification: vi.fn(),
   mockDeleteListing: vi.fn(),
   mockWithdrawOffer: vi.fn(),
+  mockFindListingBySku: vi.fn(),
 }));
 
 vi.mock('../db/index.js', () => ({
@@ -27,6 +29,7 @@ vi.mock('../marketplace/ebay-adapter.js', () => ({
     getEbayItemVerification: mockGetEbayItemVerification,
     deleteListing: mockDeleteListing,
     withdrawOffer: mockWithdrawOffer,
+    findListingBySku: mockFindListingBySku,
   })),
   resolveEbayCategoryId: mockResolveEbayCategoryId,
 }));
@@ -238,6 +241,23 @@ describe('POST /listings', () => {
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'client-key-123' }));
   });
 
+  it('stamps publishClaimedAt on the insert-first row of a live publish (original publisher holds the claim)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin
+    mockSelectOnce([]); // footer lookup
+    const insertValues = mockInsertCapture();
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+
+    await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'client-key-123' });
+
+    // Without this, a same-key contender arriving during the ~2.5s eBay call
+    // finds a null stamp and claims the row the inserter is already publishing.
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ publishClaimedAt: expect.any(Date) }));
+  });
+
   it('replays the existing listing (no eBay call) when the idempotencyKey collides (R3)', async () => {
     mockSelectOnce([MOCK_ITEM]);
     // insert-first hits the partial unique index — Postgres raises 23505.
@@ -350,6 +370,189 @@ describe('POST /listings', () => {
     expect(res.status).toBe(201);
     expect(res.body.id).toBe('listing-existing');
     expect(mockCreateListing).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 PUBLISH_IN_PROGRESS when the lost claim is still held by an in-flight publisher', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value'), { code: '23505' })),
+      }),
+    } as any);
+    mockSelectOnce([{ id: 'listing-existing', status: 'draft', marketplaceListingId: null, publishClaimedAt: new Date() }]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    // Re-read: the winner has not written the ItemID yet — its claim is fresh.
+    mockSelectOnce([{ id: 'listing-existing', status: 'draft', marketplaceListingId: null, publishClaimedAt: new Date() }]);
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    // A 201 here would tell the client "created" for a row still mid-publish;
+    // the truthful answer is "in progress — wait for the winner".
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PUBLISH_IN_PROGRESS');
+    expect(mockCreateListing).not.toHaveBeenCalled();
+  });
+
+  it('clears publishClaimedAt when the ItemID is written (definitive outcome releases the claim)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin
+    mockSelectOnce([]); // footer lookup
+    mockInsertCapture();
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active', marketplaceListingId: '3001' }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+
+    await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'client-key-123' });
+
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ marketplaceListingId: '3001', publishClaimedAt: null }));
+  });
+
+  it('releases the claim when the adapter fails definitively (typed AppError before/at the marketplace ack)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin
+    mockSelectOnce([]); // footer lookup
+    mockInsertCapture();
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockRejectedValue(new AppError(422, 'EBAY_API_ERROR', 'A valid eBay leaf category is required.'));
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'client-key-123' });
+
+    // eBay said no (ack Failure / pre-network gate) — nothing was created, so the
+    // aspect-fill retry must be able to claim the row again immediately.
+    expect(res.status).toBe(422);
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ publishClaimedAt: null }));
+  });
+
+  it('keeps the claim on an ambiguous network failure (the create may have landed)', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    mockSelectOnce([]); // applyShipFromOrigin
+    mockSelectOnce([]); // footer lookup
+    mockInsertCapture();
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockRejectedValue(new TypeError('fetch failed'));
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'client-key-123' });
+
+    // Request sent, response lost: an immediate same-key retry must NOT be able
+    // to re-create; only the stale-claim path (>5 min, SKU recheck) may resume.
+    expect(res.status).toBe(500);
+    expect(updateSet).not.toHaveBeenCalledWith(expect.objectContaining({ publishClaimedAt: null }));
+  });
+
+  it('adopts the live listing found by SKU when taking over a STALE claim instead of creating again', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value'), { code: '23505' })),
+      }),
+    } as any);
+    // Crashed publisher: claimed 10 min ago, ItemID never written.
+    mockSelectOnce([{ id: 'listing-existing', status: 'draft', marketplaceListingId: null, publishClaimedAt: new Date(Date.now() - 10 * 60_000) }]);
+    mockSelectOnce([]); // applyShipFromOrigin
+    mockSelectOnce([]); // footer lookup
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: 'listing-existing', status: 'active', marketplaceListingId: '3001' }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockFindListingBySku.mockResolvedValue('3001');
+
+    const res = await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    // The create landed before the crash — a blind AddFixedPriceItem here is
+    // the same double-list, just five minutes later.
+    expect(res.status).toBe(201);
+    expect(mockFindListingBySku).toHaveBeenCalledWith('PRT-000001');
+    expect(mockCreateListing).not.toHaveBeenCalled();
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ marketplaceListingId: '3001', status: 'active', publishClaimedAt: null }));
+  });
+
+  it('stamps publishClaimedAt on the resume claim so a concurrent burst cannot all pass it', async () => {
+    // Live 2026-08-26 15:56Z: six concurrent POST /listings (iPhone) shared one
+    // key; the claim UPDATE only refreshed price, so its WHERE stayed true for
+    // every request until the winner wrote the ItemID ~2.5s later — four
+    // AddFixedPriceItem calls, two live listings (307147990898 orphaned).
+    mockSelectOnce([MOCK_ITEM]);
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value'), { code: '23505' })),
+      }),
+    } as any);
+    mockSelectOnce([{ id: 'listing-existing', status: 'draft', marketplaceListingId: null, publishClaimedAt: null }]);
+    mockSelectOnce([]); // applyShipFromOrigin
+    mockSelectOnce([]); // footer lookup
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: 'listing-existing', status: 'active', marketplaceListingId: '3001' }]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+
+    await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    // The claim must CHANGE the row so the next contender's conditional UPDATE
+    // (claim IS NULL or stale) matches nothing — a refresh-only SET is not a claim.
+    expect(updateSet).toHaveBeenNthCalledWith(1, expect.objectContaining({ publishClaimedAt: expect.any(Date) }));
+  });
+
+  it('resume claim WHERE only matches an unclaimed or stale (>5 min) claim', async () => {
+    mockSelectOnce([MOCK_ITEM]);
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value'), { code: '23505' })),
+      }),
+    } as any);
+    mockSelectOnce([{ id: 'listing-existing', status: 'draft', marketplaceListingId: null, publishClaimedAt: null }]);
+    mockSelectOnce([]); // applyShipFromOrigin
+    mockSelectOnce([]); // footer lookup
+    const whereSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ id: 'listing-existing', status: 'active', marketplaceListingId: '3001' }]),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: vi.fn().mockReturnValue({ where: whereSpy }) } as any);
+    mockCreateListing.mockResolvedValue({ marketplaceListingId: '3001', status: 'active' });
+
+    await request(app)
+      .post('/listings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ itemId: ITEM_ID, marketplace: 'ebay', price: 199, publishMode: 'live', idempotencyKey: 'dup-key' });
+
+    // Render the claim predicate: a fresh stamp from an in-flight winner must
+    // exclude the row; only a null or >5-min-old stamp is claimable.
+    const rendered = new PgDialect().sqlToQuery(whereSpy.mock.calls[0][0]).sql;
+    expect(rendered).toMatch(/"publish_claimed_at" is null or .*"publish_claimed_at" < /);
   });
 
   it('returns the existing row untouched on a draft-mode collision (pure dedup, no resume)', async () => {
@@ -983,6 +1186,78 @@ describe('POST /listings/:id/publish — Best Offer pre-flight (BO-3)', () => {
 });
 
 describe('POST /listings/:id/publish', () => {
+  it('adopts a live listing found by SKU when re-publishing a draft whose claim went stale', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD', ebaySku: 'portage-sku-1',
+      marketplaceSpecificFields: {}, publishClaimedAt: new Date(Date.now() - 10 * 60_000),
+    }]);
+    mockSelectOnce([{ ...MOCK_ITEM, ebaySku: 'portage-sku-1' }]);
+    mockSelectOnce([]); // policy self-heal profile lookup
+    mockSelectOnce([]); // ship-from origin
+    mockSelectOnce([]); // footer
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+    mockFindListingBySku.mockResolvedValue('307147990898');
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(mockCreateListing).not.toHaveBeenCalled();
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ marketplaceListingId: '307147990898', publishClaimedAt: null }));
+  });
+
+  it('releases the claim when a pre-flight gate throws AFTER the claim (BO-3 conflict on /:id/publish)', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 100, currency: 'USD', ebaySku: 'portage-sku-1',
+      // Both thresholds above the price → BO-3 rejects before any adapter call.
+      marketplaceSpecificFields: { bestOfferEnabled: true, minimumBestOfferPrice: 150, bestOfferAutoAcceptPrice: 160 },
+    }]);
+    mockSelectOnce([MOCK_ITEM]);
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'draft' }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    // Without the release the seller fixes the thresholds and gets 409 for 5 min.
+    expect(res.status).toBe(422);
+    expect(mockCreateListing).not.toHaveBeenCalled();
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ publishClaimedAt: null }));
+  });
+
+  it('answers 409 PUBLISH_IN_PROGRESS when another publish already holds the claim on this draft', async () => {
+    mockSelectOnce([{
+      id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',
+      itemId: ITEM_ID, price: 199, currency: 'USD', ebaySku: 'portage-sku-1',
+      marketplaceSpecificFields: {}, publishClaimedAt: new Date(),
+    }]);
+    // The conditional claim UPDATE matches nothing: fresh stamp from the other call.
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .post('/listings/listing-1/publish')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    // Two taps on "Publish" for a saved draft raced into two createListing
+    // calls — this route had no claim at all (advisor finding, 2026-08-26).
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PUBLISH_IN_PROGRESS');
+    expect(mockCreateListing).not.toHaveBeenCalled();
+  });
+
   it('applies stored ebayAdRate ad intent when a draft goes live (fire-and-warn)', async () => {
     mockSelectOnce([{
       id: 'listing-1', userId: 'test-user-id', status: 'draft', marketplace: 'ebay',

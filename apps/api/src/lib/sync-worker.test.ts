@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { enqueueItemSync, processDueSyncJobs, startSyncWorker, stopSyncWorker, recoverStaleRunningJobs, runRetentionSweep, runStatusSweepScan, processStatusCheckQueue, runOrderSyncCycle } from './sync-worker.js';
+import { enqueueItemSync, processDueSyncJobs, startSyncWorker, stopSyncWorker, recoverStaleRunningJobs, runRetentionSweep, runStatusSweepScan, runStuckClaimSweep, processStatusCheckQueue, runOrderSyncCycle } from './sync-worker.js';
 
 vi.mock('../db/index.js', () => ({
   db: {
@@ -11,14 +11,14 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
-const { mockSyncItemListingRow, mockLogSyncAttempt, mockEbayGetListingStatus, mockReverbGetListingStatus } = vi.hoisted(() => ({
+const { mockSyncItemListingRow, mockLogSyncAttempt, mockEbayGetListingStatus, mockReverbGetListingStatus, mockEbayFindListingBySku } = vi.hoisted(() => ({
   mockSyncItemListingRow: vi.fn(), mockLogSyncAttempt: vi.fn(),
-  mockEbayGetListingStatus: vi.fn(), mockReverbGetListingStatus: vi.fn(),
+  mockEbayGetListingStatus: vi.fn(), mockReverbGetListingStatus: vi.fn(), mockEbayFindListingBySku: vi.fn(),
 }));
 vi.mock('./marketplace-sync.js', () => ({ syncItemListingRow: mockSyncItemListingRow }));
 vi.mock('./sync-log.js', () => ({ logSyncAttempt: mockLogSyncAttempt }));
 vi.mock('../marketplace/ebay-adapter.js', () => ({
-  EbayAdapter: class { getListingStatus = mockEbayGetListingStatus; },
+  EbayAdapter: class { getListingStatus = mockEbayGetListingStatus; findListingBySku = mockEbayFindListingBySku; },
 }));
 vi.mock('../marketplace/reverb-adapter.js', () => ({
   ReverbAdapter: class { getListingStatus = mockReverbGetListingStatus; },
@@ -422,23 +422,39 @@ describe('startSyncWorker', () => {
       // Each tick starts with the due query — count db.select calls per tick.
       // Boot now also runs one status-sweep scan + one order-sync accounts
       // query (Phase 2, b6536cc1 + 98f9f383).
-      mockSelectChainOnce([]); // boot status-sweep scan
-      vi.mocked(db.select).mockReturnValueOnce({
-        from: vi.fn().mockResolvedValue([]),
-      } as never); // boot order-sync accounts query
-      mockSelectChainOnce([]); // tick 1 due query (empty — tick ends)
-      mockSelectChainOnce([]); // tick 2 due query
+      // Every select (boot sweeps + each tick's due query) gets an empty chain;
+      // per-call Once queues leak across tests via clearAllMocks, so use a
+      // persistent default and mockReset it in finally.
+      const whereChain = {
+        limit: vi.fn().mockResolvedValue([]),
+        orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
+      };
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue(whereChain),
+          innerJoin: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue(whereChain) }),
+        }),
+      } as any);
+
+      // The tick's stale-running recovery UPDATE runs before its due query —
+      // mock it here (clearAllMocks keeps leaked implementations; don't rely on them).
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) }),
+      } as any);
 
       startSyncWorker(1000);
       startSyncWorker(1000); // second start must be a no-op
 
       await vi.advanceTimersByTimeAsync(1000);
-      expect(db.select).toHaveBeenCalledTimes(3); // boot scan + accounts + one tick due query — not two timers
-
+      const afterTick1 = vi.mocked(db.select).mock.calls.length;
       await vi.advanceTimersByTimeAsync(1000);
-      expect(db.select).toHaveBeenCalledTimes(4);
+      // One worker timer → exactly one due query per interval; a doubled timer
+      // would add two. Boot-time selects vary per sweep, so assert the delta.
+      expect(vi.mocked(db.select).mock.calls.length - afterTick1).toBe(1);
     } finally {
       stopSyncWorker();
+      vi.mocked(db.select).mockReset();
+      vi.mocked(db.update).mockReset();
       vi.useRealTimers();
     }
   });
@@ -590,6 +606,40 @@ describe('status reconciliation sweep (b6536cc1)', () => {
       stopSyncWorker();
       vi.useRealTimers();
     }
+  });
+});
+
+describe('stuck publish-claim sweep (2026-08-26 double-publish incident)', () => {
+  it('adopts the live eBay listing found by SKU for a draft whose claim went stale mid-publish', async () => {
+    // Publisher died after AddFixedPriceItem 200, before the ItemID write.
+    // Row shape = the sweep's join: listings.ebaySku is NULL on a stuck row
+    // (it is written only with the ItemID); the SKU comes from items.ebaySku.
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        innerJoin: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{
+              listing: {
+                id: 'listing-stuck', userId: 'user-1', itemId: 'item-1', marketplace: 'ebay',
+                marketplaceListingId: null, status: 'draft', ebaySku: null,
+                publishClaimedAt: new Date(Date.now() - 10 * 60_000),
+              },
+              itemSku: 'PRT-000146',
+            }]),
+          }),
+        }),
+      }),
+    } as any);
+    mockEbayFindListingBySku.mockResolvedValueOnce('307147990898');
+    const setSpy = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+
+    await runStuckClaimSweep();
+
+    expect(mockEbayFindListingBySku).toHaveBeenCalledWith('PRT-000146');
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({
+      marketplaceListingId: '307147990898', status: 'active', publishClaimedAt: null,
+    }));
   });
 });
 

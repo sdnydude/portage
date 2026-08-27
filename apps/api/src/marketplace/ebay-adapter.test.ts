@@ -1535,6 +1535,23 @@ describe('EbayAdapter.getOrders — line-item title for orphan-order backfill', 
   });
 });
 
+describe('EbayAdapter.findListingBySku — stale publish-claim recheck', () => {
+  const page = (items: Array<[string, string]>, total: number) =>
+    `<?xml version="1.0"?><GetMyeBaySellingResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack>` +
+    `<ActiveList><PaginationResult><TotalNumberOfPages>${total}</TotalNumberOfPages></PaginationResult><ItemArray>` +
+    items.map(([id, sku]) => `<Item><ItemID>${id}</ItemID><SKU>${sku}</SKU></Item>`).join('') +
+    `</ItemArray></ActiveList></GetMyeBaySellingResponse>`;
+
+  it('returns the ItemID whose SKU matches, scanning past the first page', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({ ok: true, text: async () => page([['1', 'PRT-000001']], 2) })
+      .mockResolvedValueOnce({ ok: true, text: async () => page([['307147990898', 'PRT-000146']], 2) }));
+    const adapter = new EbayAdapter('user-1');
+    await expect(adapter.findListingBySku('PRT-000146')).resolves.toBe('307147990898');
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('EbayAdapter.getOrders — sold date from eBay creationDate', () => {
   it('maps Order.creationDate onto soldAt (not the sync time)', async () => {
     fetchMock.mockImplementation(async (url: unknown) => {

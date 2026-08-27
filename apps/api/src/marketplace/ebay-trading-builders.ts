@@ -325,6 +325,17 @@ export function buildGetItemXml(itemId: string, token: string): string {
   );
 }
 
+export function buildGetMyeBaySellingXml(pageNumber: number, token: string): string {
+  return (
+    `${XML_DECL}\n<GetMyeBaySellingRequest xmlns="${NS}">` +
+    `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +
+    `<ActiveList><Include>true</Include><Pagination><EntriesPerPage>200</EntriesPerPage>` +
+    `<PageNumber>${pageNumber}</PageNumber></Pagination></ActiveList>` +
+    '<DetailLevel>ReturnAll</DetailLevel>' +
+    '</GetMyeBaySellingRequest>'
+  );
+}
+
 export function buildEndFixedPriceItemXml(itemId: string, token: string): string {
   return (
     `${XML_DECL}\n<EndFixedPriceItemRequest xmlns="${NS}">` +
