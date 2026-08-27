@@ -772,22 +772,22 @@ itemsRouter.delete('/:id', async (req, res, next) => {
 // ─── Bulk Endpoints ───────────────────────────────────────────────────────────
 
 const bulkIdsSchema = z.object({
-  ids: z.array(z.string().uuid()).min(1).max(50),
+  ids: z.array(z.guid()).min(1).max(50),
 });
 
 const bulkExportIdsSchema = z.object({
-  ids: z.array(z.string().uuid()).min(1).max(100),
+  ids: z.array(z.guid()).min(1).max(100),
 });
 
 const validBulkConditions = ['new', 'like_new', 'good', 'fair', 'poor'] as const;
 
 const bulkUpdateSchema = z.object({
-  ids: z.array(z.string().uuid()).min(1).max(50),
+  ids: z.array(z.guid()).min(1).max(50),
   updates: z.object({
     category: z.string().max(255).transform(normalizeCategory).optional(),
     condition: z.enum(validBulkConditions).optional(),
   }).refine((u) => u.category !== undefined || u.condition !== undefined, {
-    message: 'At least one update field (category or condition) must be provided',
+    error: 'At least one update field (category or condition) must be provided',
   }),
 });
 
@@ -867,7 +867,7 @@ itemsRouter.post('/bulk/export', async (req, res, next) => {
 });
 
 const preparePhotoExportSchema = z.object({
-  ids: z.array(z.string().uuid()).min(1).max(50),
+  ids: z.array(z.guid()).min(1).max(50),
 });
 
 itemsRouter.post('/photos/export/prepare', async (req, res, next) => {

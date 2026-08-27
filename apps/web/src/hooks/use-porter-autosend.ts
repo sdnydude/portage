@@ -9,14 +9,14 @@ import { useEffect, useRef } from "react";
  * the client-page Suspense requirement.
  */
 export function usePorterAutosend(send: (text: string) => void): void {
-  const fired = useRef(false);
+  const firedRef = useRef(false);
 
   useEffect(() => {
-    if (fired.current) return;
+    if (firedRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const q = params.get("q")?.trim();
     if (!q) return;
-    fired.current = true;
+    firedRef.current = true;
     params.delete("q");
     const rest = params.toString();
     window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));

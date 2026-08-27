@@ -80,7 +80,7 @@ imagesRouter.post('/', upload.single('image'), async (req, res, next) => {
 });
 
 const enhanceSchema = z.object({
-  imageUrl: z.string().url(),
+  imageUrl: z.url(),
 });
 
 imagesRouter.post('/enhance', async (req, res, next) => {
@@ -131,7 +131,7 @@ imagesRouter.post('/enhance', async (req, res, next) => {
 });
 
 const batchEnhanceSchema = z.object({
-  imageUrls: z.array(z.string().url()).min(1).max(10),
+  imageUrls: z.array(z.url()).min(1).max(10),
 });
 
 type BatchEnhanceResult =
@@ -211,7 +211,7 @@ imagesRouter.post('/batch-enhance', async (req, res, next) => {
 });
 
 const removeBgSchema = z.object({
-  imageUrl: z.string().url(),
+  imageUrl: z.url(),
 });
 
 imagesRouter.post('/remove-bg', async (req, res, next) => {
@@ -335,7 +335,7 @@ imagesRouter.post('/remove-bg', async (req, res, next) => {
 });
 
 const exposureSchema = z.object({
-  imageUrl: z.string().url(),
+  imageUrl: z.url(),
   ev: z.number().min(-2).max(2),
 });
 
@@ -385,7 +385,7 @@ imagesRouter.post('/exposure', async (req, res, next) => {
 });
 
 const rotateSchema = z.object({
-  imageUrl: z.string().url(),
+  imageUrl: z.url(),
   degrees: z.union([z.literal(90), z.literal(180), z.literal(270)]),
 });
 
@@ -434,7 +434,7 @@ imagesRouter.post('/rotate', async (req, res, next) => {
 });
 
 const cropSchema = z.object({
-  imageUrl: z.string().url(),
+  imageUrl: z.url(),
   crop: z.object({
     x: z.number().min(0),
     y: z.number().min(0),

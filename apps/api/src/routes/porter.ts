@@ -222,7 +222,7 @@ async function runToolCall(userId: string, name: string, input: Record<string, u
 
 const messageSchema = z.object({
   message: z.string().min(1).max(4000),
-  conversationId: z.string().uuid().nullish(),
+  conversationId: z.guid().nullish(),
 });
 
 type StoredMessage = { role: string; content?: string; blocks?: Array<{ type: string; text?: string }> };

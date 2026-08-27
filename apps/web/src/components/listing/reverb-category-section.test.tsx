@@ -7,6 +7,25 @@ vi.mock("@/lib/api", () => ({ api: h.apiMock, ApiError: class extends Error {} }
 import { ReverbCategorySection } from "./reverb-category-section";
 
 describe("ReverbCategorySection", () => {
+  it("renders two cascade levels that share a label without a duplicate-key warning", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (path.startsWith("/marketplace/reverb/subcategories")) {
+        return { subcategories: [{ uuid: "c1", fullName: "Effects and Pedals > Fuzz", name: "Fuzz", rootUuid: "root-fx", listable: true }] };
+      }
+      return {};
+    });
+    render(<ReverbCategorySection value={null} onChange={vi.fn()} token="t" />);
+    fireEvent.change(await screen.findByLabelText(/product type/i), { target: { value: "root-fx" } });
+    await waitFor(() => expect(screen.getAllByRole("combobox").length).toBeGreaterThan(1));
+    const dupKey = errorSpy.mock.calls.some((c) => String(c[0]).includes("same key"));
+    errorSpy.mockRestore();
+    expect(dupKey).toBe(false);
+  });
+
   it("loads the Product Type roots into the first cascade level", async () => {
     h.apiMock.mockImplementation(async (path: string) => {
       if (path === "/marketplace/reverb/product-types") {

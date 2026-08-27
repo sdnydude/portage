@@ -246,13 +246,18 @@ function InlineInput({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function FormatBold({ text }: { text: string }) {
+export function FormatBold({ text }: { text: string }) {
   const parts = text.split(/(\*\*.+?\*\*)/g);
+  // Key bold runs by their char offset in `text` (content-derived; bold text can repeat).
+  const offsets = parts.reduce<number[]>((acc, _part, i) => {
+    acc.push(i === 0 ? 0 : acc[i - 1] + parts[i - 1].length);
+    return acc;
+  }, []);
   return (
     <>
       {parts.map((part, i) => {
         const bold = part.match(/^\*\*(.+)\*\*$/);
-        return bold ? <strong key={i}>{bold[1]}</strong> : part;
+        return bold ? <strong key={offsets[i]}>{bold[1]}</strong> : part;
       })}
     </>
   );

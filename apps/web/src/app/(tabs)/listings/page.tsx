@@ -53,7 +53,7 @@ function ListingCard({ listing, isSelecting, isSelected, onToggle, onOpen, isAct
           {listing.itemTitle ?? "Untitled item"}
         </div>
         <div className="text-sm text-text-secondary">
-          ${listing.price.toFixed(2)} {listing.currency}
+          {`$${listing.price.toFixed(2)} ${listing.currency}`}
         </div>
         <div className="text-xs text-text-secondary mt-0.5">
           {listing.publishedAt

@@ -32,7 +32,7 @@ export function isPublicHttpsUrl(u: string): boolean {
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.coerce.number().default(8016),
-  DATABASE_URL: z.string().url(),
+  DATABASE_URL: z.url(),
   JWT_SECRET: z.string().min(32),
   ENCRYPTION_KEY: z.string().min(64),
   ANTHROPIC_API_KEY: z.string().optional(),
@@ -77,7 +77,7 @@ export const envSchema = z.object({
   EBAY_DELETION_VERIFICATION_TOKEN: z.string().regex(/^[A-Za-z0-9_-]{32,80}$/, 'must be 32-80 chars of [A-Za-z0-9_-] (eBay verification-token rule)').optional(),
   // eBay guide: "should use the 'https' protocol, and it should not contain an
   // internal IP address or 'localhost'". Public hostname only.
-  EBAY_DELETION_ENDPOINT_URL: z.string().url().refine(isPublicHttpsUrl,
+  EBAY_DELETION_ENDPOINT_URL: z.url().refine(isPublicHttpsUrl,
     'must be a public https URL (no localhost / internal IP) — eBay endpoint rule').optional(),
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
@@ -123,7 +123,7 @@ export const envSchema = z.object({
       validateCfAccessAud(value.CF_ACCESS_AUD, value.NODE_ENV);
     } catch (err) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['CF_ACCESS_AUD'],
         message: (err as Error).message,
       });
@@ -133,7 +133,7 @@ export const envSchema = z.object({
   // single failed boot names the whole gap (see prod-env-guard.ts).
   for (const key of missingProdEnv(value, value.NODE_ENV)) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       path: [key],
       message: `${key} is required in production (boot guard). Check Doppler and resync the env file.`,
     });
@@ -151,7 +151,7 @@ export function loadEnv(): Env {
   const result = envSchema.safeParse(process.env);
   if (!result.success) {
     console.error('Invalid environment variables:');
-    console.error(result.error.flatten().fieldErrors);
+    console.error(z.flattenError(result.error).fieldErrors);
     process.exit(1);
   }
   _env = result.data as Env;

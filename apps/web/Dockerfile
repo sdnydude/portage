@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/
@@ -13,7 +13,7 @@ ARG NEXT_PUBLIC_API_URL=/backend
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build -w packages/shared && npm run build -w apps/web
 
-FROM node:20-slim
+FROM node:24-slim
 WORKDIR /app
 ENV NODE_ENV=production
 ARG GIT_SHA=unknown

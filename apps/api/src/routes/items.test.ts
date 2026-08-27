@@ -20,8 +20,8 @@ const { mockUpdateListing, mockGetTrafficReport, mockReverbUpdateListing } = vi.
   mockUpdateListing: vi.fn(), mockGetTrafficReport: vi.fn(), mockReverbUpdateListing: vi.fn(),
 }));
 vi.mock('../marketplace/ebay-adapter.js', () => {
-  const EbayAdapter = vi.fn(() => ({ updateListing: mockUpdateListing, getTrafficReport: mockGetTrafficReport }));
-  const statics = EbayAdapter as unknown as Record<string, ReturnType<typeof vi.fn>>;
+  const EbayAdapter = vi.fn(function () { return ({ updateListing: mockUpdateListing, getTrafficReport: mockGetTrafficReport }); });
+  const statics = EbayAdapter as unknown as Record<string, ReturnType<typeof vi.fn<(...args: any[]) => any>>>;
   statics.searchComps = vi.fn();
   statics.getCategorySuggestion = vi.fn();
   statics.getRequiredAspects = vi.fn();
@@ -43,7 +43,7 @@ vi.mock('../marketplace/ebay-adapter.js', () => {
   return { EbayAdapter, resolveEbayCategoryId };
 });
 vi.mock('../marketplace/reverb-adapter.js', () => ({
-  ReverbAdapter: vi.fn(() => ({ updateListing: mockReverbUpdateListing })),
+  ReverbAdapter: vi.fn(function () { return ({ updateListing: mockReverbUpdateListing }); }),
 }));
 
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
@@ -1188,6 +1188,15 @@ describe('POST /items/photos/export/prepare', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .send({ ids: ['not-a-uuid'] });
     expect(res.status).toBe(400);
+  });
+
+  it('accepts a non-RFC-4122 hex id — z.guid() keeps v3 uuid() permissiveness for legacy rows', async () => {
+    mockSelectWhere([]);
+    const res = await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: ['10000000-0000-0000-0000-0000000000a1'] });
+    expect(res.status).not.toBe(400);
   });
 
   it('returns 403 when item does not belong to the user', async () => {

@@ -21,7 +21,7 @@ vi.mock('../db/index.js', () => ({
 }));
 
 vi.mock('../marketplace/ebay-adapter.js', () => ({
-  EbayAdapter: vi.fn(() => ({
+  EbayAdapter: vi.fn(function () { return ({
     createListing: mockCreateListing,
     promoteListing: mockPromoteListing,
     updateListing: mockUpdateListing,
@@ -30,7 +30,7 @@ vi.mock('../marketplace/ebay-adapter.js', () => ({
     deleteListing: mockDeleteListing,
     withdrawOffer: mockWithdrawOffer,
     findListingBySku: mockFindListingBySku,
-  })),
+  }); }),
   resolveEbayCategoryId: mockResolveEbayCategoryId,
 }));
 

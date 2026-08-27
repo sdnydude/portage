@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { envSchema } from './env.js';
 
 const baseEnv = {
@@ -32,7 +33,7 @@ describe('envSchema', () => {
     const result = envSchema.safeParse({ ...baseEnv, NODE_ENV: 'production' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(JSON.stringify(result.error.flatten().fieldErrors)).toContain('CF_ACCESS_AUD');
+      expect(JSON.stringify(z.flattenError(result.error).fieldErrors)).toContain('CF_ACCESS_AUD');
     }
   });
 
@@ -40,7 +41,7 @@ describe('envSchema', () => {
     const result = envSchema.safeParse({ ...baseEnv, NODE_ENV: 'production', CF_ACCESS_AUD: 'a'.repeat(64) });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(JSON.stringify(result.error.flatten().fieldErrors)).toContain('CF_ACCESS_AUD');
+      expect(JSON.stringify(z.flattenError(result.error).fieldErrors)).toContain('CF_ACCESS_AUD');
     }
   });
 
@@ -63,7 +64,7 @@ describe('envSchema', () => {
     const result = envSchema.safeParse({ ...prodEnv, EBAY_DELETION_VERIFICATION_TOKEN: undefined });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(Object.keys(result.error.flatten().fieldErrors)).toContain('EBAY_DELETION_VERIFICATION_TOKEN');
+      expect(Object.keys(z.flattenError(result.error).fieldErrors)).toContain('EBAY_DELETION_VERIFICATION_TOKEN');
     }
   });
 
@@ -75,7 +76,7 @@ describe('envSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      const keys = Object.keys(result.error.flatten().fieldErrors);
+      const keys = Object.keys(z.flattenError(result.error).fieldErrors);
       expect(keys).toEqual(expect.arrayContaining(['EBAY_DELETION_VERIFICATION_TOKEN', 'EBAY_DELETION_ENDPOINT_URL']));
     }
   });
@@ -94,7 +95,7 @@ describe('envSchema', () => {
     const short = envSchema.safeParse({ ...prodEnv, EBAY_DELETION_VERIFICATION_TOKEN: 'short' });
     expect(short.success).toBe(false);
     if (!short.success) {
-      expect(Object.keys(short.error.flatten().fieldErrors)).toContain('EBAY_DELETION_VERIFICATION_TOKEN');
+      expect(Object.keys(z.flattenError(short.error).fieldErrors)).toContain('EBAY_DELETION_VERIFICATION_TOKEN');
     }
     const badChars = envSchema.safeParse({ ...prodEnv, EBAY_DELETION_VERIFICATION_TOKEN: 'x'.repeat(31) + '!' });
     expect(badChars.success).toBe(false);
@@ -104,7 +105,7 @@ describe('envSchema', () => {
     for (const bad of ['http://portage-api.digitalharmonyai.com/x', 'https://localhost:8016/x', 'https://10.0.0.251:8016/x', 'https://127.0.0.1/x', 'not a url']) {
       const r = envSchema.safeParse({ ...prodEnv, EBAY_DELETION_ENDPOINT_URL: bad });
       expect(r.success, bad).toBe(false);
-      if (!r.success) expect(Object.keys(r.error.flatten().fieldErrors)).toContain('EBAY_DELETION_ENDPOINT_URL');
+      if (!r.success) expect(Object.keys(z.flattenError(r.error).fieldErrors)).toContain('EBAY_DELETION_ENDPOINT_URL');
     }
     // Public hostnames that merely START with an IPv6-prefix-looking string are fine.
     for (const good of ['https://fdx.example.com/x', 'https://fe80cdn.io/x', 'https://fcshop.com/x', 'https://portage-api.digitalharmonyai.com/marketplace/ebay/account-deletion']) {
@@ -130,7 +131,7 @@ describe('envSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(Object.keys(result.error.flatten().fieldErrors).sort()).toEqual([
+      expect(Object.keys(z.flattenError(result.error).fieldErrors).sort()).toEqual([
         'EBAY_CLIENT_ID|EBAY_PROD_CLIENT_ID', 'EBAY_CLIENT_SECRET|EBAY_PROD_CLIENT_SECRET',
         'R2_ACCESS_KEY_ID', 'R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'R2_PUBLIC_URL', 'R2_SECRET_ACCESS_KEY',
         'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',
@@ -146,14 +147,14 @@ describe('envSchema', () => {
     const neither = envSchema.safeParse({ ...prodEnv, EBAY_CLIENT_ID: undefined, EBAY_CLIENT_SECRET: undefined });
     expect(neither.success).toBe(false);
     if (!neither.success) {
-      const keys = Object.keys(neither.error.flatten().fieldErrors);
+      const keys = Object.keys(z.flattenError(neither.error).fieldErrors);
       expect(keys).toEqual(expect.arrayContaining(['EBAY_CLIENT_ID|EBAY_PROD_CLIENT_ID', 'EBAY_CLIENT_SECRET|EBAY_PROD_CLIENT_SECRET']));
     }
     // checkout dies at request time without price ids — same class the guard exists for
     const noPrices = envSchema.safeParse({ ...prodEnv, STRIPE_PRICE_MONTHLY: undefined, STRIPE_PRICE_ANNUAL: '', STRIPE_PRICE_CREDITS: undefined });
     expect(noPrices.success).toBe(false);
     if (!noPrices.success) {
-      expect(Object.keys(noPrices.error.flatten().fieldErrors)).toEqual(expect.arrayContaining(['STRIPE_PRICE_MONTHLY', 'STRIPE_PRICE_ANNUAL', 'STRIPE_PRICE_CREDITS']));
+      expect(Object.keys(z.flattenError(noPrices.error).fieldErrors)).toEqual(expect.arrayContaining(['STRIPE_PRICE_MONTHLY', 'STRIPE_PRICE_ANNUAL', 'STRIPE_PRICE_CREDITS']));
     }
   });
 
@@ -161,5 +162,15 @@ describe('envSchema', () => {
     expect(envSchema.safeParse({ ...baseEnv, LANGFUSE_SAMPLE_RATE: '1.5' }).success).toBe(false);
     const ok = envSchema.safeParse({ ...baseEnv, LANGFUSE_SAMPLE_RATE: '0.25' });
     expect(ok.success && ok.data.LANGFUSE_SAMPLE_RATE).toBe(0.25);
+  });
+
+  it('reports failures as a { field: [messages] } map — the shape loadEnv() prints at boot (z.flattenError)', () => {
+    const bad = envSchema.safeParse({ ...baseEnv, LANGFUSE_SAMPLE_RATE: '1.5' });
+    expect(bad.success).toBe(false);
+    if (!bad.success) {
+      const fieldErrors = z.flattenError(bad.error).fieldErrors as Record<string, string[] | undefined>;
+      expect(Array.isArray(fieldErrors.LANGFUSE_SAMPLE_RATE)).toBe(true);
+      expect(typeof fieldErrors.LANGFUSE_SAMPLE_RATE?.[0]).toBe('string');
+    }
   });
 });

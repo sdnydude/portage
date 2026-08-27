@@ -2,8 +2,8 @@
 
 import {
   createContext,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -34,9 +34,9 @@ export function CurrentItemProvider({
     [itemId, setCurrentItem],
   );
   return (
-    <CurrentItemContext.Provider value={value}>
+    <CurrentItemContext value={value}>
       {children}
-    </CurrentItemContext.Provider>
+    </CurrentItemContext>
   );
 }
 
@@ -51,7 +51,7 @@ const NO_PROVIDER: CurrentItemValue = {
  * tests) must render fine whether or not the provider is mounted.
  */
 export function useCurrentItem(): CurrentItemValue {
-  return useContext(CurrentItemContext) ?? NO_PROVIDER;
+  return use(CurrentItemContext) ?? NO_PROVIDER;
 }
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { messageKeys } from "@/lib/porter-keys";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
@@ -80,6 +81,7 @@ export default function HomePage() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const porter = usePorter();
   const { chatInput, setChatInput, isEngaged, setIsEngaged } = porter;
+  const keys = useMemo(() => messageKeys(porter.messages), [porter.messages]);
 
   // Scroll only the chat container, not the page
   useEffect(() => {
@@ -230,11 +232,11 @@ export default function HomePage() {
               boxShadow: "var(--shadow-elevated)",
             }}
           >
-            {porter.messages.map((msg, i) => (
+            {porter.messages.map((msg) => (
               <StreamingMessage
-                key={i}
+                key={keys.get(msg)}
                 message={msg}
-                pills={i === porter.messages.length - 1 ? porter.pills : []}
+                pills={msg === porter.messages[porter.messages.length - 1] ? porter.pills : []}
                 onPillSelect={handlePillSelect}
               />
             ))}

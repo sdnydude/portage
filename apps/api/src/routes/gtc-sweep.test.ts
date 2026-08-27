@@ -12,9 +12,9 @@ vi.mock('../db/index.js', () => ({
 }));
 
 vi.mock('../marketplace/ebay-adapter.js', () => ({
-  EbayAdapter: vi.fn(() => ({
+  EbayAdapter: vi.fn(function () { return ({
     deleteListing: mockDeleteListing,
-  })),
+  }); }),
   resolveEbayCategoryId: vi.fn(),
 }));
 

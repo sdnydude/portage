@@ -25,6 +25,7 @@ import type { CompListing, ItemPhoto } from "@portage/shared";
 import { movePhoto, removePhotoAt } from "@/lib/photos";
 import { formatCondition } from "@/lib/format";
 import { resolvePublishPriceWithSource } from "@/lib/price";
+import { withKeys } from "@/lib/list-keys";
 
 const conditionColors: Record<string, string> = {
   new: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -188,6 +189,11 @@ export function ItemDetail({
   // target isn't in the DOM until the archive section expands, so marking
   // "handled" any earlier would silently drop the deep link.
   const scrolledRef = useRef(false);
+  // The 2 s highlight timer lives in a ref and is cleared on unmount only — a
+  // per-run cleanup would cancel it whenever a listing refetch re-ran the
+  // effect within those 2 s, leaving the card highlighted for good.
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(highlightTimerRef.current), []);
   useEffect(() => {
     if (scrolledRef.current || !focusListingId || listingsLoading || isLoading) return;
     const target = itemListings.find((l) => l.id === focusListingId);
@@ -203,7 +209,7 @@ export function ItemDetail({
       scrolledRef.current = true;
       el.scrollIntoView({ block: "center" });
       setHighlightId(focusListingId);
-      setTimeout(() => setHighlightId(null), 2000);
+      highlightTimerRef.current = setTimeout(() => setHighlightId(null), 2000);
     }));
   }, [focusListingId, listingsLoading, isLoading, itemListings, showArchived]);
 
@@ -757,9 +763,9 @@ export function ItemDetail({
             <div>
               <h2 className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-2">Features</h2>
               <div className="flex flex-wrap gap-1.5">
-                {item.features.map((feature, i) => (
+                {withKeys(item.features, (f) => f).map(([key, feature]) => (
                   <span
-                    key={i}
+                    key={key}
                     className="px-2.5 py-1 bg-muted rounded-lg text-xs text-text-primary"
                   >
                     {feature}
@@ -865,7 +871,7 @@ export function ItemDetail({
                           <span className="text-xs text-text-secondary">Sold Avg</span>
                           <p className="text-lg font-semibold text-text-primary">${comps.stats.soldAvg.toFixed(0)}</p>
                           <span className="text-xs text-text-secondary">
-                            median ${comps.stats.soldMedian?.toFixed(0)}
+                            median {"$"}{comps.stats.soldMedian?.toFixed(0)}
                           </span>
                         </div>
                       )}
@@ -874,7 +880,7 @@ export function ItemDetail({
                           <span className="text-xs text-text-secondary">Active Avg</span>
                           <p className="text-lg font-semibold text-text-primary">${comps.stats.activeAvg.toFixed(0)}</p>
                           <span className="text-xs text-text-secondary">
-                            median ${comps.stats.activeMedian?.toFixed(0)}
+                            median {"$"}{comps.stats.activeMedian?.toFixed(0)}
                           </span>
                         </div>
                       )}

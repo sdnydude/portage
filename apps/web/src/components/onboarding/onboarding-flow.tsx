@@ -160,9 +160,9 @@ export function OnboardingFlow({ onComplete, onSkip, isCompleting, onExploreTuto
 
           {/* Dot indicators */}
           <div className="flex items-center justify-center gap-2 pb-4">
-            {STEPS.map((_, i) => (
+            {STEPS.map((step, i) => (
               <div
-                key={i}
+                key={step.id}
                 className="rounded-full transition-all duration-300"
                 style={{
                   width: i === currentStep ? "20px" : "6px",

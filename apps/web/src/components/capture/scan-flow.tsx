@@ -28,6 +28,7 @@ import {
   type PortageCondition,
 } from "@/lib/ebay-condition-map";
 import type { RecognitionCandidate, CompResult } from "@portage/shared";
+import { withKeys } from "@/lib/list-keys";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1128,9 +1129,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                     AI Matches
                   </label>
                   <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-                    {candidates.map((c, i) => (
+                    {withKeys(candidates, (c) => `${c.name}-${c.confidence}`).map(([key, c], i) => (
                       <button
-                        key={i}
+                        key={key}
                         onClick={() => handleSelectCandidate(i)}
                         className={`flex-shrink-0 px-3 py-2 rounded-xl text-left transition-colors border ${
                           i === selectedCandidateIndex
@@ -1165,8 +1166,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               )}
               {showReasoning && (
                 <ul className="px-3 space-y-1.5">
-                  {reasoning.map((r, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-text-secondary">
+                  {withKeys(reasoning, (r) => r).map(([key, r]) => (
+                    <li key={key} className="flex gap-2 text-sm text-text-secondary">
                       <span className="text-[var(--teal)] mt-0.5">•</span>
                       <span>{r}</span>
                     </li>
@@ -1201,7 +1202,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--accent-success-soft)] border border-[var(--accent-success)]/30">
                     <span className="text-xs font-medium text-[var(--accent-success)]">eBay Comp Price</span>
                     <span className="text-sm font-semibold text-[var(--accent-success)]">
-                      ${(comps.stats.soldMedian ?? comps.stats.activeMedian ?? 0).toFixed(0)}
+                      {`$${(comps.stats.soldMedian ?? comps.stats.activeMedian ?? 0).toFixed(0)}`}
                       <span className="text-xs font-normal text-[var(--accent-success)]/70 ml-1">
                         ({comps.stats.sampleSize} sold)
                         {demandLabel(comps.stats.sellThrough) && (

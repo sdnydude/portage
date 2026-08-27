@@ -163,8 +163,8 @@ export default function AdminUsersPage() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}><td colSpan={9} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-full" /></td></tr>
+              Array.from({ length: 5 }, (_, i) => `skeleton-${i}`).map((k) => (
+                <tr key={k}><td colSpan={9} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-full" /></td></tr>
               ))
             ) : data?.users.map(user => (
               <tr key={user.id} className="hover:bg-muted/50 transition-colors">

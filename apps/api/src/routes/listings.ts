@@ -259,13 +259,13 @@ export async function applyReverbEnrichment(
 }
 
 const createListingSchema = z.object({
-  itemId: z.string().uuid(),
+  itemId: z.guid(),
   marketplace: z.enum(['ebay', 'reverb']),
   price: z.number().positive(),
   currency: z.string().length(3).default('USD'),
   publishImmediately: z.boolean().default(false),
   publishMode: z.enum(['draft', 'live', 'ebay_draft']).optional(),
-  marketplaceSpecificFields: z.record(z.unknown()).optional(),
+  marketplaceSpecificFields: z.record(z.string(), z.unknown()).optional(),
   // R3 idempotency: a client-supplied key that is stable across retries of the same
   // publish intent. When present, a partial unique index serializes concurrent/retried
   // submits so a non-idempotent AddFixedPriceItem can't double-list. Server generates
@@ -283,13 +283,13 @@ const createListingSchema = z.object({
 const updateListingSchema = z.object({
   price: z.number().positive().optional(),
   status: z.enum(['draft', 'active', 'archived']).optional(),
-  marketplaceSpecificFields: z.record(z.unknown()).optional(),
+  marketplaceSpecificFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 const listQuerySchema = z.object({
   status: z.enum(['draft', 'active', 'sold', 'archived']).optional(),
   marketplace: z.enum(['ebay', 'reverb']).optional(),
-  itemId: z.string().uuid().optional(),
+  itemId: z.guid().optional(),
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).default(0),
 });
@@ -1423,7 +1423,7 @@ listingsRouter.delete('/:id', async (req, res, next) => {
 // ─── Bulk Endpoints ───────────────────────────────────────────────────────────
 
 const bulkListingIdsSchema = z.object({
-  ids: z.array(z.string().uuid()).min(1).max(50),
+  ids: z.array(z.guid()).min(1).max(50),
 });
 
 listingsRouter.post('/bulk/delete', async (req, res, next) => {

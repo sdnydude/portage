@@ -21,13 +21,13 @@ export function PriceField({ value, onChange }: PriceFieldProps) {
   // While the field is focused the user owns it. Re-setting a controlled input's
   // value mid-edit bumps the caret to the end on iOS WebKit, which blocked
   // single-digit deletes — so the sync effect must not touch text during editing.
-  const editing = useRef(false);
+  const editingRef = useRef(false);
 
   // Sync from the prop on external change (AI prefill, reset) without clobbering an
   // in-progress edit whose parsed value already equals the prop — and never while
   // the user is actively editing (see `editing` above).
   useEffect(() => {
-    if (editing.current) return;
+    if (editingRef.current) return;
     if (parsePriceInput(text) !== value) {
       setText(value != null ? String(value) : "");
     }
@@ -42,8 +42,8 @@ export function PriceField({ value, onChange }: PriceFieldProps) {
         inputMode="decimal"
         aria-label="Price (USD)"
         value={text}
-        onFocus={() => { editing.current = true; }}
-        onBlur={() => { editing.current = false; }}
+        onFocus={() => { editingRef.current = true; }}
+        onBlur={() => { editingRef.current = false; }}
         onChange={(e) => {
           setText(e.target.value);
           onChange(parsePriceInput(e.target.value));

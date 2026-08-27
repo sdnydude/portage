@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, use, useState, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "./use-auth";
@@ -22,7 +22,7 @@ const UnreadCountContext = createContext<UnreadCountValue | null>(null);
  * isolated mounts and unit tests keep working.
  */
 export function useUnreadCount(): UnreadCountValue {
-  const shared = useContext(UnreadCountContext);
+  const shared = use(UnreadCountContext);
   // Hooks must run unconditionally — `enabled` gates the fetch, not the hook.
   const standalone = useUnreadCountSource(shared === null);
   return shared ?? standalone;
@@ -30,7 +30,7 @@ export function useUnreadCount(): UnreadCountValue {
 
 export function UnreadCountProvider({ children }: { children: React.ReactNode }) {
   const value = useUnreadCountSource(true);
-  return <UnreadCountContext.Provider value={value}>{children}</UnreadCountContext.Provider>;
+  return <UnreadCountContext value={value}>{children}</UnreadCountContext>;
 }
 
 function useUnreadCountSource(enabled: boolean): UnreadCountValue {

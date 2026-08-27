@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, use } from "react";
 
 interface AuthState {
   token: string | null;
@@ -25,5 +25,5 @@ export const AuthContext = createContext<AuthState>({
 });
 
 export function useAuth() {
-  return useContext(AuthContext);
+  return use(AuthContext);
 }

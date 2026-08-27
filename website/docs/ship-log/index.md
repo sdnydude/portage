@@ -6,7 +6,7 @@ sidebar_position: 0
 
 # Portage Ship Log
 
-Every `/ship` run, generated from the DHG Registry `ship_sessions` table plus hand-written entries. Total: 139 sessions.
+Every `/ship` run, generated from the DHG Registry `ship_sessions` table plus hand-written entries. Total: 140 sessions.
 
 | # | Feature | PR |
 |---|---------|----|
@@ -149,3 +149,4 @@ Every `/ship` run, generated from the DHG Registry `ship_sessions` table plus ha
 | 136 | [Deferral P5 build — Loki 3.7.6 + Alloy keep-all foundation, redaction, alert revival, logs-chat](ship-eabb7b57) | no PR recorded |
 | 137 | [Deferral P7 — paper-cuts batch (14 items) + EBAY_REJECTED error surfacing](ship-4a295888) | no PR recorded |
 | 138 | [Publish claim race — publishClaimedAt claim, selective release, stale-claim SKU adopt, /:id/publish claim, stuck-claim sweep, web in-flight guard](ship-8ecd3f27) | [#331](https://github.com/sdnydude/portage/pull/331) |
+| 139 | [Deferral P6 — dependency majors: Node 24, TypeScript 6, vitest 4, zod 4, pino 10, ESLint 10 (composed plugin stack)](ship-58f04bb2) | [#336](https://github.com/sdnydude/portage/pull/336) |

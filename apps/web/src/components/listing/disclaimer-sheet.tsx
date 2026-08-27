@@ -110,7 +110,7 @@ export function DisclaimerSheet({ itemId, isFirstTime, onAccept, onCancel, busy 
       {isExpanded && (
         <div className="mb-3 max-h-64 overflow-y-auto space-y-3 pr-1">
           {DISCLAIMER_CLAUSES.map((clause, index) => (
-            <div key={index}>
+            <div key={clause.title}>
               <h4 className="text-xs font-semibold text-text-primary mb-0.5">
                 {index + 1}. {clause.title}
               </h4>

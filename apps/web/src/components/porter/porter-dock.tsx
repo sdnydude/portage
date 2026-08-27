@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { messageKeys } from "@/lib/porter-keys";
 import { usePorter } from "@/hooks/use-porter-context";
 import { useCurrentItem } from "@/hooks/use-current-item";
 import { usePorterConversations } from "@/hooks/use-porter-conversations";
@@ -16,6 +17,7 @@ export function PorterDock() {
   const [expanded, setExpanded] = useState(false);
   const [view, setView] = useState<"chat" | "history">("chat");
   const porter = usePorter();
+  const keys = useMemo(() => messageKeys(porter.messages), [porter.messages]);
   const { itemId } = useCurrentItem();
   const { conversations } = usePorterConversations();
 
@@ -131,11 +133,11 @@ export function PorterDock() {
           ) : null}
 
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-            {porter.messages.map((msg, i) => (
+            {porter.messages.map((msg) => (
               <StreamingMessage
-                key={i}
+                key={keys.get(msg)}
                 message={msg}
-                pills={i === porter.messages.length - 1 ? porter.pills : []}
+                pills={msg === porter.messages[porter.messages.length - 1] ? porter.pills : []}
                 onPillSelect={(message) => porter.sendMessage(message)}
               />
             ))}
