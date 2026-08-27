@@ -1190,6 +1190,15 @@ describe('POST /items/photos/export/prepare', () => {
     expect(res.status).toBe(400);
   });
 
+  it('accepts a non-RFC-4122 hex id — z.guid() keeps v3 uuid() permissiveness for legacy rows', async () => {
+    mockSelectWhere([]);
+    const res = await request(app)
+      .post('/items/photos/export/prepare')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ids: ['10000000-0000-0000-0000-0000000000a1'] });
+    expect(res.status).not.toBe(400);
+  });
+
   it('returns 403 when item does not belong to the user', async () => {
     mockSelectWhere([{ id: ITEM_UUID_1, photos: MOCK_PHOTOS, title: 'Item 1' }]);
 

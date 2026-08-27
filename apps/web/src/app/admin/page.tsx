@@ -1,6 +1,7 @@
 "use client";
 
 import { useAdminApi } from "@/hooks/use-admin";
+import { withKeys } from "@/lib/list-keys";
 
 interface DashboardStats {
   users: { total: number; activeToday: number; newLastWeek: number };
@@ -112,7 +113,7 @@ export default function AdminDashboard() {
               </div>
             ))
           ) : activity && activity.length > 0 ? (
-            activity.map((event) => <ActivityItem key={`${event.type}:${event.timestamp}:${JSON.stringify(event.data)}`} event={event} />)
+            withKeys(activity, (e) => `${e.type}:${e.timestamp}`).map(([key, event]) => <ActivityItem key={key} event={event} />)
           ) : (
             <div className="py-8 text-center text-sm text-text-placeholder">No activity yet</div>
           )}

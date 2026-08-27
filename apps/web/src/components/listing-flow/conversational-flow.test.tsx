@@ -105,7 +105,18 @@ vi.mock("../listing/weight-dims-inputs", () => ({ WeightDimsInputs: () => null }
 vi.mock("../listing/aspect-fill-sheet", () => ({ AspectFillSheet: () => null }));
 vi.mock("../listing/weight-fill-sheet", () => ({ WeightFillSheet: () => null }));
 
-import { ConversationalFlow } from "./conversational-flow";
+import { ConversationalFlow, FormatBold } from "./conversational-flow";
+
+describe("FormatBold", () => {
+  it("renders repeated bold runs with distinct keys (char-offset keyed, no duplicate-key warning)", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { container } = render(<FormatBold text="**a** x **a**" />);
+    const dupKey = errorSpy.mock.calls.some((c) => String(c[0]).includes("same key"));
+    errorSpy.mockRestore();
+    expect(container.querySelectorAll("strong")).toHaveLength(2);
+    expect(dupKey).toBe(false);
+  });
+});
 
 describe("ConversationalFlow — AI-prepared Best Offer floor is visible (BO-5)", () => {
   it("renders the prepared auto-accept floor so it never publishes unseen", () => {

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { api, ApiError } from "@/lib/api";
 import type { CompResult } from "@portage/shared";
+import { withKeys } from "@/lib/list-keys";
 
 interface CompsSearchSheetProps {
   onClose: () => void;
@@ -175,9 +176,9 @@ export function CompsSearchSheet({ onClose }: CompsSearchSheetProps) {
                     Sold ({results.sold.length})
                   </p>
                   <div className="space-y-1">
-                    {results.sold.map((listing) => (
+                    {withKeys(results.sold, (l) => l.listingUrl).map(([key, listing]) => (
                       <a
-                        key={listing.listingUrl}
+                        key={key}
                         href={listing.listingUrl}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -221,9 +222,9 @@ export function CompsSearchSheet({ onClose }: CompsSearchSheetProps) {
                     Active ({results.active.length})
                   </p>
                   <div className="space-y-1">
-                    {results.active.map((listing) => (
+                    {withKeys(results.active, (l) => l.listingUrl).map(([key, listing]) => (
                       <a
-                        key={listing.listingUrl}
+                        key={key}
                         href={listing.listingUrl}
                         target="_blank"
                         rel="noopener noreferrer"

@@ -77,6 +77,17 @@ describe('POST /images/exposure', () => {
     expect(res.status).toBe(400);
     expect(mockAdjustExposure).not.toHaveBeenCalled();
   });
+
+  it('rejects a non-URL imageUrl with 400 VALIDATION_ERROR (zod 4 z.url())', async () => {
+    const res = await request(createApp())
+      .post('/images/exposure')
+      .set('Authorization', `Bearer ${createTestToken()}`)
+      .send({ imageUrl: 'not a url', ev: 1 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(mockAdjustExposure).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /images/remove-bg', () => {

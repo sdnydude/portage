@@ -20,6 +20,7 @@ import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
 import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
+import { withKeys } from "@/lib/list-keys";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -622,8 +623,8 @@ function ChatMode({
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {state.recognition.reasoning.length > 0 && (
                 <ul style={{ margin: "0 0 10px 0", paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3 }}>
-                  {state.recognition.reasoning.map((r) => (
-                    <li key={r} style={{ fontSize: 12, color: SECONDARY, lineHeight: 1.4 }}>{r}</li>
+                  {withKeys(state.recognition.reasoning, (r) => r).map(([key, r]) => (
+                    <li key={key} style={{ fontSize: 12, color: SECONDARY, lineHeight: 1.4 }}>{r}</li>
                   ))}
                 </ul>
               )}

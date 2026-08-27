@@ -32,7 +32,7 @@ export function useScanAspects(
   // "Use anyway" is a per-category decision: remember which categoryId was
   // dismissed so a re-resolution to the SAME category (title typo fix) doesn't
   // resurrect the banner; a different category is a new situation.
-  const dismissedCategoryId = useRef<string | null>(null);
+  const dismissedCategoryIdRef = useRef<string | null>(null);
   // Ref mirror of resolvedCategoryId so dismissCategoryMismatch keeps a stable identity.
   const resolvedIdRef = useRef<string | null>(null);
   const [isCategoryResolving, setIsCategoryResolving] = useState(false);
@@ -116,11 +116,11 @@ export function useScanAspects(
   // sequence-based so the manually callable resolveCategory shares it): every
   // resolution bumps the sequence; stale settlers see a newer sequence and are
   // discarded — latest wins.
-  const requestSeq = useRef(0);
+  const requestSeqRef = useRef(0);
 
   const resolveCategory = useCallback(
     async (name: string) => {
-      const seq = ++requestSeq.current;
+      const seq = ++requestSeqRef.current;
       if (!token || name.trim() === "") {
         setResolvedCategoryId(null);
         setResolvedCategoryName(null);
@@ -140,7 +140,7 @@ export function useScanAspects(
           `/marketplace/ebay/category-suggestion?q=${encodeURIComponent(name)}${visionParam}`,
           { token },
         );
-        if (seq !== requestSeq.current) return;
+        if (seq !== requestSeqRef.current) return;
         if (data.suggestion) {
           resolvedIdRef.current = data.suggestion.categoryId;
           setResolvedCategoryId(data.suggestion.categoryId);
@@ -149,7 +149,7 @@ export function useScanAspects(
           setConditionIds(data.suggestion.conditionIds ?? []);
           setCategoryMismatch(
             data.mismatch === true
-            && data.suggestion.categoryId !== dismissedCategoryId.current,
+            && data.suggestion.categoryId !== dismissedCategoryIdRef.current,
           );
         } else {
           // Graceful degrade — no match is not an error state.
@@ -165,9 +165,9 @@ export function useScanAspects(
         // (suggestion: null) resets the resolved state. P3 (a5a2b944): the
         // failure is still TOLD — seq-guarded so a stale rejection can't
         // flag a newer, successful lookup.
-        if (seq === requestSeq.current) setResolveError(true);
+        if (seq === requestSeqRef.current) setResolveError(true);
       } finally {
-        if (seq === requestSeq.current) setIsCategoryResolving(false);
+        if (seq === requestSeqRef.current) setIsCategoryResolving(false);
       }
     },
     [token, visionCategory],
@@ -175,7 +175,7 @@ export function useScanAspects(
 
   useEffect(() => {
     if (editName.trim() === "") {
-      requestSeq.current++; // invalidate any in-flight resolution
+      requestSeqRef.current++; // invalidate any in-flight resolution
       setResolvedCategoryId(null);
       setResolvedCategoryName(null);
       setConditionIds([]);
@@ -200,7 +200,7 @@ export function useScanAspects(
     categoryMismatch,
     resolvedVisionCategory,
     dismissCategoryMismatch: useCallback(() => {
-      dismissedCategoryId.current = resolvedIdRef.current;
+      dismissedCategoryIdRef.current = resolvedIdRef.current;
       setCategoryMismatch(false);
     }, []),
     // "Don't use it" — reject the suggestion outright: back to unresolved, so
@@ -208,10 +208,10 @@ export function useScanAspects(
     // later via the self-heal path. Bump the sequence so an in-flight
     // resolution can't resurrect the rejected suggestion.
     clearCategoryResolution: useCallback(() => {
-      requestSeq.current++;
+      requestSeqRef.current++;
       // Rejection persists at least as strongly as "Use anyway": if a later
       // resolution returns the same category, don't re-flag it.
-      dismissedCategoryId.current = resolvedIdRef.current;
+      dismissedCategoryIdRef.current = resolvedIdRef.current;
       resolvedIdRef.current = null;
       setResolvedCategoryId(null);
       setResolvedCategoryName(null);

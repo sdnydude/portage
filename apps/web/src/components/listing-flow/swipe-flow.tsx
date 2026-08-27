@@ -17,6 +17,7 @@ import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-
 import { WeightDimsInputsInline } from "../listing/weight-dims-inputs";
 import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
+import { withKeys } from "@/lib/list-keys";
 
 /* ─────────────────────────────────────────────
    Types
@@ -1022,9 +1023,9 @@ function DetailsPhase({
               Features <AiBadge />
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {state.features.map((f) => (
+              {withKeys(state.features, (f) => f).map(([key, f]) => (
                 <span
-                  key={f}
+                  key={key}
                   style={{
                     background: "#151515",
                     border: "1px solid #222",

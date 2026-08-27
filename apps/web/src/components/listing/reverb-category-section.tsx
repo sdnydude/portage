@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { withKeys } from "@/lib/list-keys";
 
 /**
  * Reverb category cascade (Product Type → Subcategory 1 → 2 → 3), fed from
@@ -149,8 +150,8 @@ export function ReverbCategorySection({ value, onChange, token, idPrefix = "", o
           Category: <span className="text-text-primary font-medium">{value.fullName}</span>
         </p>
       )}
-      {levels.map((lvl, i) => (
-        <div key={lvl.label}>
+      {withKeys(levels, (lvl) => lvl.label).map(([key, lvl], i) => (
+        <div key={key}>
           <label htmlFor={`${idPrefix}reverb-cat-${i}`} className={labelClass}>{lvl.label}</label>
           <select
             id={`${idPrefix}reverb-cat-${i}`}

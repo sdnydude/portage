@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const h = vi.hoisted(() => ({
@@ -105,6 +105,36 @@ afterEach(() => {
   refetchListingsMock.mockClear();
   pushMock.mockClear();
   window.HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+});
+
+describe("ItemDetail deep-link highlight timer", () => {
+  it("clears the highlight after 2 s even when a listings refetch re-runs the effect mid-timer", async () => {
+    vi.useFakeTimers();
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    const l1 = {
+      id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
+      marketplaceListingId: "3071", marketplaceSpecificFields: null,
+      status: "active", price: 100, currency: "USD",
+      createdAt: "2026-08-01", publishedAt: "2026-08-01", soldAt: null,
+    } as unknown as Listing;
+    mockListings = [l1];
+    h.apiMock.mockResolvedValue({});
+    try {
+      const { rerender } = render(<ItemDetail itemId="i1" focusListingId="l1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await act(() => vi.advanceTimersByTimeAsync(50)); // double-rAF → scroll + highlight
+      const highlighted = () => !!document.getElementById("listing-l1")?.querySelector(".ring-2");
+      expect(highlighted()).toBe(true);
+
+      // A refetch hands the effect a new listings array before the 2 s elapse.
+      mockListings = [{ ...l1 }];
+      rerender(<ItemDetail itemId="i1" focusListingId="l1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await act(() => vi.advanceTimersByTimeAsync(2100));
+
+      expect(highlighted()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("ItemDetail (prop-driven)", () => {

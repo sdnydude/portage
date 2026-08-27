@@ -246,7 +246,7 @@ function InlineInput({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function FormatBold({ text }: { text: string }) {
+export function FormatBold({ text }: { text: string }) {
   const parts = text.split(/(\*\*.+?\*\*)/g);
   // Key bold runs by their char offset in `text` (content-derived; bold text can repeat).
   const offsets = parts.reduce<number[]>((acc, _part, i) => {

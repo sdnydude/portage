@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { PricingData, CompResult, ReverbCompResult } from "@portage/shared";
 import { demandLabel } from "@/lib/demand";
+import { withKeys } from "@/lib/list-keys";
 
 interface CompsPricingWidgetProps {
   pricing: PricingData;
@@ -141,8 +142,11 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             <p className="text-xs font-medium mb-1" style={{ color: "rgba(0,0,0,0.5)" }}>Sold</p>
             <p className="text-xs font-medium mb-1" style={{ color: "rgba(0,0,0,0.5)" }}>Active</p>
-            {Array.from({ length: Math.max(comps.ebay.sold.length, comps.ebay.active.length) }).map((_, i) => (
-              <div key={`${comps.ebay!.sold[i]?.listingUrl ?? ""}|${comps.ebay!.active[i]?.listingUrl ?? ""}`} className="contents">
+            {withKeys(
+              Array.from({ length: Math.max(comps.ebay.sold.length, comps.ebay.active.length) }, (_, i) => i),
+              (i) => `${comps.ebay!.sold[i]?.listingUrl ?? ""}|${comps.ebay!.active[i]?.listingUrl ?? ""}`,
+            ).map(([key, i]) => (
+              <div key={key} className="contents">
                 <div className="text-sm py-0.5">
                   {comps.ebay!.sold[i] && (
                     <span>{`$${comps.ebay!.sold[i].price.toFixed(0)}`} <span className="text-xs" style={{ color: "rgba(0,0,0,0.4)" }}>{comps.ebay!.sold[i].condition}</span></span>
@@ -159,8 +163,8 @@ export function CompsPricingWidget({ pricing, comps, currentPrice, onPriceChange
         )}
         {activeTab === "reverb" && comps.reverb && (
           <div className="space-y-1">
-            {comps.reverb.listings.map((comp) => (
-              <div key={comp.listingUrl} className="text-sm py-0.5">
+            {withKeys(comps.reverb.listings, (c) => c.listingUrl).map(([key, comp]) => (
+              <div key={key} className="text-sm py-0.5">
                 {`$${comp.price.toFixed(0)}`} <span className="text-xs" style={{ color: "rgba(0,0,0,0.4)" }}>{comp.condition}</span>
               </div>
             ))}

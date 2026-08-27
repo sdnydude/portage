@@ -163,4 +163,14 @@ describe('envSchema', () => {
     const ok = envSchema.safeParse({ ...baseEnv, LANGFUSE_SAMPLE_RATE: '0.25' });
     expect(ok.success && ok.data.LANGFUSE_SAMPLE_RATE).toBe(0.25);
   });
+
+  it('reports failures as a { field: [messages] } map — the shape loadEnv() prints at boot (z.flattenError)', () => {
+    const bad = envSchema.safeParse({ ...baseEnv, LANGFUSE_SAMPLE_RATE: '1.5' });
+    expect(bad.success).toBe(false);
+    if (!bad.success) {
+      const fieldErrors = z.flattenError(bad.error).fieldErrors as Record<string, string[] | undefined>;
+      expect(Array.isArray(fieldErrors.LANGFUSE_SAMPLE_RATE)).toBe(true);
+      expect(typeof fieldErrors.LANGFUSE_SAMPLE_RATE?.[0]).toBe('string');
+    }
+  });
 });
