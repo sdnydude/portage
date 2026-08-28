@@ -68,11 +68,17 @@ These come from CLAUDE.md and .claude/rules/. The /ship workflow enforces them s
    - Will likely produce >5 tasks
    If complex, the spec (step 8) must be detailed. If simple, a light spec is sufficient.
 
-8. **Write a spec.**
+8. **Visible surface (required).** Name what Stephen will OPEN when this ships — a page, a
+   panel, a CLI line he sees in the prompt. If the honest answer is "nothing, it's backend", the
+   spec is incomplete: either add the surface to THIS ship or state in one sentence why the
+   operator agreed to a backend-only ship. Never silently defer UI, dashboards or assistants,
+   and never assign their priority — that is the operator's call.
+
+9. **Write a spec.**
    - **Light spec (simple features):** 3-5 bullet points covering what it does, acceptance criteria, and edge cases.
    - **Detailed spec (complex features):** What it does, what it doesn't do, acceptance criteria, edge cases, affected services, data flow, error scenarios.
 
-9. **Spec review.** Iterate on the spec with Stephen. Up to 5 iterations until the spec accurately reflects intent. Do not rush past this — the spec is the contract for everything that follows.
+10. **Spec review.** Iterate on the spec with Stephen. Up to 5 iterations until the spec accurately reflects intent. Do not rush past this — the spec is the contract for everything that follows.
 
 **Output:** Chosen approach + approved spec.
 
@@ -155,6 +161,10 @@ Update `.claude/ship-state.md`: add file map, patterns found, surprises.
 7. **Chunk review (>5 tasks).** If the plan has more than 5 tasks, present them in groups of 3 for review. Get approval per chunk before showing the next.
 
 8. **TDD decision.** Ask: "Do you want TDD for this feature?" If yes, Phase 4 writes tests before implementation for each task. Note: **tdd-guard hooks are active** and will enforce test-first ordering when TDD is enabled.
+
+**Visibility check before the gate:** the plan must contain the task that produces the visible
+surface named in Phase 1, and it must land in the FIRST half of the task list, not the last.
+A plan whose visible task is missing or last is returned to Phase 3.
 
 **HARD GATE:** Present the plan (or final chunk) and wait for user approval. Do not proceed to Phase 4 without explicit "go", "approved", "build it", or similar.
 
@@ -424,4 +434,5 @@ The user can say these at any time:
 ## Version History
 - **v1** (2026-03-13): Initial 7-phase workflow.
 - **v2** (2026-03-13): Full capability restoration + 14 additions. Restored: spec iterations, divergent thinking, 6 review agents, code in plans, chunk review, TodoWrite, subagent reconciliation. Added: resume detection, state persistence, scope creep guard, rollback fields, debugging escalation, complexity-conditional spec, architecture step, TDD toggle, CLAUDE.md update check, observability check, deploy order, post-merge monitoring, performance baselines, actionable monitor section.
+- **v3.1** (2026-08-28): Visible-surface requirement in Phase 1 spec and Phase 3 gate — no backend-only ships; UI priority is the operator's, never deferred by Claude.
 - **v3** (2026-05-24): Dev tools integration. Added: tdd-guard enforcement (Phase 3-4), AgentShield security scan (Phase 5), claudekit doctor pre-build check (Phase 4), ccpm on-demand reference. Removed: stale LangGraph/Infisical references. Updated: Portage-specific checks replace generic DHG checks. Added: registry capture and ship-log generation to Phase 7. Added: dev tool results section in PR template.
