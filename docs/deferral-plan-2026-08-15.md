@@ -230,6 +230,18 @@ Procedure per item: run the check, record evidence, PATCH registry (resolved / w
 | `43a7295a` | Time the PreToolUse chain: 20 trivial Bash calls with/without hooks (hyperfine or timestamp diff) | data → tune worst hook or close with measurements |
 | `a3455f37` | Diff docs-audit Q-verdict worklist lines against current docs tree; Q11 folds into `86b12195` | per-line verdicts, remainder becomes concrete items or closes |
 
+**Outcome (2026-08-28, evidence in each registry row's `resolution_reason`):**
+
+- `7bc3d37f` resolved — item `unlisted`, eBay listing 307038681268 archived, `categoryId` 123445 stored; nothing live to revise.
+- `c6f43445` resolved — `docs.digitalharmonyai.com` returns 200 with no Access redirect.
+- `dbcb1035` resolved — reproduced; `absolute_redirect off;` added to `aifactory3.5/docs-site/nginx.conf`, dhg-docs restarted (bind-mount inode swap — reload alone was not enough); `Location: /portage/architecture/sitemap/` → 200 on :8017.
+- `376a5b7b` + `9dd89324` resolved (2026-08-29) — minted account token `claude-cloudflare-ops` (scope C per the 2026-06-06 cloudflare-ops spec) via the existing `Account API Tokens Write` token, stored as `CF_OPS_TOKEN` (Doppler `dhg-infra/prd` + `portage/prd`); PUT bucket CORS (prod + `http(s)://10.0.0.251:3002/3003`, GET/HEAD, maxAge 86400); live-verified `access-control-allow-origin` on a real R2 object from each origin, none for a foreign origin.
+- `118eb901` resolved — agentlint 2.5.3: plain push and branch-delete push are silent; only the lease-force variant emits an advisory.
+- `43a7295a` resolved with measurements — Bash PreToolUse chain ~140 ms, UserPromptSubmit ~130 ms, PostToolUse ~230 ms, 3 MCP servers; hooks are not the multi-minute source.
+- `a3455f37` resolved — E31 done (index shows 140 sessions), Q4 76 → 14 → 0 unreferenced PNGs (14 removed in this pass), Q11 carried by `86b12195`.
+
+**Program status:** P1–P8 closed. Open residue: `86b12195` (session_reports KB source).
+
 ---
 
 ## Keep-open backlog — rationale (reason to save · future use)
