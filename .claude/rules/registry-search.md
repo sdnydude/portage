@@ -29,8 +29,7 @@ The endpoint searches all sources by default. Filter with a `"sources"` array wh
 | `deferred_items` | Work discovered but intentionally deferred for later |
 | `agent_sessions` | Claude Code session summaries and metadata |
 | `dev_changelog` | Development changelog entries by epic/category |
-
-> **Note (verified 2026-07-17):** `session_reports` (narrative session reports, captured via `post-session-reports.sh`, API live since PR #199) exists as a registry table but is **not yet a valid `sources` value** — the endpoint rejects it (`Invalid sources`). Session-report content is searchable only indirectly until the registry adds the source; do not pass `"session_reports"` in the `sources` array.
+| `session_reports` | Narrative end-of-session reports (story + learnings/insights/deferred), from `docs/session-reports/` |
 
 ## How to use results
 
