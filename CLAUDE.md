@@ -313,6 +313,14 @@ has a plugin-load canary. `npm audit` 0 high (next 16.3.3; postcss override
 TS >=6.1, @types/node >=25 (api) / >=26 (web). Live-proven on the deployed
 branch: home, Porter stream, inventory/detail, draft payload, scan → review,
 AddFixedPriceItem. Proof page 2026-08-27-p6-dependency-majors.
+Deferral P8 (settle pass) closed 2026-08-29: all 7 items resolved with
+evidence (item bbaddd00 moot, docs domain public, dhg-docs `absolute_redirect
+off;` fix live, agentlint no-force-push over-fire gone in 2.5.3, hook-chain
+latency measured <0.5s/action, R2 portage-images CORS set via API and
+live-verified), 14 unreferenced verification PNGs removed. Cloudflare writes
+now use `CF_OPS_TOKEN` (Doppler dhg-infra/prd + portage/prd, scope C per the
+2026-06-06 cloudflare-ops spec). Program P1–P8 CLOSED. Residue: `86b12195`
+session_reports KB source.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
