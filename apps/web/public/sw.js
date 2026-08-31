@@ -1,4 +1,4 @@
-const CACHE_NAME = 'portage-v3';
+const CACHE_NAME = 'portage-v4';
 const STATIC_ASSETS = ['/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -19,6 +19,14 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+
+  // Never intercept mutations: iOS WebKit drops multipart bodies when a
+  // POST is replayed through respondWith(fetch(request)) — uploads arrive
+  // with content-length: 0 (empty-body 500s seen 07-10 → 08-31).
+  if (request.method !== 'GET') {
+    return;
+  }
+
   const url = new URL(request.url);
 
   // Network-first for API calls
