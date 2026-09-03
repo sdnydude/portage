@@ -40,6 +40,7 @@ vi.mock('../marketplace/reverb-adapter.js', () => {
     vi.fn(function () { return ({ searchCategories: mockReverbSearchCategories }); }),
     {
       searchComps: vi.fn().mockResolvedValue({ listings: [], stats: { median: null, avg: null, sampleSize: 0 } }),
+      referenceToken: vi.fn().mockResolvedValue(undefined),
       getConditions: vi.fn().mockResolvedValue([]),
       getFlatCategories: vi.fn().mockResolvedValue([
         { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion' },

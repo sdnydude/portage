@@ -5,6 +5,7 @@ vi.mock('./token-manager.js', () => ({
 import { ReverbAdapter, REVERB_PHOTO_INGEST, clearReverbConditionsCache, clearReverbCategoriesCache } from './reverb-adapter.js';
 import { getReverbAccessToken } from './token-manager.js';
 import { loadEnv, resetEnv } from '../lib/env.js';
+import { AppError } from '../middleware/error.js';
 
 const LISTING_RESPONSE = {
   listing: {
@@ -941,6 +942,16 @@ describe('ReverbAdapter.searchCategories', () => {
     expect(results.map(r => r.id)).toEqual(['uuid-distortion']);
   });
 
+  it('fetches the flat list with the seller\'s own Reverb token', async () => {
+    const fetchMock = stubFetch({ categories: [{ uuid: 'uuid-distortion', full_name: 'Effects and Pedals / Distortion' }] });
+
+    await new ReverbAdapter('user-1').searchCategories('distortion pedal');
+
+    expect(getReverbAccessToken).toHaveBeenCalledWith('user-1');
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer test-reverb-pat');
+  });
+
   // Live repro 2026-07-21: item category "Solid State Drives" matched
   // "Electric Guitars / Solid Body" on the single token "solid" and published
   // an SSD as a guitar. A lone token hit out of several is noise — require a
@@ -1070,6 +1081,53 @@ describe('ReverbAdapter.getFlatCategories', () => {
       rootUuid: 'root-fx', listable: true,
     });
   });
+
+  // Live incident 2026-09-02: Reverb's edge (Cloudflare) began answering
+  // unauthenticated, non-browser requests to /categories/flat with a 403 HTML
+  // page. Any bearer token passes the edge, so the fetch carries the caller's.
+  it('sends the given bearer token on the flat-categories fetch', async () => {
+    const fetchMock = stubFetch({ categories: [{ uuid: 'u1', full_name: 'Effects and Pedals / Distortion' }] });
+
+    await ReverbAdapter.getFlatCategories('seller-pat');
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer seller-pat');
+  });
+
+  // The 2026-09-02 block reached the phone as a bare 403 — the web client reads
+  // 403 as a permission problem and nothing was logged. An edge block on a
+  // reference-data endpoint is an upstream outage, not a permission: 502.
+  it('maps a 403 HTML edge block on the flat-categories fetch to 502 REVERB_UNAVAILABLE', async () => {
+    stubFetch(null, false, 403, '<!DOCTYPE html><html><title>The Marketplace for Musicians | Reverb.com</title></html>');
+
+    await expect(ReverbAdapter.getFlatCategories()).rejects.toMatchObject({
+      statusCode: 502,
+      code: 'REVERB_UNAVAILABLE',
+    });
+  });
+});
+
+describe('ReverbAdapter.referenceToken', () => {
+  // Reference data (categories, conditions) is seller-agnostic, but Reverb's
+  // edge now wants *a* bearer token. Prefer the seller's own; the static
+  // callers (routes, prepare-listing) hand this to getFlatCategories/getConditions.
+  it('returns the seller\'s Reverb token when the account is connected', async () => {
+    await expect(ReverbAdapter.referenceToken('user-1')).resolves.toBe('test-reverb-pat');
+    expect(getReverbAccessToken).toHaveBeenCalledWith('user-1');
+  });
+
+  // Category browsing must keep working for a seller who has not connected
+  // Reverb yet (eBay-only, or mid-setup): fall back to the service token.
+  it('falls back to the service REVERB_API_TOKEN when the seller has no Reverb account', async () => {
+    vi.mocked(getReverbAccessToken).mockRejectedValueOnce(
+      new AppError(400, 'REVERB_SETUP_REQUIRED', 'Reverb selling is not set up.'),
+    );
+    process.env.REVERB_API_TOKEN = 'service-token-fixture-1234567890';
+    resetEnv();
+    loadEnv();
+
+    await expect(ReverbAdapter.referenceToken('user-1')).resolves.toBe('service-token-fixture-1234567890');
+  });
 });
 
 describe('ReverbAdapter.getConditions', () => {
@@ -1088,6 +1146,26 @@ describe('ReverbAdapter.getConditions', () => {
     clearReverbConditionsCache();
     await ReverbAdapter.getConditions();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends the given bearer token on the conditions fetch', async () => {
+    clearReverbConditionsCache();
+    const fetchMock = stubFetch({ conditions: [{ uuid: 'c-1', display_name: 'Excellent' }] });
+
+    await ReverbAdapter.getConditions('seller-pat');
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer seller-pat');
+  });
+
+  it('maps a 403 HTML edge block on the conditions fetch to 502 REVERB_UNAVAILABLE', async () => {
+    clearReverbConditionsCache();
+    stubFetch(null, false, 403, '<!DOCTYPE html><html><title>The Marketplace for Musicians | Reverb.com</title></html>');
+
+    await expect(ReverbAdapter.getConditions()).rejects.toMatchObject({
+      statusCode: 502,
+      code: 'REVERB_UNAVAILABLE',
+    });
   });
 
   it('throws a typed REVERB_API_ERROR when the conditions fetch fails', async () => {
