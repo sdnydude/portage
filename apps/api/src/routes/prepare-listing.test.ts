@@ -102,9 +102,28 @@ describe('pickReverbCategoryByLeafTokens', () => {
   });
 });
 
+describe('validateReverbAiFields — reference token', () => {
+  // 2026-09-02: reference-data fetches carry the seller's token past Reverb's edge.
+  it('resolves the seller\'s reference token and hands it to both reference fetches', async () => {
+    const { ReverbAdapter } = await import('../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce('ref-tok');
+    const flatSpy = vi.spyOn(ReverbAdapter, 'getFlatCategories').mockResolvedValue([]);
+    const condSpy = vi.spyOn(ReverbAdapter, 'getConditions').mockResolvedValue([]);
+    const searchSpy = vi.spyOn(ReverbAdapter.prototype, 'searchCategories').mockResolvedValue([]);
+
+    await validateReverbAiFields('user-1', { categoryUuid: '', categoryName: '', conditionUuid: '', conditionName: '' }, { title: 'x', category: 'y' });
+
+    expect(tokenSpy).toHaveBeenCalledWith('user-1');
+    expect(flatSpy).toHaveBeenCalledWith('ref-tok');
+    expect(condSpy).toHaveBeenCalledWith('ref-tok');
+    tokenSpy.mockRestore(); flatSpy.mockRestore(); condSpy.mockRestore(); searchSpy.mockRestore();
+  });
+});
+
 describe('validateReverbAiFields', () => {
   it('resolves via verbatim flat-list match WITHOUT token search; falls back to searchCategories otherwise', async () => {
     const { ReverbAdapter } = await import('../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValue(undefined);
     const flatSpy = vi.spyOn(ReverbAdapter, 'getFlatCategories').mockResolvedValue([
       { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'r-fx', listable: true },
     ]);
@@ -124,11 +143,12 @@ describe('validateReverbAiFields', () => {
     expect(miss.categoryUuid).toBe('u-token');
     expect(searchSpy).toHaveBeenCalledWith('Something Paraphrased');
 
-    flatSpy.mockRestore(); condSpy.mockRestore(); searchSpy.mockRestore();
+    tokenSpy.mockRestore(); flatSpy.mockRestore(); condSpy.mockRestore(); searchSpy.mockRestore();
   });
 
   it('prefers the leaf-token semantic pick over the majority search when the verbatim match misses', async () => {
     const { ReverbAdapter } = await import('../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValue(undefined);
     const flatSpy = vi.spyOn(ReverbAdapter, 'getFlatCategories').mockResolvedValue([
       { uuid: 'u-synth', fullName: 'Effects and Pedals / Guitar Synths', name: 'Guitar Synths', rootUuid: 'r-fx', listable: true },
       { uuid: 'u-octave', fullName: 'Effects and Pedals / Octave and Pitch', name: 'Octave and Pitch', rootUuid: 'r-fx', listable: true },
@@ -145,7 +165,7 @@ describe('validateReverbAiFields', () => {
     expect(out.categoryUuid).toBe('u-octave');
     expect(searchSpy).not.toHaveBeenCalled();
 
-    flatSpy.mockRestore(); condSpy.mockRestore(); searchSpy.mockRestore();
+    tokenSpy.mockRestore(); flatSpy.mockRestore(); condSpy.mockRestore(); searchSpy.mockRestore();
   });
 });
 

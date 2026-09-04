@@ -81,6 +81,12 @@ test.describe("proof: publish-sheet shipping controls", () => {
   });
 
   test("Reverb category cascade: product types load live; picking one reveals subcategories", async ({ page }) => {
+    // Live Reverb taxonomy needs a bearer token to clear Reverb's edge (which
+    // now 403s tokenless requests). The e2e user has no Reverb account, so the
+    // stack's service REVERB_API_TOKEN is the fallback; without it the fetch is
+    // blocked and only the default option loads. Gate on E2E_REVERB_LIVE, set
+    // by CI only when secrets.REVERB_API_TOKEN is present.
+    test.skip(!process.env.E2E_REVERB_LIVE, "needs a Reverb token in CI (secrets.REVERB_API_TOKEN)");
     await page.goto("/inventory");
     const first = page.locator('a[href^="/inventory/"]').first();
     await expect(first).toBeVisible();

@@ -54,6 +54,9 @@ jobs:
       - name: Bring up ephemeral stack (build from this commit)
         env:
           GIT_SHA: ${{ github.sha }}
+          # Service Reverb PAT so reference-data fetches (category taxonomy)
+          # authenticate past Reverb's edge in CI. Set as a repo secret.
+          REVERB_API_TOKEN: ${{ secrets.REVERB_API_TOKEN }}
         run: docker compose -f docker-compose.e2e.yml up -d --build
 
       - name: Push schema to ephemeral DB
@@ -82,6 +85,9 @@ jobs:
           # Ephemeral stack runs a dev-bypass API behind the app, so the
           # env-bound orders-sync login-trigger spec can pass here (and only here).
           E2E_ORDERS_SYNC: "1"
+          # Run the live Reverb taxonomy cascade spec only when the service
+          # token is configured; skip it (green) when the secret is absent.
+          E2E_REVERB_LIVE: ${{ secrets.REVERB_API_TOKEN != '' && '1' || '' }}
         run: npm run test:e2e -w apps/web
 
       - name: Upload proof screenshots

@@ -523,7 +523,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
     // returns the same full list (first entry "Acoustic Guitars / 12-String"),
     // so matching MUST happen client-side — passing the query through meant
     // every caller took the first flat entry and mis-categorized as guitars.
-    const categories = await ReverbAdapter.getFlatCategories();
+    const categories = await ReverbAdapter.getFlatCategories(await getReverbAccessToken(this.userId));
 
     const tokens = query.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 3);
     // Majority rule: a lone token hit out of several is noise ("Solid State
@@ -559,15 +559,56 @@ export class ReverbAdapter implements MarketplaceAdapter {
    * category uuids/names; the endpoint's ?query= param is ignored by Reverb,
    * so all matching against this list happens client-side.
    */
-  static async getFlatCategories(): Promise<ReverbFlatCategory[]> {
+  /** Headers for Reverb's reference-data endpoints (categories, conditions).
+   *  Documented as public, but since 2026-09-02 Reverb's edge rejects
+   *  unauthenticated non-browser requests with a 403 HTML page; any bearer
+   *  token passes it, so callers hand in whichever token they hold. */
+  private static publicHeaders(token?: string): Record<string, string> {
+    return {
+      'Accept': 'application/hal+json',
+      'Accept-Version': '3.0',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+  }
+
+  /** Error for a failed reference-data fetch. Logs the body head (the 2026-09-02
+   *  block returned an HTML page, invisible until this). A 401/403 here is the
+   *  edge refusing us, not a seller permission — surface it as an upstream
+   *  outage so the web client never treats it as an auth failure. */
+  private static async publicFetchError(response: Response, what: string): Promise<AppError> {
+    const body = (await response.text().catch(() => '')).slice(0, 200);
+    logger.error({ status: response.status, what, body }, 'Reverb reference-data fetch failed');
+    if (response.status === 401 || response.status === 403) {
+      return new AppError(502, 'REVERB_UNAVAILABLE', `Reverb ${what} are temporarily unavailable (${response.status} from Reverb).`);
+    }
+    return new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb ${what}: ${response.status}`);
+  }
+
+  /** Token for reference-data fetches made on a user's behalf: the seller's
+   *  own Reverb PAT when connected. Reference data is seller-agnostic; the
+   *  token only satisfies the edge, so the shared cache stays shared. */
+  static async referenceToken(userId: string): Promise<string | undefined> {
+    try {
+      return await getReverbAccessToken(userId);
+    } catch (err) {
+      // Not connected yet (REVERB_SETUP_REQUIRED): reference data must still
+      // load, so use the service token; anything else is a real failure.
+      if (err instanceof AppError && err.code === 'REVERB_SETUP_REQUIRED') {
+        return env().REVERB_API_TOKEN || undefined;
+      }
+      throw err;
+    }
+  }
+
+  static async getFlatCategories(token?: string): Promise<ReverbFlatCategory[]> {
     if (cachedCategories && Date.now() - categoriesCachedAt < CONDITIONS_TTL) return cachedCategories;
 
     const response = await fetch(`${REVERB_BASE}/categories/flat`, {
-      headers: { 'Accept': 'application/hal+json', 'Accept-Version': '3.0' },
+      headers: ReverbAdapter.publicHeaders(token),
     });
 
     if (!response.ok) {
-      throw new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb categories: ${response.status}`);
+      throw await ReverbAdapter.publicFetchError(response, 'categories');
     }
 
     const data = await response.json() as {
@@ -592,30 +633,30 @@ export class ReverbAdapter implements MarketplaceAdapter {
 
   /** The 14 taxonomy roots — Reverb's Product Type axis. Root entries are the
    *  flat rows whose fullName equals their own name. */
-  static async getProductTypes(): Promise<ReverbFlatCategory[]> {
-    const cats = await ReverbAdapter.getFlatCategories();
+  static async getProductTypes(token?: string): Promise<ReverbFlatCategory[]> {
+    const cats = await ReverbAdapter.getFlatCategories(token);
     return cats.filter(c => c.fullName === c.name);
   }
 
   /** Direct children of a taxonomy node. Parent/child derived by prefix:
    *  child.fullName === parent.fullName + ' / ' + child.name — anchored on the
    *  API's own `name` field because leaf names can contain " / " themselves. */
-  static async getCategoryChildren(parentUuid: string): Promise<ReverbFlatCategory[]> {
-    const cats = await ReverbAdapter.getFlatCategories();
+  static async getCategoryChildren(parentUuid: string, token?: string): Promise<ReverbFlatCategory[]> {
+    const cats = await ReverbAdapter.getFlatCategories(token);
     const parent = cats.find(c => c.uuid === parentUuid);
     if (!parent) return [];
     return cats.filter(c => c.uuid !== parent.uuid && c.fullName === `${parent.fullName} / ${c.name}`);
   }
 
-  static async getConditions(): Promise<Array<{ uuid: string; displayName: string }>> {
+  static async getConditions(token?: string): Promise<Array<{ uuid: string; displayName: string }>> {
     if (cachedConditions && Date.now() - conditionsCachedAt < CONDITIONS_TTL) return cachedConditions;
 
     const response = await fetch(`${REVERB_BASE}/listing_conditions`, {
-      headers: { 'Accept': 'application/hal+json', 'Accept-Version': '3.0' },
+      headers: ReverbAdapter.publicHeaders(token),
     });
 
     if (!response.ok) {
-      throw new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb conditions: ${response.status}`);
+      throw await ReverbAdapter.publicFetchError(response, 'conditions');
     }
 
     const data = await response.json() as {
