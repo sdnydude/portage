@@ -32,6 +32,11 @@ services:
       # No CF edge in the ephemeral stack: GET /auth/session authenticates as
       # this identity via the development-only bypass (auto-provisions the row).
       CF_ACCESS_DEV_EMAIL: e2e@portage.app
+      # Reverb reference-data fetches (categories/conditions) need a bearer token
+      # to clear Reverb's edge; the e2e user has no Reverb account, so the
+      # service token is the fallback. Supplied from the runner env (CI secret);
+      # empty locally, where the live-taxonomy cascade spec is expected to skip.
+      REVERB_API_TOKEN: ${REVERB_API_TOKEN:-}
     ports:
       - "8998:8998"
     depends_on:

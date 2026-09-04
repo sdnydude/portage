@@ -102,7 +102,7 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Scan flow | apps/web/src/components/capture/scan-flow.tsx |
 | Messages routes | apps/api/src/routes/messages.ts |
 | Trading API client | apps/api/src/marketplace/ebay-trading-client.ts |
-| eBay account-deletion endpoint | apps/api/src/routes/marketplace/ebay-deletion.ts (+ marketplace/ebay-notification-verify.ts, ebay-deletion-anonymize.ts) |
+| eBay account-deletion endpoint | apps/api/src/routes/marketplace/ebay-deletion.ts (+ apps/api/src/marketplace/ebay-notification-verify.ts, ebay-deletion-anonymize.ts) |
 | Prod boot guard | apps/api/src/lib/prod-env-guard.ts |
 | Messages hooks | apps/web/src/hooks/use-messages.ts |
 | Conversations list | apps/web/src/app/messages/page.tsx |

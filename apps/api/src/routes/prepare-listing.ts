@@ -146,9 +146,10 @@ export async function validateReverbAiFields<T extends {
   categoryUuid?: string | null; categoryName?: string | null;
   conditionUuid?: string | null; conditionName?: string | null;
 }>(userId: string, ai: T, item: { title?: string | null; category?: string | null }): Promise<T> {
+  const token = await ReverbAdapter.referenceToken(userId);
   const [reverbConditions, flatCats] = await Promise.all([
-    ReverbAdapter.getConditions(),
-    ReverbAdapter.getFlatCategories(),
+    ReverbAdapter.getConditions(token),
+    ReverbAdapter.getFlatCategories(token),
   ]);
   // Resolution order: verbatim AI choice → leaf-token semantic pick (title
   // carries the distinctive words) → majority token search as last resort.
