@@ -27,7 +27,7 @@ The API server handles authentication, CRUD operations, marketplace integrations
 - **Routes** (`src/routes/`): 20+ route files, 80+ endpoints
 - **Auth** (`src/lib/cf-access.ts`, `src/lib/jwt.ts`): Cloudflare Access identity verification + short-lived internal JWT
 - **Marketplace adapters** (`src/marketplace/`): eBay, Reverb (Etsy parked 2026-07-09 pending API key approval)
-- **AI** (`src/lib/vision.ts`, `src/lib/ai-client.ts`): item scanning via a configurable vision provider chain (Gemini 2.5 primary, Claude fallback)
+- **AI** (`src/lib/vision.ts`, `src/lib/ai-client.ts`): item scanning via a configurable vision provider chain (Gemini 3.5 Flash-Lite primary, Gemini 3.8 Flash then Claude Haiku fallback)
 - **Database** (`src/db/`): Drizzle ORM with schema-push workflow
 
 ### `apps/web` — Next.js 16 Frontend

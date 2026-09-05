@@ -112,6 +112,13 @@ const CANDIDATE = {
   confidence: 0.9,
 };
 
+// Which model answered the scan — the API stamps it on detailed.provenance and
+// the review Save must carry it onto marketplaceData.scan.provenance.
+const PROVENANCE = {
+  identification: { provider: "gemini", model: "gemini-3.5-flash-lite", fallbacks: 0 },
+  aspects: { provider: "gemini", model: "gemini-3.8-flash", fallbacks: 1 },
+};
+
 async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: unknown }) {
   // Photo upload goes through raw fetch, not the api() wrapper.
   global.fetch = vi.fn().mockResolvedValue({
@@ -121,7 +128,7 @@ async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: 
 
   apiMock.mockImplementation(async (path: string) => {
     if (path === "/scan/refine") {
-      return { identification: CANDIDATE, detailed: { candidates: [CANDIDATE], reasoning: [] } };
+      return { identification: CANDIDATE, detailed: { candidates: [CANDIDATE], reasoning: [], provenance: PROVENANCE } };
     }
     if (path.startsWith("/items/comps/search")) throw new Error("no comps");
     if (path === "/seller-profile") return { profile: { ebayPublishMode: "live" } };
@@ -433,6 +440,20 @@ describe("ScanFlow review wiring", () => {
     });
     const body = (itemsCall?.[1] as { body: { marketplaceData?: { scan?: { visionCategory?: string } } } }).body;
     expect(body.marketplaceData?.scan?.visionCategory).toBe("Guitars");
+  });
+
+  it("Save persists the scan provenance (which model answered) under marketplaceData.scan.provenance", async () => {
+    await renderInReview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { marketplaceData?: { scan?: { provenance?: unknown } } } }).body;
+    expect(body.marketplaceData?.scan?.provenance).toEqual(PROVENANCE);
   });
 
   it("review captures quantity and Save persists it to the item (editable from default 1)", async () => {

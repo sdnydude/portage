@@ -406,6 +406,25 @@ describe('POST /items', () => {
     expect(res.status).toBe(201);
   });
 
+  it('persists marketplaceData.scan.provenance (which model produced the scan) on create', async () => {
+    const provenance = {
+      identification: { provider: 'local', model: 'qwen3-vl:8b-instruct', fallbacks: 0 },
+      aspects: { provider: 'gemini', model: 'gemini-2.5-flash', fallbacks: 1 },
+    };
+    const valuesSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([MOCK_ITEM]),
+    });
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Sony WH-1000XM4', marketplaceData: { scan: { visionCategory: 'electronics', provenance } } });
+
+    expect(res.status).toBe(201);
+    expect(valuesSpy.mock.calls[0][0].marketplaceData.scan.provenance).toEqual(provenance);
+  });
+
   it('accepts quantity and passes it to the insert', async () => {
     const valuesSpy = vi.fn().mockReturnValue({
       returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, quantity: 5 }]),

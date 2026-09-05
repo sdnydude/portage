@@ -96,6 +96,28 @@ describe('gemini vision: per-entry model override', () => {
     expect(result.text).toBe(OK_RESPONSE.choices[0].message.content);
   });
 
+  it('"provider:model@effort" sets reasoning_effort for that entry (3.5-flash-lite rejects "none", live 400 2026-09-05)', async () => {
+    process.env.VISION_PROVIDERS = 'gemini:gemini-3.5-flash-lite@minimal,gemini:gemini-2.5-flash';
+    resetEnv();
+    loadEnv();
+    mockCreate.mockResolvedValue(OK_RESPONSE);
+
+    await analyzeImages(IMG, 'sys', 'user', { maxTokens: 2048 });
+
+    expect(mockCreate.mock.calls[0][0].model).toBe('gemini-3.5-flash-lite');
+    expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe('minimal');
+  });
+
+  it('rejects an unknown "@effort" value at chain build (misconfig fails fast, not one 400 per scan)', async () => {
+    process.env.VISION_PROVIDERS = 'gemini:gemini-3.5-flash-lite@turbo';
+    resetEnv();
+    loadEnv();
+
+    await expect(analyzeImages(IMG, 'sys', 'user', { maxTokens: 2048 }))
+      .rejects.toMatchObject({ statusCode: 503, code: 'AI_UNAVAILABLE' });
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('falls back to 2.5-flash (reasoning still off) when 3.5-flash fails', async () => {
     mockCreate
       .mockRejectedValueOnce(new Error('503 high demand'))

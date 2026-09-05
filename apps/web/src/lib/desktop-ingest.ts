@@ -1,4 +1,4 @@
-import type { RecognitionCandidate } from "@portage/shared";
+import type { RecognitionCandidate, ScanProvenance } from "@portage/shared";
 
 // A lean POST /items body for batch ingest — core identified fields + photos.
 // Category resolution, aspects, and shipping specifics are left to the normal
@@ -17,6 +17,9 @@ export interface IngestItemBody {
   estimatedValueMax?: number;
   aiConfidenceScore?: number;
   photos: { url: string; isPrimary: boolean }[];
+  // Same shape scan-flow saves: vision coarse category for the mismatch guard,
+  // plus which provider/model answered the scan.
+  marketplaceData?: { scan: { visionCategory: string; provenance: ScanProvenance } };
 }
 
 const CONDITION_NOTES_MAX = 500; // server cap — over-length 400s the create
@@ -24,8 +27,14 @@ const CONDITION_NOTES_MAX = 500; // server cap — over-length 400s the create
 export function candidateToItemBody(
   fields: RecognitionCandidate,
   uploadedUrls: string[],
+  provenance?: ScanProvenance,
 ): IngestItemBody {
   return {
+    // The API's scan slot requires visionCategory, so provenance rides only
+    // when the AI gave a category (it always does in practice).
+    ...(provenance && fields.category
+      ? { marketplaceData: { scan: { visionCategory: fields.category, provenance } } }
+      : {}),
     title: fields.name,
     description: fields.description || undefined,
     category: fields.category || undefined,
