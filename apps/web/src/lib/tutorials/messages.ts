@@ -8,7 +8,7 @@ export const messagesTopic: TutorialTopic = {
     {
       id: "conversations",
       title: "Buyer messages, in one inbox",
-      body: "eBay buyer messages sync into Portage. Unread counts show on the More tab so nothing slips.",
+      body: "eBay buyer messages sync into Portage. Unread counts show on Messages in the sidebar and your avatar menu so nothing slips.",
       screenshot: "/tutorials/messages/conversations.png",
       overlays: [{ type: "highlight", x: 10, y: 19, w: 80, h: 25 }],
     },

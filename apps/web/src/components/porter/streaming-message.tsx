@@ -77,7 +77,7 @@ export function StreamingMessage({
         if (block.type === "text") {
           const isLast = i === streamingBlocks.length - 1;
           return (
-            <div key={i} className="rounded-2xl rounded-bl-sm bg-[var(--surface)] px-4 py-2 text-sm leading-relaxed prose-porter">
+            <div key={block.id} className="rounded-2xl rounded-bl-sm bg-[var(--surface)] px-4 py-2 text-sm leading-relaxed prose-porter">
               <ReactMarkdown>{block.text ?? ""}</ReactMarkdown>
               {isStreaming && isLast && (
                 <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-current align-middle" />
@@ -88,7 +88,7 @@ export function StreamingMessage({
         if (block.type === "tool") {
           return (
             <ToolBlock
-              key={i}
+              key={block.id}
               toolId={block.toolId ?? ""}
               toolName={block.toolName ?? ""}
               status={block.toolStatus ?? "running"}

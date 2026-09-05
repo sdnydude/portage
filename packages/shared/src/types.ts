@@ -66,6 +66,8 @@ export interface ReverbCacheEntry {
 export interface MarketplaceData {
   ebay?: MarketplaceCacheEntry;
   reverb?: ReverbCacheEntry;
+  /** Vision scan's coarse category — read by the category-mismatch guard. */
+  scan?: { visionCategory?: string };
 }
 
 export interface Item {
@@ -357,6 +359,10 @@ export interface ListingFlowState {
 
   shippingMethod: ShippingMethod;
   shippingCost: number | null;
+  /** True once the seller explicitly set method/cost — only then does publish
+   *  emit ebayShipping (untouched keeps server defaults). Persisted so a
+   *  restored draft keeps the intent; absent on legacy drafts = untouched. */
+  shippingTouched?: boolean;
   packageSize: PackageSize;
   // weight stays decimal pounds (existing flow consumers); dimensions are inches.
   // ebayPackageType is the eBay enum (MAILING_BOX/LETTER/...), distinct from packageSize.
@@ -439,6 +445,9 @@ export interface SellerProfile {
 }
 
 export interface ReverbShippingDefaults {
+  /** Reverb-side shipping profile reference — wins over per-listing rates
+   *  (adapter precedence). Was read via inline casts before 2026-08-01. */
+  shippingProfileId?: string;
   rates: Array<{ regionCode: string; rate: { amount: string; currency: string } }>;
   local: boolean;
 }
@@ -494,6 +503,53 @@ export interface EbayPreparedFields {
   packageType: string;
   /** Best-Offer auto-accept floor (seller opted in); flows to the adapter via marketplaceSpecific. */
   bestOfferAutoAcceptPrice?: number;
+}
+
+/**
+ * Per-listing eBay shipping choice (beta 17be7322), persisted verbatim under
+ * marketplaceSpecificFields.ebayShipping. Grouped so it can never collide with
+ * mergeItemShipping's flat weight/dimensions/packageType keys. Absent key =
+ * no explicit choice — the calculated-shipping defaults apply, and legacy
+ * rows keep their pre-feature behavior.
+ */
+export interface EbayListingShipping {
+  method: ShippingMethod;
+  /** Buyer-paid flat rate in listing currency; required when method='flat'. */
+  flatCost?: number;
+  /** eBay ShippingService enum value; absent → USPSPriority. */
+  service?: string;
+  /** Handling time in days → Trading DispatchTimeMax; absent → 1. */
+  handlingDays?: number;
+  /** Offer local pickup alongside the method (add-on only — eBay rejects
+   *  pickup-only for flat/calculated, live-verified 2026-08-01). */
+  localPickup?: boolean;
+}
+
+/**
+ * Payload of details[0] on a 422 BEST_OFFER_CONFLICT (25afd214): the effective
+ * (post-heal) thresholds so price editors can render a guided fix. `healed`
+ * distinguishes server-persisted live values (client may un-touch its form)
+ * from an unpersisted echo of the client's own submission (must stay touched,
+ * or a price-only retry silently drops the seller's edit — CR#3/BO-5).
+ */
+export interface BestOfferConflictDetails {
+  bestOfferEnabled: boolean | null;
+  bestOfferAutoAcceptPrice: number | null;
+  minimumBestOfferPrice: number | null;
+  healed: boolean;
+}
+
+/**
+ * Per-listing Reverb shipping choice, persisted verbatim under
+ * marketplaceSpecificFields.reverbShipping and applied AFTER seller-profile
+ * fill in applyReverbEnrichment (same explicit-override pattern as
+ * offersEnabledExplicit). Absent key = profile defaults keep flowing on sync.
+ */
+export interface ReverbListingShipping {
+  /** Explicit Reverb shipping-profile choice (wins over profile defaults + rates). */
+  profileId?: string;
+  /** Drop profile/rates entirely and publish shipping{local:true}. */
+  localPickupOnly?: boolean;
 }
 
 export interface ReverbPreparedFields {

@@ -24,4 +24,9 @@ describe('parseActionPills', () => {
     expect(PORTER_SYSTEM).toContain('"label"');
     expect(PORTER_SYSTEM).toContain('"message"');
   });
+
+  it('system prompt forbids hand-summed totals — use get_inventory_stats (live 08-13: $650 claimed, true sum $450)', () => {
+    expect(PORTER_SYSTEM).toContain('never add prices up yourself');
+    expect(PORTER_SYSTEM).toContain('get_inventory_stats');
+  });
 });

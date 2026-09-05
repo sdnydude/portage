@@ -3,6 +3,7 @@ id: redesign-ship-1-phase6
 title: "Redesign Ship 1 — DHG design system + Porter home + tab bar + /porter page + theme toggle (Phase 6 review + fixes + PR)"
 sidebar_label: "Redesign Ship 1 — DHG design system + Porter home "
 sidebar_position: 51
+registry_id: 6dacde04-d2ce-44c6-b954-3613a33b77bf
 ---
 
 # Redesign Ship 1 — DHG design system + Porter home + tab bar + /porter page + theme toggle (Phase 6 review + fixes + PR)

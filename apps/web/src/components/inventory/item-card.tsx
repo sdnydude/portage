@@ -1,6 +1,7 @@
 import type { Item } from "@/hooks/use-items";
 import Link from "next/link";
 import { formatCondition } from "@/lib/format";
+import { StatusChip, MarketplaceChip } from "./status-chip";
 
 interface ItemCardProps {
   item: Item;
@@ -14,11 +15,19 @@ interface ItemCardProps {
 
 export function ItemCard({ item, view, onOpen, selected, interactive = true }: ItemCardProps) {
   const primaryPhoto = item.photos.find((p) => p.isPrimary) ?? item.photos[0];
-  const valueDisplay = item.estimatedValueMin && item.estimatedValueMax
-    ? `$${item.estimatedValueMin}–$${item.estimatedValueMax}`
-    : item.estimatedValueRecommended
-      ? `~$${item.estimatedValueRecommended}`
-      : null;
+  // Price truth (Housekeeping-1): the card shows the seller's one price —
+  // the AI estimated-value range is retired from every surface.
+  const hasPrice = item.price != null;
+  // Chips (Housekeeping-1): derived status from GET /items; older payloads
+  // without displayStatus fall back to the explicit-false Unlisted rule.
+  const chipStatus = item.displayStatus ?? (item.listed === false ? "unlisted" : null);
+  const chips = (chipStatus || (item.liveMarketplaces?.length ?? 0) > 0) ? (
+    <div className="flex items-center gap-1 flex-wrap">
+      {chipStatus && <StatusChip status={chipStatus} />}
+      {(item.liveMarketplaces ?? []).map((m) => <MarketplaceChip key={m} marketplace={m} />)}
+    </div>
+  ) : null;
+  const priceDisplay = hasPrice ? `$${item.price}` : "No price";
 
   // Border color is excluded from the shared base string: Tailwind's
   // generated-CSS order (not string order) decides which border-color
@@ -49,9 +58,7 @@ export function ItemCard({ item, view, onOpen, selected, interactive = true }: I
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <div className="text-sm font-medium text-text-primary truncate">{item.title}</div>
-          {item.listed === false && (
-            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ color: "var(--teal, #1A7A6D)", background: "var(--teal-soft, rgba(26,122,109,0.1))" }}>Unlisted</span>
-          )}
+          {chips}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           {item.category && (
@@ -61,9 +68,7 @@ export function ItemCard({ item, view, onOpen, selected, interactive = true }: I
           <span className="text-xs text-text-secondary">{formatCondition(item.condition)}</span>
         </div>
       </div>
-      {valueDisplay && (
-        <div className="text-sm font-medium text-forest-green flex-shrink-0">{valueDisplay}</div>
-      )}
+      <div className={`text-sm font-medium flex-shrink-0 ${hasPrice ? "text-forest-green" : "text-text-placeholder"}`}>{priceDisplay}</div>
     </>
   ) : (
     <>
@@ -81,17 +86,11 @@ export function ItemCard({ item, view, onOpen, selected, interactive = true }: I
         )}
       </div>
       <div className="p-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="text-sm font-medium text-text-primary truncate">{item.title}</div>
-          {item.listed === false && (
-            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ color: "var(--teal, #1A7A6D)", background: "var(--teal-soft, rgba(26,122,109,0.1))" }}>Unlisted</span>
-          )}
-        </div>
+        <div className="text-sm font-medium text-text-primary truncate">{item.title}</div>
+        {chips && <div className="mt-1">{chips}</div>}
         <div className="flex items-center justify-between mt-1">
           <span className="text-xs text-text-secondary">{formatCondition(item.condition)}</span>
-          {valueDisplay && (
-            <span className="text-xs font-medium text-forest-green">{valueDisplay}</span>
-          )}
+          <span className={`text-xs font-medium ${hasPrice ? "text-forest-green" : "text-text-placeholder"}`}>{priceDisplay}</span>
         </div>
       </div>
     </>

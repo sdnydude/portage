@@ -10,13 +10,13 @@ import { AppError } from '../middleware/error.js';
 const logger = createLogger('drafts');
 
 const upsertDraftSchema = z.object({
-  id: z.string().uuid().optional(),
-  itemId: z.string().uuid().nullable().optional(),
+  id: z.guid().optional(),
+  itemId: z.guid().nullable().optional(),
   marketplace: z.enum(['ebay', 'reverb']),
   title: z.string().max(500).nullable().optional(),
   price: z.number().positive().nullable().optional(),
   lastStepCompleted: z.string().max(50).nullable().optional(),
-  flowState: z.record(z.unknown()),
+  flowState: z.record(z.string(), z.unknown()),
 });
 
 export const draftsRouter = Router();

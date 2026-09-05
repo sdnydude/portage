@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -38,6 +38,20 @@ jobs:
 
       - name: Lint web
         run: npm run lint -w apps/web
+      - name: Lint plugin-load canary (P6)
+        # A plugin that fails to load lints "clean" with zero rules; prove each
+        # stack member contributes at least one active rule to a real file.
+        run: |
+          cd apps/web
+          npx eslint --print-config src/app/layout.tsx > /tmp/eslint-config.json
+          node -e '
+            const c = JSON.parse(require("fs").readFileSync("/tmp/eslint-config.json", "utf8"));
+            const active = Object.entries(c.rules || {}).filter(([, v]) => (Array.isArray(v) ? v[0] : v) !== "off" && (Array.isArray(v) ? v[0] : v) !== 0);
+            for (const p of ["@eslint-react/", "react-hooks/", "@next/next/", "jsx-a11y/", "@typescript-eslint/", "import-x/"]) {
+              if (!active.some(([k]) => k.startsWith(p))) { console.error("no active rules from " + p); process.exit(1); }
+            }
+            console.log("eslint stack active:", active.length, "rules");
+          '
 
   test:
     name: Test
@@ -64,7 +78,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -79,6 +93,11 @@ jobs:
           JWT_SECRET: ci-test-secret-that-is-at-least-32-chars
           ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
+      # P4: tutorial screenshots are published assets — every step's PNG must
+      # exist, be 780x1688, and not be a blank frame (scripts/check-tutorial-captures.ts).
+      - name: Check tutorial captures
+        run: npm run check:tutorials -w apps/web
+
       - name: Run web unit tests
         run: npm run test -w apps/web
 
@@ -92,7 +111,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci

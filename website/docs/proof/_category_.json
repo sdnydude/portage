@@ -1,0 +1,6 @@
+{
+  "label": "Proof of Done",
+  "position": 95,
+  "collapsed": true,
+  "link": { "type": "generated-index", "description": "Evidence bundles backing 'done' claims — merge state, deploy health, gates, data truth, and observed behavior." }
+}

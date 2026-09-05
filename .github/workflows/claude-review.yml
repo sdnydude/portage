@@ -3,6 +3,12 @@ name: Claude Review
 # On-demand only (decision 2026-07-11): local /code-review is the standard
 # pre-PR step; CodeRabbit is the always-on CI reviewer. Trigger this by adding
 # the `claude-review` label to a PR, or manually via workflow_dispatch.
+#
+# FORK POLICY (deferral 223b0419, 2026-08-19): a labeled pull_request from a
+# FORK is refused by the first step BEFORE checkout — self-hosted runner +
+# ANTHROPIC_API_KEY never see fork code. The job-level label gate stays (this
+# is not a required check, so skip-vs-fail does not matter here).
+# workflow_dispatch against a fork PR number is exempt (write access needed).
 on:
   pull_request:
     types: [labeled]
@@ -26,6 +32,12 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
+      - name: Refuse fork PRs (self-hosted runner)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::Fork PRs do not run on the self-hosted runner. Maintainer: push the branch to contrib/<name> and open a same-repo PR."
+          exit 1
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0

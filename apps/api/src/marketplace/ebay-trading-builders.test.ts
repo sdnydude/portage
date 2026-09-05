@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+const { mockBuilderWarn } = vi.hoisted(() => ({ mockBuilderWarn: vi.fn() }));
+vi.mock('../lib/logger.js', () => ({
+  createLogger: () => ({ warn: mockBuilderWarn, info: vi.fn(), debug: vi.fn(), error: vi.fn() }),
+}));
 import {
   buildAddFixedPriceItemXml,
   buildVerifyAddFixedPriceItemXml,
@@ -68,6 +72,15 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(xml).toContain('<ConditionDescription>Light wear on headband.</ConditionDescription>');
   });
 
+  it('omits ConditionDescription for brand-new items (ConditionID 1000) — eBay rejects it (live revise failure 2026-08-05)', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, conditionId: '1000', conditionDescription: 'Sealed in box.' },
+      'T',
+    );
+    expect(xml).toContain('<ConditionID>1000</ConditionID>');
+    expect(xml).not.toContain('<ConditionDescription>');
+  });
+
   it('marks self-hosted (R2) pictures with PictureSource=Vendor so eBay does not treat them as EPS', () => {
     expect(buildAddFixedPriceItemXml(baseInput, 'T')).toContain('<PictureDetails><PictureSource>Vendor</PictureSource>');
   });
@@ -107,6 +120,78 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(escaped).toContain('<Title>Tom &amp; Jerry &lt;best&gt;</Title>');
     expect(escaped).toContain('<Value>A &amp; B</Value>');
     expect(escaped).not.toContain('Tom & Jerry');
+  });
+
+  it('enables Best Offer WITHOUT an auto-accept floor when bestOfferEnabled is set (per-listing toggle)', () => {
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, bestOfferEnabled: true }, 'T');
+    expect(xml).toContain('<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>');
+    expect(xml).not.toContain('BestOfferAutoAcceptPrice');
+  });
+
+  it('emits MinimumBestOfferPrice (auto-decline floor) only when valid and Best Offer is on', () => {
+    const withMin = buildAddFixedPriceItemXml({ ...baseInput, bestOfferEnabled: true, minimumBestOfferPrice: 80 }, 'T');
+    expect(withMin).toContain('<MinimumBestOfferPrice currencyID="USD">80</MinimumBestOfferPrice>');
+    // Invalid floors (>= price) are dropped, not sent for eBay to reject.
+    const tooHigh = buildAddFixedPriceItemXml({ ...baseInput, bestOfferEnabled: true, minimumBestOfferPrice: 500 }, 'T');
+    expect(tooHigh).not.toContain('MinimumBestOfferPrice');
+    // No toggle, no auto-accept floor → min alone does not enable Best Offer.
+    const minOnly = buildAddFixedPriceItemXml({ ...baseInput, minimumBestOfferPrice: 80 }, 'T');
+    expect(minOnly).not.toContain('<BestOfferDetails>');
+  });
+});
+
+describe('inline shipping methods (beta 17be7322, shapes live-verified 2026-08-01)', () => {
+  it('method=flat emits ShippingType Flat with the buyer cost and no CalculatedShippingRate', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, shipping: { ...baseInput.shipping, method: 'flat', flatCost: 5 } },
+      'T',
+    );
+    expect(xml).toContain('<ShippingType>Flat</ShippingType>');
+    expect(xml).toContain('<ShippingServiceCost currencyID="USD">5.00</ShippingServiceCost>');
+    expect(xml).not.toContain('CalculatedShippingRate');
+  });
+
+  it('method=free emits Flat + FreeShipping true with an explicit 0.00 cost', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, shipping: { ...baseInput.shipping, method: 'free' } },
+      'T',
+    );
+    expect(xml).toContain('<ShippingType>Flat</ShippingType>');
+    expect(xml).toContain('<ShippingServiceCost currencyID="USD">0.00</ShippingServiceCost>');
+    expect(xml).toContain('<FreeShipping>true</FreeShipping>');
+    expect(xml).not.toContain('CalculatedShippingRate');
+  });
+
+  it('flat/free with zero weight keeps ShippingPackageDetails with a 1oz floor so dimensions carry', () => {
+    const zeroWeight = { ...baseInput.shipping, method: 'flat' as const, flatCost: 5, weightMajor: 0, weightMinor: 0 };
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, shipping: zeroWeight }, 'T');
+    expect(xml).toContain('<ShippingPackageDetails>');
+    expect(xml).toContain('<WeightMinor unit="oz">1</WeightMinor>');
+    expect(xml).toContain('<PackageLength unit="in">12</PackageLength>');
+    // Real weight passes through untouched.
+    expect(buildAddFixedPriceItemXml({ ...baseInput, shipping: { ...baseInput.shipping, method: 'flat', flatCost: 5 } }, 'T')).toContain('<WeightMinor unit="oz">8</WeightMinor>');
+  });
+
+  it('pickupOffered appends the Pickup service as a second option — add-on only (pickup-only is illegal, live-verified)', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, shipping: { ...baseInput.shipping, pickupOffered: true } },
+      'T',
+    );
+    expect(xml).toContain('<ShippingServiceOptions><ShippingServicePriority>2</ShippingServicePriority><ShippingService>Pickup</ShippingService></ShippingServiceOptions>');
+    // The primary service option is still there (eBay requires a real service).
+    expect(xml).toContain('<ShippingService>USPSPriority</ShippingService>');
+    // Off/absent → no Pickup option.
+    expect(buildAddFixedPriceItemXml(baseInput, 'T')).not.toContain('<ShippingService>Pickup</ShippingService>');
+  });
+
+  it('all-zero dimensions omit the Package dimension tags (unverified shape guard) but keep the floored weight', () => {
+    const noDims = { ...baseInput.shipping, method: 'free' as const, weightMajor: 0, weightMinor: 0, dimensions: { length: 0, width: 0, height: 0 } };
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, shipping: noDims }, 'T');
+    expect(xml).toContain('<ShippingPackageDetails>');
+    expect(xml).toContain('<WeightMinor unit="oz">1</WeightMinor>');
+    expect(xml).not.toContain('<PackageDepth');
+    expect(xml).not.toContain('<PackageLength');
+    expect(xml).not.toContain('<PackageWidth');
   });
 });
 
@@ -176,6 +261,18 @@ describe('buildReviseFixedPriceItemXml (full content revise)', () => {
   });
 });
 
+describe('buildReviseFixedPriceItemXml — Best Offer threshold DeletedField', () => {
+  it('emits DeletedField entries to clear thresholds already stored on the live listing (omission keeps them)', () => {
+    const xml = buildReviseFixedPriceItemXml('307102403404', {
+      ...baseInput,
+      deleteBestOfferAutoAcceptPrice: true,
+      deleteMinimumBestOfferPrice: true,
+    }, 'T');
+    expect(xml).toContain('<DeletedField>Item.ListingDetails.BestOfferAutoAcceptPrice</DeletedField>');
+    expect(xml).toContain('<DeletedField>Item.ListingDetails.MinimumBestOfferPrice</DeletedField>');
+  });
+});
+
 describe('buildReviseFixedPriceItemXml — empty photos guard (F1 delete)', () => {
   it('throws instead of omitting PictureDetails when photos is explicitly empty (eBay keeps old pics silently)', () => {
     const input = { ...baseInput, pictureUrls: [] };
@@ -221,6 +318,14 @@ describe('parseGetItemStatus', () => {
   });
 });
 
+describe('bestOfferDetails defensive drop (BO-3)', () => {
+  it('warn-logs when an invalid floor is dropped at the builder — pre-flight should make this unreachable', () => {
+    mockBuilderWarn.mockClear();
+    buildAddFixedPriceItemXml({ ...baseInput, price: 199, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 220 }, 'tok');
+    expect(mockBuilderWarn).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('parseGetItemVerification', () => {
   it('reads aspects, MPN, Brand, status, ItemID and price from a GetItem response', () => {
     const parsed = {
@@ -245,6 +350,23 @@ describe('parseGetItemVerification', () => {
     expect(v.aspects.MPN).toEqual(['HD600']);
     expect(v.mpn).toBe('HD600');
     expect(v.brand).toBe('Sennheiser');
+  });
+
+  it('reads live Best Offer state — enabled flag + both thresholds, attr-or-scalar (BO-3)', () => {
+    const parsed = {
+      GetItemResponse: { Item: {
+        ItemID: '307100024169',
+        BestOfferDetails: { BestOfferEnabled: 'true' },
+        ListingDetails: {
+          BestOfferAutoAcceptPrice: { '@_currencyID': 'USD', '#text': 269 },
+          MinimumBestOfferPrice: 249,
+        },
+      } },
+    };
+    const v = parseGetItemVerification(parsed);
+    expect(v.bestOfferEnabled).toBe(true);
+    expect(v.bestOfferAutoAcceptPrice).toBe(269);
+    expect(v.minimumBestOfferPrice).toBe(249);
   });
 
   it('returns found:false with null fields when the response carries no Item', () => {

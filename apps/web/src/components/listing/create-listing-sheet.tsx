@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { DisclaimerSheet } from "./disclaimer-sheet";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
+import { ShippingFieldsSection, SHIPPING_FIELDS_DEFAULT, type ShippingFieldsValue } from "./shipping-fields-section";
+import { ReverbCategorySection } from "./reverb-category-section";
 
 /** POST /listings response — `warning` carries eBay's verbatim reason when a
  *  live publish fell back to a draft. */
@@ -29,6 +31,13 @@ interface CreateListingSheetProps {
   initialAspects?: Record<string, string[]>;
   /** F1: scan prefill — default the eBay-draft toggle on. */
   initialEbayDraft?: boolean;
+  /** Scan-review ride-along: seed the eBay shipping fields. A seed IS seller
+   *  intent (they set it on the review screen), so it counts as touched. */
+  initialShipping?: ShippingFieldsValue;
+  /** BO-5: seed the eBay Best Offer fields VISIBLY (e.g. an AI-prepared
+   *  auto-accept floor) — a value the seller sees and can change, never
+   *  invisible config riding the POST. Counts as touched, like shipping. */
+  initialBestOffer?: { bestOfferAutoAcceptPrice?: number; minimumBestOfferPrice?: number };
   /** F1: seed the publish-now toggle (e.g. seller profile default = live). */
   initialPublishNow?: boolean;
   /**
@@ -40,7 +49,7 @@ interface CreateListingSheetProps {
   onClose: () => void;
 }
 
-export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialPublishNow = false, allowedMarketplaces, onCreated, onClose }: CreateListingSheetProps) {
+export function CreateListingSheet({ itemId, suggestedPrice, priceSource, categoryId, initialAspects, initialEbayDraft = false, initialShipping, initialBestOffer, initialPublishNow = false, allowedMarketplaces, onCreated, onClose }: CreateListingSheetProps) {
   const { token } = useAuth();
   // F3b: within the 7-day window the terms sheet is skipped (consent still recorded).
   const { disclaimerSuppressed } = useUserPreferences();
@@ -50,17 +59,108 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // Once the user types their own price it is authoritative — a late-arriving AI
   // suggestion (comps resolve async after mount) must never overwrite it. Adopt
   // the prefill only while the field is still untouched.
-  const userEditedPrice = useRef(false);
+  const userEditedPriceRef = useRef(false);
   // A new item gets its own suggestion — clear the edit guard so the sheet doesn't
   // carry the previous item's typed price if it's reused without remounting.
   useEffect(() => {
-    userEditedPrice.current = false;
+    userEditedPriceRef.current = false;
   }, [itemId]);
   useEffect(() => {
-    if (userEditedPrice.current) return;
+    if (userEditedPriceRef.current) return;
     setPrice(suggestedPrice?.toString() ?? "");
   }, [suggestedPrice]);
   const [publishNow, setPublishNow] = useState(initialPublishNow);
+  // Per-listing "Accept offers" (beta request 1ad18a5b). Untouched → nothing is
+  // sent and the server/profile defaults apply (eBay: off; Reverb: profile,
+  // default on). Only an explicit user flip rides the POST.
+  // Per-marketplace offers state (C1, operator-classified critical
+  // 2026-08-03): eBay and Reverb Best Offer are DIFFERENT features — eBay is
+  // enable + two thresholds, Reverb is a single explicit boolean. One shared
+  // value corrupted both in one session (seed → switch → toggle → back).
+  // Each marketplace owns its slice; switching only changes which slice
+  // renders. Seeded once here — no switch-time re-seeding.
+  const [offers, setOffers] = useState({
+    ebay: {
+      enabled: initialBestOffer != null,
+      min: initialBestOffer?.minimumBestOfferPrice != null ? String(initialBestOffer.minimumBestOfferPrice) : "",
+      autoAccept: initialBestOffer?.bestOfferAutoAcceptPrice != null ? String(initialBestOffer.bestOfferAutoAcceptPrice) : "",
+    },
+    reverb: { enabled: true }, // profile default is on
+  });
+  // Touched PER MARKETPLACE (review finding 2026-08-02): an eBay flip must not
+  // ride a later Reverb POST as offersEnabledExplicit (or vice versa). An
+  // initialBestOffer seed counts as touched (BO-5, same as initialShipping).
+  const offersTouchedRef = useRef<{ ebay: boolean; reverb: boolean }>({ ebay: initialBestOffer != null, reverb: false });
+  const acceptOffers = marketplace === "ebay" ? offers.ebay.enabled : offers.reverb.enabled;
+  const setAcceptOffers = (v: boolean) =>
+    setOffers((o) => marketplace === "ebay" ? { ...o, ebay: { ...o.ebay, enabled: v } } : { ...o, reverb: { enabled: v } });
+  const minOffer = offers.ebay.min;
+  const setMinOffer = (v: string) => setOffers((o) => ({ ...o, ebay: { ...o.ebay, min: v } }));
+  const autoAcceptOffer = offers.ebay.autoAccept;
+  const setAutoAcceptOffer = (v: string) => setOffers((o) => ({ ...o, ebay: { ...o.ebay, autoAccept: v } }));
+  // Advertising (beta request 55639b6e): eBay Promoted Listings ad rate /
+  // Reverb Bump bid. Off by default; nothing rides the POST until toggled.
+  const [promote, setPromote] = useState(false);
+  const [adRate, setAdRate] = useState("");
+  const [bumpBid, setBumpBid] = useState("1.5");
+  // Per-listing shipping (beta 17be7322) — eBay only for now. Untouched sends
+  // nothing: the server keeps its calculated-shipping defaults and legacy rows
+  // keep profile-driven behavior (same contract as offersTouched above).
+  const [shipFields, setShipFields] = useState<ShippingFieldsValue>(initialShipping ?? SHIPPING_FIELDS_DEFAULT);
+  const shippingTouchedRef = useRef(initialShipping != null);
+  // Reverb per-listing shipping: profile select ("" = seller-profile default),
+  // or "pickup" for local-pickup-only. Same touched contract as eBay above.
+  const [reverbProfiles, setReverbProfiles] = useState<Array<{ id: string; name: string }>>([]);
+  const [reverbShipChoice, setReverbShipChoice] = useState("");
+  const [reverbLocalPickup, setReverbLocalPickup] = useState(false);
+  // Pickup toggle touched separately: only then does the explicit boolean
+  // ride the POST (so a profile-only change never overrides the default).
+  const reverbPickupTouchedRef = useRef(false);
+  const reverbShippingTouchedRef = useRef(false);
+  // Reverb category cascade — an explicit pick overrides server enrichment
+  // (AI/prepare-cache/profile); null = untouched, nothing sent.
+  const [reverbCategory, setReverbCategory] = useState<{ uuid: string; fullName: string } | null>(null);
+  // Pre-seed with the category that WILL publish (operator feedback 2026-08-02):
+  // prepare-cache first, else the same first-match the publish-time enrichment
+  // guess uses (GET /category-suggestion) — never an unexplained blank default.
+  // One seed attempt per sheet instance: a seller's explicit reset to the
+  // default must survive marketplace toggles (review finding 2026-08-02) —
+  // reverbCategory truthiness alone can't distinguish "never seeded" from
+  // "seeded then deliberately cleared".
+  const reverbSeedAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (marketplace !== "reverb" || !token || reverbCategory || reverbSeedAttemptedRef.current) return;
+    reverbSeedAttemptedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const item = await api<{ title?: string; category?: string; marketplaceData?: { reverb?: { categoryUuid?: string | null; categoryName?: string | null } } }>(`/items/${itemId}`, { token });
+        if (cancelled) return;
+        const cached = item?.marketplaceData?.reverb;
+        if (cached?.categoryUuid) {
+          setReverbCategory({ uuid: cached.categoryUuid, fullName: cached.categoryName ?? "" });
+          return;
+        }
+        const q = item?.category || item?.title;
+        if (!q) return;
+        const r = await api<{ suggestion: { uuid: string; fullName: string } | null }>(`/marketplace/reverb/category-suggestion?q=${encodeURIComponent(q)}`, { token });
+        if (!cancelled && r?.suggestion) setReverbCategory(r.suggestion);
+      } catch { /* cascade stays on defaults; enrichment still guesses at publish */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketplace, token, itemId]);
+  useEffect(() => {
+    if (marketplace !== "reverb" || !token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api<{ profiles: Array<{ id: string; name: string }> }>("/marketplace/reverb/shipping-profiles", { token });
+        if (!cancelled && r?.profiles) setReverbProfiles(r.profiles);
+      } catch { /* select still offers default + pickup */ }
+    })();
+    return () => { cancelled = true; };
+  }, [marketplace, token]);
   // When not publishing now, optionally create an UNPUBLISHED eBay offer (Seller
   // Hub draft) instead of a Portage-local draft. eBay marketplace only.
   const [ebayDraft, setEbayDraft] = useState(initialEbayDraft);
@@ -79,15 +179,81 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   // network error) so the server resumes the insert-first row instead of
   // inserting an orphan draft per attempt; cleared on success below.
   const idempotencyKeyRef = useRef<string | null>(null);
+  // Synchronous re-entry guard (2026-08-26: six taps on Accept & Publish on
+  // iPhone → six POSTs sharing one key → two live eBay listings). React state
+  // reaches the DOM's `disabled` a paint late; iOS double-fires inside that
+  // window, so the guard must be a ref checked before anything else.
+  const inFlightRef = useRef(false);
 
   // Single create-and-publish call; `aspects` carries seller-filled item
   // specifics on a retry after EBAY_ASPECTS_REQUIRED.
   const submitListing = async (priceNum: number, aspects?: Record<string, string[]>, suppress7d = false) => {
-    const fields: { categoryId?: string; aspects?: Record<string, string[]> } = {};
+    const fields: {
+      categoryId?: string;
+      aspects?: Record<string, string[]>;
+      bestOfferEnabled?: boolean;
+      minimumBestOfferPrice?: number;
+      bestOfferAutoAcceptPrice?: number;
+      offersEnabledExplicit?: boolean;
+      ebayAdRate?: number;
+      reverbBumpBid?: number;
+      ebayShipping?: { method: string; flatCost?: number; service?: string; handlingDays?: number; localPickup?: boolean };
+      reverbShipping?: { profileId?: string; localPickup?: boolean; localPickupOnly?: boolean };
+      categoryUuid?: string;
+    } = {};
     if (categoryId) fields.categoryId = categoryId;
     // The seller-filled retry set wins; otherwise fall back to scan prefill.
     const effectiveAspects = aspects ?? initialAspects;
     if (effectiveAspects && Object.keys(effectiveAspects).length > 0) fields.aspects = effectiveAspects;
+    // Offers ride only on an explicit user flip — untouched keeps server/profile
+    // defaults, and pre-toggle rows keep profile-driven sync behavior.
+    if (offersTouchedRef.current[marketplace]) {
+      if (marketplace === "ebay") {
+        fields.bestOfferEnabled = acceptOffers;
+        if (acceptOffers) {
+          const min = parseFloat(minOffer);
+          const auto = parseFloat(autoAcceptOffer);
+          if (min > 0) fields.minimumBestOfferPrice = min;
+          if (auto > 0) fields.bestOfferAutoAcceptPrice = auto;
+        }
+      } else {
+        fields.offersEnabledExplicit = acceptOffers;
+      }
+    }
+    // Shipping rides only on an explicit user interaction (shippingTouched) —
+    // untouched keeps the server's calculated defaults.
+    if (shippingTouchedRef.current && marketplace === "ebay") {
+      const cost = parseFloat(shipFields.flatCost);
+      const days = parseInt(shipFields.handlingDays, 10);
+      fields.ebayShipping = {
+        method: shipFields.method,
+        ...(shipFields.method === "flat" && cost > 0 ? { flatCost: cost } : {}),
+        ...(shipFields.service ? { service: shipFields.service } : {}),
+        ...(days >= 0 && shipFields.handlingDays !== "" ? { handlingDays: days } : {}),
+        ...(shipFields.localPickup ? { localPickup: true } : {}),
+      };
+    }
+    if (reverbShippingTouchedRef.current && marketplace === "reverb" && (reverbPickupTouchedRef.current || reverbShipChoice)) {
+      fields.reverbShipping = {
+        ...(reverbShipChoice ? { profileId: reverbShipChoice } : {}),
+        ...(reverbPickupTouchedRef.current ? { localPickup: reverbLocalPickup } : {}),
+      };
+    }
+    // Explicit cascade pick wins over server enrichment (applyReverbEnrichment
+    // only fills categoryUuid when absent).
+    if (marketplace === "reverb" && reverbCategory) {
+      fields.categoryUuid = reverbCategory.uuid;
+    }
+    // Advertising rides only when the promote toggle is on with a valid rate.
+    if (promote) {
+      if (marketplace === "ebay") {
+        const rate = parseFloat(adRate);
+        if (rate > 0) fields.ebayAdRate = rate;
+      } else {
+        const bid = parseFloat(bumpBid);
+        if (bid > 0) fields.reverbBumpBid = bid / 100;
+      }
+    }
     idempotencyKeyRef.current = scopedPublishIdempotencyKey(itemId, marketplace, idempotencyKeyRef.current);
     const res = await api<PublishResult>("/listings", {
       method: "POST",
@@ -112,12 +278,30 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   };
 
   const handleCreate = async (suppress7d = false) => {
+    if (inFlightRef.current) return;
     const priceNum = parseFloat(price);
     if (!priceNum || priceNum <= 0) {
       setError("Enter a valid price");
       return;
     }
+    // Server rejects flat-with-no-cost (EBAY_FLAT_COST_REQUIRED) — catch it
+    // here with the same message so the seller never round-trips for it.
+    if (marketplace === "ebay" && shippingTouchedRef.current && shipFields.method === "flat" && !(parseFloat(shipFields.flatCost) > 0)) {
+      setError("Flat-rate shipping needs a buyer cost above $0 — enter the rate or switch to free shipping.");
+      return;
+    }
+    // Reverb caps Bump at 0.5-30% (published docs; old 3.5 cap was fabricated); the number input's min/max don't stop
+    // typed values, and the server-side reject used to land only AFTER the
+    // listing published (live failure 2026-08-04: 10% entered).
+    if (marketplace === "reverb" && promote) {
+      const bid = parseFloat(bumpBid);
+      if (bid > 0 && !(bid >= 0.5 && bid <= 30)) {
+        setError("Bump bid must be between 0.5% and 30% of the sale price.");
+        return;
+      }
+    }
 
+    inFlightRef.current = true;
     setIsCreating(true);
     setError(null);
 
@@ -136,6 +320,8 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
       }
       setError(err instanceof ApiError ? err.message : "Failed to create listing");
       setIsCreating(false);
+    } finally {
+      inFlightRef.current = false;
     }
   };
 
@@ -168,7 +354,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   if (result) {
     const isDraft = !!result.warning || result.status !== "active";
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+      <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
         <div className="fixed inset-0 bg-black/50" onClick={onCreated} />
         <div className="relative bg-surface rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-4 p-6 space-y-4 max-h-[85dvh] overflow-y-auto text-center">
           <div
@@ -220,7 +406,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-surface rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-4 mb-0 sm:mb-0 p-6 space-y-4 max-h-[85dvh] overflow-y-auto">
         <h3 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
@@ -264,7 +450,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
               type="number"
               value={price}
               onChange={(e) => {
-                userEditedPrice.current = true;
+                userEditedPriceRef.current = true;
                 setPrice(e.target.value);
               }}
               placeholder="0.00"
@@ -275,11 +461,7 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
           </div>
           {priceSource && (
             <p className="mt-1 text-xs text-text-secondary">
-              {priceSource === "item"
-                ? "From your price"
-                : priceSource === "comps"
-                  ? "From market comps"
-                  : "Estimated"}
+              {priceSource === "item" ? "From your price" : "From market comps"}
             </p>
           )}
         </div>
@@ -299,6 +481,167 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
           </div>
           <span className="text-sm text-text-primary">Publish immediately</span>
         </label>
+
+        {/* Per-listing offers (beta request): eBay Best Offer with optional
+            auto-decline/auto-accept floors; Reverb offers_enabled override. */}
+        <label className="flex items-center gap-3 py-2 cursor-pointer">
+          <div
+            onClick={() => { offersTouchedRef.current[marketplace] = true; setAcceptOffers(!acceptOffers); }}
+            className={`w-10 h-6 rounded-full transition-colors flex items-center ${
+              acceptOffers ? "bg-forest-green" : "bg-muted border border-border"
+            }`}
+          >
+            <div
+              className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                acceptOffers ? "translate-x-5" : "translate-x-1"
+              }`}
+            />
+          </div>
+          <span className="text-sm text-text-primary">Accept offers</span>
+        </label>
+        {acceptOffers && marketplace === "ebay" && (
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label htmlFor="min-offer" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+                Minimum offer ($)
+              </label>
+              <input
+                id="min-offer"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={minOffer}
+                onChange={(e) => setMinOffer(e.target.value)}
+                placeholder="Optional"
+                className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+              />
+            </div>
+            <div className="flex-1">
+              <label htmlFor="auto-accept-offer" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+                Auto-accept at ($)
+              </label>
+              <input
+                id="auto-accept-offer"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={autoAcceptOffer}
+                onChange={(e) => setAutoAcceptOffer(e.target.value)}
+                placeholder="Optional"
+                className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Advertising (beta request 55639b6e): eBay Promoted Listings /
+            Reverb Bump. Applied after the listing goes live; drafts store the
+            intent and apply it on publish. */}
+        <label className="flex items-center gap-3 py-2 cursor-pointer">
+          <div
+            onClick={() => setPromote(!promote)}
+            className={`w-10 h-6 rounded-full transition-colors flex items-center ${
+              promote ? "bg-forest-green" : "bg-muted border border-border"
+            }`}
+          >
+            <div
+              className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                promote ? "translate-x-5" : "translate-x-1"
+              }`}
+            />
+          </div>
+          <span className="text-sm text-text-primary">Promote this listing</span>
+        </label>
+        {promote && marketplace === "ebay" && (
+          <div>
+            <label htmlFor="ebay-ad-rate" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+              Ad rate (% of sale)
+            </label>
+            <input
+              id="ebay-ad-rate"
+              type="number"
+              inputMode="decimal"
+              min="1"
+              max="100"
+              step="0.5"
+              value={adRate}
+              onChange={(e) => setAdRate(e.target.value)}
+              placeholder="e.g. 5"
+              className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-text-secondary">Charged only when the ad leads to a sale (eBay Promoted Listings).</p>
+          </div>
+        )}
+        {promote && marketplace === "reverb" && (
+          <div>
+            <label htmlFor="reverb-bump-bid" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+              Bump bid (% of sale)
+            </label>
+            <input
+              id="reverb-bump-bid"
+              type="number"
+              inputMode="decimal"
+              min="0.5"
+              max="30"
+              step="0.1"
+              value={bumpBid}
+              onChange={(e) => setBumpBid(e.target.value)}
+              placeholder="0.5 – 30"
+              className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-text-secondary">Charged only when the listing sells (Reverb Bump).</p>
+          </div>
+        )}
+
+        {/* Per-listing shipping (beta 17be7322) — eBay only. Fields extracted to
+            ShippingFieldsSection so scan-review can ride along with the same UI. */}
+        {marketplace === "ebay" && (
+          <ShippingFieldsSection
+            value={shipFields}
+            onChange={(v) => { shippingTouchedRef.current = true; setShipFields(v); }}
+          />
+        )}
+
+        {/* Reverb per-listing shipping: profile reference or local-pickup-only.
+            Untouched keeps the seller-profile default flowing on sync. */}
+        {marketplace === "reverb" && (
+          <ReverbCategorySection value={reverbCategory} onChange={setReverbCategory} token={token} />
+        )}
+        {marketplace === "reverb" && (
+          <div>
+            <label htmlFor="reverb-shipping-profile" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+              Shipping profile
+            </label>
+            <select
+              id="reverb-shipping-profile"
+              value={reverbShipChoice}
+              onChange={(e) => { reverbShippingTouchedRef.current = true; setReverbShipChoice(e.target.value); }}
+              className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
+            >
+              <option value="">Seller profile default</option>
+              {reverbProfiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            {/* Pickup is an ADD-ON toggle (operator correction 2026-08-03):
+                it rides ALONGSIDE the shipping choice, never replaces it. */}
+            <label className="flex items-center gap-3 py-2 mt-1 cursor-pointer">
+              <div
+                onClick={() => { reverbShippingTouchedRef.current = true; reverbPickupTouchedRef.current = true; setReverbLocalPickup(!reverbLocalPickup); }}
+                className={`w-10 h-6 rounded-full transition-colors flex items-center ${
+                  reverbLocalPickup ? "bg-forest-green" : "bg-muted border border-border"
+                }`}
+              >
+                <div
+                  className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                    reverbLocalPickup ? "translate-x-5" : "translate-x-1"
+                  }`}
+                />
+              </div>
+              <span className="text-sm text-text-primary">Offer local pickup</span>
+            </label>
+          </div>
+        )}
 
         {/* eBay-draft option — only when not publishing now and on eBay. Creates an
             unpublished eBay offer (Seller Hub draft) rather than a Portage-local draft. */}
@@ -323,8 +666,9 @@ export function CreateListingSheet({ itemId, suggestedPrice, priceSource, catego
         {/* Disclaimer — shown when publish is toggled on */}
         {publishNow && showDisclaimer && (
           <DisclaimerSheet
-            listingId={itemId}
+            itemId={itemId}
             isFirstTime={true}
+            busy={isCreating}
             onAccept={async (suppress7d: boolean) => {
               await handleCreate(suppress7d);
             }}

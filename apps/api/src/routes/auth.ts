@@ -1,5 +1,6 @@
-import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import { createHash } from 'node:crypto';
+import { Router, type Request } from 'express';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { eq, sql } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { env } from '../lib/env.js';
@@ -15,11 +16,45 @@ const logger = createLogger('auth');
 // Access has already authenticated the caller — there is no credential to
 // brute-force. Generous ceiling to absorb reloads and multi-tab sessions;
 // several testers can share one NAT IP.
+// Per-identity limiter key: the CF assertion is per-user and rides every
+// CF-fronted request, so hashing it isolates each user's budget — one
+// misbehaving client can no longer starve everyone behind the shared
+// /backend proxy IP (2026-07-27 incident). Forged assertions get their own
+// bucket but die in the handler, and the coarse per-IP tier bounds them.
+export function sessionRateLimitKey(req: Request): string {
+  const assertion = req.headers['cf-access-jwt-assertion'];
+  if (typeof assertion === 'string' && assertion.length > 0) {
+    return createHash('sha256').update(assertion).digest('hex');
+  }
+  // Dev bypass (LAN/CI) has no assertion but authenticates as one identity —
+  // key on it so those runs don't share the proxy-IP bucket.
+  if (env().NODE_ENV === 'development' && env().CF_ACCESS_DEV_EMAIL) {
+    return `dev:${env().CF_ACCESS_DEV_EMAIL}`;
+  }
+  return req.ip ? ipKeyGenerator(req.ip) : 'unknown';
+}
+
+// Tier 1 — coarse per-IP cap. The per-identity key below is attacker-mintable
+// (a fresh forged assertion per request = a fresh bucket), so this tier is
+// what actually bounds /auth/session load (each request costs a JWKS verify).
+const sessionIpLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: process.env.NODE_ENV === 'test' ? 5000 : 600,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  // cloudflared sets X-Forwarded-For but we key by identity/raw ip, not XFF.
+  validate: { xForwardedForHeader: false },
+  message: { error: 'Too many session requests, please try again later', code: 'RATE_LIMITED' },
+});
+
+// Tier 2 — per-identity budget (see sessionRateLimitKey above).
 const sessionLimiter = rateLimit({
   windowMs: 15 * 60_000,
   limit: process.env.NODE_ENV === 'test' ? 1000 : 120,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
+  keyGenerator: sessionRateLimitKey,
+  validate: { xForwardedForHeader: false },
   message: { error: 'Too many session requests, please try again later', code: 'RATE_LIMITED' },
 });
 
@@ -29,7 +64,7 @@ export const authRouter = Router();
 // IdP + Access policy and forwards Cf-Access-Jwt-Assertion; we verify it against
 // the team JWKS, map the user row by email, and mint the same internal access
 // token the rest of the API already consumes.
-authRouter.get('/session', sessionLimiter, async (req, res, next) => {
+authRouter.get('/session', sessionIpLimiter, sessionLimiter, async (req, res, next) => {
   try {
     const assertion = req.headers['cf-access-jwt-assertion'];
     let rawEmail: string | null = null;

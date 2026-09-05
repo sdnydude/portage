@@ -63,4 +63,17 @@ describe("ListingsPage — item title on each row", () => {
     // Scoped to the mobile row for the same reason as the test above.
     expect(within(screen.getByRole("link")).getByText("Untitled item")).toBeInTheDocument();
   });
+
+  // Housekeeping-1 T5/T6: the marketplace was gray uppercase text and the
+  // status chip used raw palette classes unreadable in light mode — both are
+  // now the shared token-driven chips.
+  it("renders marketplace + status as shared chips on the row", () => {
+    render(<ListingsPage />);
+    const row = screen.getByRole("link");
+    const mk = within(row).getByText("eBay");
+    const st = within(row).getByText("Active");
+    expect(st.getAttribute("style")).toMatch(/--chip-active-fg/);
+    expect(mk.getAttribute("style")).toMatch(/--border/);
+    expect(row.innerHTML).not.toMatch(/emerald-|amber-/);
+  });
 });

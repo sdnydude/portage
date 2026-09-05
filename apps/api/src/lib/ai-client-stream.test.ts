@@ -54,9 +54,9 @@ function toolUse(id: string, name: string, input: Record<string, unknown>): Anth
 const mockStreamFn = vi.fn();
 
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return ({
     messages: { stream: mockStreamFn },
-  })),
+  }); }),
 }));
 
 beforeEach(() => {

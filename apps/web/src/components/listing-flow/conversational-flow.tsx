@@ -17,6 +17,7 @@ import { WeightDimsInputs, type WeightDimsChange } from "../listing/weight-dims-
 import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-sheet";
 import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
+import { BestOfferFloorNote } from "./best-offer-floor-note";
 import type { ListingFlowState } from "@portage/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -208,7 +209,7 @@ function InlineInput({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKey}
-          rows={4}
+          rows={5}
           className="w-full bg-transparent text-[13px] leading-relaxed resize-none focus:outline-none"
           style={{ color: "#1A1A1A" }}
         />
@@ -245,13 +246,18 @@ function InlineInput({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function FormatBold({ text }: { text: string }) {
+export function FormatBold({ text }: { text: string }) {
   const parts = text.split(/(\*\*.+?\*\*)/g);
+  // Key bold runs by their char offset in `text` (content-derived; bold text can repeat).
+  const offsets = parts.reduce<number[]>((acc, _part, i) => {
+    acc.push(i === 0 ? 0 : acc[i - 1] + parts[i - 1].length);
+    return acc;
+  }, []);
   return (
     <>
       {parts.map((part, i) => {
         const bold = part.match(/^\*\*(.+)\*\*$/);
-        return bold ? <strong key={i}>{bold[1]}</strong> : part;
+        return bold ? <strong key={offsets[i]}>{bold[1]}</strong> : part;
       })}
     </>
   );
@@ -344,10 +350,6 @@ function deriveMessages(
   // 4. Recognition complete
   if (state.recognition.status === "complete" && candidate) {
     const conf = Math.round(state.recognition.confidence * 100);
-    const priceRange =
-      candidate.estimatedValueLow && candidate.estimatedValueHigh
-        ? ` I'd estimate it's worth **$${candidate.estimatedValueLow}–$${candidate.estimatedValueHigh}**.`
-        : "";
 
     const reasoningBullets =
       state.recognition.reasoning.length > 0
@@ -360,7 +362,7 @@ function deriveMessages(
     msgs.push({
       id: "recognition",
       role: "porter",
-      content: `Got it! This looks like a **${candidate.name}**${candidate.brand ? ` by **${candidate.brand}**` : ""}. Condition: **${formatCondition(candidate.condition)}**.${priceRange} (${conf}% confidence)${reasoningBullets}`,
+      content: `Got it! This looks like a **${candidate.name}**${candidate.brand ? ` by **${candidate.brand}**` : ""}. Condition: **${formatCondition(candidate.condition)}**. (${conf}% confidence)${reasoningBullets}`,
       pills: !hasConfirmed
         ? [
             {
@@ -752,12 +754,27 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
     }
   }, [flow]);
 
+  // BO-5: an AI-prepared auto-accept floor must be SEEN before it publishes.
+  // "Remove" strips it from every publish path below; seller intent wins.
+  const [floorCleared, setFloorCleared] = useState(false);
+  // A removed floor applies to THIS item only (CodeRabbit): the next
+  // listing's prepared floor must be visible again.
+  useEffect(() => { setFloorCleared(false); }, [state.inventoryItemId]);
+  const preparedFloor = state.marketplace === "ebay" && !floorCleared
+    ? (prepareListing.data?.ebay as { bestOfferAutoAcceptPrice?: number } | null | undefined)?.bestOfferAutoAcceptPrice
+    : undefined;
+  const effectivePreparedEbay = useCallback(() => {
+    const prepared = prepareListing.data?.ebay ?? null;
+    if (!prepared || !floorCleared) return prepared;
+    return { ...prepared, bestOfferAutoAcceptPrice: undefined };
+  }, [prepareListing.data, floorCleared]);
+
   // Chat "Publish" pill (primary CTA) + Review fallback. Pass eBay prepared
   // fields + publishMode so they aren't dropped on this path; no draft/live
   // toggle here, so live is the intended mode (matches prior behavior).
   const handlePublish = useCallback(
-    () => runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode: "live" }),
-    [runPublish, prepareListing.data],
+    () => runPublish({ ebayPreparedFields: effectivePreparedEbay(), publishMode: "live" }),
+    [runPublish, effectivePreparedEbay],
   );
 
   // Derive the effective lastStep (merging hook's lastStep with local flags)
@@ -950,9 +967,9 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
                 onFieldChange={(field, value) => flow.setField(field as keyof typeof state, value as never)}
                 onPriceChange={(price) => flow.setField("price", price)}
                 onQuantityChange={(q) => flow.setField("quantity", q)}
-                onPublish={(marketplace, publishMode, aspects) => {
+                onPublish={(marketplace, publishMode, aspects, reverbCategoryUuid) => {
                   flow.setField("marketplace", marketplace);
-                  runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode, aspects });
+                  runPublish({ ebayPreparedFields: effectivePreparedEbay(), publishMode, aspects, reverbCategoryUuid });
                 }}
                 isPublishing={state.publishStatus === "publishing"}
                 sellerProfileComplete={!prepareListing.data.warnings.some(w => w.includes("Seller profile incomplete"))}
@@ -977,6 +994,13 @@ export function ConversationalFlow({ itemId }: ConversationalFlowProps) {
             >
               Publishing your listing...
             </div>
+          </div>
+        )}
+
+        {/* BO-5: AI-prepared auto-accept floor, visible before publish */}
+        {typeof preparedFloor === "number" && (
+          <div className="mb-3">
+            <BestOfferFloorNote floor={preparedFloor} onClear={() => setFloorCleared(true)} />
           </div>
         )}
 

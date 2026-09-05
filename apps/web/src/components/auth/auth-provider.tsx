@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AuthContext } from "@/hooks/use-auth";
-import { setOnSessionExchanged, exchangeSession, api, SESSION_LOST_EVENT } from "@/lib/api";
+import { setOnSessionExchanged, requestExchange, api, SESSION_LOST_EVENT } from "@/lib/api";
 
 interface AuthUser {
   id: string;
@@ -62,8 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Cloudflare Access is the session layer: the edge already authenticated
     // this request, so exchange the CF identity for an internal token on every
-    // mount. exchangeSession() syncs state via the callback above.
-    pendingExchange = exchangeSession()
+    // mount. The exchange syncs state via the callback above; requestExchange
+    // (not a bare exchangeSession) so remount storms hit the success throttle
+    // and failure backoff instead of a fresh /auth/session call per page load.
+    pendingExchange = requestExchange()
       .then((freshToken) => {
         // First exchange this browser session = a login event. Fire-and-forget
         // background syncs; keepalive survives an immediate navigation. Never
@@ -89,7 +91,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const onSessionLost = () => {
       setToken(null);
       setUser(null);
-      window.location.href = "/home";
+      // Already on /home: re-assigning the href reloads the page, and a
+      // persistently rejected exchange (e.g. disabled account) then loops
+      // reload → remount → exchange → wipe forever, one /auth/session hit
+      // per page load. React state above already shows the logged-out hero.
+      if (window.location.pathname !== "/home") {
+        window.location.href = "/home";
+      }
     };
     window.addEventListener(SESSION_LOST_EVENT, onSessionLost);
 

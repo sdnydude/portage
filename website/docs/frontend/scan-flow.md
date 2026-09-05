@@ -19,7 +19,7 @@ capture → uploading → scanning → review → saving → (done)
 | `capture` | Camera preview or image picker. User takes/selects photos. |
 | `uploading` | Photos upload to Cloudflare R2 immediately on capture. |
 | `scanning` | `POST /scan/refine` sends R2 URLs to the AI vision provider chain (configured via `VISION_PROVIDERS`; Gemini primary with automatic fallback) for identification. |
-| `review` | AI candidates displayed with confidence %. User selects/edits fields. |
+| `review` | AI candidates displayed with confidence %. User selects/edits fields. Outages are told, not swallowed (P3): *Comps unavailable — using AI estimate only*; a condition snapped to what the eBay category accepts shows *Condition adjusted to X — Y isn't offered in this category*; the category panel splits *lookup failed* / *no match* / *details unavailable*, each with a Retry, and Save & List is blocked with the honest reason while details are unknown. |
 | `saving` | Item saves to database with photos and metadata. |
 
 ## Multi-Photo Capture
@@ -136,6 +136,6 @@ Related components in `components/capture/`:
 | `exposure-tool.tsx` | EV slider — instant CSS `brightness()` preview, applied server-side via Sharp so preview and saved file match |
 | `scan-review-actions.tsx` | Review-screen action bar: price + quantity fields, Save, Save & List (with eBay-draft option), Rescan |
 | `scan-fab.tsx` | Self-contained floating Scan button that opens ScanFlow (currently unreferenced in the app shell) |
-| `scan-aspects-section.tsx` | Scan-time eBay item-aspect prefill and editing |
+| `scan-aspects-section.tsx` | Scan-time eBay item-aspect prefill and editing; header badge is `N required` / `Complete` / **`Unavailable`** (schema fetch failed — never a false Complete; `aspectsBlockPublish` stays true) |
 
 ScanFlow opens from the center Scan button in the `TabBar` (`components/layout/tab-bar.tsx`).

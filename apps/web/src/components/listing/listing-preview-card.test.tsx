@@ -7,6 +7,16 @@ const mockUseRequiredAspects = vi.fn();
 vi.mock("@/hooks/use-required-aspects", () => ({
   useRequiredAspects: () => mockUseRequiredAspects(),
 }));
+vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ token: "t" }) }));
+const apiMock = vi.fn(async (path: unknown) => {
+  const p = String(path ?? "");
+  if (p === "/marketplace/reverb/product-types") {
+    return { productTypes: [{ uuid: "b1f4ce46", fullName: "Accessories", name: "Accessories", rootUuid: "b1f4ce46", listable: true }] };
+  }
+  if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+  return {};
+});
+vi.mock("@/lib/api", () => ({ api: (path: unknown) => apiMock(path), ApiError: class extends Error {} }));
 vi.mock("./comps-pricing-widget", () => ({
   CompsPricingWidget: () => <div data-testid="comps" />,
 }));
@@ -146,5 +156,27 @@ describe("ListingPreviewCard — hero tap opens the editor", () => {
   it("without onPhotoUpdated (no editor host) the hero is not tappable and no affordance shows", () => {
     render(<ListingPreviewCard {...baseProps} onPublish={() => {}} />);
     expect(screen.queryByRole("button", { name: /edit this photo/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("ListingPreviewCard — Reverb category picker (non-gear dead-end fix)", () => {
+  beforeEach(() => {
+    mockUseRequiredAspects.mockReturnValue({ aspects: {}, isLoading: false });
+  });
+
+  // A non-gear item (isMusicGear false, reverb null) had NO way to publish to
+  // Reverb — the cascade (Product Type → subcategories) replaces the old flat
+  // 320-option select; the deepest pick unlocks the Reverb publish with its uuid.
+  it("unlocks Reverb publish for a non-gear item via the cascade, passing the picked uuid to onPublish", async () => {
+    const onPublish = vi.fn();
+    render(<ListingPreviewCard {...baseProps} onPublish={onPublish} />);
+
+    // Hidden while no category is chosen for a non-gear item.
+    expect(screen.queryByRole("button", { name: /publish to reverb/i })).not.toBeInTheDocument();
+
+    fireEvent.change(await screen.findByLabelText(/product type/i), { target: { value: "b1f4ce46" } });
+    fireEvent.click(screen.getByRole("button", { name: /publish to reverb/i }));
+
+    expect(onPublish).toHaveBeenCalledWith("reverb", "live", expect.anything(), "b1f4ce46");
   });
 });

@@ -13,11 +13,17 @@ export const conditionEnum = pgEnum('item_condition', ['new', 'like_new', 'good'
 // value, so it stays here inert — no adapter, no routes, no UI offer it.
 export const marketplaceEnum = pgEnum('marketplace_type', ['ebay', 'etsy', 'reverb']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'active', 'sold', 'archived']);
+// Item-level status for non-marketplace states (Housekeeping-1). active/draft
+// are never stored here — they are derived from listings at read time.
+export const itemStatusEnum = pgEnum('item_status', ['unlisted', 'asset', 'sold', 'archived']);
 export const orderStatusEnum = pgEnum('order_status', ['payment_received', 'label_purchased', 'shipped', 'delivered', 'canceled']);
 export const notificationTypeEnum = pgEnum('notification_type', ['sale', 'buyer_message', 'listing_expiry', 'price_alert', 'shipping_reminder']);
 export const referenceTypeEnum = pgEnum('reference_type', ['order', 'listing', 'item']);
 export const packageTypeEnum = pgEnum('package_type', ['box', 'envelope', 'poly_mailer']);
 export const messageDirectionEnum = pgEnum('message_direction', ['inbound', 'outbound']);
+export const syncStatusEnum = pgEnum('sync_status', ['success', 'failure']);
+export const syncTriggerEnum = pgEnum('sync_trigger', ['item_edit', 'listing_edit', 'photo', 'publish', 'mass_sync', 'status_sweep', 'order_sync']);
+export const syncJobStatusEnum = pgEnum('sync_job_status', ['pending', 'running', 'success', 'failed']);
 export const messageTypeEnum = pgEnum('message_type', ['asq', 'rtq', 'aaq']);
 
 export const users = pgTable('users', {
@@ -74,6 +80,10 @@ export const items = pgTable('items', {
   description: text('description').notNull().default(''),
   category: varchar('category', { length: 255 }).notNull().default(''),
   condition: conditionEnum('condition').notNull().default('good'),
+  // Manual status for items with no live listing: unlisted (default) / asset
+  // (not for sale) / sold (off-platform) / archived. Reads project displayStatus
+  // = listings override (active, draft) else this column.
+  status: itemStatusEnum('status').notNull().default('unlisted'),
   conditionNotes: text('condition_notes').notNull().default(''),
   brand: varchar('brand', { length: 255 }).notNull().default(''),
   model: varchar('model', { length: 255 }).notNull().default(''),
@@ -129,6 +139,12 @@ export const listings = pgTable('listings', {
   // index below serializes concurrent submits that share a key so a non-idempotent
   // AddFixedPriceItem can't double-list. Null for non-publish drafts / legacy rows.
   idempotencyKey: varchar('idempotency_key', { length: 255 }),
+  // In-flight publish claim (2026-08-26 double-publish incident): stamped by the
+  // request that is about to call the marketplace create, cleared on a
+  // definitive outcome. A contender may only claim a row whose stamp is null or
+  // stale (>5 min); the unique index above only serializes the INSERT, not the
+  // window between insert and the ItemID write.
+  publishClaimedAt: timestamp('publish_claimed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   publishedAt: timestamp('published_at'),
@@ -165,7 +181,18 @@ export const orders = pgTable('orders', {
 }, (t) => [
   index('idx_orders_user_id').on(t.userId),
   index('idx_orders_listing_id').on(t.listingId),
-  index('idx_orders_marketplace_order_id').on(t.marketplaceOrderId),
+  // Unique: the DB arbitrates when the periodic order-sync cycle and a manual
+  // POST /orders/sync race the same marketplace order — the losing insert's
+  // onConflictDoNothing() becomes a no-op instead of a duplicate row. Scoped
+  // (userId, marketplace, orderId): order numbers are only unique per shop.
+  // db:push fails on CREATE UNIQUE INDEX if the pre-index SELECT-then-INSERT
+  // race ever left duplicate rows — dedupe first on such a DB:
+  //   DELETE FROM orders a USING orders b
+  //   WHERE a.id > b.id AND a.user_id = b.user_id
+  //     AND a.marketplace = b.marketplace
+  //     AND a.marketplace_order_id = b.marketplace_order_id;
+  // (Live DB verified 0 duplicates before the index was pushed, 2026-08-08.)
+  uniqueIndex('uq_orders_user_marketplace_order').on(t.userId, t.marketplace, t.marketplaceOrderId),
 ]);
 
 export const conversations = pgTable('conversations', {
@@ -208,7 +235,9 @@ export const marketplaceAccounts = pgTable('marketplace_accounts', {
 
 export const adminAuditLog = pgTable('admin_audit_log', {
   id: uuid('id').defaultRandom().primaryKey(),
-  adminUserId: uuid('admin_user_id').notNull().references(() => users.id),
+  // Nullable: NULL = system actor (eBay Marketplace Account Deletion
+  // notifications write audit rows with no admin behind them).
+  adminUserId: uuid('admin_user_id').references(() => users.id),
   action: varchar('action', { length: 100 }).notNull(),
   targetType: varchar('target_type', { length: 50 }).notNull(),
   targetId: uuid('target_id'),
@@ -354,3 +383,64 @@ export const exportTokens = pgTable('export_tokens', {
 }, (t) => [
   index('idx_export_tokens_user_id').on(t.userId),
 ]);
+
+// Durable record of every marketplace sync attempt (sync refactor P1,
+// 2026-08-02). Written by the edit-sync and publish paths; read by
+// GET /sync-log and the item-detail sync badges. item/listing links are
+// nullable + SET NULL on delete so the log outlives what it describes.
+export const marketplaceSyncLog = pgTable('marketplace_sync_log', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  itemId: uuid('item_id').references(() => items.id, { onDelete: 'set null' }),
+  listingId: uuid('listing_id').references(() => listings.id, { onDelete: 'set null' }),
+  marketplace: marketplaceEnum('marketplace').notNull(),
+  trigger: syncTriggerEnum('trigger').notNull(),
+  status: syncStatusEnum('status').notNull(),
+  // Human-readable outcome: the marketplace error/warning string on failure,
+  // optional degraded-sync warning on success.
+  message: text('message'),
+  // Structured error detail — Reverb's reverb_response["errors"] array rides
+  // verbatim; eBay Trading faults as {code, longMessage} when available.
+  errors: jsonb('errors'),
+  durationMs: integer('duration_ms'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_sync_log_user_created').on(t.userId, t.createdAt),
+  index('idx_sync_log_listing_id').on(t.listingId),
+]);
+
+// Outbox for marketplace edit-sync (sync refactor P2). A job is a POINTER
+// (item + listing ids), not a field snapshot — the worker re-reads current
+// rows at run time, so rapid successive edits coalesce naturally and the
+// newest state always wins. Enqueue deletes pending siblings per listing.
+export const syncJobs = pgTable('sync_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  itemId: uuid('item_id').notNull().references(() => items.id, { onDelete: 'cascade' }),
+  listingId: uuid('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  marketplace: marketplaceEnum('marketplace').notNull(),
+  trigger: syncTriggerEnum('trigger').notNull(),
+  status: syncJobStatusEnum('status').notNull().default('pending'),
+  // Photo diff flag: true only when the triggering edit changed photos, so
+  // the worker knows whether to pay Reverb's photo-sweep cost.
+  includePhotos: boolean('include_photos').notNull().default(false),
+  attempts: integer('attempts').notNull().default(0),
+  nextRunAt: timestamp('next_run_at').notNull().defaultNow(),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_sync_jobs_due').on(t.status, t.nextRunAt),
+  index('idx_sync_jobs_listing_id').on(t.listingId),
+]);
+
+// eBay Marketplace Account Deletion compliance: identities we have already
+// anonymized. Keyed by HMAC-SHA256(ENCRYPTION_KEY, username) — never the
+// plaintext username eBay asked us to delete. Order/message sync consult this
+// table so a later re-import cannot re-populate a deleted buyer's PII, and the
+// deletion endpoint uses it as its idempotency gate.
+export const ebayDeletedIdentities = pgTable('ebay_deleted_identities', {
+  usernameHash: varchar('username_hash', { length: 64 }).primaryKey(),
+  ebayUserId: varchar('ebay_user_id', { length: 255 }),
+  deletedAt: timestamp('deleted_at').notNull().defaultNow(),
+});

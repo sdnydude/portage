@@ -3,6 +3,7 @@ id: 042-stage2-pricing-engine-best-offer-footer
 title: "#042 — Stage 2: Pricing Engine, Best Offer Auto-Accept + Listing Footer"
 sidebar_label: "#042 Pricing Engine + Best Offer"
 tags: [pricing, ebay, best-offer, comps, settings, redesign]
+registry_id: 273ef415-0f5a-4939-bd32-644c64309140
 ---
 
 # #042 — Stage 2: Pricing Engine, Best Offer Auto-Accept + Listing Footer

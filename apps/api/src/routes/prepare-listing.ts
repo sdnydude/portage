@@ -10,6 +10,7 @@ import { AppError } from '../middleware/error.js';
 import { EbayAdapter, resolveEbayCategoryCondition } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { generateListingFields } from '../lib/vision.js';
+import { traceRequest } from '../lib/tracing.js';
 import { computeEffectiveTier, effectiveLimits } from '../lib/billing-utils.js';
 import { limitsForTier } from '@portage/shared';
 import type { PreparedListingData, PricingData, CompResult, ReverbCompResult, MarketplaceCacheEntry, ReverbCacheEntry } from '@portage/shared';
@@ -71,6 +72,125 @@ export function buildMarketplaceCacheEntries(
     };
   }
   return entries;
+}
+
+/**
+ * The vision prompt asks the model for Reverb categoryUuid/conditionUuid with
+ * no list of valid values, so it invents them. An invented UUID either 422s at
+ * Reverb or (when blank) falls through to the publish-time category guess.
+ * Keep an AI UUID only when it exists in the real list; otherwise resolve by
+ * name against the live condition list / category search, else blank the pair
+ * so downstream treats it as unresolved rather than trusting a hallucination.
+ */
+/**
+ * Exact-match the AI's verbatim category choice against the live flat list.
+ * Case-insensitive on the FULL name (leaf names may contain " / ", so no path
+ * splitting), and only listable nodes resolve. Null = no verbatim match — the
+ * caller may fall back to token search, but never silently to a first entry.
+ */
+export function resolveReverbCategoryChoice(
+  chosenName: string | null | undefined,
+  cats: Array<{ uuid: string; fullName: string; listable: boolean }>,
+): { uuid: string; fullName: string } | null {
+  const wanted = chosenName?.trim().toLowerCase();
+  if (!wanted) return null;
+  const hit = cats.find(c => c.listable && c.fullName.toLowerCase() === wanted);
+  return hit ? { uuid: hit.uuid, fullName: hit.fullName } : null;
+}
+
+/**
+ * Full Reverb AI-field validation: conditions + flat list fetched once,
+ * verbatim (exact, listable) category match preferred — the prompt asks for a
+ * verbatim full name, so a hit IS the resolution and the majority-token search
+ * only backstops a paraphrased/truncated answer. Throws on lookup failure —
+ * the route's catch blanks the uuids with a warning.
+ */
+/**
+ * Semantic backstop for the category guess: score categories by DISTINCTIVE
+ * query tokens (title + category, >3 chars, minus stopwords) hitting the
+ * category's LEAF name — generic shared words (guitar/effects/pedals) rank a
+ * pitch shifter into "Guitar Synths" under plain token counting (live defect
+ * 2026-08-02); leaf hits carry the meaning. Ties break toward more total
+ * full-name hits, then the deeper path. Null when no leaf token hits at all.
+ */
+const REVERB_QUERY_STOPWORDS = new Set(['other', 'effects', 'pedals', 'pedal', 'guitar', 'guitars', 'and', 'the', 'with', 'for']);
+export function pickReverbCategoryByLeafTokens(
+  title: string | null | undefined,
+  category: string | null | undefined,
+  cats: Array<{ uuid: string; fullName: string; name: string; listable: boolean }>,
+): { uuid: string; fullName: string } | null {
+  const tokens = `${title ?? ''} ${category ?? ''}`.toLowerCase().split(/[^a-z0-9]+/)
+    .filter(t => t.length > 3 && !REVERB_QUERY_STOPWORDS.has(t));
+  if (tokens.length === 0) return null;
+  let best: { uuid: string; fullName: string } | null = null;
+  let bestScore = 0; let bestTotal = 0; let bestDepth = 0;
+  for (const c of cats) {
+    if (!c.listable) continue;
+    const leaf = c.name.toLowerCase();
+    const full = c.fullName.toLowerCase();
+    const leafHits = tokens.filter(t => leaf.includes(t)).length;
+    if (leafHits === 0) continue;
+    const totalHits = tokens.filter(t => full.includes(t)).length;
+    const depth = c.fullName.split(' / ').length;
+    if (leafHits > bestScore
+      || (leafHits === bestScore && totalHits > bestTotal)
+      || (leafHits === bestScore && totalHits === bestTotal && depth > bestDepth)) {
+      best = { uuid: c.uuid, fullName: c.fullName };
+      bestScore = leafHits; bestTotal = totalHits; bestDepth = depth;
+    }
+  }
+  return best;
+}
+
+export async function validateReverbAiFields<T extends {
+  categoryUuid?: string | null; categoryName?: string | null;
+  conditionUuid?: string | null; conditionName?: string | null;
+}>(userId: string, ai: T, item: { title?: string | null; category?: string | null }): Promise<T> {
+  const token = await ReverbAdapter.referenceToken(userId);
+  const [reverbConditions, flatCats] = await Promise.all([
+    ReverbAdapter.getConditions(token),
+    ReverbAdapter.getFlatCategories(token),
+  ]);
+  // Resolution order: verbatim AI choice → leaf-token semantic pick (title
+  // carries the distinctive words) → majority token search as last resort.
+  const resolved = resolveReverbCategoryChoice(ai.categoryName, flatCats)
+    ?? pickReverbCategoryByLeafTokens(item.title, item.category, flatCats);
+  const categoryMatches = resolved
+    ? [{ id: resolved.uuid, name: resolved.fullName }]
+    : await new ReverbAdapter(userId).searchCategories(
+        ai.categoryName || item.category || item.title || '',
+      );
+  return sanitizeReverbAiFields(ai, reverbConditions, categoryMatches);
+}
+
+export function sanitizeReverbAiFields<T extends {
+  categoryUuid?: string | null; categoryName?: string | null;
+  conditionUuid?: string | null; conditionName?: string | null;
+  finish?: string | null; year?: string | null;
+}>(
+  ai: T,
+  validConditions: Array<{ uuid: string; displayName: string }>,
+  categoryMatches: Array<{ id: string; name: string }>,
+): T {
+  const condition = validConditions.find(c => c.uuid === ai.conditionUuid)
+    ?? validConditions.find(c => c.displayName.toLowerCase() === (ai.conditionName ?? '').toLowerCase());
+  const category = categoryMatches.find(c => c.id === ai.categoryUuid) ?? categoryMatches[0];
+  // Hygiene on free-text attributes: a malformed model response can leak JSON
+  // fragments into them (live 2026-08-02: finish = '} "pitch"'). A finish is a
+  // short plain phrase; a year is a 4-digit 19xx/20xx.
+  const finish = ai.finish && ai.finish.length <= 40 && !/[{}[\]":\\]/.test(ai.finish)
+    ? ai.finish
+    : null;
+  const year = ai.year && /^(19|20)\d{2}$/.test(ai.year.trim()) ? ai.year.trim() : null;
+  return {
+    ...ai,
+    finish,
+    year,
+    categoryUuid: category?.id ?? '',
+    categoryName: category?.name ?? '',
+    conditionUuid: condition?.uuid ?? '',
+    conditionName: condition?.displayName ?? '',
+  };
 }
 
 /**
@@ -205,7 +325,17 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
     const effectiveTier = computeEffectiveTier(billingUser.subscriptionTier, billingUser.trialEndsAt);
     const limit = effectiveLimits(effectiveTier, billingUser.limitOverrides).aiListingsPerMonth;
 
-    // C2: Atomic reserve — try monthly allocation first
+    // C2: Atomic reserve — try monthly allocation first. A null limit means
+    // UNLIMITED (pro/beta tiers): it must skip the SQL ceiling entirely —
+    // `count < NULL` is NULL, so the conditional reserve matches no row and
+    // unlimited read as zero (live 429 "(null/month)" repro 2026-07-21).
+    let usedCredit = false;
+    if (limit === null) {
+      await db.update(users)
+        .set({ aiListingsThisMonth: sql`${users.aiListingsThisMonth} + 1` })
+        .where(eq(users.id, userId))
+        .returning({ aiListingsThisMonth: users.aiListingsThisMonth });
+    } else {
     const reserved = await db.update(users)
       .set({ aiListingsThisMonth: sql`${users.aiListingsThisMonth} + 1` })
       .where(and(
@@ -214,7 +344,6 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
       ))
       .returning({ aiListingsThisMonth: users.aiListingsThisMonth });
 
-    let usedCredit = false;
     if (reserved.length === 0) {
       // Monthly limit hit — try credit path
       const credited = await db.update(users)
@@ -229,6 +358,7 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
         throw new AppError(429, 'LIMIT_REACHED', `AI listing limit reached (${limit}/month). Upgrade or buy credits.`);
       }
       usedCredit = true;
+    }
     }
     // --- End billing gate ---
 
@@ -285,9 +415,40 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
 
     const currency = profile?.defaultCurrency ?? 'USD';
 
+    // The AI must pick the Reverb category FROM Reverb's real flat list —
+    // free-text names/invented uuids don't resolve. Cached 24h, public
+    // endpoint; a fetch failure just omits the list (sanitize still guards).
+    let reverbCategories: string[] | undefined;
+    if (targetMarketplaces.includes('reverb')) {
+      try {
+        reverbCategories = (await ReverbAdapter.getFlatCategories()).map(c => c.fullName);
+      } catch (catErr) {
+        logger.warn({ userId, itemId, error: (catErr as Error).message }, 'Reverb flat-category fetch failed — AI runs without the list');
+      }
+    }
+
     let aiFields;
     try {
-      aiFields = await generateListingFields({
+      aiFields = await traceRequest(
+        'prepare-listing',
+        {
+          userId,
+          tags: ['prepare-listing'],
+          metadata: {
+            itemId,
+            photoCount: String(photoUrls.length),
+            soldComps: String(ebayComps.sold.length),
+            activeComps: String(ebayComps.active.length),
+            reverbComps: String(reverbComps.listings.length),
+          },
+          input: {
+            brand: item.brand,
+            model: item.model,
+            category: item.category,
+            condition: item.condition,
+          },
+        },
+        async () => generateListingFields({
       scanData: {
         brand: item.brand,
         model: item.model,
@@ -322,7 +483,9 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
         packageType: profile?.defaultPackageType ?? 'box',
         currency,
       },
-    });
+      reverbCategories,
+        }),
+      );
     } catch (aiError) {
       // I2: Rollback reservation on AI failure — user not charged for failed calls
       if (usedCredit) {
@@ -335,6 +498,20 @@ prepareListingRouter.post('/:id/prepare-listing', async (req, res, next) => {
           .where(eq(users.id, userId));
       }
       throw aiError;
+    }
+
+    // Validate the AI's Reverb uuids against the live lists BEFORE they enter
+    // the cache or the response — hallucinated uuids must never persist. On a
+    // lookup failure (e.g. Reverb not connected) blank them instead: publish
+    // will 422 with guidance rather than send an invented uuid.
+    if (aiFields.reverb) {
+      try {
+        aiFields.reverb = await validateReverbAiFields(userId, aiFields.reverb, { title: item.title, category: item.category });
+      } catch (reverbErr) {
+        logger.warn({ userId, itemId, error: (reverbErr as Error).message }, 'Reverb uuid validation failed — blanking AI-supplied uuids');
+        aiFields.reverb = { ...aiFields.reverb, categoryUuid: '', conditionUuid: '' };
+        warnings.push('Reverb category/condition could not be validated — pick them on the listing before publishing to Reverb.');
+      }
     }
 
     const cacheEntries = buildMarketplaceCacheEntries(aiFields, categorySuggestion);

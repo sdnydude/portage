@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const h = vi.hoisted(() => ({
@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   itemError: null as string | null,
   updateItem: vi.fn().mockResolvedValue({}),
   deleteItem: vi.fn().mockResolvedValue({}),
+  refetchItem: vi.fn(),
   apiMock: vi.fn(),
   apiUploadMock: vi.fn(),
   enhanceResult: null as null | { image: { key: string; url: string; width: number; height: number; size: number } },
@@ -28,7 +29,7 @@ vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true, to
 vi.mock("@/hooks/use-item", () => ({
   useItem: () => ({
     item: h.itemError ? null : h.item,
-    isLoading: false, error: h.itemError, deleteItem: h.deleteItem, updateItem: h.updateItem,
+    isLoading: false, error: h.itemError, deleteItem: h.deleteItem, updateItem: h.updateItem, refetch: h.refetchItem,
   }),
 }));
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -51,12 +52,13 @@ vi.mock("@/hooks/use-listings", () => ({
   useListings: () => ({ listings: mockListings, isLoading: mockListingsLoading, error: mockListingsError, refetch: refetchListingsMock, createListing: vi.fn() }),
 }));
 vi.mock("@/components/capture/photo-gallery-strip", () => ({
-  PhotoGalleryStrip: ({ onDelete, onAddPhotos }: { onDelete?: (i: number) => void; onAddPhotos?: (files: File[]) => void }) => (
+  PhotoGalleryStrip: ({ onDelete, onAddPhotos, onEditPhoto }: { onDelete?: (i: number) => void; onAddPhotos?: (files: File[]) => void; onEditPhoto?: (i: number) => void }) => (
     <>
       <button onClick={() => onDelete?.(0)}>strip-delete</button>
       <button onClick={() => onAddPhotos?.([new File(["x"], "x.jpg", { type: "image/jpeg" })])}>
         strip-add
       </button>
+      <button onClick={() => onEditPhoto?.(0)}>strip-edit</button>
     </>
   ),
 }));
@@ -76,6 +78,16 @@ vi.mock("@/components/listing/create-listing-sheet", () => ({
   ),
 }));
 
+// Stub the card only for the T2 contract test; the real card renders elsewhere
+// (the sync-badge test reads its badge).
+let stubListingCard = false;
+vi.mock("@/components/listing/listing-card", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/components/listing/listing-card")>();
+  return {
+    ListingCard: (props: React.ComponentProps<typeof real.ListingCard>) =>
+      stubListingCard ? <button onClick={props.onChanged}>card-changed</button> : <real.ListingCard {...props} />,
+  };
+});
 vi.mock("@/components/listing/listing-optimizer-panel", () => ({
   ListingOptimizerPanel: ({ itemId }: { itemId: string }) => <div>optimizer:{itemId}</div>,
 }));
@@ -95,12 +107,57 @@ afterEach(() => {
   window.HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
 });
 
+describe("ItemDetail deep-link highlight timer", () => {
+  it("clears the highlight after 2 s even when a listings refetch re-runs the effect mid-timer", async () => {
+    vi.useFakeTimers();
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    const l1 = {
+      id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
+      marketplaceListingId: "3071", marketplaceSpecificFields: null,
+      status: "active", price: 100, currency: "USD",
+      createdAt: "2026-08-01", publishedAt: "2026-08-01", soldAt: null,
+    } as unknown as Listing;
+    mockListings = [l1];
+    h.apiMock.mockResolvedValue({});
+    try {
+      const { rerender } = render(<ItemDetail itemId="i1" focusListingId="l1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await act(() => vi.advanceTimersByTimeAsync(50)); // double-rAF → scroll + highlight
+      const highlighted = () => !!document.getElementById("listing-l1")?.querySelector(".ring-2");
+      expect(highlighted()).toBe(true);
+
+      // A refetch hands the effect a new listings array before the 2 s elapse.
+      mockListings = [{ ...l1 }];
+      rerender(<ItemDetail itemId="i1" focusListingId="l1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await act(() => vi.advanceTimersByTimeAsync(2100));
+
+      expect(highlighted()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("ItemDetail (prop-driven)", () => {
   it("renders the item given an itemId prop, without route params", () => {
     render(
       <ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />,
     );
     expect(screen.getByRole("heading", { name: h.item.title })).toBeInTheDocument();
+  });
+
+  // Housekeeping-1 T2/T4: the header shows the one item price; the AI
+  // estimated-value range and the Estimated Value panel are retired.
+  it("shows items.price in the header and no estimated-value range or panel", () => {
+    h.item.price = 149;
+    h.item.estimatedValueMin = 80 as unknown as null;
+    h.item.estimatedValueMax = 160 as unknown as null;
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+    expect(screen.getByText("$149")).toBeInTheDocument();
+    expect(screen.queryByText(/\$80/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Estimated Value")).not.toBeInTheDocument();
+    h.item.price = null;
+    h.item.estimatedValueMin = null;
+    h.item.estimatedValueMax = null;
   });
 
   it("hides the back chevron in pane variant", () => {
@@ -197,5 +254,142 @@ describe("ItemDetail (prop-driven)", () => {
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
     expect(h.deleteItem).toHaveBeenCalled();
     expect(onDeleted).toHaveBeenCalled();
+  });
+});
+
+describe("ItemDetail — price truth (Housekeeping-1 T2)", () => {
+  it("refetches the item when a listing card reports a change, so items.price reflects a card price edit", async () => {
+    mockListings = [{
+      id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
+      marketplaceListingId: null, marketplaceSpecificFields: null,
+      status: "draft", price: 100, currency: "USD",
+      createdAt: "2026-08-01", publishedAt: null, soldAt: null,
+    } as unknown as Listing];
+    h.apiMock.mockResolvedValue({});
+    h.refetchItem.mockClear();
+    stubListingCard = true;
+    const user = userEvent.setup();
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "card-changed" }));
+
+    expect(refetchListingsMock).toHaveBeenCalled();
+    expect(h.refetchItem).toHaveBeenCalled();
+    stubListingCard = false;
+  });
+});
+
+describe("ItemDetail — item status control (Housekeeping-1 T6)", () => {
+  it("offers the manual statuses and PATCHes status=asset; with a live listing it is read-only and shows Active", async () => {
+    h.updateItem.mockClear();
+    const user = userEvent.setup();
+    const { unmount } = render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+    const select = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(select.disabled).toBe(false);
+    await user.selectOptions(select, "asset");
+    expect(h.updateItem).toHaveBeenCalledWith({ status: "asset" });
+    unmount();
+
+    mockListings = [{
+      id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
+      marketplaceListingId: "3001", marketplaceSpecificFields: null,
+      status: "active", price: 100, currency: "USD",
+      createdAt: "2026-08-01", publishedAt: "2026-08-01", soldAt: null,
+    } as unknown as Listing];
+    stubListingCard = true;
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+    const locked = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(locked.disabled).toBe(true);
+    expect(locked.value).toBe("active");
+    stubListingCard = false;
+  });
+});
+
+describe("ItemDetail — item status control, remaining branches (review gaps 3 + 5)", () => {
+  it("locks to Draft / Sold from listings, stays disabled while listings load, and surfaces an error when the status PATCH fails", async () => {
+    stubListingCard = true;
+    for (const [status, expected] of [["draft", "draft"], ["sold", "sold"]] as const) {
+      mockListings = [{
+        id: "l1", itemId: "i1", userId: "u1", marketplace: "ebay",
+        marketplaceListingId: null, marketplaceSpecificFields: null,
+        status, price: 100, currency: "USD",
+        createdAt: "2026-08-01", publishedAt: null, soldAt: null,
+      } as unknown as Listing];
+      const { unmount } = render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      const locked = screen.getByLabelText("Status") as HTMLSelectElement;
+      expect(locked.disabled).toBe(true);
+      expect(locked.value).toBe(expected);
+      unmount();
+    }
+    stubListingCard = false;
+    mockListings = [];
+
+    // Loading window: listings unknown → the control must not accept a PATCH.
+    mockListingsLoading = true;
+    const { unmount: unmountLoading } = render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+    expect((screen.getByLabelText("Status") as HTMLSelectElement).disabled).toBe(true);
+    unmountLoading();
+    mockListingsLoading = false;
+
+    h.updateItem.mockRejectedValueOnce(new Error("Failed to update status"));
+    const user = userEvent.setup();
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+    await user.selectOptions(screen.getByLabelText("Status"), "sold");
+    expect(await screen.findByText("Failed to update status")).toBeInTheDocument();
+    expect((screen.getByLabelText("Status") as HTMLSelectElement).disabled).toBe(false);
+  });
+});
+
+describe("ItemDetail — status save surfaces syncWarnings (review)", () => {
+  it("shows a 200-with-syncWarnings result instead of swallowing it", async () => {
+    h.updateItem.mockResolvedValueOnce({ syncWarnings: ["ebay: listing 3001 sync could not be queued — edit saved, retry from the listing page"] });
+    const user = userEvent.setup();
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+    await user.selectOptions(screen.getByLabelText("Status"), "archived");
+    expect(await screen.findByText(/could not be queued/)).toBeInTheDocument();
+  });
+});
+
+describe("ItemDetail — sync badge wiring (P3)", () => {
+  it("fetches /sync-log/status for the item's listings and renders the badge on the card", async () => {
+    mockListings = [{
+      id: "l1", itemId: "i1", userId: "u1", marketplace: "reverb",
+      marketplaceListingId: "87654321", marketplaceSpecificFields: null,
+      status: "active", price: 100, currency: "USD",
+      createdAt: "2026-08-01", publishedAt: "2026-08-01", soldAt: null,
+    } as unknown as Listing];
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (String(path).startsWith("/sync-log/status")) {
+        return { statuses: [{ listingId: "l1", state: "failed", lastAttemptAt: "2026-08-03T09:00:00Z", message: "Reverb 422: shipping required" }] };
+      }
+      return {};
+    });
+
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+
+    expect(await screen.findByTestId("sync-badge-l1")).toHaveTextContent(/sync failed/i);
+    expect(h.apiMock).toHaveBeenCalledWith("/sync-log/status?listingIds=l1", expect.objectContaining({ token: "t" }));
+  });
+});
+
+describe("ItemDetail — photo save serialization (Reverb-published race)", () => {
+  it("a second accept while the save PATCH is in flight must not fire a second PATCH", async () => {
+    h.item.photos = [{ url: "https://img/k0.jpg", key: "K0", isPrimary: true }];
+    h.enhanceResult = { image: { key: "K1", url: "https://img/k1.jpg", width: 100, height: 100, size: 1000 } };
+    // Reverb-published items make PATCH /items slow — never resolve here.
+    h.updateItem.mockClear();
+    h.updateItem.mockReturnValue(new Promise(() => {}));
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      fireEvent.click(screen.getByText("strip-edit"));
+      const accept = screen.getByRole("button", { name: /use this photo/i });
+      fireEvent.click(accept);
+      fireEvent.click(accept); // impatient double-tap during the slow Reverb sync
+      expect(h.updateItem).toHaveBeenCalledTimes(1);
+    } finally {
+      h.enhanceResult = null;
+      h.updateItem.mockResolvedValue({});
+      h.item.photos = [];
+    }
   });
 });

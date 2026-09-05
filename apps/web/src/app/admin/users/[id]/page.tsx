@@ -242,9 +242,9 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       {user.marketplaceConnections.length > 0 && (
         <div className="bg-surface rounded-xl border border-border p-4">
           <h2 className="text-sm font-semibold text-text-primary mb-3">Marketplace Connections</h2>
-          {user.marketplaceConnections.map((conn, i) => (
+          {user.marketplaceConnections.map((conn) => (
             <InfoRow
-              key={i}
+              key={`${conn.marketplace}-${conn.createdAt}`}
               label={conn.marketplace.toUpperCase()}
               value={
                 <span className={new Date(conn.tokenExpiresAt) < new Date() ? "text-red-600" : "text-green-600"}>

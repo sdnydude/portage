@@ -219,6 +219,39 @@ describe("useListingFlow.publish — draft-fallback warning", () => {
     });
   });
 
+  it("carries a picker-chosen reverb categoryUuid into marketplaceSpecificFields", async () => {
+    let listingsBody: { marketplaceSpecificFields?: Record<string, unknown> } | undefined;
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {
+      if (path === "/items/i1" && opts?.method === "PATCH") return {};
+      if (path === "/items/i1") {
+        return {
+          id: "i1", title: "Pelican Case", description: "d", category: "cases", condition: "new",
+          brand: "Pelican", model: "VCV525", features: [], quantity: 1,
+          photos: [{ url: "https://example.com/p.jpg", key: "k1" }],
+          estimatedValueRecommended: 150, price: 189,
+          weightOz: 120, lengthIn: null, widthIn: null, heightIn: null,
+          ebayPackageType: null, weightEstimated: false,
+        };
+      }
+      if (path === "/listings") {
+        listingsBody = opts?.body as typeof listingsBody;
+        return { id: "L1", status: "active" };
+      }
+      throw new Error("unavailable: " + path);
+    });
+
+    const { result } = renderHook(() => useListingFlow());
+    await act(async () => { await result.current.startFromItem("i1"); });
+    act(() => { result.current.setField("marketplace", "reverb"); });
+    await act(async () => { await result.current.publish({ reverbCategoryUuid: "b1f4ce46" }); });
+
+    expect(listingsBody?.marketplaceSpecificFields).toEqual({
+      make: "Pelican",
+      model: "VCV525",
+      categoryUuid: "b1f4ce46",
+    });
+  });
+
   it("sends only make/model for reverb — offers are profile-owned server-side", async () => {
     let listingsBody: { marketplaceSpecificFields?: Record<string, unknown> } | undefined;
     apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {
@@ -624,5 +657,45 @@ describe("useListingFlow.publish — photo order backstop", () => {
       { url: "https://example.com/2.jpg", key: "k2", isPrimary: true },
       { url: "https://example.com/1.jpg", key: "k1", isPrimary: false },
     ]);
+  });
+});
+
+describe("useListingFlow.publish — per-listing ebayShipping (beta 17be7322)", () => {
+  it("emits ebayShipping {method, flatCost} when the seller touched shipping; untouched sends none", async () => {
+    const listingBodies: Array<{ marketplaceSpecificFields?: Record<string, unknown> }> = [];
+    apiMock.mockImplementation(async (path: string, opts?: { method?: string; body?: unknown }) => {
+      if (path === "/items/i1" && opts?.method === "PATCH") return {};
+      if (path === "/items/i1") {
+        return {
+          id: "i1", title: "Mic Kit", description: "d", category: "electronics", condition: "new",
+          brand: "", model: "", features: [], quantity: 1,
+          photos: [{ url: "https://example.com/p.jpg", key: "k1" }],
+          estimatedValueRecommended: 50, price: 65,
+          weightOz: 24, lengthIn: null, widthIn: null, heightIn: null,
+          ebayPackageType: null, weightEstimated: false,
+        };
+      }
+      if (path === "/listings") {
+        listingBodies.push(opts?.body as { marketplaceSpecificFields?: Record<string, unknown> });
+        return { id: "L1", status: "active" };
+      }
+      throw new Error("unavailable: " + path);
+    });
+
+    // Untouched: no ebayShipping key rides the publish.
+    const first = renderHook(() => useListingFlow());
+    await act(async () => { await first.result.current.startFromItem("i1"); });
+    await act(async () => { await first.result.current.publish(); });
+    expect(listingBodies[0]?.marketplaceSpecificFields?.ebayShipping).toBeUndefined();
+
+    // Touched: method + flat cost ride the publish.
+    const second = renderHook(() => useListingFlow());
+    await act(async () => { await second.result.current.startFromItem("i1"); });
+    act(() => {
+      second.result.current.setField("shippingMethod", "flat");
+      second.result.current.setField("shippingCost", 6.5);
+    });
+    await act(async () => { await second.result.current.publish(); });
+    expect(listingBodies[1]?.marketplaceSpecificFields?.ebayShipping).toEqual({ method: "flat", flatCost: 6.5 });
   });
 });

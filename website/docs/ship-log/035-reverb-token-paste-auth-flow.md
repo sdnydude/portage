@@ -2,6 +2,7 @@
 title: "Reverb token-paste auth flow"
 sidebar_label: "Reverb token-paste auth flow"
 sidebar_position: 35
+registry_id: 0ed16e1f-e437-4ab7-9a26-89742fc1bcee
 ---
 
 # Reverb token-paste auth flow

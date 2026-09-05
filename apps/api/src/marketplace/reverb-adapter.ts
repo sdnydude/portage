@@ -21,6 +21,17 @@ const REVERB_BASE = 'https://api.reverb.com/api';
  * wants region_code. Accept both so client-supplied API-shaped rates pass
  * through untouched.
  */
+/**
+ * Reverb's listing API has no condition-notes/condition-description field
+ * (only the main description), so seller condition notes must be folded into
+ * the description body or they silently never reach the marketplace.
+ */
+export function appendConditionNotes(description: string, notes: string | null | undefined): string {
+  const trimmed = notes?.trim();
+  if (!trimmed) return description;
+  return `${description}\n\nCondition notes: ${trimmed}`;
+}
+
 function toReverbShippingRates(rates: unknown[]): unknown[] {
   return rates.map((r) => {
     const rate = r as { regionCode?: string; region_code?: string; rate: unknown };
@@ -53,6 +64,30 @@ export function clearReverbConditionsCache(): void {
   cachedConditions = null;
   conditionsCachedAt = 0;
 }
+
+export interface ReverbFlatCategory {
+  uuid: string;
+  fullName: string;
+  name: string;
+  rootUuid: string;
+  listable: boolean;
+}
+let cachedCategories: ReverbFlatCategory[] | null = null;
+let categoriesCachedAt = 0;
+
+export function clearReverbCategoriesCache(): void {
+  cachedCategories = null;
+  categoriesCachedAt = 0;
+}
+
+/**
+ * Photo-ingestion race guard (live failure 2026-08-04): Reverb ingests the
+ * photo URLs from a create ASYNC. A publish retry fired in the same second
+ * 422s "must have at least one image" even though the create carried photos.
+ * Poll budget: 3 checks, 4s apart — ingestion of a handful of images
+ * typically completes well inside that.
+ */
+export const REVERB_PHOTO_INGEST = { polls: 3, delayMs: 4000 };
 
 export class ReverbAdapter implements MarketplaceAdapter {
   readonly marketplace = 'reverb' as const;
@@ -95,6 +130,19 @@ export class ReverbAdapter implements MarketplaceAdapter {
     return response.json() as Promise<T>;
   }
 
+  /** Enable/update Reverb Bump on a live listing. Bid is a fraction of the
+   *  sale price (0.005–0.30 per Reverb's published docs); charged only on sale. */
+  async setBump(marketplaceListingId: string, bid: number): Promise<void> {
+    if (!(bid >= 0.005 && bid <= 0.30)) {
+      // 0.5%-30% per Reverb's published Bump docs (2026-08-05); 3.5% cap was fabricated.
+      throw new AppError(400, 'REVERB_BUMP_INVALID', 'Bump bid must be between 0.5% and 30%.');
+    }
+    await this.request('/bump/v2/bids', {
+      method: 'PUT',
+      body: JSON.stringify({ products: [Number(marketplaceListingId)], bid }),
+    });
+  }
+
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
     const specific = input.marketplaceSpecific ?? {};
     const conditionUuid = specific.conditionUuid as string
@@ -106,10 +154,10 @@ export class ReverbAdapter implements MarketplaceAdapter {
       : undefined;
 
     const body: Record<string, unknown> = {
-      make: input.brand ?? '',
-      model: input.model ?? '',
       title: input.title,
-      description: input.description,
+      // Reverb has no condition-notes field (verified against the create-listings
+      // API doc 2026-07-21) — the description is the only place they can live.
+      description: appendConditionNotes(input.description, input.conditionNotes),
       condition: { uuid: conditionUuid },
       price: { amount: String(input.price), currency: input.currency },
       has_inventory: true,
@@ -121,14 +169,41 @@ export class ReverbAdapter implements MarketplaceAdapter {
       publish: 'true',
     };
 
+    // Omit make/model when absent — Reverb title-guesses missing fields, but an
+    // explicit "" fails validation: 422 "Localized contents model for English
+    // can't be blank" (live 2026-08-09, model-less cable/accessory items).
+    if (input.brand) body.make = input.brand;
+    if (input.model) body.model = input.model;
+
     if (specific.categoryUuid) {
       body.categories = [{ uuid: specific.categoryUuid }];
     }
     if (specific.year) body.year = specific.year;
     if (specific.finish) body.finish = specific.finish;
     if (specific.offersEnabled !== undefined) body.offers_enabled = specific.offersEnabled;
-    if (specific.shippingRates) {
+    // Reverb-recommended shipping: reference a Reverb-side shipping profile by
+    // id (per-listing rates are discouraged and redundant when a profile wins).
+    if (specific.shippingProfileId) {
+      body.shipping_profile_id = specific.shippingProfileId;
+      // Pickup NEVER shuts off shipping (operator rule 2026-08-05): profile and
+      // local:true coexist — live-probe-verified on listing 100019158 (profile
+      // rates stay, pickup shows). The old profile-only branch dropped pickup.
+      if (specific.localPickup) body.shipping = { local: true };
+    } else if (specific.shippingRates) {
       body.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
+    } else if (specific.localPickup) {
+      // Local-pickup-only sellers have no rates — Reverb accepts local:true
+      // alone, and publish requires one or the other.
+      body.shipping = { local: true };
+    }
+    // Reverb blocks publish on Brand New items without a UPC ("A valid UPC/EAN
+    // must be entered in the UPC field or the 'UPC does not apply' field must
+    // be marked true for a Brand New item"). Send a real UPC when the caller
+    // has one; otherwise flag does-not-apply for new-condition items.
+    if (specific.upc) {
+      body.upc = specific.upc;
+    } else if (input.condition === 'new') {
+      body.upc_does_not_apply = 'true';
     }
 
     const data = await this.request<{ listing: { id: number; state: string; _links?: { web?: { href?: string } } } }>(
@@ -138,13 +213,53 @@ export class ReverbAdapter implements MarketplaceAdapter {
 
     logger.info({ listingId: data.listing.id }, 'Reverb listing created');
 
+    let createdSlug = stateSlug(data.listing.state);
+    let stateWarning: string | undefined;
+    // Live-verified 2026-07-21: a POST whose publish:"true" fails Reverb's
+    // publish validation still returns 201 state=draft with NO error — the
+    // listing parks in Reverb drafts silently and never goes live on its own.
+    // A follow-up PUT publish either completes the publish or 422s with the
+    // exact blockers (e.g. "Please set a shipping rate or enable local
+    // pickup.") — surface those verbatim so the seller can act.
+    if (createdSlug !== 'live') {
+      // Photo-ingestion race guard: wait until Reverb reports at least one
+      // ingested photo before retrying publish — otherwise the retry 422s
+      // on the image requirement while ingestion is still running.
+      if (input.photos.length > 0) {
+        for (let attempt = 0; attempt < REVERB_PHOTO_INGEST.polls; attempt++) {
+          try {
+            const check = await this.request<{ listing?: { photos?: unknown[] } }>(`/listings/${data.listing.id}`, { method: 'GET' });
+            if ((check.listing?.photos?.length ?? 0) > 0) break;
+          } catch {
+            break; // best-effort — the publish retry below surfaces real blockers
+          }
+          if (attempt < REVERB_PHOTO_INGEST.polls - 1 || REVERB_PHOTO_INGEST.polls === 1) {
+            await new Promise((r) => setTimeout(r, REVERB_PHOTO_INGEST.delayMs));
+          }
+        }
+      }
+      try {
+        const retry = await this.request<{ listing?: { state?: string | { slug?: string } } }>(
+          `/listings/${data.listing.id}`,
+          { method: 'PUT', body: JSON.stringify({ publish: 'true' }) },
+        );
+        createdSlug = stateSlug(retry.listing?.state) ?? createdSlug;
+        if (createdSlug !== 'live') {
+          stateWarning = `Reverb saved the listing as a draft (state: ${createdSlug ?? 'unknown'}). Publish it from your Reverb drafts once the shop requirements are met.`;
+        }
+      } catch (err) {
+        const reason = err instanceof AppError ? err.message : 'Reverb did not report a reason';
+        stateWarning = `Reverb saved the listing as a draft — it cannot go live yet. Reverb reports: ${reason}`;
+      }
+    }
+
     return {
       marketplaceListingId: String(data.listing.id),
       // _links can be absent on shape drift / review-pending responses — never
       // crash a successful publish over the URL.
       marketplaceUrl: data.listing._links?.web?.href ?? `https://reverb.com/item/${data.listing.id}`,
-      status: stateSlug(data.listing.state) === 'live' ? 'active' : 'draft',
-      warning: conditionWarning,
+      status: createdSlug === 'live' ? 'active' : 'draft',
+      warning: [conditionWarning, stateWarning].filter(Boolean).join('; ') || undefined,
     };
   }
 
@@ -152,7 +267,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
     const specific = input.marketplaceSpecific ?? {};
     const updates: Record<string, unknown> = {};
     if (input.title) updates.title = input.title;
-    if (input.description) updates.description = input.description;
+    if (input.description) updates.description = appendConditionNotes(input.description, input.conditionNotes);
     // createListing maps brand/model to make/model; update must too or an
     // item's brand/model edit never reaches the live Reverb listing.
     if (input.brand !== undefined) updates.make = input.brand;
@@ -171,12 +286,33 @@ export class ReverbAdapter implements MarketplaceAdapter {
       // DROPPED from the set lingers until its per-image DELETE (below).
       updates.photo_upload_method = 'override_position';
     }
+    // Re-publish path for a remote draft that already exists on Reverb (a
+    // Portage draft row WITH a marketplaceListingId): PUT publish on the
+    // existing listing — creating again would double-list. Publishing has the
+    // same UPC requirement as create for Brand New items.
+    if (specific.publish) {
+      updates.publish = 'true';
+      if (specific.upc) {
+        updates.upc = specific.upc;
+      } else if (input.condition === 'new') {
+        updates.upc_does_not_apply = 'true';
+      }
+    }
     if (specific.categoryUuid) updates.categories = [{ uuid: specific.categoryUuid }];
     if (specific.year) updates.year = specific.year;
     if (specific.finish) updates.finish = specific.finish;
     if (specific.offersEnabled !== undefined) updates.offers_enabled = specific.offersEnabled;
-    if (specific.shippingRates) {
+    if (specific.shippingProfileId) {
+      // Same precedence as create: a Reverb-side shipping profile id wins over
+      // per-listing rates. Pickup never shuts off shipping (operator rule
+      // 2026-08-05): local:true rides alongside the profile — same as create.
+      updates.shipping_profile_id = specific.shippingProfileId;
+      if (specific.localPickup) updates.shipping = { local: true };
+    } else if (specific.shippingRates) {
       updates.shipping = { rates: toReverbShippingRates(specific.shippingRates as unknown[]), local: specific.localPickup ?? false };
+    } else if (specific.localPickup) {
+      // Pickup-only parity with create: no profile, no rates — local:true alone.
+      updates.shipping = { local: true };
     }
 
     const data = await this.request<{ listing?: { state?: string | { slug?: string } } }>(`/listings/${marketplaceListingId}`, {
@@ -240,7 +376,19 @@ export class ReverbAdapter implements MarketplaceAdapter {
   }
 
   async deleteListing(marketplaceListingId: string): Promise<void> {
-    await this.request(`/listings/${marketplaceListingId}`, { method: 'DELETE' });
+    // DELETE only works on drafts ("Only drafts can be deleted", live-verified
+    // 2026-07-21) — a live listing must be ENDED via the state/end call
+    // (PUT /my/listings/:id/state/end, reason not_sold). Try the draft delete
+    // first, fall back to ending.
+    try {
+      await this.request(`/listings/${marketplaceListingId}`, { method: 'DELETE' });
+    } catch (err) {
+      if (!(err instanceof AppError) || err.statusCode !== 400) throw err;
+      await this.request(`/my/listings/${marketplaceListingId}/state/end`, {
+        method: 'PUT',
+        body: JSON.stringify({ reason: 'not_sold' }),
+      });
+    }
   }
 
   async getListingStatus(marketplaceListingId: string): Promise<'active' | 'sold' | 'ended' | 'unknown'> {
@@ -262,36 +410,90 @@ export class ReverbAdapter implements MarketplaceAdapter {
   }
 
   async getOrders(since?: Date): Promise<MarketplaceOrderResult[]> {
+    // /my/orders/selling/ALL + updated_start_date per Reverb's published docs
+    // (reverb-api.com "Retrieve Orders", verified 2026-08-07). The bare
+    // /my/orders/selling path and created_after param were undocumented —
+    // Reverb answered 200 without an orders key, so order sync silently
+    // imported nothing (live finding 2026-08-07, reverb_orders=0).
     const params = new URLSearchParams();
-    if (since) params.set('created_after', since.toISOString());
+    if (since) params.set('updated_start_date', since.toISOString());
 
-    const data = await this.request<{
-      orders?: Array<{
-        order_number: string;
-        listing_id?: string;
-        buyer_name: string;
-        amount_product: { amount: string; currency: string };
-        shipping: { amount: string };
-        shipping_address?: {
-          name: string;
-          street_address: string;
-          extended_address?: string;
-          locality: string;
-          region: string;
-          postal_code: string;
-          country_code: string;
-        };
-      }>;
-    }>(`/my/orders/selling?${params}`);
+    type ReverbOrder = {
+      order_number: string;
+      // Reverb order objects carry product_id, never listing_id
+      // (reverb-api.com "Retrieve Orders", verified 2026-08-07).
+      product_id?: string | number;
+      title?: string;
+      buyer_name?: string;
+      // Live-observed vocabulary (real shop, 2026-08-07): 'shipped',
+      // 'cancelled' (British spelling). Untrusted input — everything optional.
+      status?: string;
+      paid_at?: string;
+      created_at?: string;
+      amount_product?: { amount?: string; currency?: string };
+      selling_fee?: { amount?: string };
+      shipping?: { amount?: string };
+      shipping_address?: {
+        name: string;
+        street_address: string;
+        extended_address?: string;
+        locality: string;
+        region: string;
+        postal_code: string;
+        country_code: string;
+      };
+    };
+    type OrdersPage = { orders?: ReverbOrder[]; _links?: { next?: { href?: string } } };
 
-    return (data.orders ?? []).map(order => ({
+    // HAL pagination (live-verified 2026-08-07: total_pages + _links.next.href,
+    // absolute URL). One-page reads recreate the "orders missing" class this
+    // endpoint fix addressed. MAX_PAGES bounds a runaway next chain — twin of
+    // the loop in ebay-adapter.ts getOrders; keep cap/shape changes in sync.
+    const MAX_PAGES = 10;
+    const allOrders: ReverbOrder[] = [];
+    let path: string | undefined = `/my/orders/selling/all?${params}`;
+    for (let page = 0; page < MAX_PAGES && path; page++) {
+      const data: OrdersPage = await this.request<OrdersPage>(path);
+      allOrders.push(...(data.orders ?? []));
+      const next = data._links?.next?.href;
+      // next is absolute — re-anchor to a path for request() (REVERB_BASE ends
+      // in /api). URL-parse instead of a regex: a href without a literal /api
+      // after the host made the old replace() a silent no-op, and request()
+      // then built a doubled "https://api.reverb.com/apihttps://…" URL.
+      if (next) {
+        const parsed = new URL(next);
+        path = parsed.pathname.replace(/^\/api(?=\/|$)/, '') + parsed.search;
+      } else {
+        path = undefined;
+      }
+    }
+
+    // Untrusted marketplace input: a malformed order (no amount_product) must
+    // not throw — order-sync wraps this whole call in one try/catch, so a
+    // single bad order would otherwise block every other order for the user.
+    return allOrders.filter(order => {
+      if (order.amount_product?.amount != null) return true;
+      logger.warn({ orderNumber: order.order_number }, 'Reverb order missing amount_product — skipping');
+      return false;
+    }).map(order => ({
       marketplaceOrderId: order.order_number,
-      marketplaceListingId: order.listing_id ?? null,
-      buyerUsername: order.buyer_name,
-      salePrice: parseFloat(order.amount_product.amount),
+      marketplaceListingId: order.product_id != null ? String(order.product_id) : null,
+      title: order.title,
+      buyerUsername: order.buyer_name ?? '',
+      salePrice: parseFloat(order.amount_product!.amount!),
       shippingCost: parseFloat(order.shipping?.amount ?? '0'),
-      marketplaceFees: 0,
-      currency: order.amount_product.currency,
+      // Reverb DOES return the real fee (unlike eBay's Fulfillment API).
+      marketplaceFees: parseFloat(order.selling_fee?.amount ?? '0'),
+      currency: order.amount_product!.currency ?? 'USD',
+      // Reverb's actual sale date (paid_at; created_at for never-paid orders).
+      // Without this, order-sync falls back to new Date() and every synced
+      // order shows the sync time.
+      soldAt: order.paid_at ? new Date(order.paid_at)
+        : order.created_at ? new Date(order.created_at) : undefined,
+      // Live-observed vocabulary only — unrecognized statuses give no signal
+      // rather than a wrong one.
+      fulfillmentStatus: order.status === 'cancelled' ? 'canceled' as const
+        : order.status === 'shipped' ? 'shipped' as const : undefined,
       shippingAddress: {
         name: order.shipping_address?.name ?? '',
         street1: order.shipping_address?.street_address ?? '',
@@ -304,31 +506,157 @@ export class ReverbAdapter implements MarketplaceAdapter {
     }));
   }
 
-  async searchCategories(query: string): Promise<MarketplaceCategoryResult[]> {
+  /**
+   * Shipping profiles are created manually ON Reverb
+   * (reverb.com/my/selling/shipping_rates — no create/update API) and
+   * referenced per listing via shipping_profile_id. GET /shop lists them.
+   */
+  async getShippingProfiles(): Promise<Array<{ id: string; name: string }>> {
     const data = await this.request<{
-      categories?: Array<{
-        uuid: string;
-        full_name: string;
-      }>;
-    }>(`/categories/flat?query=${encodeURIComponent(query)}`);
-
-    return (data.categories ?? []).map(cat => ({
-      id: cat.uuid,
-      name: cat.full_name,
-      path: cat.full_name.split(' > '),
-      isLeaf: true,
-    }));
+      shipping_profiles?: Array<{ id: string | number; name: string }>;
+    }>('/shop');
+    return (data.shipping_profiles ?? []).map(p => ({ id: String(p.id), name: p.name }));
   }
 
-  static async getConditions(): Promise<Array<{ uuid: string; displayName: string }>> {
-    if (cachedConditions && Date.now() - conditionsCachedAt < CONDITIONS_TTL) return cachedConditions;
+  async searchCategories(query: string): Promise<MarketplaceCategoryResult[]> {
+    // Live-verified 2026-07-21: /categories/flat IGNORES ?query= and always
+    // returns the same full list (first entry "Acoustic Guitars / 12-String"),
+    // so matching MUST happen client-side — passing the query through meant
+    // every caller took the first flat entry and mis-categorized as guitars.
+    const categories = await ReverbAdapter.getFlatCategories(await getReverbAccessToken(this.userId));
 
-    const response = await fetch(`${REVERB_BASE}/listing_conditions`, {
-      headers: { 'Accept': 'application/hal+json', 'Accept-Version': '3.0' },
+    const tokens = query.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 3);
+    // Majority rule: a lone token hit out of several is noise ("Solid State
+    // Drives" matching "Electric Guitars / Solid Body" on "solid" — live repro
+    // 2026-07-21). Non-matches fall through to the route's 422 guidance.
+    const minScore = Math.ceil(tokens.length / 2);
+    return categories
+      .map(cat => ({
+        cat,
+        score: tokens.filter(t => cat.fullName.toLowerCase().includes(t)).length,
+      }))
+      .filter(({ score }) => score >= Math.max(minScore, 1))
+      // Most matched tokens first; ties break to the shortest full_name so a
+      // single-token match lands the general category, not a random deep leaf.
+      .sort((a, b) => b.score - a.score || a.cat.fullName.length - b.cat.fullName.length)
+      .slice(0, 25)
+      .map(({ cat }) => ({
+        id: cat.uuid,
+        name: cat.fullName,
+        // Leaf-safe path: strip the API's own leaf name, split only the ancestor
+      // prefix (leaf names may themselves contain " / ").
+      path: [
+        ...cat.fullName.slice(0, cat.fullName.length - cat.name.length).replace(/ \/ $/, '').split(' / ').filter(Boolean),
+        cat.name,
+      ],
+        isLeaf: true,
+      }));
+  }
+
+  /**
+   * Reverb's flat category list — static reference data on a PUBLIC endpoint
+   * (no auth), cached like getConditions. This is the ONLY valid source of
+   * category uuids/names; the endpoint's ?query= param is ignored by Reverb,
+   * so all matching against this list happens client-side.
+   */
+  /** Headers for Reverb's reference-data endpoints (categories, conditions).
+   *  Documented as public, but since 2026-09-02 Reverb's edge rejects
+   *  unauthenticated non-browser requests with a 403 HTML page; any bearer
+   *  token passes it, so callers hand in whichever token they hold. */
+  private static publicHeaders(token?: string): Record<string, string> {
+    return {
+      'Accept': 'application/hal+json',
+      'Accept-Version': '3.0',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+  }
+
+  /** Error for a failed reference-data fetch. Logs the body head (the 2026-09-02
+   *  block returned an HTML page, invisible until this). A 401/403 here is the
+   *  edge refusing us, not a seller permission — surface it as an upstream
+   *  outage so the web client never treats it as an auth failure. */
+  private static async publicFetchError(response: Response, what: string): Promise<AppError> {
+    const body = (await response.text().catch(() => '')).slice(0, 200);
+    logger.error({ status: response.status, what, body }, 'Reverb reference-data fetch failed');
+    if (response.status === 401 || response.status === 403) {
+      return new AppError(502, 'REVERB_UNAVAILABLE', `Reverb ${what} are temporarily unavailable (${response.status} from Reverb).`);
+    }
+    return new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb ${what}: ${response.status}`);
+  }
+
+  /** Token for reference-data fetches made on a user's behalf: the seller's
+   *  own Reverb PAT when connected. Reference data is seller-agnostic; the
+   *  token only satisfies the edge, so the shared cache stays shared. */
+  static async referenceToken(userId: string): Promise<string | undefined> {
+    try {
+      return await getReverbAccessToken(userId);
+    } catch (err) {
+      // Not connected yet (REVERB_SETUP_REQUIRED): reference data must still
+      // load, so use the service token; anything else is a real failure.
+      if (err instanceof AppError && err.code === 'REVERB_SETUP_REQUIRED') {
+        return env().REVERB_API_TOKEN || undefined;
+      }
+      throw err;
+    }
+  }
+
+  static async getFlatCategories(token?: string): Promise<ReverbFlatCategory[]> {
+    if (cachedCategories && Date.now() - categoriesCachedAt < CONDITIONS_TTL) return cachedCategories;
+
+    const response = await fetch(`${REVERB_BASE}/categories/flat`, {
+      headers: ReverbAdapter.publicHeaders(token),
     });
 
     if (!response.ok) {
-      throw new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb conditions: ${response.status}`);
+      throw await ReverbAdapter.publicFetchError(response, 'categories');
+    }
+
+    const data = await response.json() as {
+      categories: Array<{ uuid: string; full_name: string; name?: string; root_uuid?: string; listable?: boolean }>;
+    };
+
+    // Keep the hierarchy fields — Product Type → subcategory cascades need
+    // name/rootUuid/listable, and leaf names can legitimately contain " / "
+    // ("Modular Synth Splitters / Hubs"), so `name` is the ONLY safe way to
+    // split full_name into ancestors + leaf.
+    cachedCategories = data.categories.map(c => ({
+      uuid: c.uuid,
+      fullName: c.full_name,
+      name: c.name ?? c.full_name.split(' / ').pop() ?? c.full_name,
+      rootUuid: c.root_uuid ?? '',
+      listable: c.listable ?? true,
+    }));
+    categoriesCachedAt = Date.now();
+
+    return cachedCategories;
+  }
+
+  /** The 14 taxonomy roots — Reverb's Product Type axis. Root entries are the
+   *  flat rows whose fullName equals their own name. */
+  static async getProductTypes(token?: string): Promise<ReverbFlatCategory[]> {
+    const cats = await ReverbAdapter.getFlatCategories(token);
+    return cats.filter(c => c.fullName === c.name);
+  }
+
+  /** Direct children of a taxonomy node. Parent/child derived by prefix:
+   *  child.fullName === parent.fullName + ' / ' + child.name — anchored on the
+   *  API's own `name` field because leaf names can contain " / " themselves. */
+  static async getCategoryChildren(parentUuid: string, token?: string): Promise<ReverbFlatCategory[]> {
+    const cats = await ReverbAdapter.getFlatCategories(token);
+    const parent = cats.find(c => c.uuid === parentUuid);
+    if (!parent) return [];
+    return cats.filter(c => c.uuid !== parent.uuid && c.fullName === `${parent.fullName} / ${c.name}`);
+  }
+
+  static async getConditions(token?: string): Promise<Array<{ uuid: string; displayName: string }>> {
+    if (cachedConditions && Date.now() - conditionsCachedAt < CONDITIONS_TTL) return cachedConditions;
+
+    const response = await fetch(`${REVERB_BASE}/listing_conditions`, {
+      headers: ReverbAdapter.publicHeaders(token),
+    });
+
+    if (!response.ok) {
+      throw await ReverbAdapter.publicFetchError(response, 'conditions');
     }
 
     const data = await response.json() as {

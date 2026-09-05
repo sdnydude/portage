@@ -46,7 +46,7 @@ export function WeightFillSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
       <div className="fixed inset-0 bg-black/50" onClick={saving ? undefined : onCancel} />
       <div className="relative bg-surface rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-4 p-6 space-y-4 max-h-[85dvh] overflow-y-auto">
         <div>

@@ -51,6 +51,17 @@ function mapMessageType(ebayType: string): 'asq' | 'rtq' | 'aaq' {
   return 'asq';
 }
 
+/**
+ * Trading API Failure with the response's stable ErrorCodes attached (BO-1).
+ * Extends Error so every existing message-based catch keeps working.
+ */
+export class EbayTradingError extends Error {
+  constructor(message: string, public readonly errorCodes: number[]) {
+    super(message);
+    this.name = 'EbayTradingError';
+  }
+}
+
 export async function callTradingApi(
   callName: string,
   xmlBody: string,
@@ -95,10 +106,20 @@ export async function callTradingApi(
 
   if (responseObj?.Ack === 'Failure') {
     const errors = responseObj.Errors;
-    const firstError = Array.isArray(errors) ? errors[0] : errors;
-    const shortMsg = firstError?.ShortMessage ?? 'Unknown eBay error';
+    const errorList = Array.isArray(errors) ? errors : [errors];
+    // Join ALL messages (CodeRabbit): prose classifiers (category-unsupported)
+    // scan the whole message, so a Best Offer error hiding behind an unrelated
+    // first error must not vanish from it.
+    const shortMsg = errorList
+      .map((e) => e?.ShortMessage)
+      .filter(Boolean)
+      .join('; ') || 'Unknown eBay error';
     logger.error({ errors }, 'Trading API returned Failure');
-    throw new Error(shortMsg);
+    // Stable ErrorCodes ride on the thrown error (BO-1) so callers can key
+    // typed handling (e.g. Best Offer threshold conflicts) on ids, not prose.
+    throw new EbayTradingError(shortMsg, errorList
+      .map((e) => Number(e?.ErrorCode))
+      .filter((c) => Number.isFinite(c)));
   }
 
   if (responseObj?.Ack === 'PartialFailure') {

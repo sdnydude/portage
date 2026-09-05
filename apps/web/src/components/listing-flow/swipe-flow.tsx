@@ -5,6 +5,7 @@ import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useListingFlow, type PublishOptions as PublishOpts } from "@/hooks/use-listing-flow";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
+import { BestOfferFloorNote } from "./best-offer-floor-note";
 import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
 import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { formatCondition } from "@/lib/format";
@@ -16,6 +17,7 @@ import { AspectFillSheet, type AspectRequirement } from "../listing/aspect-fill-
 import { WeightDimsInputsInline } from "../listing/weight-dims-inputs";
 import { WeightFillSheet } from "../listing/weight-fill-sheet";
 import { usePrepareListing } from "@/hooks/use-prepare-listing";
+import { withKeys } from "@/lib/list-keys";
 
 /* ─────────────────────────────────────────────
    Types
@@ -109,10 +111,10 @@ const GLOBAL_STYLES = `
 `;
 
 function GlobalStyles() {
-  const injected = useRef(false);
+  const injectedRef = useRef(false);
   useEffect(() => {
-    if (injected.current) return;
-    injected.current = true;
+    if (injectedRef.current) return;
+    injectedRef.current = true;
     const tag = document.createElement("style");
     tag.textContent = GLOBAL_STYLES;
     document.head.appendChild(tag);
@@ -495,9 +497,9 @@ function RecognitionPhase({
             { top: "12%", right: "10%", borderTop: "2px solid #F15A22", borderRight: "2px solid #F15A22" },
             { bottom: "30%", left: "10%", borderBottom: "2px solid #F15A22", borderLeft: "2px solid #F15A22" },
             { bottom: "30%", right: "10%", borderBottom: "2px solid #F15A22", borderRight: "2px solid #F15A22" },
-          ].map((s, i) => (
+          ].map((s) => (
             <div
-              key={i}
+              key={Object.keys(s).join("-")}
               style={{
                 position: "absolute",
                 width: 24,
@@ -599,35 +601,6 @@ function RecognitionPhase({
               {candidate.category} &bull; {formatCondition(candidate.condition)}
             </p>
 
-            {/* Price range */}
-            {(candidate.estimatedValueLow > 0 || candidate.estimatedValueHigh > 0) && (
-              <div
-                style={{
-                  background: "#151515",
-                  borderRadius: "12px",
-                  padding: "12px 16px",
-                  marginBottom: 20,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span style={{ color: "#666", fontSize: "12px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}>
-                  EST. VALUE
-                </span>
-                <span
-                  style={{
-                    fontFamily: "'Syne', sans-serif",
-                    fontWeight: 800,
-                    fontSize: "22px",
-                    color: "#F15A22",
-                    letterSpacing: "-0.5px",
-                  }}
-                >
-                  ${candidate.estimatedValueLow}–${candidate.estimatedValueHigh}
-                </span>
-              </div>
-            )}
 
             {/* Actions */}
             <div style={{ display: "flex", gap: 10 }}>
@@ -690,10 +663,14 @@ const STRATEGY_CARDS: StrategyCard[] = [
 
 function ConfigurePhase({
   state,
+  error,
+  onRetry,
   onApplyStrategy,
   onNext,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
+  error?: string | null;
+  onRetry?: () => void;
   onApplyStrategy: (s: PricingStrategy) => void;
   onNext: () => void;
 }) {
@@ -750,6 +727,30 @@ function ConfigurePhase({
           gap: 20,
         }}
       >
+        {error && (
+          <div
+            role="alert"
+            style={{
+              background: "rgba(180,20,20,0.9)",
+              borderRadius: "10px",
+              padding: "12px 16px",
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: 12,
+              color: "#fff",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <span>{error}</span>
+            {onRetry && (
+              <button type="button" onClick={onRetry} style={{ background: "transparent", color: "#fff", border: "1px solid #fff", borderRadius: 6, padding: "4px 10px", fontFamily: "inherit", fontSize: 12 }}>
+                Retry
+              </button>
+            )}
+          </div>
+        )}
         {/* Title + current price */}
         <div>
           <SyneHeading size={20} style={{ display: "block", marginBottom: 4 }}>
@@ -966,7 +967,7 @@ function DetailsPhase({
             value={state.description}
             onChange={(e) => setField("description", e.target.value)}
             placeholder="Describe the item..."
-            rows={4}
+            rows={5}
           />
         </div>
 
@@ -1022,9 +1023,9 @@ function DetailsPhase({
               Features <AiBadge />
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {state.features.map((f, i) => (
+              {withKeys(state.features, (f) => f).map(([key, f]) => (
                 <span
-                  key={i}
+                  key={key}
                   style={{
                     background: "#151515",
                     border: "1px solid #222",
@@ -1201,6 +1202,8 @@ export function ReviewPhase({
   reorderPhotos,
   commitPhotoOrder,
   removePhoto,
+  preparedFloor,
+  onClearFloor,
 }: {
   state: ReturnType<typeof useListingFlow>["state"];
   setField: ReturnType<typeof useListingFlow>["setField"];
@@ -1209,6 +1212,9 @@ export function ReviewPhase({
   reorderPhotos?: ReturnType<typeof useListingFlow>["reorderPhotos"];
   commitPhotoOrder?: ReturnType<typeof useListingFlow>["commitPhotoOrder"];
   removePhoto?: ReturnType<typeof useListingFlow>["removePhoto"];
+  /** BO-5: AI-prepared auto-accept floor — shown before publish, removable. */
+  preparedFloor?: number;
+  onClearFloor?: () => void;
 }) {
   const [publishMode, setPublishMode] = useState<"draft" | "live">("live");
   const photoEdit = usePhotoEdit(state.photos, updatePhoto);
@@ -1223,6 +1229,12 @@ export function ReviewPhase({
     ebay: "#E53238",
     reverb: "#0D6EFD",
   };
+
+  const floorNote = typeof preparedFloor === "number" && onClearFloor ? (
+    <div style={{ margin: "0 0 10px" }}>
+      <BestOfferFloorNote floor={preparedFloor} onClear={onClearFloor} />
+    </div>
+  ) : null;
 
   const rows = [
     { label: "TITLE", value: state.title },
@@ -1267,6 +1279,7 @@ export function ReviewPhase({
           gap: 16,
         }}
       >
+        {floorNote}
         {/* Price */}
         {state.price && (
           <div
@@ -1528,9 +1541,10 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const [phase, setPhase] = useState<Phase>("recognition");
   const [scanPercent, setScanPercent] = useState(0);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const [showCapture, setShowCapture] = useState(false);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const hasFetchedComps = useRef(false);
+  const hasFetchedCompsRef = useRef(false);
 
   // On mount: if itemId provided, start from item
   useEffect(() => {
@@ -1570,8 +1584,8 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
 
   // Fetch comps when entering configure phase
   useEffect(() => {
-    if (phase === "configure" && !hasFetchedComps.current && state.inventoryItemId) {
-      hasFetchedComps.current = true;
+    if (phase === "configure" && !hasFetchedCompsRef.current && state.inventoryItemId) {
+      hasFetchedCompsRef.current = true;
       fetchComps();
     }
   }, [phase, fetchComps, state.inventoryItemId]);
@@ -1589,13 +1603,27 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prepareListing.data]);
 
+  // P3 (c3b3013c): photo-first, same contract as hybrid-flow — a fresh scan
+  // has no inventoryItemId yet, so create the item now and prepare() on the
+  // returned id; an existing item short-circuits inside ensureItemCreated.
+  // Creation failure is shown in Configure — never a silent draft.
+  const { ensureItemCreated } = flow;
+  const { prepare } = prepareListing;
+  const createAndPrepare = useCallback(() => {
+    setConfirmError(null);
+    void ensureItemCreated()
+      .then((id) => { if (id) prepare(id, ['ebay']); })
+      .catch((e: unknown) => setConfirmError(e instanceof Error ? e.message : "Couldn't save the item — try again."));
+  }, [ensureItemCreated, prepare]);
   const handleConfirmRecognition = useCallback(() => {
     confirmRecognition(state.recognition.selectedIndex);
-    if (state.inventoryItemId) {
-      prepareListing.prepare(state.inventoryItemId, ['ebay']);
-    }
     setPhase("configure");
-  }, [confirmRecognition, state.recognition.selectedIndex, state.inventoryItemId, prepareListing]);
+    // Comps now, on the title — the configure-phase effect below must not
+    // fire a second fetch once inventoryItemId lands.
+    hasFetchedCompsRef.current = true;
+    fetchComps();
+    createAndPrepare();
+  }, [confirmRecognition, state.recognition.selectedIndex, fetchComps, createAndPrepare]);
 
   const handleApplyStrategy = useCallback(
     (s: PricingStrategy) => {
@@ -1610,7 +1638,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
   const [weightNeeded, setWeightNeeded] = useState(false);
   const [weightSaving, setWeightSaving] = useState(false);
   const [weightError, setWeightError] = useState<string | null>(null);
-  const pendingPublishOpts = useRef<PublishOpts | undefined>(undefined);
+  const pendingPublishOptsRef = useRef<PublishOpts | undefined>(undefined);
 
   const runPublish = useCallback(async (opts?: PublishOpts) => {
     const fillingAspects = !!opts?.aspects;
@@ -1632,12 +1660,12 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
       setWeightNeeded(false);
       setPhase("success");
     } else if (result.aspectsRequired) {
-      pendingPublishOpts.current = opts;
+      pendingPublishOptsRef.current = opts;
       setAspectsNeeded(result.aspectsRequired);
       if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
       else setPhase("review");
     } else if (result.weightRequired) {
-      pendingPublishOpts.current = opts;
+      pendingPublishOptsRef.current = opts;
       setWeightNeeded(true);
       if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
       else setPhase("review");
@@ -1651,13 +1679,25 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
     }
   }, [publish]);
 
+  // BO-5: an AI-prepared auto-accept floor must be SEEN before it publishes.
+  const [floorCleared, setFloorCleared] = useState(false);
+  // A removed floor applies to THIS item only (CodeRabbit): the next
+  // listing's prepared floor must be visible again.
+  useEffect(() => { setFloorCleared(false); }, [state.inventoryItemId]);
+  const preparedFloor = state.marketplace === "ebay" && !floorCleared
+    ? (prepareListing.data?.ebay as { bestOfferAutoAcceptPrice?: number } | null | undefined)?.bestOfferAutoAcceptPrice
+    : undefined;
   const handlePublish = useCallback((publishMode: "draft" | "live") => {
-    runPublish({ ebayPreparedFields: prepareListing.data?.ebay ?? null, publishMode });
-  }, [runPublish, prepareListing.data]);
+    const prepared = prepareListing.data?.ebay ?? null;
+    runPublish({
+      ebayPreparedFields: floorCleared && prepared ? { ...prepared, bestOfferAutoAcceptPrice: undefined } : prepared,
+      publishMode,
+    });
+  }, [runPublish, prepareListing.data, floorCleared]);
 
   const handleListAnother = useCallback(() => {
     reset();
-    hasFetchedComps.current = false;
+    hasFetchedCompsRef.current = false;
     setPhase("recognition");
   }, [reset]);
 
@@ -1716,8 +1756,11 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
         {phase === "configure" && (
           <ConfigurePhase
             state={state}
+            error={confirmError}
+            onRetry={createAndPrepare}
             onApplyStrategy={handleApplyStrategy}
-            onNext={() => setPhase("details")}
+            // No forward path on an unsaved item — retry first.
+            onNext={() => { if (!confirmError) setPhase("details"); }}
           />
         )}
 
@@ -1748,6 +1791,8 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
               reorderPhotos={flow.reorderPhotos}
               commitPhotoOrder={flow.commitPhotoOrder}
               removePhoto={flow.removePhoto}
+              preparedFloor={preparedFloor}
+              onClearFloor={() => setFloorCleared(true)}
             />
             {publishError && (
               <div
@@ -1813,7 +1858,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
             setAspectsNeeded(null);
             setAspectError(null);
           }}
-          onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+          onSave={(aspects) => runPublish({ ...pendingPublishOptsRef.current, aspects })}
         />
       )}
 
@@ -1832,7 +1877,7 @@ export function SwipeFlow({ itemId }: SwipeFlowProps) {
             setWeightNeeded(false);
             setWeightError(null);
           }}
-          onSave={(value) => runPublish({ ...pendingPublishOpts.current, weightDims: value })}
+          onSave={(value) => runPublish({ ...pendingPublishOptsRef.current, weightDims: value })}
         />
       )}
     </div>

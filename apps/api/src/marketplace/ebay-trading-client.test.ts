@@ -78,6 +78,16 @@ describe('ebay-trading-client', () => {
         .rejects.toThrow('Auth token invalid');
     });
 
+    it('failure errors carry stable eBay ErrorCodes for typed handling upstream (BO-1)', async () => {
+      mockFetch.mockReturnValue(xmlResponse(
+        '<ReviseFixedPriceItemResponse><Ack>Failure</Ack><Errors><ShortMessage>Auto decline amount cannot be greater than or equal to the Buy It Now price.</ShortMessage><ErrorCode>22003</ErrorCode></Errors><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></ReviseFixedPriceItemResponse>'
+      ));
+
+      const err = await callTradingApi('ReviseFixedPriceItem', '<Req/>', 'token').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect((err as { errorCodes?: number[] }).errorCodes).toEqual([22003, 23004]);
+    });
+
     it('throws on HTTP error', async () => {
       mockFetch.mockReturnValue(xmlResponse('<Error/>', 500));
 
@@ -107,13 +117,14 @@ describe('ebay-trading-client', () => {
         .rejects.toThrow('non-XML');
     });
 
-    it('extracts ShortMessage from Errors array', async () => {
+    it('joins ALL ShortMessages so multi-error responses stay classifiable (CodeRabbit)', async () => {
       mockFetch.mockReturnValue(xmlResponse(
         '<GetMemberMessagesResponse><Ack>Failure</Ack><Errors><ShortMessage>First error</ShortMessage></Errors><Errors><ShortMessage>Second error</ShortMessage></Errors></GetMemberMessagesResponse>'
       ));
 
-      await expect(callTradingApi('GetMemberMessages', '<Req/>', 'token'))
-        .rejects.toThrow('First error');
+      const err = await callTradingApi('GetMemberMessages', '<Req/>', 'token').catch((e: unknown) => e);
+      expect((err as Error).message).toContain('First error');
+      expect((err as Error).message).toContain('Second error');
     });
 
     it('throws on PartialFailure when throwOnPartialFailure is true', async () => {

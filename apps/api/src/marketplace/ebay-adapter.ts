@@ -1,10 +1,34 @@
 import { createLogger } from '../lib/logger.js';
+import { ebayTaxonomyCalls } from '../lib/metrics.js';
 import { computePriceBands } from '../lib/pricing.js';
 import { env } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
 import { getEbayAccessToken, getEbayProdAppToken, invalidateEbayProdAppToken } from './token-manager.js';
-import { callTradingApi } from './ebay-trading-client.js';
-import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml, buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
+import { callTradingApi, EbayTradingError } from './ebay-trading-client.js';
+
+// Stable eBay Trading codes for price-vs-threshold conflicts (BO-2):
+// 22003 = auto-decline amount >= Buy It Now price, 23004 = auto-accept >= price.
+const BEST_OFFER_THRESHOLD_CODES = new Set([22003, 23004]);
+
+// P3 (25afd214): every BEST_OFFER_CONFLICT throw carries the same structured
+// payload the route pre-flight produces, so the client's guided fix can
+// re-seed the offer fields. The adapter only knows what THIS call submitted —
+// values absent here mean "stored on the live listing"; the route enriches
+// from GetItem at conflict time and owns the `healed` flag.
+function boConflictDetails(input: {
+  bestOfferEnabled?: boolean;
+  bestOfferAutoAcceptPrice?: number;
+  minimumBestOfferPrice?: number;
+}): BestOfferConflictDetails[] {
+  return [{
+    bestOfferEnabled: input.bestOfferEnabled ?? null,
+    bestOfferAutoAcceptPrice: input.bestOfferAutoAcceptPrice ?? null,
+    minimumBestOfferPrice: input.minimumBestOfferPrice ?? null,
+    healed: false,
+  }];
+}
+import { buildAddFixedPriceItemXml, buildEndFixedPriceItemXml, buildGetItemXml, buildGetMyeBaySellingXml,
+  buildReviseFixedPriceItemXml, buildReviseInventoryStatusXml, parseAddItemResponse, parseGetItemStatus, parseGetItemVerification, splitOunces, type TradingListingInput } from './ebay-trading-builders.js';
 import { EBAY_USER_AGENT } from './ebay-constants.js';
 import type {
   MarketplaceAdapter,
@@ -15,6 +39,8 @@ import type {
   CompListing,
   CompResult,
   EbayPreparedFields,
+  EbayListingShipping,
+  BestOfferConflictDetails,
 } from '@portage/shared';
 
 const logger = createLogger('ebay-adapter');
@@ -26,11 +52,16 @@ const validConditionsCache = new Map<string, { value: string[]; cachedAt: number
 const VALID_CONDITIONS_TTL = 60 * 60 * 1000; // 1h
 const requiredAspectsCache = new Map<string, { value: Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>; cachedAt: number }>();
 const REQUIRED_ASPECTS_TTL = 24 * 60 * 60 * 1000; // 24h
+// BO-M: per-category Best Offer support (Metadata API getNegotiatedPricePolicies). Category
+// features change rarely — long TTL; null (unknown) is never cached.
+const bestOfferSupportCache = new Map<string, { value: boolean; cachedAt: number }>();
+const BEST_OFFER_SUPPORT_TTL = 24 * 60 * 60 * 1000; // 24h
 
 // Test seam: module-level caches survive across vitest tests in a file.
 export function clearEbayTaxonomyCaches(): void {
   validConditionsCache.clear();
   requiredAspectsCache.clear();
+  bestOfferSupportCache.clear();
 }
 
 /**
@@ -67,6 +98,20 @@ export class EbayWeightRequiredError extends AppError {
     this.name = 'EbayWeightRequiredError';
   }
 }
+
+/** Stored Inventory-API package enum (items.ebayPackageType) → Trading
+ * ShippingPackageCodeType. Values live-verified via GeteBayDetails
+ * DetailName=ShippingPackageDetails (2026-08-01): Letter, LargeEnvelope,
+ * PackageThickEnvelope ("Package"), USPSLargePack ("LargePackage").
+ * LARGE_PACKAGE is a legacy stored spelling of USPS_LARGE_PACKAGE. */
+const TRADING_SHIPPING_PACKAGE: Record<string, string> = {
+  MAILING_BOX: 'PackageThickEnvelope',
+  PACKAGE_THICK_ENVELOPE: 'PackageThickEnvelope',
+  LARGE_ENVELOPE: 'LargeEnvelope',
+  LETTER: 'Letter',
+  USPS_LARGE_PACKAGE: 'USPSLargePack',
+  LARGE_PACKAGE: 'USPSLargePack',
+};
 
 const BROWSE_CONDITION_NORMALIZE: Record<string, string> = {
   'New': 'NEW',
@@ -188,7 +233,12 @@ export function resolveEbayCategoryCondition(
   portageCondition: string,
   validConditionIds: string[],
 ): { condition?: string; warning?: string } {
-  if (validConditionIds.length === 0) return {};
+  if (validConditionIds.length === 0) {
+    // Metadata API gave nothing — keep the static default, but say so (P7 8f94d453).
+    return {
+      warning: 'eBay condition could not be verified for this category — review the condition before publishing.',
+    };
+  }
   const selected = selectValidEbayCondition(portageCondition, validConditionIds);
   if (!selected) {
     return {
@@ -222,6 +272,10 @@ export interface EbayItemVerification {
   listingId: string | null;
   /** The live StartPrice on eBay, or null. */
   price: string | null;
+  /** Live Best Offer state (BO-3) — feeds the conflict-time threshold heal. */
+  bestOfferEnabled: boolean | null;
+  bestOfferAutoAcceptPrice: number | null;
+  minimumBestOfferPrice: number | null;
 }
 
 /**
@@ -275,6 +329,27 @@ export async function resolveEbayCategoryId(
   }
 
   const suggestion = await EbayAdapter.getCategorySuggestion(item.title);
+  // Mismatch guard, advisory only (no user present at this call site): a live
+  // resolution implausible for the item's persisted vision category is logged,
+  // never substituted or blocked.
+  const visionCategory = (item.marketplaceData as { scan?: { visionCategory?: string } } | null | undefined)
+    ?.scan?.visionCategory;
+  if (
+    suggestion?.rootCategoryId
+    && visionCategory
+    && !EbayAdapter.isPlausibleRoot(visionCategory, suggestion.rootCategoryId)
+  ) {
+    logger.warn(
+      {
+        title: item.title,
+        visionCategory,
+        categoryId: suggestion.categoryId,
+        categoryName: suggestion.categoryName,
+        rootCategoryId: suggestion.rootCategoryId,
+      },
+      'eBay category suggestion implausible for the scanned kind — publishing anyway (advisory guard)',
+    );
+  }
   return {
     categoryId: suggestion?.categoryId ?? null,
     categoryName: suggestion?.categoryName ?? null,
@@ -382,7 +457,11 @@ export class EbayAdapter implements MarketplaceAdapter {
    * tightening this to id-based matching once real rejections are observed.
    */
   private static isBestOfferRejection(err: unknown): boolean {
-    return err instanceof Error && /best[\s-]?offer|auto[\s-]?accept/i.test(err.message);
+    // Narrowed backstop (BO-M): the GetCategoryFeatures pre-flight is the
+    // primary signal for category support; this matches only eBay's known
+    // category-unsupported sentence — never a coincidental word hit, and
+    // threshold conflicts are already handled by stable codes upstream.
+    return err instanceof Error && /best offer is not (supported|available|allowed)/i.test(err.message);
   }
 
   /**
@@ -413,8 +492,23 @@ export class EbayAdapter implements MarketplaceAdapter {
     const weightOk = typeof rawWeight?.value === 'number' && rawWeight.value > 0;
     const dims = specific.dimensions as { length?: number; width?: number; height?: number } | undefined;
     const dimsOk = !!dims && (dims.length ?? 0) > 0 && (dims.width ?? 0) > 0 && (dims.height ?? 0) > 0;
-    if (!weightOk || !dimsOk) {
+    // Weight/dims are a CALCULATED-shipping requirement (errors 25020/21915).
+    // Flat/free (per-listing ebayShipping) publish without them — the builder
+    // floors weight to 1oz so any known dimensions still carry through.
+    const shippingMethod = (specific.ebayShipping as EbayListingShipping | undefined)?.method ?? 'calculated';
+    // Symmetric with the builder: anything that is not explicitly flat/free
+    // serializes as Calculated XML, so it needs weight/dims — an unknown
+    // method value must not slip past the gate (schema is an open record).
+    if ((!weightOk || !dimsOk) && shippingMethod !== 'flat' && shippingMethod !== 'free') {
       throw new EbayWeightRequiredError();
+    }
+    // Flat without a positive buyer cost would publish a $0.00 "Flat" listing
+    // indistinguishable from free shipping — fail loud instead.
+    if (shippingMethod === 'flat') {
+      const flatCost = (specific.ebayShipping as EbayListingShipping | undefined)?.flatCost;
+      if (!(typeof flatCost === 'number' && flatCost > 0)) {
+        throw new AppError(400, 'EBAY_FLAT_COST_REQUIRED', 'Flat-rate shipping needs a buyer cost above $0 — enter the rate or switch to free shipping.');
+      }
     }
 
     // MPN mirrors into aspects; a branded item with no real part number gets eBay's
@@ -461,7 +555,10 @@ export class EbayAdapter implements MarketplaceAdapter {
       if (selected) conditionId = selected.conditionId;
     }
 
-    const { weightMajor, weightMinor } = splitOunces(rawWeight!.value as number);
+    // Flat/free may have no stored weight/dims (gate skipped above) — zeros here;
+    // the builder floors weight and the dimension tags are omitted when unknown.
+    const { weightMajor, weightMinor } = splitOunces(weightOk ? (rawWeight!.value as number) : 0);
+    const ebayShipping = specific.ebayShipping as EbayListingShipping | undefined;
     return {
       title: input.title,
       description: input.description,
@@ -470,18 +567,172 @@ export class EbayAdapter implements MarketplaceAdapter {
       currency: input.currency,
       quantity: input.quantity ?? 1,
       conditionId,
-      conditionDescription: specific.conditionDescription as string | undefined,
+      // Prepared (AI, user-reviewed) conditionDescription wins; the item's raw
+      // conditionNotes fill the gap on publish paths that skipped prepare —
+      // without this fallback those paths list with a blank condition note.
+      // Trading caps ConditionDescription at 1000 chars.
+      conditionDescription: (specific.conditionDescription as string | undefined)
+        || input.conditionNotes?.trim().slice(0, 1000)
+        || undefined,
       sku,
-      pictureUrls: input.photos.map((p) => p.url),
+      // Partial updates (e.g. price + Best Offer fields) can reach the full
+      // revise with no photos — omitted PictureDetails keeps eBay's pictures.
+      pictureUrls: (input.photos ?? []).map((p) => p.url),
       aspects: canonical,
       shipping: {
         originPostalCode,
         weightMajor,
         weightMinor,
-        dimensions: { length: dims!.length!, width: dims!.width!, height: dims!.height! },
+        dimensions: dimsOk
+          ? { length: dims!.length!, width: dims!.width!, height: dims!.height! }
+          : { length: 0, width: 0, height: 0 },
+        // mergeItemShipping puts the item's stored Inventory-API package enum
+        // under packageType; Trading takes ShippingPackageCodeType, so translate
+        // (raw pass-through = live error 37, 2026-08-01). Unknown values are
+        // dropped — the builder default (PackageThickEnvelope) applies.
+        ...(typeof specific.packageType === 'string' && TRADING_SHIPPING_PACKAGE[specific.packageType]
+          ? { shippingPackage: TRADING_SHIPPING_PACKAGE[specific.packageType] }
+          : {}),
+        // Per-listing shipping choice (publish sheet) — absent key = legacy calculated.
+        ...(ebayShipping?.method ? { method: ebayShipping.method } : {}),
+        ...(typeof ebayShipping?.flatCost === 'number' ? { flatCost: ebayShipping.flatCost } : {}),
+        ...(ebayShipping?.service ? { service: ebayShipping.service } : {}),
+        ...(ebayShipping?.localPickup ? { pickupOffered: true } : {}),
       },
+      ...(typeof ebayShipping?.handlingDays === 'number' ? { dispatchTimeMax: ebayShipping.handlingDays } : {}),
       bestOfferAutoAcceptPrice: (specific as Partial<EbayPreparedFields>).bestOfferAutoAcceptPrice,
+      // Per-listing "accept offers" toggle + auto-decline floor from the
+      // publish sheet (ride marketplaceSpecific; not part of prepared fields).
+      bestOfferEnabled: typeof specific.bestOfferEnabled === 'boolean' ? specific.bestOfferEnabled : undefined,
+      minimumBestOfferPrice: typeof specific.minimumBestOfferPrice === 'number' ? specific.minimumBestOfferPrice : undefined,
+      // Explicit disable (BO-4): toggle-off is the ONLY path that clears the
+      // stored thresholds on the live listing — seller intent, never auto.
+      // MUST spread LAST: object literals apply later keys last, so the
+      // threshold mappings above would otherwise resurrect the stored values
+      // (audit finding #3, 2026-08-03).
+      ...(specific.bestOfferEnabled === false ? {
+        bestOfferAutoAcceptPrice: undefined,
+        minimumBestOfferPrice: undefined,
+        deleteBestOfferAutoAcceptPrice: true,
+        deleteMinimumBestOfferPrice: true,
+      } : {}),
     };
+  }
+
+  /**
+   * Promoted Listings Standard (cost-per-sale): find-or-create the seller's
+   * "Portage Promoted Listings" CPS campaign, then attach the live listing as
+   * an ad at the given rate (percent of sale price, e.g. 5 → "5.0").
+   * sell.marketing is already in the OAuth consent scopes.
+   */
+  async promoteListing(marketplaceListingId: string, adRatePercent: number): Promise<void> {
+    if (!(adRatePercent >= 1 && adRatePercent <= 100)) {
+      throw new AppError(400, 'EBAY_AD_RATE_INVALID', 'Ad rate must be between 1% and 100% of the sale price.');
+    }
+    const token = await getEbayAccessToken(this.userId);
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+    const CAMPAIGN_NAME = 'Portage Promoted Listings';
+
+    const listRes = await fetch(
+      'https://api.ebay.com/sell/marketing/v1/ad_campaign?campaign_status=RUNNING&limit=100',
+      { headers },
+    );
+    if (!listRes.ok) {
+      throw new AppError(502, 'EBAY_ADS_UNAVAILABLE', `eBay Marketing API rejected the campaign lookup (${listRes.status}).`);
+    }
+    const listBody = await listRes.json() as { campaigns?: Array<{ campaignId: string; campaignName: string }> };
+    let campaignId = listBody.campaigns?.find((c) => c.campaignName === CAMPAIGN_NAME)?.campaignId;
+
+    if (!campaignId) {
+      const createRes = await fetch('https://api.ebay.com/sell/marketing/v1/ad_campaign', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          campaignName: CAMPAIGN_NAME,
+          marketplaceId: 'EBAY_US',
+          fundingStrategy: { fundingModel: 'COST_PER_SALE' },
+          startDate: new Date().toISOString(),
+        }),
+      });
+      if (!createRes.ok) {
+        throw new AppError(502, 'EBAY_ADS_UNAVAILABLE', `eBay Marketing API rejected campaign creation (${createRes.status}).`);
+      }
+      // createCampaign returns the new id in the Location header.
+      campaignId = createRes.headers.get('Location')?.split('/').pop();
+      if (!campaignId) {
+        throw new AppError(502, 'EBAY_ADS_UNAVAILABLE', 'eBay created the ad campaign but returned no campaign id.');
+      }
+    }
+
+    const adRes = await fetch(`https://api.ebay.com/sell/marketing/v1/ad_campaign/${campaignId}/ad`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        listingId: marketplaceListingId,
+        bidPercentage: adRatePercent.toFixed(1),
+      }),
+    });
+    // 409 = the listing already has an ad in this campaign — treat as success
+    // (re-publishing the same item must not fail the promote step).
+    if (!adRes.ok && adRes.status !== 409) {
+      const body = await adRes.text();
+      logger.warn({ userId: this.userId, marketplaceListingId, status: adRes.status, body }, 'eBay ad creation rejected');
+      throw new AppError(502, 'EBAY_ADS_UNAVAILABLE', `eBay rejected the ad for this listing (${adRes.status}).`);
+    }
+    logger.info({ userId: this.userId, marketplaceListingId, campaignId, adRatePercent }, 'eBay Promoted Listing ad created');
+  }
+
+  /**
+   * BO-M: does this category allow Best Offer? Deterministic pre-flight via
+   * Metadata API getNegotiatedPricePolicies. (GetCategoryFeatures was
+   * decommissioned 2026-05-04 — HTTP 410 on every call, observed live
+   * 2026-08-04, which left this pre-flight permanently failed-open.)
+   * Returns null when eBay doesn't answer OR the category has no policy row
+   * — callers FAIL OPEN (send as configured); unknown must never drop
+   * seller config.
+   */
+  private async isCategoryBestOfferSupported(categoryId: string): Promise<boolean | null> {
+    const cached = bestOfferSupportCache.get(categoryId);
+    if (cached && Date.now() - cached.cachedAt < BEST_OFFER_SUPPORT_TTL) return cached.value;
+    try {
+      // Application token, NOT the user token: this method requires the
+      // client-credentials base api_scope, which the user-consent scope list
+      // does not carry — a user token 401s here forever, silently killing
+      // the pre-flight (advisor review 2026-08-04, verified against the
+      // method reference + eBay's published OAS). PROD app token + prod URL,
+      // mirroring getValidConditions' get_item_condition_policies call: the
+      // base EBAY_CLIENT_ID creds fail the prod token endpoint
+      // (invalid_client — live-probed 2026-08-04).
+      const token = await getEbayProdAppToken();
+      const filter = encodeURIComponent(`categoryIds:{${categoryId}}`);
+      const res = await fetch(`https://api.ebay.com/sell/metadata/v1/marketplace/EBAY_US/get_negotiated_price_policies?filter=${filter}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Accept-Encoding': 'gzip' },
+      });
+      if (!res.ok) {
+        logger.warn({ categoryId, status: res.status }, 'getNegotiatedPricePolicies Best Offer pre-flight failed — proceeding as configured');
+        return null;
+      }
+      const data = await res.json() as { negotiatedPricePolicies?: Array<{ categoryId?: string | number }> };
+      if (!Array.isArray(data.negotiatedPricePolicies) || data.negotiatedPricePolicies.length === 0) {
+        // Empty/absent container = shape drift or unfiltered miss — unknown,
+        // never "unsupported"; a wrong false drops seller config at publish.
+        return null;
+      }
+      // Migration-guide semantics: "If a category is returned in this
+      // container, it supports Best Offer." Row PRESENCE is the signal — the
+      // per-row automation booleans (auto-accept/decline/counter) describe
+      // sub-features and must NOT gate support. A queried leaf category
+      // absent from a parsed, non-empty response does not support it.
+      const supported = data.negotiatedPricePolicies.some((pol) => String(pol.categoryId) === categoryId);
+      bestOfferSupportCache.set(categoryId, { value: supported, cachedAt: Date.now() });
+      return supported;
+    } catch (err) {
+      logger.warn({ categoryId, error: (err as Error).message }, 'getNegotiatedPricePolicies Best Offer pre-flight failed — proceeding as configured');
+      return null;
+    }
   }
 
   async createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult> {
@@ -490,15 +741,24 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     const token = await getEbayAccessToken(this.userId);
 
-    // Best Offer category support is not verifiable pre-flight — on a best-offer
-    // rejection, retry once without it rather than failing the whole listing.
+    // BO-M: category Best Offer support IS verifiable pre-flight —
+    // Metadata API getNegotiatedPricePolicies (row presence = supported), TTL-cached. false →
+    // deterministic warn-downgrade (operator decision: warn at create only);
+    // true/unknown → send as configured; the prose fallback below is a
+    // narrow backstop, never the primary signal.
     let bestOfferDowngraded = false;
-    const BEST_OFFER_DOWNGRADE_WARNING = 'Listed without Best Offer auto-accept — eBay rejected it for this listing.';
+    const BEST_OFFER_DOWNGRADE_WARNING = 'Listed without Best Offer — eBay does not allow it in this category.';
+    const wantsBestOffer = !!(tradingInput.bestOfferAutoAcceptPrice || tradingInput.bestOfferEnabled);
+    if (wantsBestOffer && await this.isCategoryBestOfferSupported(tradingInput.categoryId) === false) {
+      bestOfferDowngraded = true;
+    }
     const callAdd = (withBestOffer: boolean): Promise<Record<string, unknown>> =>
       callTradingApi(
         'AddFixedPriceItem',
         buildAddFixedPriceItemXml(
-          withBestOffer ? tradingInput : { ...tradingInput, bestOfferAutoAcceptPrice: undefined },
+          withBestOffer
+            ? tradingInput
+            : { ...tradingInput, bestOfferAutoAcceptPrice: undefined, bestOfferEnabled: undefined, minimumBestOfferPrice: undefined },
           token,
         ),
         token,
@@ -506,9 +766,19 @@ export class EbayAdapter implements MarketplaceAdapter {
 
     let parsed: Record<string, unknown>;
     try {
-      parsed = await callAdd(true);
+      parsed = await callAdd(!bestOfferDowngraded);
     } catch (err) {
-      if (tradingInput.bestOfferAutoAcceptPrice && EbayAdapter.isBestOfferRejection(err)) {
+      // BO-2: a threshold conflict at publish means the seller's numbers are
+      // wrong for this price — surface them; silently dropping the config
+      // (the old behavior) is forbidden. Only the category-unsupported case
+      // (prose match, no stable eBay id) keeps the warn-downgrade at create —
+      // operator decision 2026-08-03.
+      if (err instanceof EbayTradingError && err.errorCodes.some((c) => BEST_OFFER_THRESHOLD_CODES.has(c))) {
+        throw new AppError(422, 'BEST_OFFER_CONFLICT',
+          `The Best Offer settings conflict with the price $${tradingInput.price} — both thresholds must be below the price. eBay said: ${(err as Error).message}`,
+          boConflictDetails(tradingInput));
+      }
+      if (wantsBestOffer && EbayAdapter.isBestOfferRejection(err)) {
         logger.warn({ userId: this.userId, sku, error: (err as Error).message }, 'eBay rejected Best Offer — retrying AddFixedPriceItem without it');
         bestOfferDowngraded = true;
         parsed = await callAdd(false);
@@ -546,19 +816,39 @@ export class EbayAdapter implements MarketplaceAdapter {
       input.title || input.description || input.photos || input.brand || input.model || input.mpn ||
       input.condition || input.features ||
       specific.aspects || specific.weight || specific.dimensions || specific.categoryId ||
-      specific.conditionId || specific.condition || specific.conditionDescription,
+      specific.conditionId || specific.condition || specific.conditionDescription ||
+      // Best Offer fields live in the full item body — the fast path would
+      // silently drop them (CodeRabbit, BO-6 audit defense-in-depth).
+      specific.bestOfferEnabled !== undefined || specific.bestOfferAutoAcceptPrice !== undefined ||
+      specific.minimumBestOfferPrice !== undefined,
     );
 
     if (!hasContentChange && (input.price !== undefined || input.quantity !== undefined)) {
-      await callTradingApi(
-        'ReviseInventoryStatus',
-        buildReviseInventoryStatusXml(
-          marketplaceListingId,
-          { price: input.price, quantity: input.quantity, currency: input.currency ?? 'USD' },
+      try {
+        await callTradingApi(
+          'ReviseInventoryStatus',
+          buildReviseInventoryStatusXml(
+            marketplaceListingId,
+            { price: input.price, quantity: input.quantity, currency: input.currency ?? 'USD' },
+            token,
+          ),
           token,
-        ),
-        token,
-      );
+        );
+      } catch (err) {
+        // eBay validates a price change against thresholds STORED on the live
+        // listing even here — same typed contract as the full revise
+        // (CodeRabbit, BO-6). Never a retry, never a deletion.
+        if (err instanceof EbayTradingError && err.errorCodes.some((c) => BEST_OFFER_THRESHOLD_CODES.has(c))) {
+          // Unreachable from current callers (listings.ts + marketplace-sync
+          // always send title → full revise); kept typed so a future price-only
+          // caller still gets the structured payload. Thresholds live on eBay,
+          // not in this input — all null until the route's GetItem enrichment.
+          throw new AppError(422, 'BEST_OFFER_CONFLICT',
+            `The price $${input.price} is at or below this listing's Best Offer settings on eBay — adjust the offer thresholds together with the price. eBay said: ${(err as Error).message}`,
+            boConflictDetails(input.marketplaceSpecific ?? {}));
+        }
+        throw err;
+      }
       logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay price/qty revised via ReviseInventoryStatus');
       return { marketplaceListingId, marketplaceUrl, status: 'active' };
     }
@@ -567,46 +857,56 @@ export class EbayAdapter implements MarketplaceAdapter {
     // SKU is only re-sent when the caller supplies one, so a revise never rewrites it.
     const tradingInput = await this.buildTradingInput(input as MarketplaceListingInput, input.ebaySku);
 
-    // Best Offer category support isn't verifiable pre-flight — on a best-offer
-    // rejection, retry the revise once without it rather than failing the whole edit.
-    let bestOfferDowngraded = false;
-    const BEST_OFFER_DOWNGRADE_WARNING = 'Updated without Best Offer auto-accept — eBay rejected it for this listing.';
-
     // Zero-photo item: eBay's Revise treats an omitted PictureDetails as
     // "keep the existing pictures". Refusing outright would starve every
     // other field (price, title) of sync for such items — proceed, keep
     // eBay's pictures, and surface the divergence as a warning instead.
     const photosEmpty = tradingInput.pictureUrls.length === 0;
     const EMPTY_PHOTOS_WARNING = 'Item has no photos — the eBay listing keeps its existing pictures until you add one.';
-    const callRevise = (withBestOffer: boolean): Promise<Record<string, unknown>> =>
-      callTradingApi(
+
+    // BO-2: updates never downgrade-retry. The seller's Best Offer
+    // configuration is authoritative — any rejection surfaces as a typed
+    // 422 the seller resolves; nothing is deleted or stripped to force the
+    // edit through. (createListing keeps its warn-downgrade for the
+    // category-unsupported case at first publish only — operator decision
+    // 2026-08-03.)
+    const wantsBestOffer = !!(tradingInput.bestOfferAutoAcceptPrice || tradingInput.bestOfferEnabled);
+    try {
+      await callTradingApi(
         'ReviseFixedPriceItem',
         buildReviseFixedPriceItemXml(
           marketplaceListingId,
-          {
-            ...(withBestOffer ? tradingInput : { ...tradingInput, bestOfferAutoAcceptPrice: undefined }),
-            ...(photosEmpty ? { allowEmptyPictures: true } : {}),
-          },
+          { ...tradingInput, ...(photosEmpty ? { allowEmptyPictures: true } : {}) },
           token,
         ),
         token,
       );
-
-    try {
-      await callRevise(true);
     } catch (err) {
-      if (tradingInput.bestOfferAutoAcceptPrice && EbayAdapter.isBestOfferRejection(err)) {
-        logger.warn({ userId: this.userId, itemId: marketplaceListingId, error: (err as Error).message }, 'eBay rejected Best Offer — retrying ReviseFixedPriceItem without it');
-        bestOfferDowngraded = true;
-        await callRevise(false);
-      } else {
-        throw err;
+      // Threshold conflicts: stable codes 22003 (auto-decline) / 23004
+      // (auto-accept), both observed live 2026-08-03. These can fire from
+      // thresholds STORED on the live listing even when this revise sent
+      // none — surface the numbers, never delete-and-retry.
+      if (err instanceof EbayTradingError && err.errorCodes.some((c) => BEST_OFFER_THRESHOLD_CODES.has(c))) {
+        const parts = [
+          ...(tradingInput.bestOfferAutoAcceptPrice !== undefined ? [`auto-accept $${tradingInput.bestOfferAutoAcceptPrice}`] : []),
+          ...(tradingInput.minimumBestOfferPrice !== undefined ? [`minimum offer $${tradingInput.minimumBestOfferPrice}`] : []),
+        ];
+        const configured = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+        throw new AppError(422, 'BEST_OFFER_CONFLICT',
+          `The price $${tradingInput.price} is at or below this listing's Best Offer settings${configured} — adjust the offer thresholds together with the price. eBay said: ${(err as Error).message}`,
+          boConflictDetails(tradingInput));
       }
+      // Category-level rejection (prose only — eBay has no stable id): the
+      // seller turns offers off; the app never strips them on an update.
+      if (wantsBestOffer && EbayAdapter.isBestOfferRejection(err)) {
+        throw new AppError(422, 'BEST_OFFER_UNSUPPORTED',
+          'eBay does not allow Best Offer in this listing\'s category — turn off offers for this listing, then save again.');
+      }
+      throw err;
     }
 
     logger.info({ userId: this.userId, itemId: marketplaceListingId }, 'eBay listing revised via ReviseFixedPriceItem');
     const warnings = [
-      ...(bestOfferDowngraded ? [BEST_OFFER_DOWNGRADE_WARNING] : []),
       ...(photosEmpty ? [EMPTY_PHOTOS_WARNING] : []),
     ];
     return {
@@ -634,7 +934,11 @@ export class EbayAdapter implements MarketplaceAdapter {
       const token = await getEbayAccessToken(this.userId);
       const parsed = await callTradingApi('GetItem', buildGetItemXml(marketplaceListingId, token), token);
       return parseGetItemStatus(parsed);
-    } catch {
+    } catch (err) {
+      // Logging parity with ReverbAdapter (review HIGH-2): the status sweep
+      // treats 'unknown' as a safe no-op, so without this line a broken eBay
+      // token silently stops reconciliation with no trace anywhere.
+      logger.warn({ marketplaceListingId, err }, 'eBay getListingStatus failed — returning unknown');
       return 'unknown';
     }
   }
@@ -651,10 +955,47 @@ export class EbayAdapter implements MarketplaceAdapter {
       const token = await getEbayAccessToken(this.userId);
       const parsed = await callTradingApi('GetItem', buildGetItemXml(itemId, token), token);
       const v = parseGetItemVerification(parsed);
-      return { sku: v.sku, found: v.found, aspects: v.aspects, mpn: v.mpn, brand: v.brand, status: v.status, listingId: v.listingId, price: v.price };
+      return { sku: v.sku, found: v.found, aspects: v.aspects, mpn: v.mpn, brand: v.brand, status: v.status, listingId: v.listingId, price: v.price, bestOfferEnabled: v.bestOfferEnabled, bestOfferAutoAcceptPrice: v.bestOfferAutoAcceptPrice, minimumBestOfferPrice: v.minimumBestOfferPrice };
     } catch {
-      return { sku: null, found: false, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null };
+      return { sku: null, found: false, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null };
     }
+  }
+
+  /**
+   * Find a live listing by the SKU (eBay "Custom label") Portage stamps at
+   * create. Used by the stale publish-claim resume: a crash between the
+   * AddFixedPriceItem 200 and the ItemID write leaves a claimed row with no
+   * ItemID — adopt the live listing instead of creating it again. Scans the
+   * seller's ActiveList (200/page) and matches client-side: GetSellerList's
+   * SKUArray filter needs InventoryTrackingMethod=SKU, which we do not set.
+   * Throws on read failure — the caller must not treat "unknown" as "absent".
+   */
+  async findListingBySku(sku: string): Promise<string | null> {
+    const token = await getEbayAccessToken(this.userId);
+    // Bounded like getOrders: 10 × 200 = 2,000 active listings covers the
+    // pre-launch reality by two orders of magnitude; beyond it we warn and
+    // report not-found rather than chase TotalNumberOfPages indefinitely
+    // inside a publish request.
+    const MAX_PAGES = 10;
+    let totalPagesSeen = 1;
+    for (let pageNumber = 1, totalPages = 1; pageNumber <= totalPages; pageNumber++) {
+      if (pageNumber > MAX_PAGES) {
+        logger.warn({ userId: this.userId, sku, totalPages: totalPagesSeen }, 'findListingBySku: page bound hit — treating as not found');
+        return null;
+      }
+      const parsed = await callTradingApi('GetMyeBaySelling', buildGetMyeBaySellingXml(pageNumber, token), token);
+      const active = ((parsed as { GetMyeBaySellingResponse?: { ActiveList?: Record<string, unknown> } })
+        .GetMyeBaySellingResponse?.ActiveList) ?? {};
+      const items = (active.ItemArray as { Item?: unknown } | undefined)?.Item;
+      for (const it of Array.isArray(items) ? items : items ? [items] : []) {
+        const row = it as { ItemID?: unknown; SKU?: unknown };
+        if (String(row.SKU ?? '') === sku && row.ItemID != null) return String(row.ItemID);
+      }
+      const total = Number((active.PaginationResult as { TotalNumberOfPages?: unknown } | undefined)?.TotalNumberOfPages);
+      totalPages = Number.isFinite(total) && total > 0 ? total : 1;
+      totalPagesSeen = totalPages;
+    }
+    return null;
   }
 
   /**
@@ -773,6 +1114,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     // Page through the window — the sync heals can only repair orders this
     // returns, so a hard one-page cap silently strands sellers past 50 orders.
     // MAX_PAGES bounds a runaway `next` chain (500 orders covers the window).
+    // Twin of the loop in reverb-adapter.ts getOrders; keep cap/shape changes in sync.
     const MAX_PAGES = 10;
     const allOrders: NonNullable<OrdersPage['orders']> = [];
     let path: string | undefined = `/sell/fulfillment/v1/order?${params}`;
@@ -953,7 +1295,68 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
   }
 
-  static async getCategorySuggestion(query: string): Promise<{ categoryId: string; categoryName: string } | null> {
+  /**
+   * Category-mismatch guard: is the suggested category's TREE ROOT a plausible
+   * home for what the vision scan saw? Multiple roots per vision value —
+   * legitimately surprising categories (band-merch tee under Clothing from a
+   * `music` scan) must NOT flag. Used only to compute an advisory boolean;
+   * never a category source (eBay taxonomy stays the user-facing truth).
+   */
+  /**
+   * Full plausibility check for the mismatch guard. Coarse enum values go
+   * through the root table; RICH vision strings (the scan refine path emits
+   * eBay-style names like "Audio Cables & Adapters", not the 14-value enum —
+   * live 08-13: that fail-open let Baseball Jackets through silently) fall
+   * back to token overlap against the suggested leaf + root names. Zero
+   * overlap = implausible. Empty/no-token input still fails open.
+   */
+  static isPlausibleSuggestion(
+    visionCategory: string,
+    suggestion: { categoryName: string; rootCategoryId: string | null; rootCategoryName: string | null },
+  ): boolean {
+    const key = visionCategory.trim().toLowerCase();
+    if (!key) return true;
+    const coarse = ['electronics', 'clothing', 'furniture', 'collectibles', 'sports', 'home',
+      'books', 'toys', 'tools', 'automotive', 'jewelry', 'art', 'music', 'other'];
+    if (coarse.includes(key)) {
+      return suggestion.rootCategoryId ? this.isPlausibleRoot(key, suggestion.rootCategoryId) : true;
+    }
+    const stem = (w: string) => w.replace(/s$/, '');
+    const tokens = key.split(/[^a-z0-9]+/).map(stem).filter(w => w.length > 3);
+    if (tokens.length === 0) return true; // garbage/too-short input — fail open
+    const hay = `${suggestion.categoryName} ${suggestion.rootCategoryName ?? ''}`
+      .toLowerCase().split(/[^a-z0-9]+/).map(stem).filter(Boolean);
+    return tokens.some(t => hay.includes(t));
+  }
+
+  static isPlausibleRoot(visionCategory: string, rootCategoryId: string): boolean {
+    const roots: Record<string, string[]> = {
+      // eBay L1 root ids are years-stable. '99' (Everything Else) plausible everywhere.
+      electronics: ['293', '58058', '15032', '625', '1249', '619', '11700', '12576', '99'],
+      music: ['619', '11233', '45100', '11450', '293', '99'],
+      clothing: ['11450', '888', '45100', '99'],
+      sports: ['888', '64482', '11450', '220', '99'],
+      furniture: ['11700', '20081', '12576', '99'],
+      collectibles: ['1', '20081', '45100', '64482', '11116', '260', '237', '99'],
+      home: ['11700', '14339', '293', '870', '99'],
+      books: ['267', '1', '99'],
+      toys: ['220', '237', '1249', '99'],
+      tools: ['12576', '11700', '6000', '99'],
+      automotive: ['6000', '12576', '99'],
+      jewelry: ['281', '20081', '1', '99'],
+      art: ['550', '20081', '14339', '1', '99'],
+    };
+    const plausible = roots[visionCategory.trim().toLowerCase()];
+    if (!plausible) return true; // unknown vision value — fail open, never block on garbage
+    return plausible.includes(rootCategoryId);
+  }
+
+  static async getCategorySuggestion(query: string): Promise<{
+    categoryId: string;
+    categoryName: string;
+    rootCategoryId: string | null;
+    rootCategoryName: string | null;
+  } | null> {
     const token = await getEbayProdAppToken();
 
     const response = await fetch(
@@ -975,21 +1378,47 @@ export class EbayAdapter implements MarketplaceAdapter {
     const data = await response.json() as {
       categorySuggestions?: Array<{
         category: { categoryId: string; categoryName: string };
+        categoryTreeNodeAncestors?: Array<{
+          categoryId: string;
+          categoryName: string;
+          categoryTreeNodeLevel?: number;
+        }>;
       }>;
     };
 
     const first = data.categorySuggestions?.[0];
     if (!first) return null;
 
+    // The tree root (level 1) is the mismatch-guard signal; ancestors ride the
+    // response we already fetch, so this costs no extra Taxonomy call.
+    const ancestors = first.categoryTreeNodeAncestors ?? [];
+    // Lowest categoryTreeNodeLevel = tree root — but ONLY when every ancestor
+    // carries a level; with partial levels an unleveled true root could lose
+    // to a leveled non-root. Any missing level → trust eBay's ordering instead
+    // (leaf-parent first → root LAST, same assumption as searchCategories'
+    // .reverse()).
+    const allHaveLevels = ancestors.length > 0 && ancestors.every(a => a.categoryTreeNodeLevel != null);
+    const root = allHaveLevels
+      ? ancestors.reduce((a, b) => ((a.categoryTreeNodeLevel as number) <= (b.categoryTreeNodeLevel as number) ? a : b))
+      : ancestors.length > 0
+        ? ancestors[ancestors.length - 1]
+        : null;
+
     return {
       categoryId: first.category.categoryId,
       categoryName: first.category.categoryName,
+      rootCategoryId: root?.categoryId ?? null,
+      rootCategoryName: root?.categoryName ?? null,
     };
   }
 
   static async getRequiredAspects(categoryId: string): Promise<Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>> {
     const cached = requiredAspectsCache.get(categoryId);
-    if (cached && Date.now() - cached.cachedAt < REQUIRED_ASPECTS_TTL) return cached.value;
+    if (cached && Date.now() - cached.cachedAt < REQUIRED_ASPECTS_TTL) {
+      ebayTaxonomyCalls.labels('required_aspects', 'cache_hit').inc();
+      return cached.value;
+    }
+    ebayTaxonomyCalls.labels('required_aspects', 'cache_miss').inc();
 
     const token = await getEbayProdAppToken();
 
@@ -1035,7 +1464,11 @@ export class EbayAdapter implements MarketplaceAdapter {
   // transient Metadata hiccup never blocks listing preparation.
   static async getValidConditions(categoryId: string): Promise<string[]> {
     const cached = validConditionsCache.get(categoryId);
-    if (cached && Date.now() - cached.cachedAt < VALID_CONDITIONS_TTL) return cached.value;
+    if (cached && Date.now() - cached.cachedAt < VALID_CONDITIONS_TTL) {
+      ebayTaxonomyCalls.labels('valid_conditions', 'cache_hit').inc();
+      return cached.value;
+    }
+    ebayTaxonomyCalls.labels('valid_conditions', 'cache_miss').inc();
 
     const token = await getEbayProdAppToken();
 

@@ -22,6 +22,9 @@ export interface PublishOptions {
   ebayPreparedFields?: EbayPreparedFields | null;
   publishMode?: 'draft' | 'live';
   aspects?: Record<string, string[]>;
+  // Reverb category chosen in the publish-sheet picker — the only client-side
+  // category source for items the AI could not place (non-music-gear).
+  reverbCategoryUuid?: string;
   // Weight/dims supplied by the fill sheet on a retry after EBAY_WEIGHT_REQUIRED;
   // overrides flow state so persistence isn't subject to a setState race.
   weightDims?: {
@@ -102,7 +105,10 @@ export function useListingFlow() {
 
   const setField = useCallback(<K extends keyof ListingFlowState>(key: K, value: ListingFlowState[K]) => {
     setState(prev => {
-      const next = { ...prev, [key]: value };
+      // Shipping keys are only set from user controls (ShippingConfigCard pills /
+      // cost input) — an explicit set records intent so publish emits ebayShipping.
+      const touched = key === 'shippingMethod' || key === 'shippingCost' ? { shippingTouched: true } : {};
+      const next = { ...prev, [key]: value, ...touched };
       triggerAutoSave(next);
       return next;
     });
@@ -573,6 +579,16 @@ export function useListingFlow() {
       // — otherwise they were silently dropped and the publish re-demanded them.
       // categoryId is self-healed server-side from item.marketplaceData.
       const ebaySpecific: Record<string, unknown> = ebayPreparedFields ? { ...ebayPreparedFields } : {};
+      // Per-listing shipping (beta 17be7322): only an explicit seller choice
+      // (shippingTouched) rides the publish — untouched keeps server defaults.
+      if (s.shippingTouched && s.marketplace === 'ebay') {
+        ebaySpecific.ebayShipping = {
+          method: s.shippingMethod,
+          ...(s.shippingMethod === 'flat' && s.shippingCost != null && s.shippingCost > 0
+            ? { flatCost: s.shippingCost }
+            : {}),
+        };
+      }
       if (options?.aspects) {
         ebaySpecific.aspects = {
           ...((ebaySpecific.aspects as Record<string, string[]> | undefined) ?? {}),
@@ -591,6 +607,9 @@ export function useListingFlow() {
                 // permanently override the profile's reverbOffersEnabled.
                 make: s.brand,
                 model: s.model,
+                // Picker-chosen category (non-gear items the AI can't place);
+                // server enrichment still fills from the prepare cache when absent.
+                ...(options?.reverbCategoryUuid ? { categoryUuid: options.reverbCategoryUuid } : {}),
               }
             : undefined;
 

@@ -2,6 +2,7 @@
 title: "eBay required item specifics — proactive in-flow collection + publish gate"
 sidebar_label: "eBay required item specifics — proactive in-flow c"
 sidebar_position: 46
+registry_id: 0d15a150-6e4e-4f6d-8756-9a1b2907a20a
 ---
 
 # eBay required item specifics — proactive in-flow collection + publish gate

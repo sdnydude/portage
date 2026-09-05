@@ -49,3 +49,13 @@ graphify-out/
 
 # Local scratch notes (untracked working file, not a repo artifact)
 whats-next.md
+
+# stale env backups — never commit
+.env.bak.*
+.env.broken.*
+
+# Python tooling (.claude/scripts/shiplog)
+__pycache__/
+*.pyc
+.pytest_cache/
+**/.claude/tdd-guard/data/

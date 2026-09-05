@@ -31,11 +31,25 @@ vi.mock('../marketplace/ebay-adapter.js', () => ({
   },
 }));
 
-vi.mock('../marketplace/reverb-adapter.js', () => ({
-  ReverbAdapter: {
-    searchComps: vi.fn().mockResolvedValue({ listings: [], stats: { median: null, avg: null, sampleSize: 0 } }),
-  },
+const { mockReverbSearchCategories } = vi.hoisted(() => ({
+  mockReverbSearchCategories: vi.fn().mockResolvedValue([]),
 }));
+
+vi.mock('../marketplace/reverb-adapter.js', () => {
+  const ReverbAdapter = Object.assign(
+    vi.fn(function () { return ({ searchCategories: mockReverbSearchCategories }); }),
+    {
+      searchComps: vi.fn().mockResolvedValue({ listings: [], stats: { median: null, avg: null, sampleSize: 0 } }),
+      referenceToken: vi.fn().mockResolvedValue(undefined),
+      getConditions: vi.fn().mockResolvedValue([]),
+      getFlatCategories: vi.fn().mockResolvedValue([
+        { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion' },
+        { uuid: 'u-mics', fullName: 'Pro Audio / Microphones' },
+      ]),
+    },
+  );
+  return { ReverbAdapter };
+});
 
 vi.mock('../lib/vision.js', () => ({
   generateListingFields: vi.fn().mockResolvedValue({
@@ -53,11 +67,11 @@ vi.mock('../lib/vision.js', () => ({
 }));
 
 vi.mock('stripe', () => ({
-  default: vi.fn(() => ({
+  default: vi.fn(function () { return ({
     checkout: { sessions: { create: vi.fn() } },
     billingPortal: { sessions: { create: vi.fn() } },
     webhooks: { constructEvent: vi.fn() },
-  })),
+  }); }),
 }));
 
 let app: ReturnType<typeof createApp>;
@@ -270,5 +284,66 @@ describe('Seller-tuned pricing percentile in prepare-listing', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.listingFooter).toBe('Ships fast.');
+  });
+});
+
+describe('Reverb uuid validation in prepare-listing', () => {
+  it('replaces hallucinated AI reverb uuids with values validated against the live lists', async () => {
+    const { generateListingFields } = await import('../lib/vision.js');
+    vi.mocked(generateListingFields).mockResolvedValueOnce({
+      title: 'ProCo RAT 2',
+      description: 'A pedal',
+      condition: 'good',
+      conditionDescription: 'Light wear',
+      brand: 'ProCo',
+      model: 'RAT 2',
+      isMusicGear: true,
+      aiConfidence: 0.9,
+      ebay: null,
+      reverb: {
+        make: 'ProCo', model: 'RAT 2', title: 'ProCo RAT 2',
+        categoryUuid: 'made-up-cat-uuid', categoryName: 'Effects and Pedals / Distortion',
+        conditionUuid: 'made-up-cond-uuid', conditionName: 'Excellent',
+        year: null, finish: null, description: 'A pedal',
+      },
+    } as any);
+    const { ReverbAdapter } = await import('../marketplace/reverb-adapter.js');
+    vi.mocked((ReverbAdapter as any).getConditions).mockResolvedValueOnce([
+      { uuid: 'real-cond-excellent', displayName: 'Excellent' },
+    ]);
+    mockReverbSearchCategories.mockResolvedValueOnce([
+      { id: 'real-cat-distortion', name: 'Effects and Pedals / Distortion', path: [], isLeaf: true },
+    ]);
+    mockDbSequence([[baseItem], [], [baseUser]]);
+
+    const res = await request(app)
+      .post('/items/item-1/prepare-listing')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetMarketplaces: ['reverb'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reverb).toMatchObject({
+      categoryUuid: 'real-cat-distortion',
+      conditionUuid: 'real-cond-excellent',
+    });
+  });
+});
+
+describe('Reverb flat-category list injection', () => {
+  it('passes the real Reverb category names to the AI when reverb is targeted', async () => {
+    const { generateListingFields } = await import('../lib/vision.js');
+    mockDbSequence([[baseItem], [], [baseUser]]);
+
+    const res = await request(app)
+      .post('/items/item-1/prepare-listing')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetMarketplaces: ['reverb'] });
+
+    expect(res.status).toBe(200);
+    const input = vi.mocked(generateListingFields).mock.calls[0][0] as any;
+    expect(input.reverbCategories).toEqual([
+      'Effects and Pedals / Distortion',
+      'Pro Audio / Microphones',
+    ]);
   });
 });

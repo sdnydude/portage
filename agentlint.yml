@@ -24,7 +24,7 @@ rules: {}
 #   enabled: false  # opt-in session recording for product insights
 
 agentchute:
-  enabled: true  # opt-in cloud dashboard and hybrid security feeds
+  enabled: false  # cloud is a paid private beta ($249/mo) — local rules only (2026-08-22)
 
 # custom_rules_dir: .agentlint/rules/
 # Custom rules with pack = "mypack" activate when "mypack" is listed in packs above

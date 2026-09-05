@@ -11,7 +11,7 @@ const updatePrefsSchema = z.object({
   listingInterface: z.enum(['conversational', 'swipe', 'hybrid']).optional(),
   listingForkPref: z.enum(['ask', 'list', 'inventory']).optional(),
   listingCompactMode: z.boolean().optional(),
-}).refine(data => Object.keys(data).length > 0, { message: 'At least one field required' });
+}).refine(data => Object.keys(data).length > 0, { error: 'At least one field required' });
 
 export const preferencesRouter = Router();
 

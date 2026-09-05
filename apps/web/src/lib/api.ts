@@ -15,7 +15,9 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
-    public details?: string[],
+    // Zod failures ship string[]; typed errors (e.g. BEST_OFFER_CONFLICT)
+    // ship structured entries — narrow at the consumption site.
+    public details?: unknown[],
   ) {
     super(message);
     this.name = "ApiError";
@@ -35,6 +37,51 @@ export function setOnSessionExchanged(cb: typeof _onSessionExchanged) {
 
 let _exchangePromise: Promise<string> | null = null;
 
+export class SessionLostError extends Error {}
+
+let _exchangeBlockedUntil = 0;
+let _exchangeFailures = 0;
+let _lastExchangeSuccessAt = 0;
+
+export function _resetExchangeBreakerForTests() {
+  _exchangeBlockedUntil = 0;
+  _exchangeFailures = 0;
+  _lastExchangeSuccessAt = 0;
+}
+
+export function requestExchange(): Promise<string> {
+  // Success-side throttle: 15-minute tokens make a 10s reuse window safe.
+  // Remount storms (hard navigations) reuse the fresh token instead of
+  // re-fetching.
+  if (Date.now() - _lastExchangeSuccessAt < 10_000) {
+    const cached = localStorage.getItem(TOKEN_KEY);
+    if (cached) return Promise.resolve(cached);
+  }
+  if (Date.now() < _exchangeBlockedUntil) {
+    return Promise.reject(new Error("Session exchange is cooling down after a failure"));
+  }
+  if (!_exchangePromise) {
+    _exchangePromise = exchangeSession()
+      .then((t) => {
+        _exchangeFailures = 0;
+        _lastExchangeSuccessAt = Date.now();
+        return t;
+      })
+      .catch((err) => {
+        if (!(err instanceof SessionLostError)) {
+          _exchangeFailures++;
+          // 5s → 15s → 45s → 60s cap
+          _exchangeBlockedUntil = Date.now() + Math.min(60_000, 5_000 * 3 ** (_exchangeFailures - 1));
+        }
+        throw err;
+      })
+      .finally(() => {
+        _exchangePromise = null;
+      });
+  }
+  return _exchangePromise;
+}
+
 // Exchange the Cloudflare Access identity (cookie/assertion forwarded by the
 // edge) for a fresh internal access token. CF is the session layer — there is
 // no refresh token; when the internal token expires we just exchange again.
@@ -50,6 +97,9 @@ export async function exchangeSession(): Promise<string> {
       localStorage.removeItem(USER_KEY);
       _onSessionExchanged?.(null, null);
       window.dispatchEvent(new CustomEvent(SESSION_LOST_EVENT));
+      // Definitive loss, already handled above — the breaker must not cool
+      // down on it or it would block the next legitimate re-login attempt.
+      throw new SessionLostError(`Session exchange failed (${response.status})`);
     }
     throw new Error(`Session exchange failed (${response.status})`);
   }
@@ -92,10 +142,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     // re-exchange + retry recovers a mid-action expiry transparently;
     // otherwise fail with something more actionable than "Failed to fetch".
     try {
-      if (!_exchangePromise) {
-        _exchangePromise = exchangeSession().finally(() => { _exchangePromise = null; });
-      }
-      const newToken = await _exchangePromise;
+      const newToken = await requestExchange();
       const retryResponse = await fetch(`${API_BASE}${path}`, {
         ...rest,
         headers: { ...headers, Authorization: `Bearer ${newToken}` },
@@ -115,10 +162,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   if (response.status === 401 && token && path !== "/auth/session") {
     let newToken: string;
     try {
-      if (!_exchangePromise) {
-        _exchangePromise = exchangeSession().finally(() => { _exchangePromise = null; });
-      }
-      newToken = await _exchangePromise;
+      newToken = await requestExchange();
     } catch {
       const data = await response.json().catch(() => ({ error: "Session expired", code: "UNAUTHORIZED" }));
       throw new ApiError(401, data.code, data.error, data.details);
@@ -167,10 +211,7 @@ export async function apiUpload<T>(
   } catch {
     // Same network-level recovery as api() — see NETWORK_ERROR_MESSAGE.
     try {
-      if (!_exchangePromise) {
-        _exchangePromise = exchangeSession().finally(() => { _exchangePromise = null; });
-      }
-      const newToken = await _exchangePromise;
+      const newToken = await requestExchange();
       const retryResponse = await fetch(`${API_BASE}${path}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${newToken}` },
@@ -190,10 +231,7 @@ export async function apiUpload<T>(
   if (response.status === 401 && token) {
     let newToken: string;
     try {
-      if (!_exchangePromise) {
-        _exchangePromise = exchangeSession().finally(() => { _exchangePromise = null; });
-      }
-      newToken = await _exchangePromise;
+      newToken = await requestExchange();
     } catch {
       const data = await response.json().catch(() => ({ error: "Session expired", code: "UNAUTHORIZED" }));
       throw new ApiError(401, data.code, data.error, data.details);

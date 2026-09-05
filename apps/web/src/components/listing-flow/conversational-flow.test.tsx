@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   prepare: vi.fn(),
   prepError: null as string | null,
   prepDataNull: false,
+  prepEbay: null as Record<string, unknown> | null,
   cardProps: {} as Record<string, unknown>,
   lastStep: "confirmed",
 }));
@@ -79,7 +80,7 @@ vi.mock("@/hooks/use-prepare-listing", () => ({
       model: "AE-1",
       pricing: { suggested: 100, low: 80, high: 120, currency: "USD", confidence: "high", basedOn: 3, conditionMatch: "exact" },
       comps: { ebay: null, reverb: null },
-      ebay: null,
+      ebay: h.prepEbay,
       reverb: null,
       isMusicGear: false,
       aiConfidence: 0.9,
@@ -104,7 +105,31 @@ vi.mock("../listing/weight-dims-inputs", () => ({ WeightDimsInputs: () => null }
 vi.mock("../listing/aspect-fill-sheet", () => ({ AspectFillSheet: () => null }));
 vi.mock("../listing/weight-fill-sheet", () => ({ WeightFillSheet: () => null }));
 
-import { ConversationalFlow } from "./conversational-flow";
+import { ConversationalFlow, FormatBold } from "./conversational-flow";
+
+describe("FormatBold", () => {
+  it("renders repeated bold runs with distinct keys (char-offset keyed, no duplicate-key warning)", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { container } = render(<FormatBold text="**a** x **a**" />);
+    const dupKey = errorSpy.mock.calls.some((c) => String(c[0]).includes("same key"));
+    errorSpy.mockRestore();
+    expect(container.querySelectorAll("strong")).toHaveLength(2);
+    expect(dupKey).toBe(false);
+  });
+});
+
+describe("ConversationalFlow — AI-prepared Best Offer floor is visible (BO-5)", () => {
+  it("renders the prepared auto-accept floor so it never publishes unseen", () => {
+    h.prepEbay = { bestOfferAutoAcceptPrice: 85, weight: { value: 16, unit: "OUNCE" }, dimensions: { length: 8, width: 6, height: 4 }, packageType: null, categoryId: "175669" };
+    try {
+      render(<ConversationalFlow />);
+      expect(screen.getByText(/\$85/)).toBeInTheDocument();
+      expect(screen.getByText(/auto-accept/i)).toBeInTheDocument();
+    } finally {
+      h.prepEbay = null;
+    }
+  });
+});
 
 describe("ConversationalFlow — photo editing wiring (S2.5-8)", () => {
   it("passes the flow's updatePhoto to ListingPreviewCard so editor tools persist into flow state", () => {

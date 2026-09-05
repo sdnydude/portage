@@ -27,7 +27,7 @@ leaking sentinels.
 | b | Card click → detail pane shows the item; URL becomes `/inventory?item=<id>` via `history.replaceState`; a window sentinel proves **no navigation** | pane follows click |
 | c | `ArrowDown` on the focused list pane moves `aria-current` to the next card; detail pane + URL follow | keyboard nav |
 | d | Title edit → `PATCH /items/:id` observed → `page.reload()` re-asserts → original title **restored** and re-asserted | durable persistence |
-| e | Cold `page.goto('/inventory?item=<id>')` deep link hydrates the pane | deep link |
+| e | Cold `page.goto('/inventory?item=<id>')` deep link hydrates the pane — **at the `lg` breakpoint only**: since P3 (`14efa906`) the selection is gated on `matchMedia("(min-width: 1024px)")`, so phones never mount the hidden pane (`p3-ux-truth.spec.ts` proves the mobile side) | deep link |
 | f | `/listings` card click → item detail pane with the listing's own card scrolled into view (`focusListingId` path) | listing focus |
 | g | Select-mode card-**body** click toggles selection without navigating away — **passing**; pins the nested-Link fix shipped in this PR (see below) | nested-Link guard |
 | h | 390×844: workbench hidden, cards remain links to `/inventory/<id>` | mobile intact |

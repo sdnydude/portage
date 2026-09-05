@@ -23,10 +23,20 @@ sellerProfileRouter.get('/', async (req, res, next) => {
       .limit(1);
 
     if (!profile) {
+      // Concurrent first-GETs race this insert (userId is unique) — swallow
+      // the conflict and re-select the winner's row (P7 6adfadb4).
       [profile] = await db.insert(sellerProfiles)
         .values({ userId })
+        .onConflictDoNothing()
         .returning();
-      logger.info({ userId }, 'Created default seller profile');
+      if (profile) {
+        logger.info({ userId }, 'Created default seller profile');
+      } else {
+        [profile] = await db.select()
+          .from(sellerProfiles)
+          .where(eq(sellerProfiles.userId, userId))
+          .limit(1);
+      }
     }
 
     res.json({ profile });
@@ -41,12 +51,16 @@ const updateSchema = z.object({
   ebayReturnPolicyId: z.string().nullable().optional(),
   ebayMerchantLocationKey: z.string().nullable().optional(),
   reverbOffersEnabled: z.boolean().optional(),
+  // Reverb-recommended: reference a Reverb-side shipping profile by id
+  // (created at reverb.com/my/selling/shipping_rates — not via API).
+  // Per-listing rates remain as the legacy/fallback shape.
   reverbDefaultShipping: z.object({
+    shippingProfileId: z.string().optional(),
     rates: z.array(z.object({
       regionCode: z.string(),
       rate: z.object({ amount: z.string(), currency: z.string() }),
-    })),
-    local: z.boolean(),
+    })).optional(),
+    local: z.boolean().optional(),
   }).nullable().optional(),
   shipFromAddress: z.object({
     name: z.string(),
@@ -69,7 +83,7 @@ const updateSchema = z.object({
   bestOfferAutoAcceptEnabled: z.boolean().optional(),
   gtcAutoEnd: z.boolean().optional(),
   defaultListingFooter: z.string().max(2000).nullable().optional(),
-}).refine(data => Object.keys(data).length > 0, { message: 'At least one field required' });
+}).refine(data => Object.keys(data).length > 0, { error: 'At least one field required' });
 
 sellerProfileRouter.patch('/', async (req, res, next) => {
   try {

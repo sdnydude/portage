@@ -30,7 +30,7 @@ const updateUserSchema = z.object({
   displayName: z.string().max(255).optional(),
   address: addressSchema,
   notificationPreferences: notificationPrefsSchema,
-}).refine(data => Object.keys(data).length > 0, { message: 'At least one field required' });
+}).refine(data => Object.keys(data).length > 0, { error: 'At least one field required' });
 
 export const usersRouter = Router();
 

@@ -3,6 +3,7 @@ id: 041-stage1-scan-review-redesign-inline-ebay-aspects
 title: "#041 — Stage 1: Scan-Review Redesign + Inline eBay Aspects"
 sidebar_label: "#041 Scan-Review + Aspects"
 tags: [scan, ebay, aspects, condition, design-system, redesign]
+registry_id: 7052e1d9-4e55-4775-beed-c8e54412ca5d
 ---
 
 # #041 — Stage 1: Scan-Review Redesign + Inline eBay Aspects

@@ -44,6 +44,15 @@
   --teal-bright: #119AA0;
   --teal-dark: #0A4A47;
   --teal-soft: #E2F0F0;        /* -soft (NOT -50) so it can't shadow Tailwind's teal-50 */
+
+  /* Status / marketplace chips (Housekeeping-1). Every fg/bg pair measures
+     ≥ 6:1 in both themes — the old raw amber-100/amber-700 pairs were not
+     readable in light mode. */
+  --chip-active-fg: #1E5631;   --chip-active-bg: #DCEFE0;
+  --chip-draft-fg: #7A4B00;    --chip-draft-bg: #FBEBC8;
+  --chip-sold-fg: #1E3A8A;     --chip-sold-bg: #DBE4FF;
+  --chip-neutral-fg: #3F3F46;  --chip-neutral-bg: #E4E4E7;
+  --chip-asset-fg: #4C2A85;    --chip-asset-bg: #EBE3F7;
   --orb-core: #0B6360;         /* Porter orb gradient inner — theme-independent (orb always sits on the dark hero) */
   --orange: #F77E2D;           /* primary CTA */
   --orange-bright: #FF9A52;
@@ -158,6 +167,12 @@
     --accent-error-soft: rgba(220, 53, 69, 0.16);
     --accent-success: #2EC27E;
     --accent-success-soft: rgba(46, 194, 126, 0.14);
+
+    --chip-active-fg: #9BE2AE;   --chip-active-bg: #1B3A24;
+    --chip-draft-fg: #F5D08A;    --chip-draft-bg: #3B2A08;
+    --chip-sold-fg: #B7C7FF;     --chip-sold-bg: #1E2A55;
+    --chip-neutral-fg: #C9C9CF;  --chip-neutral-bg: #2E2E33;
+    --chip-asset-fg: #D3C2F5;    --chip-asset-bg: #2E1F52;
 
     /* DHG accents — dark */
     --warm-stone: #1B1814;

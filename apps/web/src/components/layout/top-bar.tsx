@@ -99,6 +99,9 @@ export function TopBar() {
               <Link href="/more" role="menuitem" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm text-text-primary hover:bg-muted">
                 Settings
               </Link>
+              <Link href="/about" role="menuitem" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm text-text-primary hover:bg-muted">
+                About
+              </Link>
               <button role="menuitem" onClick={logout} className="block w-full px-4 py-2 text-left text-sm text-accent-error hover:bg-muted">
                 Log out
               </button>

@@ -209,3 +209,141 @@ describe('DELETE /marketplace/reverb/disconnect', () => {
     expect(whereDelete).toHaveBeenCalled();
   });
 });
+
+describe('GET /marketplace/reverb/shipping-profiles', () => {
+  it('returns the shop shipping profiles via the adapter', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const spy = vi.spyOn(ReverbAdapter.prototype, 'getShippingProfiles')
+      .mockResolvedValueOnce([{ id: '456', name: 'Pedals + small gear' }]);
+
+    const res = await request(app)
+      .get('/marketplace/reverb/shipping-profiles')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ profiles: [{ id: '456', name: 'Pedals + small gear' }] });
+    spy.mockRestore();
+  });
+});
+
+describe('GET /marketplace/reverb/categories', () => {
+  it('returns the cached flat category list for the picker', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce(undefined);
+    const spy = vi.spyOn(ReverbAdapter, 'getFlatCategories')
+      .mockResolvedValueOnce([{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'root-fx', listable: true }]);
+
+    const res = await request(app)
+      .get('/marketplace/reverb/categories')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ categories: [{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'root-fx', listable: true }] });
+    tokenSpy.mockRestore(); spy.mockRestore();
+  });
+});
+
+describe('GET /marketplace/reverb/categories — reference token', () => {
+  it('passes the caller\'s reference token to the flat-list fetch', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce('ref-tok');
+    const spy = vi.spyOn(ReverbAdapter, 'getFlatCategories').mockResolvedValueOnce([]);
+
+    await request(app)
+      .get('/marketplace/reverb/categories')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(spy).toHaveBeenCalledWith('ref-tok');
+    tokenSpy.mockRestore(); spy.mockRestore();
+  });
+});
+
+describe('GET /marketplace/reverb/product-types', () => {
+  it('returns the taxonomy roots for the cascade first level', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce(undefined);
+    const spy = vi.spyOn(ReverbAdapter, 'getProductTypes')
+      .mockResolvedValueOnce([{ uuid: 'root-fx', fullName: 'Effects and Pedals', name: 'Effects and Pedals', rootUuid: 'root-fx', listable: true }]);
+
+    const res = await request(app)
+      .get('/marketplace/reverb/product-types')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ productTypes: [{ uuid: 'root-fx', fullName: 'Effects and Pedals', name: 'Effects and Pedals', rootUuid: 'root-fx', listable: true }] });
+    tokenSpy.mockRestore(); spy.mockRestore();
+  });
+
+  // 2026-09-02: Reverb's edge rejects unauthenticated reference-data fetches;
+  // the route resolves the caller's token and hands it to the adapter.
+  it('passes the caller\'s reference token to the adapter', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce('ref-tok');
+    const spy = vi.spyOn(ReverbAdapter, 'getProductTypes').mockResolvedValueOnce([]);
+
+    await request(app)
+      .get('/marketplace/reverb/product-types')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(tokenSpy).toHaveBeenCalledWith('test-user-id');
+    expect(spy).toHaveBeenCalledWith('ref-tok');
+    tokenSpy.mockRestore(); spy.mockRestore();
+  });
+});
+
+describe('GET /marketplace/reverb/subcategories', () => {
+  it('returns direct children of the parent uuid; 400 without a parent', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValue(undefined);
+    const spy = vi.spyOn(ReverbAdapter, 'getCategoryChildren')
+      .mockResolvedValueOnce([{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'root-fx', listable: true }]);
+
+    const res = await request(app)
+      .get('/marketplace/reverb/subcategories?parent=root-fx')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(res.status).toBe(200);
+    expect(spy).toHaveBeenCalledWith('root-fx', undefined);
+    expect(res.body.subcategories[0].uuid).toBe('u1');
+
+    const missing = await request(app)
+      .get('/marketplace/reverb/subcategories')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(missing.status).toBe(400);
+    tokenSpy.mockRestore(); spy.mockRestore();
+  });
+
+  it('passes the caller\'s reference token to the adapter alongside the parent uuid', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce('ref-tok');
+    const spy = vi.spyOn(ReverbAdapter, 'getCategoryChildren').mockResolvedValueOnce([]);
+
+    await request(app)
+      .get('/marketplace/reverb/subcategories?parent=root-fx')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(spy).toHaveBeenCalledWith('root-fx', 'ref-tok');
+    tokenSpy.mockRestore(); spy.mockRestore();
+  });
+});
+
+describe('GET /marketplace/reverb/category-suggestion', () => {
+  it('returns the same first-match the publish-time enrichment guess would use; null when nothing matches', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const spy = vi.spyOn(ReverbAdapter.prototype, 'searchCategories')
+      .mockResolvedValueOnce([{ id: 'u-dist', name: 'Effects and Pedals / Distortion', path: ['Effects and Pedals', 'Distortion'], isLeaf: true }])
+      .mockResolvedValueOnce([]);
+
+    const hit = await request(app)
+      .get('/marketplace/reverb/category-suggestion?q=distortion%20pedal')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(hit.status).toBe(200);
+    expect(hit.body).toEqual({ suggestion: { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion' } });
+
+    const miss = await request(app)
+      .get('/marketplace/reverb/category-suggestion?q=vintage%20film%20camera')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(miss.status).toBe(200);
+    expect(miss.body).toEqual({ suggestion: null });
+    spy.mockRestore();
+  });
+});

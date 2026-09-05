@@ -1,4 +1,5 @@
 import { AppError } from '../middleware/error.js';
+import { createLogger } from '../lib/logger.js';
 /**
  * Trading API XML builders for the listing lifecycle (Trade-First refactor, Option B).
  * Pure functions: typed input → request XML. Terms INLINE (Decision 5):
@@ -6,6 +7,8 @@ import { AppError } from '../middleware/error.js';
  * buyer-paid USPS. ConditionID numeric (N2). Account must be opted OUT of Business Policies.
  */
 import { escapeXml } from './ebay-trading-client.js';
+
+const logger = createLogger('ebay-trading-builders');
 
 const XML_DECL = '<?xml version="1.0" encoding="utf-8"?>';
 const NS = 'urn:ebay:apis:eBLBaseComponents';
@@ -33,9 +36,26 @@ export interface TradingListingInput {
     service?: string;
     /** eBay ShippingPackage enum (required for calculated); defaults to PackageThickEnvelope. */
     shippingPackage?: string;
+    /** Shipping shape (live-verified 2026-08-01); absent = calculated (legacy). */
+    method?: 'calculated' | 'flat' | 'free';
+    /** Buyer-paid flat rate; required when method='flat'. */
+    flatCost?: number;
+    /** Offer local pickup ALONGSIDE the method (add-on only — pickup-only is
+     *  illegal on eBay, live-verified 2026-08-01). */
+    pickupOffered?: boolean;
   };
   dispatchTimeMax?: number;
+  /** Per-listing "accept offers" toggle — enables Best Offer even with no floor. */
+  bestOfferEnabled?: boolean;
   bestOfferAutoAcceptPrice?: number;
+  /** Auto-DECLINE floor (offers below are rejected without seller review). */
+  minimumBestOfferPrice?: number;
+  // Trading Revise semantics: an OMITTED field keeps the value stored on the
+  // live listing — clearing a Best Offer threshold requires an explicit
+  // DeletedField entry (error 23004 repro: price lowered to/below a stored
+  // BestOfferAutoAcceptPrice can only be fixed by deleting the field).
+  deleteBestOfferAutoAcceptPrice?: boolean;
+  deleteMinimumBestOfferPrice?: boolean;
   listingDuration?: string;
 }
 
@@ -76,8 +96,31 @@ function itemSpecifics(aspects: Record<string, string[]>): string {
 /** Inline Calculated shipping (Decision 5). Weight/dims now live in ShippingPackageDetails
  * (schema-verified — they are deprecated inside CalculatedShippingRate); this container
  * carries only the origin ZIP and the buyer-paid USPS service option. */
-function inlineShipping(s: TradingListingInput['shipping']): string {
+function inlineShipping(s: TradingListingInput['shipping'], currency: string): string {
   const service = s.service ?? 'USPSPriority';
+  const method = s.method ?? 'calculated';
+  // Local pickup rides as a SECOND service option next to the real method —
+  // add-on only; pickup-only is rejected by eBay (live-verified 2026-08-01).
+  const pickupOption = s.pickupOffered
+    ? '<ShippingServiceOptions><ShippingServicePriority>2</ShippingServicePriority><ShippingService>Pickup</ShippingService></ShippingServiceOptions>'
+    : '';
+  if (method === 'flat' || method === 'free') {
+    // Live-verified shapes (2026-08-01 matrix, PR #274): Flat + ShippingServiceCost,
+    // no CalculatedShippingRate; free adds FreeShipping with an explicit 0.00 cost.
+    const cost = method === 'free' ? 0 : s.flatCost ?? 0;
+    return (
+      '<ShippingDetails>' +
+      '<ShippingType>Flat</ShippingType>' +
+      '<ShippingServiceOptions>' +
+      '<ShippingServicePriority>1</ShippingServicePriority>' +
+      `<ShippingService>${service}</ShippingService>` +
+      `<ShippingServiceCost currencyID="${currency}">${cost.toFixed(2)}</ShippingServiceCost>` +
+      (method === 'free' ? '<FreeShipping>true</FreeShipping>' : '') +
+      '</ShippingServiceOptions>' +
+      pickupOption +
+      '</ShippingDetails>'
+    );
+  }
   return (
     '<ShippingDetails>' +
     '<ShippingType>Calculated</ShippingType>' +
@@ -88,6 +131,7 @@ function inlineShipping(s: TradingListingInput['shipping']): string {
     '<ShippingServicePriority>1</ShippingServicePriority>' +
     `<ShippingService>${service}</ShippingService>` +
     '</ShippingServiceOptions>' +
+    pickupOption +
     '</ShippingDetails>'
   );
 }
@@ -96,14 +140,25 @@ function inlineShipping(s: TradingListingInput['shipping']): string {
  * (eBay deprecated these inside CalculatedShippingRate). MeasureType units are lbs/oz/in
  * (NOT lbs/ozs/inches). ShippingPackage is required for calculated shipping. */
 function shippingPackageDetails(s: TradingListingInput['shipping']): string {
+  // Flat/free with no stored weight: keep the block anyway (operator decision,
+  // 2026-08-01) — floor weight to 1oz so the package DIMENSIONS still reach eBay.
+  const zeroWeight = s.weightMajor === 0 && s.weightMinor === 0;
+  const method = s.method ?? 'calculated';
+  const weightMinor = method !== 'calculated' && zeroWeight ? 1 : s.weightMinor;
+  // All-zero dims (flat/free with nothing stored) — omit the dimension tags
+  // rather than send an unverified zeros shape; known dims always carry through.
+  const d = s.dimensions;
+  const hasDims = d.length > 0 || d.width > 0 || d.height > 0;
   return (
     '<ShippingPackageDetails>' +
     '<MeasurementUnit>English</MeasurementUnit>' +
-    `<PackageDepth unit="in">${s.dimensions.height}</PackageDepth>` +
-    `<PackageLength unit="in">${s.dimensions.length}</PackageLength>` +
-    `<PackageWidth unit="in">${s.dimensions.width}</PackageWidth>` +
+    (hasDims
+      ? `<PackageDepth unit="in">${d.height}</PackageDepth>` +
+        `<PackageLength unit="in">${d.length}</PackageLength>` +
+        `<PackageWidth unit="in">${d.width}</PackageWidth>`
+      : '') +
     `<WeightMajor unit="lbs">${s.weightMajor}</WeightMajor>` +
-    `<WeightMinor unit="oz">${s.weightMinor}</WeightMinor>` +
+    `<WeightMinor unit="oz">${weightMinor}</WeightMinor>` +
     `<ShippingPackage>${escapeXml(s.shippingPackage ?? 'PackageThickEnvelope')}</ShippingPackage>` +
     '</ShippingPackageDetails>'
   );
@@ -111,14 +166,34 @@ function shippingPackageDetails(s: TradingListingInput['shipping']): string {
 
 /** Best Offer auto-accept (G9): only when floor is positive and below the BIN price. */
 function bestOfferDetails(input: TradingListingInput): string {
+  // Explicit disable (BO-4): seller turned Best Offer off — the only path
+  // that clears live state. Revise omission would keep eBay's stored value,
+  // so the toggle-off must be sent explicitly (thresholds are cleared by the
+  // DeletedField entries the caller sets alongside this flag).
+  if (input.bestOfferEnabled === false) {
+    return '<BestOfferDetails><BestOfferEnabled>false</BestOfferEnabled></BestOfferDetails>';
+  }
   const floor = input.bestOfferAutoAcceptPrice;
-  if (typeof floor !== 'number' || floor <= 0 || floor >= input.price) return '';
-  // BestOfferAutoAcceptPrice auto-ACCEPTS offers at/above the floor. (MinimumBestOfferPrice
-  // is a different field — the auto-DECLINE floor — which we deliberately do not set.)
-  return (
-    '<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>' +
-    `<ListingDetails><BestOfferAutoAcceptPrice currencyID="${input.currency}">${floor}</BestOfferAutoAcceptPrice></ListingDetails>`
-  );
+  const hasFloor = typeof floor === 'number' && floor > 0 && floor < input.price;
+  // A valid auto-accept floor implies Best Offer; the per-listing toggle
+  // (bestOfferEnabled) enables it with no floor — seller reviews every offer.
+  if (!hasFloor && !input.bestOfferEnabled) return '';
+  const enabled = '<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>';
+  const min = input.minimumBestOfferPrice;
+  const hasMin = typeof min === 'number' && min > 0 && min < input.price;
+  // Defense-in-depth only (BO-3): the route pre-flight rejects invalid
+  // thresholds with a 422 before any build. Reaching this drop means a
+  // caller bypassed validation — never silent, always logged.
+  if ((typeof floor === 'number' && !hasFloor) || (typeof min === 'number' && !hasMin)) {
+    logger.warn({ price: input.price, bestOfferAutoAcceptPrice: floor, minimumBestOfferPrice: min }, 'Invalid Best Offer threshold reached the XML builder — dropped defensively; pre-flight should have rejected this');
+  }
+  // BestOfferAutoAcceptPrice auto-ACCEPTS offers at/above the floor;
+  // MinimumBestOfferPrice auto-DECLINES offers below it. Both live in
+  // ListingDetails; invalid values are dropped rather than sent for rejection.
+  const details =
+    (hasFloor ? `<BestOfferAutoAcceptPrice currencyID="${input.currency}">${floor}</BestOfferAutoAcceptPrice>` : '') +
+    (hasMin ? `<MinimumBestOfferPrice currencyID="${input.currency}">${min}</MinimumBestOfferPrice>` : '');
+  return details ? `${enabled}<ListingDetails>${details}</ListingDetails>` : enabled;
 }
 
 /** Split total ounces (items store normalized oz) into eBay WeightMajor (lbs) + WeightMinor (oz). */
@@ -167,14 +242,28 @@ export interface GetItemVerification {
   price: string | null;
   title: string | null;
   photos: string[];
+  // Live Best Offer state (BO-3) — feeds the conflict-time heal. Parsed from
+  // Item.BestOfferDetails / Item.ListingDetails; shape inferred from the
+  // StartPrice attr-or-scalar pattern, live-verification pending.
+  bestOfferEnabled: boolean | null;
+  bestOfferAutoAcceptPrice: number | null;
+  minimumBestOfferPrice: number | null;
 }
 
 /** Read back the live item state from a GetItem response: item specifics (aspects),
  * Brand/MPN, ListingStatus, ItemID and price. Used by the F-GATE verification route. */
 export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification {
-  const empty: GetItemVerification = { found: false, sku: null, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, title: null, photos: [] };
+  const empty: GetItemVerification = { found: false, sku: null, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, title: null, photos: [], bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null };
   const item = getPath(parsed, ['GetItemResponse', 'Item']) as Record<string, unknown> | undefined;
   if (!item) return empty;
+
+  // Attr-or-scalar money value ({ '@_currencyID', '#text' } or bare) → number.
+  const moneyNum = (raw: unknown): number | null => {
+    if (raw == null) return null;
+    const text = typeof raw === 'object' ? (raw as Record<string, unknown>)['#text'] : raw;
+    const n = Number(text);
+    return Number.isFinite(n) ? n : null;
+  };
 
   const aspects: Record<string, string[]> = {};
   const nvlRaw = getPath(item, ['ItemSpecifics', 'NameValueList']);
@@ -218,6 +307,12 @@ export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification
     price,
     title: item.Title != null ? String(item.Title) : null,
     photos,
+    bestOfferEnabled: (() => {
+      const raw = getPath(item, ['BestOfferDetails', 'BestOfferEnabled']);
+      return raw == null ? null : String(raw) === 'true';
+    })(),
+    bestOfferAutoAcceptPrice: moneyNum(getPath(item, ['ListingDetails', 'BestOfferAutoAcceptPrice'])),
+    minimumBestOfferPrice: moneyNum(getPath(item, ['ListingDetails', 'MinimumBestOfferPrice'])),
   };
 }
 
@@ -227,6 +322,17 @@ export function buildGetItemXml(itemId: string, token: string): string {
     `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +
     `<ItemID>${escapeXml(itemId)}</ItemID>` +
     '</GetItemRequest>'
+  );
+}
+
+export function buildGetMyeBaySellingXml(pageNumber: number, token: string): string {
+  return (
+    `${XML_DECL}\n<GetMyeBaySellingRequest xmlns="${NS}">` +
+    `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +
+    `<ActiveList><Include>true</Include><Pagination><EntriesPerPage>200</EntriesPerPage>` +
+    `<PageNumber>${pageNumber}</PageNumber></Pagination></ActiveList>` +
+    '<DetailLevel>ReturnAll</DetailLevel>' +
+    '</GetMyeBaySellingRequest>'
   );
 }
 
@@ -268,7 +374,10 @@ function itemBody(input: TradingListingInput): string {
     '<ListingType>FixedPriceItem</ListingType>' +
     `<ListingDuration>${input.listingDuration ?? 'GTC'}</ListingDuration>` +
     `<ConditionID>${escapeXml(input.conditionId)}</ConditionID>` +
-    (input.conditionDescription ? `<ConditionDescription>${escapeXml(input.conditionDescription)}</ConditionDescription>` : '') +
+    // eBay forbids ConditionDescription on brand-new (1000) items — "The
+    // ConditionDescription field is not valid for new items", live revise
+    // failure 2026-08-05. New-other (1500) still allows it.
+    (input.conditionDescription && input.conditionId !== '1000' ? `<ConditionDescription>${escapeXml(input.conditionDescription)}</ConditionDescription>` : '') +
     (input.sku ? `<SKU>${escapeXml(input.sku)}</SKU>` : '') +
     '<Country>US</Country>' +
     `<Currency>${input.currency}</Currency>` +
@@ -277,7 +386,7 @@ function itemBody(input: TradingListingInput): string {
     pictureDetails(input.pictureUrls) +
     itemSpecifics(input.aspects) +
     '<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>' +
-    inlineShipping(input.shipping) +
+    inlineShipping(input.shipping, input.currency) +
     shippingPackageDetails(input.shipping) +
     bestOfferDetails(input)
   );
@@ -312,10 +421,14 @@ export function buildReviseFixedPriceItemXml(itemId: string, input: TradingListi
   if (input.pictureUrls.length === 0 && !input.allowEmptyPictures) {
     throw new AppError(400, 'EBAY_PICTURE_LIMIT', 'Refusing to revise an eBay listing with zero photos — eBay would silently keep the old pictures. Add a photo first.');
   }
+  const deletedFields =
+    (input.deleteBestOfferAutoAcceptPrice ? '<DeletedField>Item.ListingDetails.BestOfferAutoAcceptPrice</DeletedField>' : '') +
+    (input.deleteMinimumBestOfferPrice ? '<DeletedField>Item.ListingDetails.MinimumBestOfferPrice</DeletedField>' : '');
   return (
     `${XML_DECL}\n<ReviseFixedPriceItemRequest xmlns="${NS}">` +
     `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +
     `<Item><ItemID>${escapeXml(itemId)}</ItemID>${itemBody(input)}</Item>` +
+    deletedFields +
     '</ReviseFixedPriceItemRequest>'
   );
 }

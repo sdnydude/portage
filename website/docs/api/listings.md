@@ -115,6 +115,17 @@ PATCH /listings/:id
 
 Accepts `price`, `status`, and `marketplaceSpecificFields` (all optional). Updates the local listing, then syncs to the marketplace when the listing is `active` and published. At sync time the content fields — title, description, condition, quantity, brand, model, photos, features — are re-read from the **item** row: item columns win, and they cannot be overridden per-listing via this endpoint.
 
+**Best Offer conflicts (P3, 2026-08-22).** A price change is pre-flight-checked
+against the stored thresholds before any write (422 `BEST_OFFER_CONFLICT`). If
+the local write lands but eBay then rejects the revise on thresholds Portage
+never stored, the route heals from the live listing (one `GetItem`), persists
+the live values, and still returns **422 `BEST_OFFER_CONFLICT`** — not a 200
+with a warning. The body carries `details: [{ bestOfferEnabled,
+bestOfferAutoAcceptPrice, minimumBestOfferPrice, healed }]`; `healed: true`
+means those values were persisted from eBay, `false` means they are the
+caller's own (or stored) values echoed back. The listing-card price editor
+renders this as a guided fix.
+
 ### Delete Listing
 
 ```

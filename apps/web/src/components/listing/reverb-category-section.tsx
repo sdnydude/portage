@@ -1,0 +1,174 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
+import { withKeys } from "@/lib/list-keys";
+
+/**
+ * Reverb category cascade (Product Type → Subcategory 1 → 2 → 3), fed from
+ * GET /marketplace/reverb/product-types and /subcategories?parent=<uuid>.
+ * Controlled + dumb like ShippingFieldsSection: `value` is the deepest chosen
+ * node (null = no explicit choice — server enrichment/AI defaults apply);
+ * every selection reports the deepest selected node via onChange. The AI's
+ * resolved path arrives as `value` and renders as a breadcrumb; the seller can
+ * stop at any level (deepest-confident, not forced-leaf).
+ */
+export interface ReverbCategoryNode {
+  uuid: string;
+  fullName: string;
+  name: string;
+  rootUuid: string;
+  listable: boolean;
+}
+
+interface ReverbCategorySectionProps {
+  value: { uuid: string; fullName: string } | null;
+  onChange: (value: { uuid: string; fullName: string } | null) => void;
+  token: string | null;
+  idPrefix?: string;
+  /** Fired when a category fetch fails (roots or subcategories). Soft-fail
+   *  consumers (create sheet — server enrichment still applies) omit it;
+   *  hard-required flows (listing-card publish recovery) surface it, else the
+   *  seller faces a dead cascade with no signal (review A, 307ffa75). */
+  onLoadError?: () => void;
+}
+
+const selectClass =
+  "w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none";
+const labelClass =
+  "block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5";
+
+export function ReverbCategorySection({ value, onChange, token, idPrefix = "", onLoadError }: ReverbCategorySectionProps) {
+  const [roots, setRoots] = useState<ReverbCategoryNode[]>([]);
+  // Chosen path, deepest last. Each entry also caches the children fetched for it.
+  const [path, setPath] = useState<ReverbCategoryNode[]>([]);
+  const [childrenByUuid, setChildrenByUuid] = useState<Record<string, ReverbCategoryNode[]>>({});
+
+  // Ref, not dep: callers pass inline arrows — depping the callback would
+  // re-fire the roots fetch on every parent render. Assigned in an effect
+  // (never during render, per the React 19 ref rule).
+  const onLoadErrorRef = useRef(onLoadError);
+  useEffect(() => {
+    onLoadErrorRef.current = onLoadError;
+  }, [onLoadError]);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api<{ productTypes: ReverbCategoryNode[] }>("/marketplace/reverb/product-types", { token });
+        if (!cancelled && r?.productTypes) setRoots(r.productTypes);
+      } catch {
+        // Soft-fail by default (server enrichment still applies); hard-required
+        // consumers get the signal so they can show an error instead of a
+        // permanently disabled Save.
+        if (!cancelled) onLoadErrorRef.current?.();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
+
+  const loadChildren = async (uuid: string) => {
+    if (childrenByUuid[uuid]) return childrenByUuid[uuid];
+    try {
+      const r = await api<{ subcategories: ReverbCategoryNode[] }>(`/marketplace/reverb/subcategories?parent=${encodeURIComponent(uuid)}`, { token: token! });
+      const kids = r?.subcategories ?? [];
+      setChildrenByUuid((prev) => ({ ...prev, [uuid]: kids }));
+      return kids;
+    } catch {
+      // Same signal as the roots fetch: a swallowed subcategory failure looks
+      // like "no deeper levels" — hard-required consumers need to know.
+      onLoadErrorRef.current?.();
+      return [];
+    }
+  };
+
+  // Hydrate the cascade from a seeded value (AI/prepare-cache category): walk
+  // the tree level by level, matching each ancestor by fullName prefix — the
+  // seeded category shows AS the selection, not as an unexplained default.
+  useEffect(() => {
+    if (!value || !token || roots.length === 0) return;
+    const deepestNow = path[path.length - 1];
+    if (deepestNow?.uuid === value.uuid) return; // already in sync
+    let cancelled = false;
+    (async () => {
+      const chain: ReverbCategoryNode[] = [];
+      let pool = roots;
+      // Walk down until we land on the value's node (fullName anchored — leaf
+      // names may contain " / ", so prefix-match on candidates' own fullName).
+      for (let guard = 0; guard < 6 && pool.length > 0; guard++) {
+        const next = pool.find((c) =>
+          c.fullName === value.fullName || value.fullName.startsWith(`${c.fullName} / `));
+        if (!next) break;
+        chain.push(next);
+        if (next.fullName === value.fullName) break;
+        pool = await loadChildren(next.uuid);
+      }
+      if (!cancelled && chain.length > 0 && chain[chain.length - 1].fullName === value.fullName) {
+        setPath(chain);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value?.uuid, roots, token]);
+
+  const pickAt = async (level: number, uuid: string) => {
+    if (!uuid) {
+      // "(choose)" — truncate to the parent level; parent (if any) is the choice.
+      const kept = path.slice(0, level);
+      setPath(kept);
+      const deepest = kept[kept.length - 1];
+      onChange(deepest ? { uuid: deepest.uuid, fullName: deepest.fullName } : null);
+      return;
+    }
+    const pool = level === 0 ? roots : childrenByUuid[path[level - 1].uuid] ?? [];
+    const node = pool.find((c) => c.uuid === uuid);
+    if (!node) return;
+    const next = [...path.slice(0, level), node];
+    setPath(next);
+    onChange({ uuid: node.uuid, fullName: node.fullName });
+    void loadChildren(node.uuid);
+  };
+
+  // Levels to render: one select per chosen level + one more if the deepest
+  // chosen node has children.
+  const levels: Array<{ label: string; pool: ReverbCategoryNode[]; chosen: string }> = [
+    { label: "Product type", pool: roots, chosen: path[0]?.uuid ?? "" },
+  ];
+  for (let i = 0; i < path.length; i++) {
+    const kids = childrenByUuid[path[i].uuid] ?? [];
+    if (kids.length > 0) {
+      levels.push({ label: `Subcategory ${i + 1}`, pool: kids, chosen: path[i + 1]?.uuid ?? "" });
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {value && (
+        <p className="text-xs text-text-secondary">
+          Category: <span className="text-text-primary font-medium">{value.fullName}</span>
+        </p>
+      )}
+      {withKeys(levels, (lvl) => lvl.label).map(([key, lvl], i) => (
+        <div key={key}>
+          <label htmlFor={`${idPrefix}reverb-cat-${i}`} className={labelClass}>{lvl.label}</label>
+          <select
+            id={`${idPrefix}reverb-cat-${i}`}
+            value={lvl.chosen}
+            onChange={(e) => { void pickAt(i, e.target.value); }}
+            className={selectClass}
+          >
+            <option value="">{i === 0 ? "AI / profile default" : "Stop here (use parent)"}</option>
+            {/* Non-listable nodes are hidden EXCEPT the current selection — a
+                seeded (AI/cache) choice must render as the selection, never
+                vanish into the placeholder (PR #280 review gap). */}
+            {lvl.pool.filter((c) => c.listable || c.uuid === lvl.chosen).map((c) => (
+              <option key={c.uuid} value={c.uuid}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+      ))}
+    </div>
+  );
+}

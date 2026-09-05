@@ -4,6 +4,17 @@ name: E2E (deterministic)
 # portage-e2e on 5998/8998/3998). NEVER touches the live stack (5436/8016/3002).
 # Runs on the self-hosted runner (g700data1) because that is where Docker lives.
 # Required check for merging to main (branch protection).
+#
+# FORK POLICY (deferral 223b0419, 2026-08-19): pull_request events from a FORK
+# never execute on the self-hosted runner — the first step below refuses them
+# BEFORE checkout, so no fork code ever runs on g700data1. It fails the job
+# (not a job-level `if:` skip) on purpose: a skipped required check counts as
+# passing for branch protection, a failed one blocks the merge.
+#   Maintainer path for an external contribution: push the fork branch to an
+#   internal ref (contrib/<name>) and open a same-repo PR — that runs normally.
+#   workflow_dispatch is exempt (needs repo write access already).
+#   Upgrade path once external contributors exist: GitHub Environment with
+#   required reviewers on this job.
 
 on:
   # Runs on ALL PRs to main (no path filter) so it is a reliable required
@@ -22,11 +33,18 @@ jobs:
     name: Ephemeral e2e
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v7
+      - name: Refuse fork PRs (self-hosted runner)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::Fork PRs do not run on the self-hosted runner. Maintainer: push the branch to contrib/<name> and open a same-repo PR."
+          exit 1
+
+      - id: checkout
+        uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
 
       - run: npm ci
 
@@ -36,6 +54,9 @@ jobs:
       - name: Bring up ephemeral stack (build from this commit)
         env:
           GIT_SHA: ${{ github.sha }}
+          # Service Reverb PAT so reference-data fetches (category taxonomy)
+          # authenticate past Reverb's edge in CI. Set as a repo secret.
+          REVERB_API_TOKEN: ${{ secrets.REVERB_API_TOKEN }}
         run: docker compose -f docker-compose.e2e.yml up -d --build
 
       - name: Push schema to ephemeral DB
@@ -64,6 +85,9 @@ jobs:
           # Ephemeral stack runs a dev-bypass API behind the app, so the
           # env-bound orders-sync login-trigger spec can pass here (and only here).
           E2E_ORDERS_SYNC: "1"
+          # Run the live Reverb taxonomy cascade spec only when the service
+          # token is configured; skip it (green) when the secret is absent.
+          E2E_REVERB_LIVE: ${{ secrets.REVERB_API_TOKEN != '' && '1' || '' }}
         run: npm run test:e2e -w apps/web
 
       - name: Upload proof screenshots
@@ -75,5 +99,8 @@ jobs:
           if-no-files-found: ignore
 
       - name: Tear down ephemeral stack
-        if: always()
+        # Only if THIS run checked out: after a fork refusal there was no
+        # checkout. (Not hashFiles — the self-hosted workspace persists between
+        # runs, so a stale compose file from a previous job would be present.)
+        if: always() && steps.checkout.outcome == 'success'
         run: docker compose -f docker-compose.e2e.yml down -v

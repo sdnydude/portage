@@ -2,6 +2,7 @@
 title: "Registry KB acceleration — bulk ingest memory + CLAUDE.md files"
 sidebar_label: "Registry KB acceleration — bulk ingest memory + CL"
 sidebar_position: 20
+registry_id: 9f5f4f20-855e-4edc-b64e-3d282d34c874
 ---
 
 # Registry KB acceleration — bulk ingest memory + CLAUDE.md files

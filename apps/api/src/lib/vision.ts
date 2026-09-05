@@ -36,12 +36,18 @@ function normalizeCondition(raw: string): 'new' | 'like_new' | 'good' | 'fair' |
   return (normalized ?? 'good') as 'new' | 'like_new' | 'good' | 'fair' | 'poor';
 }
 
+/** Mirrors the `conditionNotes` cap in createItemSchema (routes/items.ts). */
+const MAX_CONDITION_NOTES = 2000;
+
 const VisionResultSchema = z.object({
   name: z.string(),
   description: z.string(),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
-  conditionNotes: z.string().nullish().transform((v) => v ?? ''),
+  // Clamped to the POST /items cap: the model treats "brief" as a suggestion,
+  // and an over-long note made the scan pipeline emit a value its own API
+  // rejects — surfacing as an opaque "Validation failed" on save.
+  conditionNotes: z.string().nullish().transform((v) => (v ?? '').slice(0, MAX_CONDITION_NOTES)),
   estimatedValueLow: z.number(),
   estimatedValueHigh: z.number(),
   brand: z.string().nullable(),
@@ -54,7 +60,10 @@ const CandidateSchema = z.object({
   description: z.string(),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
-  conditionNotes: z.string().nullish().transform((v) => v ?? ''),
+  // Clamped to the POST /items cap: the model treats "brief" as a suggestion,
+  // and an over-long note made the scan pipeline emit a value its own API
+  // rejects — surfacing as an opaque "Validation failed" on save.
+  conditionNotes: z.string().nullish().transform((v) => (v ?? '').slice(0, MAX_CONDITION_NOTES)),
   brand: z.string().nullable(),
   model: z.string().nullable(),
   mpn: z.string().nullable().optional(),
@@ -66,7 +75,16 @@ const CandidateSchema = z.object({
   // AI-estimated packaged shipping weight (ounces) + box dimensions (inches), so a
   // scanned item carries weight/dims for eBay Calculated shipping without waiting
   // for the prepare-listing step. Optional — older responses may omit them.
-  weight: z.object({ value: z.number(), unit: z.string() }).optional(),
+  // Some models flatten weight to a bare oz number despite the prompted object
+  // shape (gemini-3.5-flash drift, live 502 2026-08-05) — coerce instead of 502ing.
+  // A bare number is only trusted as ounces inside a plausible packaged-shipping
+  // range (≤100 lb); outside it the unit claim is untrustworthy, so drop the
+  // weight rather than stamp a wrong value into eBay calculated shipping.
+  weight: z.union([
+    z.object({ value: z.number(), unit: z.string() }),
+    z.number().transform((v) => (v > 0 && v <= 1600 ? { value: v, unit: 'oz' } : undefined)),
+    z.null().transform(() => undefined),
+  ]).optional(),
   dimensions: z.object({ length: z.number(), width: z.number(), height: z.number(), unit: z.string() }).optional(),
   packageType: z.string().optional(),
 });
@@ -102,10 +120,17 @@ const ListingFieldsOutputSchema = z.object({
     ).optional().default({}),
     upc: z.string().nullable().optional().default(null),
     epid: z.string().nullable().optional().default(null),
-    weight: z.object({ value: z.number(), unit: z.string() }).optional().default({ value: 0, unit: 'oz' }),
+    // Bare-number weight coerced, same drift class + same 100 lb plausibility rule
+    // as candidates weight (2026-08-05); out-of-range maps to the existing
+    // zero sentinel (field is non-optional here, so undefined would break the type).
+    weight: z.union([
+      z.object({ value: z.number(), unit: z.string() }),
+      z.number().transform((v) => (v > 0 && v <= 1600 ? { value: v, unit: 'oz' } : { value: 0, unit: 'oz' })),
+      z.null().transform(() => ({ value: 0, unit: 'oz' })),
+    ]).optional().default({ value: 0, unit: 'oz' }),
     dimensions: z.object({ length: z.number(), width: z.number(), height: z.number(), unit: z.string() }).optional().default({ length: 0, width: 0, height: 0, unit: 'in' }),
     packageType: z.string().optional().default('LETTER'),
-  }).passthrough().nullable().optional().default(null),
+  }).loose().nullable().optional().default(null),
   reverb: z.object({
     make: z.string().optional().default(''),
     model: z.string().optional().default(''),
@@ -114,11 +139,12 @@ const ListingFieldsOutputSchema = z.object({
     categoryName: z.string().optional().default(''),
     conditionUuid: z.string().optional().default(''),
     conditionName: z.string().optional().default(''),
-    year: z.string().nullable().optional().default(null),
+    // Models return year as a bare number (gemini-2.5-flash, live warn 2026-08-05).
+    year: z.union([z.string(), z.number().transform(String)]).nullable().optional().default(null),
     finish: z.string().nullable().optional().default(null),
     description: z.string().optional().default(''),
-  }).passthrough().nullable().optional().default(null),
-}).passthrough();
+  }).loose().nullable().optional().default(null),
+}).loose();
 
 export interface VisionResult {
   name: string;
@@ -174,13 +200,36 @@ function extractJSON(raw: string): string {
   return raw;
 }
 
+/** Chain-failover validator: throws AppError 502 (with per-schema Zod detail so
+ *  drift incidents stay triageable from prod logs) unless the raw text parses
+ *  under at least one of the given schemas. Runs inside the provider loop, so a
+ *  throw fails over to the next provider instead of 502ing the request
+ *  (gemini-3.5-flash weight drift outage, 2026-08-05). */
+function schemaValidator(schemas: Array<{ name: string; schema: z.ZodType }>): (raw: string) => void {
+  return (raw) => {
+    const parsed = safeParseJSON(raw);
+    const failures: string[] = [];
+    for (const { name, schema } of schemas) {
+      const result = schema.safeParse(parsed);
+      if (result.success) return;
+      failures.push(`${name}: ${result.error.message}`);
+    }
+    throw new AppError(502, 'AI_RESPONSE_INVALID', `AI vision response failed schema validation — ${failures.join('; ')}`);
+  };
+}
+
 export async function identifyItem(imageBase64: string, mediaType: string): Promise<VisionResult> {
   const { text } = await analyzeImage(
     imageBase64,
     mediaType,
     SYSTEM_PROMPT,
     'Identify this item for marketplace listing. Respond with ONLY a JSON object, no other text.',
-    { temperature: 0, maxTokens: 2048 },
+    {
+      temperature: 0,
+      maxTokens: 2048,
+      validate: schemaValidator([{ name: 'single', schema: VisionResultSchema }]),
+      purpose: 'scan-vision',
+    },
   );
 
   const parsed = safeParseJSON(text);
@@ -226,7 +275,15 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     mediaType,
     DETAILED_SYSTEM_PROMPT,
     'Identify this item with multiple candidates and reasoning.',
-    { temperature: 0, maxTokens: 2048 },
+    {
+      temperature: 0,
+      maxTokens: 2048,
+      validate: schemaValidator([
+        { name: 'detailed', schema: DetailedVisionResultSchema },
+        { name: 'single', schema: VisionResultSchema },
+      ]),
+      purpose: 'scan-vision',
+    },
   );
 
   const parsed = safeParseJSON(text);
@@ -248,7 +305,8 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     };
   }
 
-  throw new AppError(502, 'AI_RESPONSE_INVALID', `AI detailed scan returned invalid response: ${detailed.error.message}`);
+  // Mirrors identifyItemsMulti: both schemas' diagnostics survive for triage.
+  throw new AppError(502, 'AI_RESPONSE_INVALID', `AI detailed scan returned invalid response — detailed: ${detailed.error.message}; single: ${single.error.message}`);
 }
 
 const LISTING_FIELDS_SYSTEM_PROMPT = `You are a marketplace listing expert. Generate production-quality fields for selling a used item on eBay and optionally Reverb.
@@ -295,6 +353,10 @@ export interface ListingFieldsInput {
   // instead of the text-only fallback.
   images?: ImageInput[];
   ebayCategorySuggestion: { categoryId: string; categoryName: string } | null;
+  // Reverb's real flat-category full_names (from /categories/flat). When
+  // present the model must pick reverb.categoryName VERBATIM from this list —
+  // free-text category names (and invented uuids) don't resolve on Reverb.
+  reverbCategories?: string[];
   requiredAspects: Record<string, { required: boolean; values: string[] | null }>;
   soldComps: Array<{ title: string; price: number; condition: string; soldDate: string | null }>;
   activeComps: Array<{ title: string; price: number; condition: string }>;
@@ -350,7 +412,15 @@ export async function identifyItemsMulti(
     ? 'Identify this item with multiple candidates and reasoning. Respond with ONLY valid JSON.'
     : `You are viewing ${images.length} photos of the SAME item from different angles. Cross-reference all photos to identify it precisely. Respond with ONLY valid JSON.`;
 
-  const { text } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, { temperature: 0, maxTokens: 2048 });
+  const { text } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, {
+    temperature: 0,
+    maxTokens: 2048,
+    validate: schemaValidator([
+      { name: 'detailed', schema: DetailedVisionResultSchema },
+      { name: 'single', schema: VisionResultSchema },
+    ]),
+    purpose: 'scan-vision',
+  });
 
   const parsed = safeParseJSON(text);
 
@@ -409,6 +479,10 @@ export async function generateListingFields(input: ListingFieldsInput): Promise<
 ${JSON.stringify(input.scanData, null, 2)}
 
 EBAY CATEGORY SUGGESTION: ${JSON.stringify(input.ebayCategorySuggestion)}
+${input.reverbCategories?.length ? `
+REVERB CATEGORIES (when filling reverb fields, copy the single best-fitting full name from THIS LIST verbatim into reverb.categoryName — never invent a category; leave reverb.categoryUuid as ""; if nothing on the list fits, set reverb to null. Paths use " / " between levels: pick the DEEPEST path that confidently fits the item — prefer "Effects and Pedals / Distortion" over "Effects and Pedals"; when unsure between sibling subcategories, choose their parent path instead):
+${input.reverbCategories.join('\n')}
+` : ''}
 
 REQUIRED ITEM SPECIFICS FOR THIS CATEGORY:
 ${JSON.stringify(input.requiredAspects, null, 2)}
@@ -429,10 +503,22 @@ Generate all listing fields as JSON.`;
 
   let text: string;
   if (images.length > 0) {
-    const result = await analyzeImages(images, LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
+    const result = await analyzeImages(images, LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, {
+      temperature: 0,
+      maxTokens: 4096,
+      validate: schemaValidator([{ name: 'listing-fields', schema: ListingFieldsOutputSchema }]),
+      purpose: 'prepare-listing',
+    });
     text = result.text;
   } else {
-    const result = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, { temperature: 0, maxTokens: 4096 });
+    // chat() gained validate support in Phase 3a — the photo-less path now
+    // fails over on schema-invalid output like the vision chains do.
+    const result = await chatText(LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, {
+      temperature: 0,
+      maxTokens: 4096,
+      validate: schemaValidator([{ name: 'listing-fields', schema: ListingFieldsOutputSchema }]),
+      purpose: 'prepare-listing',
+    });
     text = result.text;
   }
 

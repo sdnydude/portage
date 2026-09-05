@@ -4,7 +4,8 @@ services:
     container_name: portage-db
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5436:5432"
+      # Loopback alias only — host-local access; Mac reaches it via SSH tunnel.
+      - "127.2.0.1:5436:5432"
     environment:
       POSTGRES_USER: portage
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portage}

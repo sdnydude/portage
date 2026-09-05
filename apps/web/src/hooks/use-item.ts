@@ -30,11 +30,13 @@ export function useItem(id: string) {
     fetchItem();
   }, [fetchItem]);
 
+  // PATCH /items/:id reports marketplace sync outcomes alongside the item
+  // (P3 T4) — callers must surface syncWarnings, never discard them.
   const updateItem = useCallback(async (updates: Partial<Item>) => {
     if (!token) return null;
 
     try {
-      const data = await api<Item>(`/items/${id}`, {
+      const data = await api<Item & { syncWarnings?: string[]; syncQueued?: string[] }>(`/items/${id}`, {
         method: "PATCH",
         body: updates,
         token,

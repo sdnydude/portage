@@ -69,6 +69,20 @@ describe('identifyItem', () => {
     expect(result.suggestedTags).toEqual(['headphones', 'wireless', 'sony', 'noise-cancelling']);
   });
 
+  it('clamps an over-long conditionNotes to what POST /items will accept', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify({ ...VALID_VISION_JSON, conditionNotes: 'A'.repeat(2500) }),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    const result = await identifyItem('base64data', 'image/jpeg');
+
+    expect(result.conditionNotes).toHaveLength(2000);
+  });
+
   it('parses JSON wrapped in markdown fences', async () => {
     const fenced = '```json\n' + JSON.stringify(VALID_VISION_JSON) + '\n```';
     vi.mocked(analyzeImage).mockResolvedValue({
@@ -112,7 +126,7 @@ describe('identifyItem', () => {
       .rejects.toMatchObject({ statusCode: 502, code: 'AI_RESPONSE_INVALID' });
   });
 
-  it('throws SyntaxError for completely malformed JSON', async () => {
+  it('throws AppError 502 for completely malformed JSON (safeParseJSON wraps SyntaxError)', async () => {
     vi.mocked(analyzeImage).mockResolvedValue({
       text: 'not json at all',
       provider: 'anthropic',
@@ -121,7 +135,25 @@ describe('identifyItem', () => {
       outputTokens: 50,
     });
 
-    await expect(identifyItem('base64data', 'image/jpeg')).rejects.toThrow();
+    await expect(identifyItem('base64data', 'image/jpeg'))
+      .rejects.toMatchObject({ statusCode: 502, code: 'AI_RESPONSE_INVALID' });
+  });
+
+  it('passes a validate hook so schema-invalid 200s fail over down the provider chain', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(VALID_VISION_JSON),
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    await identifyItem('base64data', 'image/jpeg');
+
+    const options = vi.mocked(analyzeImage).mock.calls[0][4] as { validate?: (text: string) => void };
+    expect(typeof options?.validate).toBe('function');
+    expect(() => options.validate!(JSON.stringify({ foo: 'bar' }))).toThrow();
+    expect(() => options.validate!(JSON.stringify(VALID_VISION_JSON))).not.toThrow();
   });
 
   it('normalizes unrecognized condition to good', async () => {
@@ -226,6 +258,24 @@ describe('identifyItemDetailed', () => {
     expect(result.candidates[0].aspects).toEqual({ Brand: ['Sony'] });
   });
 
+  it('passes a validate hook accepting either detailed or single schema', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    await identifyItemDetailed('base64data', 'image/jpeg');
+
+    const options = vi.mocked(analyzeImage).mock.calls[0][4] as { validate?: (text: string) => void };
+    expect(typeof options?.validate).toBe('function');
+    expect(() => options.validate!(JSON.stringify({ foo: 'bar' }))).toThrow();
+    expect(() => options.validate!(JSON.stringify(VALID_DETAILED_JSON))).not.toThrow();
+    expect(() => options.validate!(JSON.stringify(VALID_VISION_JSON))).not.toThrow();
+  });
+
   it('falls back to single-candidate VisionResult when detailed parse fails', async () => {
     vi.mocked(analyzeImage).mockResolvedValue({
       text: JSON.stringify(VALID_VISION_JSON),
@@ -253,7 +303,11 @@ describe('identifyItemDetailed', () => {
     });
 
     await expect(identifyItemDetailed('base64data', 'image/jpeg'))
-      .rejects.toMatchObject({ statusCode: 502, code: 'AI_RESPONSE_INVALID' });
+      .rejects.toMatchObject({
+        statusCode: 502,
+        code: 'AI_RESPONSE_INVALID',
+        message: expect.stringMatching(/detailed:.*single:/s),
+      });
   });
 });
 
@@ -340,6 +394,57 @@ describe('identifyItemsMulti', () => {
     expect(result.candidates[0].confidence).toBe(0.8);
   });
 
+  it('coerces a bare-number weight to {value, unit:"oz"} (gemini-3.5-flash drift, live 502 2026-08-05)', async () => {
+    const withNumberWeight = {
+      ...VALID_DETAILED_JSON,
+      candidates: [{ ...VALID_DETAILED_JSON.candidates[0], weight: 14 }],
+    };
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(withNumberWeight),
+      provider: 'gemini',
+      model: 'gemini-3.5-flash',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    const result = await identifyItemsMulti(mockImages);
+    expect(result.candidates[0].weight).toEqual({ value: 14, unit: 'oz' });
+  });
+
+  it('accepts weight: null from the model (Gemini null habit, cf. conditionNotes 2026-07-10)', async () => {
+    const withNullWeight = {
+      ...VALID_DETAILED_JSON,
+      candidates: [{ ...VALID_DETAILED_JSON.candidates[0], weight: null }],
+    };
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(withNullWeight),
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    const result = await identifyItemsMulti(mockImages);
+    expect(result.candidates[0].weight).toBeUndefined();
+  });
+
+  it('drops an implausible bare-number weight (>100 lb) instead of stamping it as ounces', async () => {
+    const withAbsurdWeight = {
+      ...VALID_DETAILED_JSON,
+      candidates: [{ ...VALID_DETAILED_JSON.candidates[0], weight: 99999 }],
+    };
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(withAbsurdWeight),
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    const result = await identifyItemsMulti(mockImages);
+    expect(result.candidates[0].weight).toBeUndefined();
+  });
+
   it('throws AppError when both parse paths fail', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ foo: 'bar' }),
@@ -351,6 +456,24 @@ describe('identifyItemsMulti', () => {
 
     await expect(identifyItemsMulti(mockImages))
       .rejects.toMatchObject({ statusCode: 502, code: 'AI_RESPONSE_INVALID' });
+  });
+
+  it('passes a validate hook so schema-invalid 200s fail over down the provider chain', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      inputTokens: 200,
+      outputTokens: 100,
+    });
+
+    await identifyItemsMulti(mockImages);
+
+    const options = vi.mocked(analyzeImages).mock.calls[0][3] as { validate?: (text: string) => void };
+    expect(typeof options?.validate).toBe('function');
+    expect(() => options.validate!(JSON.stringify({ foo: 'bar' })))
+      .toThrow(/detailed:.*single:/s);
+    expect(() => options.validate!(JSON.stringify(VALID_DETAILED_JSON))).not.toThrow();
   });
 
   it('normalizes condition through Zod transform', async () => {
@@ -397,6 +520,51 @@ describe('generateListingFields', () => {
     expect(vi.mocked(analyzeImages).mock.calls[0][0]).toEqual(images);
   });
 
+  it('passes a schema validate hook on the photo-less chatText path (fail-over on drift)', async () => {
+    vi.mocked(chatText).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash',
+    } as never);
+
+    await generateListingFields({ ...baseInput });
+
+    expect(chatText).toHaveBeenCalledTimes(1);
+    const options = vi.mocked(chatText).mock.calls[0][2] as { validate?: unknown };
+    expect(typeof options?.validate).toBe('function');
+  });
+
+  it('injects the Reverb flat-category list into the prompt so the AI picks a real category verbatim', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    await generateListingFields({
+      ...baseInput,
+      images: [{ base64: 'b64', mediaType: 'image/jpeg' }],
+      reverbCategories: ['Effects and Pedals / Distortion', 'Pro Audio / Microphones'],
+    });
+
+    const userPrompt = vi.mocked(analyzeImages).mock.calls[0][2] as string;
+    expect(userPrompt).toContain('REVERB CATEGORIES');
+    expect(userPrompt).toContain('Effects and Pedals / Distortion');
+    expect(userPrompt).toContain('Pro Audio / Microphones');
+  });
+
+  it('instructs the AI to pick the DEEPEST fitting category path (cascade resolution)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+    await generateListingFields({
+      ...baseInput,
+      images: [{ base64: 'b64', mediaType: 'image/jpeg' }],
+      reverbCategories: ['Effects and Pedals', 'Effects and Pedals / Distortion'],
+    });
+    const userPrompt = vi.mocked(analyzeImages).mock.calls[0][2] as string;
+    expect(userPrompt).toMatch(/DEEPEST/);
+  });
+
   it('coerces scalar-string aspect values to string arrays', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: 'Sony', Color: ['Black'] } } }),
@@ -417,6 +585,77 @@ describe('generateListingFields', () => {
     const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
 
     expect(result.ebay?.aspects?.Brand).toEqual(['Sony']);
+  });
+
+  it('coerces a bare-number ebay.weight to {value, unit:"oz"} (same drift class as candidates weight)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({
+        title: 't', description: 'd',
+        ebay: { title: 'et', aspects: {}, weight: 12 },
+      }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    expect(result.ebay?.weight).toEqual({ value: 12, unit: 'oz' });
+  });
+
+  it('passes a validate hook so schema-invalid listing-fields responses fail over down the chain', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    const options = vi.mocked(analyzeImages).mock.calls[0][3] as { validate?: (text: string) => void };
+    expect(typeof options?.validate).toBe('function');
+    expect(() => options.validate!(JSON.stringify({ ebay: {} }))).toThrow();
+    expect(() => options.validate!(JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et' } }))).not.toThrow();
+  });
+
+  it('maps an implausible bare-number ebay.weight to the zero sentinel instead of stamping it', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({
+        title: 't', description: 'd',
+        ebay: { title: 'et', aspects: {}, weight: 99999 },
+      }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    expect(result.ebay?.weight).toEqual({ value: 0, unit: 'oz' });
+  });
+
+  it('maps ebay.weight: null to the zero sentinel (Gemini null habit)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({
+        title: 't', description: 'd',
+        ebay: { title: 'et', aspects: {}, weight: null },
+      }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    expect(result.ebay?.weight).toEqual({ value: 0, unit: 'oz' });
+  });
+
+  it('coerces a numeric reverb.year to string (gemini-2.5-flash, live aspect-prefill warn 2026-08-05)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({
+        title: 't', description: 'd',
+        ebay: { title: 'et', aspects: {} },
+        reverb: { make: 'Roland', model: 'TR-808', title: 'rt', year: 1984 },
+      }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+    });
+
+    const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    expect(result.reverb?.year).toBe('1984');
   });
 
   it('runs the constrained pick pass for a required enum aspect the first call left unfilled', async () => {

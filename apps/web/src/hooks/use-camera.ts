@@ -67,6 +67,7 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
   const facingRef = useRef(facingMode);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // eslint-disable-next-line @eslint-react/use-state -- `setZoom` is the public clamping wrapper below; the raw setter is deliberately named apart from it
   const [zoom, setZoomState] = useState(1);
   const [maxZoom, setMaxZoom] = useState(DIGITAL_MAX_ZOOM);
   const [minZoom, setMinZoom] = useState(1);

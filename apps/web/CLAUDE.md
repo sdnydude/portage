@@ -6,20 +6,21 @@ Next.js 16 frontend. See root CLAUDE.md for architecture overview.
 
 ```
 src/app/
-├── (tabs)/          # 5 tabs (Home, Inventory, Listings, Porter, Orders) + center Scan button; More via avatar menu
+├── (tabs)/          # 4 tabs (Home, Inventory, Porter, Orders) + center Scan button; Listings reached via Home/Inventory; More via avatar menu
 │   ├── home/        # Dashboard
 │   ├── inventory/   # Item grid/list
 │   ├── listings/    # Active/sold
 │   ├── orders/      # Sold list (thumbnail/title/date/price; Ship-It → eBay)
 │   ├── porter/      # AI assistant
 │   └── more/        # Settings hub — reached via avatar menu, not a bottom-nav tab
+├── about/           # Beta terms + liability summary (P4)
 ├── admin/           # Separate layout tree (sidebar nav)
 ├── inventory/[id]/  # Item detail + edit + Marketplace Listings section (ListingCard) + /preview PNG-share subroute
 ├── listings/[id]/   # Redirect → /inventory/[itemId]?listing=[id] (hub)
 ├── list/            # Create listing entry
 ├── orders/[id]/     # Order detail
 ├── messages/        # eBay buyer messaging (conversations list + thread view)
-└── settings/        # 6 settings pages (profile, marketplace, seller-profile, billing, notifications, help)
+└── settings/        # 7 settings pages (profile, marketplace, seller-profile, billing, notifications, help, sync-log)
 ```
 
 The root `app/layout.tsx` wraps everything in `AppShell` (route-aware responsive shell: desktop sidebar, iPad breakpoints, mobile floating glass `TabBar`). `(tabs)/layout.tsx` only adds bottom padding (`pb-24`) and `PorterProvider` — `TabBar` mounts once inside `AppShell` for all non-admin routes, not per-layout.
@@ -30,11 +31,13 @@ Directories mirror feature areas, not component types:
 
 | Directory | Contents |
 |-----------|----------|
-| `capture/` | ScanFlow, ScanFab, CameraCapture, CaptureSheet, ImagePicker |
-| `listing-flow/` | HybridFlow, ConversationalFlow, SwipeFlow, PhotoCaptureFlow, PhotoEditor, CropTool, PhotoGrid, PricingStrategyPicker |
+| `capture/` | ScanFlow, ScanFab, CameraCapture, CaptureSheet, ImagePicker, PhotoEditPanel |
+| `listing-flow/` | HybridFlow, ConversationalFlow, SwipeFlow, PhotoCaptureFlow, CropTool, PhotoGrid, PricingStrategyPicker |
 | `listing/` | ListingCard, ListingPreviewCard, CompsPricingWidget, CreateListingSheet, BulkListingBar |
 | `inventory/` | ItemCard, SearchBar, ViewControls, BulkActionBar |
 | `layout/` | AppShell (route-aware responsive shell), Sidebar (desktop/iPad collapsible nav rail), TopBar (desktop header), PageHeader (sticky top, mobile), TabBar (floating glass bottom nav + scan FAB) |
+| `workbench/` | R2 desktop drag-drop ingest — DesktopIngestPanel, DropZone, IngestQueue |
+| `porter/` | R3 Porter dock — PorterDock, conversation-history UI |
 | `image/` | BeforeAfterSlider |
 | `onboarding/` | OnboardingFlow (5-step first-run carousel) |
 | `celebration/` | SoldCelebration |
@@ -64,7 +67,7 @@ Cloudflare Access is the identity/session layer — no password, no refresh toke
 
 ## Hook Contract
 
-All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. Key hooks:
+All data hooks return `{ isLoading: boolean, error: string | null, ...data }` — except the scan-aspects pair, which expose typed error *signals* instead of a string (`isError` / `aspectsError` / `resolveError`) because the UI branches on them. Key hooks:
 
 | Hook | Purpose |
 |------|---------|
@@ -88,6 +91,11 @@ All data hooks return `{ isLoading: boolean, error: string | null, ...data }`. K
 | `useOnboarding` | Onboarding completion state |
 | `useExport` | Data export (CSV download) |
 | `useBulkSelect` | Multi-select state for bulk actions |
+| `usePhotoDrag` | Touch-capable long-press drag reorder for photo grids/strips |
+| `useDesktopIngest` | R2 desktop drag-drop file ingest + queue state |
+| `useSyncStatus` | Marketplace sync status polling + retry (sync-log badges, settings screen) |
+| `useRequiredAspects` | eBay category aspect schema: `{ aspects, isLoading, isError, refetch }` — `isError` means "unknown", never "nothing required" (P3) |
+| `useScanAspects` | Scan-time category resolution + aspect values; exposes `aspectsError`, `refetchAspects`, `resolveError` (seq-guarded, prior resolution retained) and `aspectsBlockPublish` (includes the error) |
 
 ## Listing Flow Modes
 

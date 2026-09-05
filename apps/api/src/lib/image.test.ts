@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
-import { flattenToWhite, evToBrightnessMultiplier, adjustExposure } from './image.js';
+import { flattenToWhite, evToBrightnessMultiplier, adjustExposure, processImage } from './image.js';
+import { AppError } from '../middleware/error.js';
+
+describe('processImage', () => {
+  it('throws a 400 AppError instead of an uncaught error for a corrupt/unparseable buffer', async () => {
+    const corrupt = Buffer.from('not an image');
+    await expect(processImage(corrupt)).rejects.toMatchObject(
+      new AppError(400, 'INVALID_IMAGE', 'Could not process image — the file may be corrupt or in an unsupported format.'),
+    );
+  });
+});
 
 async function solidPng(r: number, g: number, b: number, alpha: number, size = 8): Promise<Buffer> {
   return sharp({

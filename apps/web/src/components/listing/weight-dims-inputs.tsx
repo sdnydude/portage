@@ -59,7 +59,7 @@ function parseIntField(raw: string): number {
  * map UI edits back onto the controlled WeightDimsValue. Manual edits are the
  * caller's signal to clear an AI-estimated flag (handled in the parent onChange).
  */
-function useWeightDimsFields(value: WeightDimsValue, onChange: WeightDimsChange) {
+function weightDimsFields(value: WeightDimsValue, onChange: WeightDimsChange) {
   const { lb, oz } = poundsToLbOz(value.weight);
 
   return {
@@ -86,7 +86,7 @@ interface WeightDimsInputsProps {
 }
 
 export function WeightDimsInputs({ value, onChange, estimated }: WeightDimsInputsProps) {
-  const f = useWeightDimsFields(value, onChange);
+  const f = weightDimsFields(value, onChange);
   const inputClass =
     "w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary placeholder:text-text-placeholder border border-transparent focus:border-border-focus focus:outline-none";
 
@@ -170,7 +170,7 @@ interface WeightDimsInputsInlineProps {
 export function WeightDimsInputsInline({
   value, onChange, estimated, tokens, labelStyleOverride,
 }: WeightDimsInputsInlineProps) {
-  const f = useWeightDimsFields(value, onChange);
+  const f = weightDimsFields(value, onChange);
 
   const labelStyle: CSSProperties = labelStyleOverride ?? {
     fontSize: 11, fontWeight: 600, color: tokens.secondary,

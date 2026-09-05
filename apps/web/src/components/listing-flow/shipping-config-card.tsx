@@ -13,6 +13,9 @@ interface ShippingConfigCardProps {
   shippingMethod: ShippingMethod | null;
   weightDims: WeightDimsValue;
   weightEstimated?: boolean;
+  /** Flat-rate buyer cost (beta 17be7322); input shown only for method='flat'. */
+  shippingCost?: number | null;
+  onShippingCostChange?: (cost: number | null) => void;
   onPackageSizeChange: (size: PackageSize) => void;
   onWeightDimsChange: WeightDimsChange;
   onShippingMethodChange: (method: ShippingMethod) => void;
@@ -42,6 +45,7 @@ const methodLabels: Record<ShippingMethod, string> = {
 
 export function ShippingConfigCard({
   packageSize, shippingMethod, weightDims, weightEstimated,
+  shippingCost, onShippingCostChange,
   onPackageSizeChange, onWeightDimsChange, onShippingMethodChange,
   Pill, tokens, labelStyleOverride,
 }: ShippingConfigCardProps) {
@@ -83,6 +87,35 @@ export function ShippingConfigCard({
           ))}
         </div>
       </div>
+      {shippingMethod === "flat" && onShippingCostChange && (
+        <div>
+          <label htmlFor="flat-shipping-cost" style={{ ...labelStyle, display: "block" }}>
+            Buyer pays ($)
+          </label>
+          <input
+            id="flat-shipping-cost"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            value={shippingCost ?? ""}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              onShippingCostChange(Number.isFinite(v) ? v : null);
+            }}
+            placeholder="e.g. 5.00"
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: `1px solid ${tokens.cardBorder}`,
+              background: tokens.cardBg,
+              color: tokens.text,
+              fontSize: 14,
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

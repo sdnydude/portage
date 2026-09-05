@@ -8,7 +8,10 @@ import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
 import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
 import { useRequiredAspects } from "@/hooks/use-required-aspects";
+import { ReverbCategorySection } from "./reverb-category-section";
+import { useAuth } from "@/hooks/use-auth";
 import type { PreparedListingData } from "@portage/shared";
+import { withKeys } from "@/lib/list-keys";
 
 interface ListingPreviewCardProps {
   data: PreparedListingData;
@@ -17,7 +20,7 @@ interface ListingPreviewCardProps {
   onFieldChange: (field: string, value: unknown) => void;
   onPriceChange: (price: number) => void;
   onQuantityChange: (quantity: number) => void;
-  onPublish: (marketplace: "ebay" | "reverb", publishMode: "draft" | "live", aspects?: Record<string, string[]>) => void;
+  onPublish: (marketplace: "ebay" | "reverb", publishMode: "draft" | "live", aspects?: Record<string, string[]>, reverbCategoryUuid?: string) => void;
   isPublishing: boolean;
   sellerProfileComplete: boolean;
   /** When provided, the card shows the photo gallery strip and hosts the
@@ -79,6 +82,21 @@ export function ListingPreviewCard({
   const categoryId = data.ebay?.categoryId ?? null;
   const { aspects: requiredAspects } = useRequiredAspects(categoryId);
   const [aspectValues, setAspectValues] = useState<Record<string, string>>({});
+
+  // ── Reverb category ────────────────────────────────────────────────────────
+  // Music gear arrives with an AI-picked (list-validated) category via the
+  // prepare cache. Non-gear items the AI could not place get no category and
+  // used to dead-end at REVERB_CATEGORY_REQUIRED with no way to pick one —
+  // this picker (real flat-list uuids) unlocks the Reverb publish for them.
+  const { token } = useAuth();
+  // AI-resolved category (validated at prepare) seeds the cascade breadcrumb.
+  const [reverbCategory, setReverbCategory] = useState<{ uuid: string; fullName: string } | null>(
+    data.reverb?.categoryUuid
+      ? { uuid: data.reverb.categoryUuid, fullName: data.reverb.categoryName ?? "" }
+      : null,
+  );
+  const reverbCategoryId = reverbCategory?.uuid ?? "";
+  const canPublishReverb = data.isMusicGear || !!reverbCategoryId;
 
   // Seed from the AI-prepared values when the prepared category changes.
   useEffect(() => {
@@ -150,9 +168,9 @@ export function ListingPreviewCard({
             )}
             {photos.length > 1 && (
               <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
-                {photos.map((_, i) => (
+                {photos.map((photo, i) => (
                   <button
-                    key={i}
+                    key={photo.key}
                     onClick={() => setPhotoIndex(i)}
                     className="w-2 h-2 rounded-full transition-colors"
                     style={{ background: i === photoIndex ? "white" : "rgba(255,255,255,0.5)" }}
@@ -280,8 +298,8 @@ export function ListingPreviewCard({
 
         {data.warnings.length > 0 && (
           <div className="space-y-1">
-            {data.warnings.map((w, i) => (
-              <p key={i} className="text-xs px-2 py-1 rounded" style={{ background: "rgba(204,51,51,0.08)", color: "#CC3333" }}>
+            {withKeys(data.warnings, (w) => w).map(([key, w]) => (
+              <p key={key} className="text-xs px-2 py-1 rounded" style={{ background: "rgba(204,51,51,0.08)", color: "#CC3333" }}>
                 {w}
               </p>
             ))}
@@ -347,6 +365,11 @@ export function ListingPreviewCard({
             </div>
           )}
 
+          <div className="mb-3">
+            <span className="font-medium mb-1 block text-sm">Reverb category</span>
+            <ReverbCategorySection value={reverbCategory} onChange={setReverbCategory} token={token} idPrefix="preview-" />
+          </div>
+
           {!sellerProfileComplete && (
             <a
               href="/settings/seller-profile"
@@ -372,9 +395,9 @@ export function ListingPreviewCard({
             >
               {isPublishing ? "Publishing..." : publishMode === "draft" ? "Save eBay draft" : "Publish to eBay"}
             </button>
-            {data.isMusicGear && (
+            {canPublishReverb && (
               <button
-                onClick={() => onPublish("reverb", publishMode, buildAspects())}
+                onClick={() => onPublish("reverb", publishMode, buildAspects(), reverbCategoryId || undefined)}
                 disabled={isPublishing || !sellerProfileComplete}
                 className="flex-1 py-3.5 rounded-xl text-base font-semibold text-white disabled:opacity-40"
                 style={{ background: "#E8620A" }}

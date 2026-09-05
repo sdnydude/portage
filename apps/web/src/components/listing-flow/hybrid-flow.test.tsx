@@ -10,7 +10,11 @@ const h = vi.hoisted(() => ({
   prepare: vi.fn(),
   prepError: null as string | null,
   prepDataNull: false,
+  prepEbay: null as Record<string, unknown> | null,
+  publish: vi.fn(),
   cardProps: {} as Record<string, unknown>,
+  shipCardProps: {} as Record<string, unknown>,
+  setField: vi.fn(),
   compactMode: false,
   lastStep: "confirmed",
 }));
@@ -29,7 +33,8 @@ const flowState = {
   quantity: 1,
   price: 100,
   marketplace: "ebay",
-  shippingMethod: "",
+  shippingMethod: "flat",
+  shippingCost: 4,
   pricingStrategy: null,
   publishStatus: "idle",
   listingId: null,
@@ -48,7 +53,7 @@ vi.mock("@/hooks/use-listing-flow", () => ({
     error: null,
     clearError: vi.fn(),
     saveWarning: false,
-    setField: vi.fn(),
+    setField: h.setField,
     startFromPhoto: vi.fn(),
     startFromItem: vi.fn(),
     confirmRecognition: vi.fn(),
@@ -59,7 +64,7 @@ vi.mock("@/hooks/use-listing-flow", () => ({
     addPhotos: vi.fn(),
     updatePhoto: h.updatePhoto,
     ensureItemCreated: h.ensureItemCreated,
-    publish: vi.fn(),
+    publish: h.publish,
     reset: vi.fn(),
   }),
 }));
@@ -74,7 +79,7 @@ vi.mock("@/hooks/use-prepare-listing", () => ({
       model: "AE-1",
       pricing: { suggested: 100, low: 80, high: 120, currency: "USD", confidence: "high", basedOn: 3, conditionMatch: "exact" },
       comps: { ebay: null, reverb: null },
-      ebay: null,
+      ebay: h.prepEbay,
       reverb: null,
       isMusicGear: false,
       aiConfidence: 0.9,
@@ -99,11 +104,60 @@ vi.mock("./fee-estimate", () => ({ FeeEstimate: () => null }));
 vi.mock("./publish-success", () => ({ PublishSuccess: () => null }));
 vi.mock("../listing/aspect-fill-sheet", () => ({ AspectFillSheet: () => null }));
 vi.mock("../listing/weight-fill-sheet", () => ({ WeightFillSheet: () => null }));
-vi.mock("./shipping-config-card", () => ({ ShippingConfigCard: () => null }));
+vi.mock("./shipping-config-card", () => ({
+  ShippingConfigCard: (props: Record<string, unknown>) => {
+    h.shipCardProps = props;
+    return null;
+  },
+}));
 vi.mock("./pricing-strategy-picker", () => ({ PricingStrategyPicker: () => null }));
 vi.mock("./photo-capture-overlay", () => ({ PhotoCaptureOverlay: () => null }));
 
 import { HybridFlow } from "./hybrid-flow";
+
+describe("HybridFlow — AI-prepared Best Offer floor is visible (BO-5)", () => {
+  it("renders the prepared auto-accept floor so it never publishes unseen", () => {
+    h.prepEbay = { bestOfferAutoAcceptPrice: 85, weight: { value: 16, unit: "OUNCE" }, dimensions: { length: 8, width: 6, height: 4 }, packageType: null, categoryId: "175669" };
+    render(<HybridFlow />);
+    expect(screen.getByText(/\$85/)).toBeInTheDocument();
+    expect(screen.getByText(/auto-accept/i)).toBeInTheDocument();
+    h.prepEbay = null;
+  });
+
+  it("a removed floor comes back for the NEXT item — floorCleared resets per item (CodeRabbit)", () => {
+    h.prepEbay = { bestOfferAutoAcceptPrice: 85, weight: { value: 16, unit: "OUNCE" }, dimensions: { length: 8, width: 6, height: 4 }, packageType: null, categoryId: "175669" };
+    const state = flowState as unknown as { inventoryItemId?: string };
+    try {
+      state.inventoryItemId = "item-1";
+      const { rerender } = render(<HybridFlow />);
+      fireEvent.click(screen.getByRole("button", { name: /remove auto-accept floor/i }));
+      expect(screen.queryByText(/\$85/)).not.toBeInTheDocument();
+
+      state.inventoryItemId = "item-2"; // next listing begins
+      rerender(<HybridFlow />);
+      expect(screen.getByText(/\$85/)).toBeInTheDocument();
+    } finally {
+      h.prepEbay = null;
+      delete state.inventoryItemId;
+    }
+  });
+
+  it("Remove strips the floor on the preview-card publish path too — seller intent wins (audit #1)", async () => {
+    h.prepEbay = { bestOfferAutoAcceptPrice: 85, weight: { value: 16, unit: "OUNCE" }, dimensions: { length: 8, width: 6, height: 4 }, packageType: null, categoryId: "175669" };
+    h.publish.mockResolvedValue({ success: true });
+    h.publish.mockClear();
+    try {
+      render(<HybridFlow />);
+      fireEvent.click(screen.getByRole("button", { name: /remove auto-accept floor/i }));
+      (h.cardProps.onPublish as (m: string, p: string) => void)("ebay", "live");
+      await vi.waitFor(() => expect(h.publish).toHaveBeenCalledTimes(1));
+      const opts = h.publish.mock.calls[0][0] as { ebayPreparedFields?: { bestOfferAutoAcceptPrice?: number } };
+      expect(opts.ebayPreparedFields?.bestOfferAutoAcceptPrice).toBeUndefined();
+    } finally {
+      h.prepEbay = null;
+    }
+  });
+});
 
 describe("HybridFlow — photo editing wiring (S2.5-8)", () => {
   it("passes the flow's updatePhoto to ListingPreviewCard so editor tools persist into flow state", () => {
@@ -136,6 +190,14 @@ describe("HybridFlow — photo editing wiring (S2.5-8)", () => {
   });
 });
 
+describe("HybridFlow — review panel description height (UI-1)", () => {
+  it("the description editor shows 5 lines (operator 2026-08-03)", () => {
+    render(<HybridFlow />);
+    fireEvent.click(screen.getByRole("button", { name: /edit details/i }));
+    expect(screen.getByPlaceholderText("Item description...")).toHaveAttribute("rows", "5");
+  });
+});
+
 describe("HybridFlow — fresh-scan prepare (item created at confirm)", () => {
   it("Looks right creates the item via ensureItemCreated and runs prepare with its id", async () => {
     h.lastStep = "recognition";
@@ -150,6 +212,25 @@ describe("HybridFlow — fresh-scan prepare (item created at confirm)", () => {
       });
     } finally {
       h.lastStep = "confirmed";
+    }
+  });
+
+  it("item create failure is shown as a Porter message — no silent draft (P3 T5b)", async () => {
+    h.lastStep = "recognition";
+    h.ensureItemCreated.mockRejectedValue(new Error("Item save failed: 500"));
+    h.prepare.mockClear();
+    try {
+      render(<HybridFlow />);
+      fireEvent.click(screen.getByText("Looks right"));
+      expect(await screen.findByText(/Item save failed: 500/)).toBeInTheDocument();
+      expect(h.prepare).not.toHaveBeenCalled();
+      // The Looks right pill is gone by now — the Retry in the message is the only way forward.
+      h.ensureItemCreated.mockResolvedValue("item-9");
+      fireEvent.click(screen.getByRole("button", { name: /^retry$/i }));
+      await vi.waitFor(() => expect(h.prepare).toHaveBeenCalledWith("item-9", ["ebay"]));
+    } finally {
+      h.lastStep = "confirmed";
+      h.ensureItemCreated.mockReset();
     }
   });
 });
@@ -168,6 +249,20 @@ describe("HybridFlow — prepare failure surface", () => {
     } finally {
       h.prepError = null;
       h.prepDataNull = false;
+    }
+  });
+});
+
+describe("HybridFlow — flat-rate shipping cost wiring (beta 17be7322)", () => {
+  it("passes shippingCost to ShippingConfigCard and routes edits to setField('shippingCost')", () => {
+    h.lastStep = "shipping";
+    try {
+      render(<HybridFlow />);
+      expect(h.shipCardProps.shippingCost).toBe(4);
+      (h.shipCardProps.onShippingCostChange as (c: number | null) => void)(6.5);
+      expect(h.setField).toHaveBeenCalledWith("shippingCost", 6.5);
+    } finally {
+      h.lastStep = "confirmed";
     }
   });
 });

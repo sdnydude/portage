@@ -163,8 +163,8 @@ export default function AdminUsersPage() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}><td colSpan={9} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-full" /></td></tr>
+              Array.from({ length: 5 }, (_, i) => `skeleton-${i}`).map((k) => (
+                <tr key={k}><td colSpan={9} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-full" /></td></tr>
               ))
             ) : data?.users.map(user => (
               <tr key={user.id} className="hover:bg-muted/50 transition-colors">
@@ -220,7 +220,7 @@ export default function AdminUsersPage() {
       )}
 
       {showAdd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="fixed inset-0 bg-black/50" onClick={() => !addBusy && setShowAdd(false)} />
           <div className="relative bg-surface rounded-2xl border border-border p-5 w-full max-w-sm space-y-3">
             <h2 className="text-sm font-semibold text-text-primary">Add user</h2>

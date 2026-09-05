@@ -2,6 +2,7 @@
 title: "eBay Seller Hub Reports CSV export with marketplace data caching"
 sidebar_label: "eBay Seller Hub Reports CSV export with marketplac"
 sidebar_position: 36
+registry_id: 9f01f411-d0f2-4112-a2f7-0d8fd441b351
 ---
 
 # eBay Seller Hub Reports CSV export with marketplace data caching

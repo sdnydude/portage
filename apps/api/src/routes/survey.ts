@@ -36,7 +36,7 @@ const surveySchema = z.object({
 surveyRouter.post('/design-review', async (req, res) => {
   const parsed = surveySchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid survey data', details: parsed.error.flatten() });
+    res.status(400).json({ error: 'Invalid survey data', details: z.flattenError(parsed.error) });
     return;
   }
 
@@ -54,7 +54,7 @@ const commentSchema = z.object({
 surveyRouter.post('/comments', async (req, res) => {
   const parsed = commentSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid comment data', details: parsed.error.flatten() });
+    res.status(400).json({ error: 'Invalid comment data', details: z.flattenError(parsed.error) });
     return;
   }
 

@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../lib/env.js';
+import { AppError } from '../middleware/error.js';
 import { resolveEbayCondition, resolveEbayConditionId, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError, clearEbayTaxonomyCaches } from './ebay-adapter.js';
+
+const loggerSpies = vi.hoisted(() => ({
+  warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn(),
+}));
+vi.mock('../lib/logger.js', () => ({ createLogger: () => loggerSpies }));
 
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
   getEbayProdAppToken: vi.fn().mockResolvedValue('test-app-token'),
+  getEbayAppToken: vi.fn().mockResolvedValue('test-app-token'),
   invalidateEbayProdAppToken: vi.fn(),
 }));
 
@@ -25,8 +32,16 @@ const ADD_ITEM_OK =
   '<?xml version="1.0" encoding="utf-8"?><AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><ItemID>3001234567</ItemID></AddFixedPriceItemResponse>';
 const isTradingCall = (url: unknown) => String(url).includes('/ws/api.dll');
 /** The XML body sent to the Trading API (AddFixedPriceItem) on the most recent createListing. */
+// GetCategoryFeatures was decommissioned 2026-05-04 (HTTP 410 observed live
+// 2026-08-04); the pre-flight now calls Metadata API getNegotiatedPricePolicies.
+const isFeaturesCall = (u: unknown, _o?: unknown) => String(u).includes('get_negotiated_price_policies');
+const metadataPolicyResponse = (u: unknown) => {
+  const m = /categoryIds%3A%7B(\d+)%7D|categoryIds:\{(\d+)\}/.exec(decodeURIComponent(String(u)));
+  const categoryId = m?.[1] ?? m?.[2] ?? '0';
+  return new Response(JSON.stringify({ negotiatedPricePolicies: [{ categoryId, bestOfferAutoAcceptEnabled: true, bestOfferAutoDeclineEnabled: true, bestOfferCounterEnabled: true }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
 const tradingXml = () => {
-  const call = fetchMock.mock.calls.find(([u]) => isTradingCall(u));
+  const call = fetchMock.mock.calls.find(([u, o]) => isTradingCall(u) && !isFeaturesCall(u, o));
   return call ? String((call[1] as RequestInit).body) : '';
 };
 /** Inline-terms publish setup: category + ship-from ZIP + package weight/dims (no policy IDs). */
@@ -220,6 +235,24 @@ describe('EbayAdapter.createListing — package weight/dimensions', () => {
   });
 });
 
+describe('EbayAdapter.createListing — condition notes fallback', () => {
+  // The item's stored conditionNotes never reached eBay on publish paths that
+  // skip prepare-listing (quick list, photo-first, seeded drafts): the builder
+  // only read marketplaceSpecific.conditionDescription, which only the AI
+  // prepare flow populates. The notes are the fallback, never the override —
+  // a prepared (user-reviewed) conditionDescription still wins.
+  it('sends item conditionNotes as ConditionDescription when no prepared conditionDescription exists', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      conditionNotes: 'Light scratches on the back panel.',
+      marketplaceSpecific: { ...tradingSetup },
+    } as any);
+    const xml = tradingXml();
+    expect(xml).toContain('<ConditionDescription>Light scratches on the back panel.</ConditionDescription>');
+  });
+});
+
 // NOTE: createListing aspect/gate coverage is being re-expressed against the Trading
 // AddFixedPriceItem XML below (ITEM-SPECIFICS-MIGRATION marker). The Inventory-API
 // product.aspects-JSON versions were removed — that behavior no longer exists.
@@ -263,6 +296,7 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
   it('retries AddFixedPriceItem without Best Offer when eBay rejects it for that reason, and surfaces a downgrade warning', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
       calls++;
       const body = String((opts as RequestInit).body);
@@ -281,6 +315,121 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
     expect(result.warning).toMatch(/best offer/i);
   });
 
+  it('maps bestOfferEnabled + minimumBestOfferPrice from marketplaceSpecific into the Add XML', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 10 },
+    } as any);
+    const addCall = fetchMock.mock.calls.find(([u, o]) => isTradingCall(u) && !isFeaturesCall(u, o));
+    const body = String((addCall![1] as RequestInit).body);
+    expect(body).toContain('<BestOfferEnabled>true</BestOfferEnabled>');
+    expect(body).toContain('<MinimumBestOfferPrice currencyID="USD">10</MinimumBestOfferPrice>');
+  });
+
+  it('downgrade-retries a toggle-only (no floor) Best Offer rejection as well', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      const body = String((opts as RequestInit).body);
+      if (body.includes('<BestOfferEnabled>true</BestOfferEnabled>')) {
+        return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></AddFixedPriceItemResponse>', { status: 200 });
+      }
+      return new Response(ADD_ITEM_OK, { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true },
+    } as any);
+    expect(calls).toBe(2);
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/best offer/i);
+  });
+
+  it('downgrades DETERMINISTICALLY at publish when the category is absent from a parsed getNegotiatedPricePolicies response — no prose guessing (BO-M)', async () => {
+    let addBody = '';
+    let addCalls = 0;
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) {
+        // Docs semantics (migration guide): a category returned in the container
+        // supports Best Offer; a QUERIED leaf category ABSENT from a parsed,
+        // non-empty response does not. 9999 is absent here.
+        return new Response(JSON.stringify({ negotiatedPricePolicies: [{ categoryId: '1234', bestOfferAutoAcceptEnabled: true, bestOfferAutoDeclineEnabled: true, bestOfferCounterEnabled: true }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      addCalls++;
+      addBody = String((opts as RequestInit).body);
+      return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><ItemID>307000000009</ItemID></AddFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const result = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, categoryId: '9999', bestOfferEnabled: true, bestOfferAutoAcceptPrice: 85 },
+    } as any);
+
+    expect(addCalls).toBe(1); // no failed-attempt-then-retry cycle
+    expect(addBody).not.toContain('<BestOfferDetails>');
+    expect(result.status).toBe('active');
+    expect(result.warning).toMatch(/best offer/i);
+  });
+
+  it('surfaces a threshold-conflict code at publish as 422 BEST_OFFER_CONFLICT — config is never silently dropped (BO-2)', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></AddFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 500 },
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+    expect(calls).toBe(1); // no downgrade — the seller fixes the numbers
+  });
+
+  it('publish-time conflict carries structured details with absent thresholds as null (P3 25afd214, create)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></AddFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 500 },
+    } as any).catch((e: unknown) => e);
+
+    expect((err as AppError).details).toEqual([
+      { bestOfferEnabled: null, bestOfferAutoAcceptPrice: 500, minimumBestOfferPrice: null, healed: false },
+    ]);
+  });
+
+  it('the narrowed prose backstop ignores unrelated errors that merely mention auto-accept wording (BO-M)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Promotion auto-accept scheduling failed.</ShortMessage><ErrorCode>99999</ErrorCode></Errors></AddFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 85 },
+    } as any).catch((e: unknown) => e);
+
+    // Raw error surfaces — no silent downgrade off a coincidental word match.
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/promotion auto-accept/i);
+    expect((err as { code?: string }).code).toBeUndefined();
+  });
+
   it('does NOT retry when the rejection is unrelated to Best Offer — the real error surfaces', async () => {
     fetchMock.mockImplementation(async (url: unknown) =>
       isTradingCall(url)
@@ -293,6 +442,28 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
     } as any)).rejects.toThrow(/required item specific/i);
   });
 
+});
+
+describe('EbayAdapter.promoteListing — Promoted Listings Standard', () => {
+  it('reuses an existing Portage CPS campaign and creates the ad by listing id', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    fetchMock.mockImplementation(async (url: unknown, init?: unknown) => {
+      const u = String(url);
+      calls.push({ url: u, init: init as RequestInit });
+      if (u.includes('/sell/marketing/v1/ad_campaign?')) {
+        return new Response(JSON.stringify({ campaigns: [{ campaignId: 'C123', campaignName: 'Portage Promoted Listings', fundingStrategy: { fundingModel: 'COST_PER_SALE' } }] }), { status: 200 });
+      }
+      if (u.endsWith('/sell/marketing/v1/ad_campaign/C123/ad')) {
+        return new Response(JSON.stringify({ adId: 'AD1' }), { status: 201 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    await adapter.promoteListing('307000000001', 5);
+    const adCall = calls.find((c) => c.url.endsWith('/ad_campaign/C123/ad'))!;
+    expect(adCall).toBeTruthy();
+    expect(JSON.parse(String(adCall.init!.body))).toEqual({ listingId: '307000000001', bidPercentage: '5.0' });
+  });
 });
 
 describe('EbayAdapter.createListing — publish result (Trading)', () => {
@@ -411,6 +582,23 @@ describe('EbayAdapter.getValidConditions — Metadata API condition policies', (
 });
 
 describe('eBay taxonomy TTL caches', () => {
+  it('counts taxonomy cache lookups with cache_miss/cache_hit labels (P7 7107c1b8)', async () => {
+    const { ebayTaxonomyCalls } = await import('../lib/metrics.js');
+    ebayTaxonomyCalls.reset();
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      itemConditionPolicies: [{ itemConditions: [{ conditionId: '1000' }] }],
+    }), { status: 200 }));
+
+    await EbayAdapter.getValidConditions('555555'); // cold → miss
+    await EbayAdapter.getValidConditions('555555'); // warm → hit
+
+    const metric = await ebayTaxonomyCalls.get();
+    const value = (labels: Record<string, string>) =>
+      metric.values.find((v) => Object.entries(labels).every(([k, val]) => (v.labels as Record<string, string>)[k] === val))?.value ?? 0;
+    expect(value({ operation: 'valid_conditions', result: 'cache_miss' })).toBe(1);
+    expect(value({ operation: 'valid_conditions', result: 'cache_hit' })).toBe(1);
+  });
+
   it('serves getValidConditions from cache within the TTL — one upstream fetch for two calls', async () => {
     fetchMock.mockImplementation(async () => new Response(JSON.stringify({
       itemConditionPolicies: [{ itemConditions: [{ conditionId: '1000' }, { conditionId: '3000' }] }],
@@ -464,10 +652,224 @@ describe('eBay taxonomy TTL caches', () => {
   });
 });
 
+describe('getCategorySuggestion — category-tree root for the mismatch guard', () => {
+  it('parses categoryTreeNodeAncestors into rootCategoryId/rootCategoryName (root = highest ancestor)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      categorySuggestions: [{
+        category: { categoryId: '181335', categoryName: 'Baseball Jackets' },
+        categoryTreeNodeAncestors: [
+          { categoryId: '181334', categoryName: 'Jackets & Vests', categoryTreeNodeLevel: 3 },
+          { categoryId: '1059', categoryName: "Men's Clothing", categoryTreeNodeLevel: 2 },
+          { categoryId: '11450', categoryName: 'Clothing, Shoes & Accessories', categoryTreeNodeLevel: 1 },
+        ],
+      }],
+    }), { status: 200 }));
+
+    const result = await EbayAdapter.getCategorySuggestion('fiber optic audio cable');
+    expect(result).toEqual({
+      categoryId: '181335',
+      categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450',
+      rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+  });
+});
+
+describe('getCategorySuggestion — ancestors without level fields', () => {
+  it('falls back to the LAST ancestor as root when categoryTreeNodeLevel is absent (eBay orders leaf-parent first, root last)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      categorySuggestions: [{
+        category: { categoryId: '181335', categoryName: 'Baseball Jackets' },
+        categoryTreeNodeAncestors: [
+          { categoryId: '181334', categoryName: 'Jackets & Vests' },
+          { categoryId: '1059', categoryName: "Men's Clothing" },
+          { categoryId: '11450', categoryName: 'Clothing, Shoes & Accessories' },
+        ],
+      }],
+    }), { status: 200 }));
+
+    const result = await EbayAdapter.getCategorySuggestion('no levels');
+    expect(result?.rootCategoryId).toBe('11450');
+  });
+});
+
+describe('getCategorySuggestion — mixed level fields', () => {
+  it('falls back to last-ancestor ordering when ANY entry lacks a level (partial levels cannot elect a leveled non-root)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      categorySuggestions: [{
+        category: { categoryId: '181335', categoryName: 'Baseball Jackets' },
+        categoryTreeNodeAncestors: [
+          { categoryId: '181334', categoryName: 'Jackets & Vests', categoryTreeNodeLevel: 3 },
+          { categoryId: '11450', categoryName: 'Clothing, Shoes & Accessories' }, // true root, level omitted
+        ],
+      }],
+    }), { status: 200 }));
+
+    const result = await EbayAdapter.getCategorySuggestion('mixed levels');
+    expect(result?.rootCategoryId).toBe('11450');
+  });
+});
+
+describe('isPlausibleSuggestion — rich vision strings (scan refine path)', () => {
+  it('flags a rich vision category with zero token overlap against leaf+root (live 08-13: "Audio Cables & Adapters" vs Baseball Jackets slipped through fail-open)', () => {
+    expect(EbayAdapter.isPlausibleSuggestion('Audio Cables & Adapters', {
+      categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450',
+      rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(false);
+  });
+});
+
+describe('isPlausibleSuggestion — pass-throughs', () => {
+  it('accepts token-overlapping rich strings, coarse-enum table hits, and fails open on garbage', () => {
+    // rich string overlaps the leaf name — plausible
+    expect(EbayAdapter.isPlausibleSuggestion('Audio Cables & Adapters', {
+      categoryName: 'Audio Cables & Interconnects', rootCategoryId: '293', rootCategoryName: 'Consumer Electronics',
+    })).toBe(true);
+    // rich string overlaps only the ROOT name — plausible
+    expect(EbayAdapter.isPlausibleSuggestion('Consumer Electronics Accessories', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(true); // "accessories" overlaps root
+    // coarse enum routes through the table
+    expect(EbayAdapter.isPlausibleSuggestion('electronics', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(false);
+    // garbage/short input fails open
+    expect(EbayAdapter.isPlausibleSuggestion('a&b', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(true);
+    expect(EbayAdapter.isPlausibleSuggestion('', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(true);
+  });
+});
+
+describe('isPlausibleRoot — vision-category vs eBay root sanity check', () => {
+  it('flags electronics vs Clothing root as implausible (the Baseball Jackets incident shape)', () => {
+    expect(EbayAdapter.isPlausibleRoot('electronics', '11450')).toBe(false);
+  });
+
+  it('fails open on an unknown vision value (schema is z.string, enum is prompt-convention only)', () => {
+    expect(EbayAdapter.isPlausibleRoot('sprockets', '11450')).toBe(true);
+  });
+
+  it('accepts electronics under its own plausible roots (Consumer Electronics, Computers, Musical Instruments & Gear)', () => {
+    expect(EbayAdapter.isPlausibleRoot('electronics', '293')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('electronics', '58058')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('electronics', '619')).toBe(true);
+  });
+
+  it('music maps: band-merch tee under Clothing is surprising-but-correct, must not flag', () => {
+    expect(EbayAdapter.isPlausibleRoot('music', '11450')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('music', '619')).toBe(true);
+  });
+
+  it('music has a real row — an absurd root (eBay Motors) flags instead of failing open', () => {
+    expect(EbayAdapter.isPlausibleRoot('music', '6000')).toBe(false);
+  });
+
+  it('clothing maps: Clothing and Sporting Goods roots pass, Consumer Electronics flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('clothing', '293')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('clothing', '11450')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('clothing', '888')).toBe(true);
+  });
+
+  it('sports maps: Sporting Goods, memorabilia, and apparel pass, eBay Motors flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('sports', '6000')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('sports', '888')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('sports', '64482')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('sports', '11450')).toBe(true);
+  });
+
+  it('furniture maps: Home & Garden and Antiques pass, Consumer Electronics flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('furniture', '293')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('furniture', '11700')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('furniture', '20081')).toBe(true);
+  });
+
+  it('collectibles maps: Collectibles, Antiques, memorabilia, coins, stamps, dolls pass, eBay Motors flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '6000')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '1')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '64482')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '11116')).toBe(true);
+  });
+
+  it('home maps: Home & Garden, Crafts, appliances-as-electronics, Pottery & Glass pass, Clothing flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('home', '11450')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('home', '11700')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('home', '14339')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('home', '293')).toBe(true);
+  });
+
+  it('books maps: Books & Magazines and Collectibles pass, Clothing flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('books', '11450')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('books', '267')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('books', '1')).toBe(true);
+  });
+
+  it('toys maps: Toys & Hobbies, Dolls & Bears, Video Games pass, Home & Garden flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('toys', '11700')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('toys', '220')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('toys', '237')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('toys', '1249')).toBe(true);
+  });
+
+  it('art maps: Art, Antiques, Crafts, Collectibles pass, Consumer Electronics flags; other stays fail-open', () => {
+    expect(EbayAdapter.isPlausibleRoot('art', '293')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('art', '550')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('art', '20081')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('other', '11450')).toBe(true);
+  });
+
+  it('jewelry maps: Jewelry & Watches, Antiques, Collectibles pass, eBay Motors flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('jewelry', '6000')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('jewelry', '281')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('jewelry', '20081')).toBe(true);
+  });
+
+  it('automotive maps: eBay Motors and Business & Industrial pass, Clothing flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('automotive', '11450')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('automotive', '6000')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('automotive', '12576')).toBe(true);
+  });
+
+  it('tools maps: Business & Industrial, Home & Garden, eBay Motors pass, Jewelry flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('tools', '281')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('tools', '12576')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('tools', '11700')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('tools', '6000')).toBe(true);
+  });
+});
+
+describe('resolveEbayCategoryId — mismatch guard on live resolution', () => {
+  it('warn-logs when the live suggestion is implausible for the persisted vision category, but returns the id unchanged', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    const warnSpy = loggerSpies.warn;
+
+    const resolved = await resolveEbayCategoryId(undefined, {
+      title: 'Fiber Optic Audio Cable',
+      marketplaceData: { scan: { visionCategory: 'electronics' } },
+    });
+
+    // Advisory only — the eBay id is never substituted or blocked.
+    expect(resolved.categoryId).toBe('181335');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ visionCategory: 'electronics', rootCategoryId: '11450' }),
+      expect.stringContaining('implausible'),
+    );
+  });
+});
+
 describe('resolveEbayCategoryId — self-healing leaf category for publish', () => {
   it('resolves by priority: explicit field > item cache > Taxonomy API (explicit/cache skip the API)', async () => {
     const spy = vi.spyOn(EbayAdapter, 'getCategorySuggestion')
-      .mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops' });
+      .mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops', rootCategoryId: null, rootCategoryName: null });
+    // vitest 4: spyOn returns the existing spy (with prior call history) when the
+    // method is already spied — clear the previous test's calls before asserting.
+    spy.mockClear();
 
     // 1. an explicit categoryId on the listing wins and never calls the API (user/listing intent preserved)
     const explicit = await resolveEbayCategoryId({ categoryId: '177' }, { title: 'X', marketplaceData: null });
@@ -583,9 +985,12 @@ describe('resolveEbayCategoryCondition — auto-correct decision + warning polic
     expect(r.warning).toMatch(/USED_EXCELLENT/);
   });
 
-  it('does nothing (no override, no warning) when the supported list is empty', () => {
-    // Metadata API unavailable → keep the static default silently
-    expect(resolveEbayCategoryCondition('good', [])).toEqual({});
+  it('keeps the static default but warns when the supported list is empty (P7 8f94d453)', () => {
+    // Metadata API unavailable → no override, but the seller must know the
+    // condition was not validated against the category.
+    const r = resolveEbayCategoryCondition('good', []);
+    expect(r.condition).toBeUndefined();
+    expect(r.warning).toMatch(/could not be verified/);
   });
 
   it('warns without overriding when no supported grade matches (e.g. used item, NEW-only category)', () => {
@@ -618,6 +1023,22 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
     expect(body).toContain('<StartPrice currencyID="USD">199</StartPrice>');
     expect(body).toContain('<Quantity>2</Quantity>');
     expect(body).not.toContain('<Title>'); // not a full content revise
+  });
+
+  it('the ReviseInventoryStatus fast path surfaces stored-threshold conflicts as typed 422s too (CodeRabbit)', async () => {
+    // eBay validates a price change against thresholds STORED on the live
+    // listing even on the fast path — the typed contract must hold there.
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url)
+        ? new Response('<ReviseInventoryStatusResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></ReviseInventoryStatusResponse>', { status: 200 })
+        : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307034606520', {
+      price: 199, currency: 'USD',
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
   });
 
   it('a content edit (title) goes through ReviseFixedPriceItem with the full item body', async () => {
@@ -680,25 +1101,160 @@ describe('EbayAdapter.updateListing — Trading Revise dispatch', () => {
     expect(String((call?.[1] as RequestInit).body)).toContain('<ConditionID>3000</ConditionID>'); // not 5000
   });
 
-  it('retries the revise without Best Offer when eBay rejects it, and surfaces a downgrade warning', async () => {
+  it('surfaces a category-level Best Offer rejection as 422 BEST_OFFER_UNSUPPORTED — no downgrade retry on updates (BO-2)', async () => {
     let calls = 0;
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
       if (!isTradingCall(url)) return new Response('{}', { status: 200 });
       calls++;
-      if (String((opts as RequestInit).body).includes('BestOfferAutoAcceptPrice')) {
-        return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
-      }
-      return new Response(reviseOk('ReviseFixedPriceItem'), { status: 200 });
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307034606520', {
+      ...baseInput, title: 'New', ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 18 },
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).statusCode).toBe(422);
+    expect((err as AppError).code).toBe('BEST_OFFER_UNSUPPORTED');
+    expect(calls).toBe(1); // the seller decides — never auto-stripped on an update
+  });
+});
+
+describe('EbayAdapter.updateListing — stored Best Offer threshold vs lowered price (23004)', () => {
+  it('surfaces 23004 from STORED thresholds as 422 BEST_OFFER_CONFLICT — no DeletedField retry (BO-2, supersedes PR #285)', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      // Live repro: price lowered to the stored auto-accept amount — eBay
+      // validates the STORED threshold even when the revise omits the tag.
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><LongMessage>The Best Offer Auto Accept Price must be less than the Buy It Now price.</LongMessage><ErrorCode>23004</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307102403404', {
+      ...baseInput, price: 25, ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 25, minimumBestOfferPrice: 20 },
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+    expect((err as AppError).message).toMatch(/25.*20|20.*25/); // both numbers surfaced
+    expect(calls).toBe(1); // seller thresholds never deleted to force the edit
+  });
+});
+
+describe('EbayAdapter.updateListing — Best Offer threshold conflict (BO-2)', () => {
+  it('surfaces eBay 22003/23004 as a typed 422 BEST_OFFER_CONFLICT with the stored thresholds, and never retries with deletion', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Auto decline amount cannot be greater than or equal to the Buy It Now price.</ShortMessage><ErrorCode>22003</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307100136291', {
+      ...baseInput, price: 199, title: 'New', ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 199, bestOfferAutoAcceptPrice: 209 },
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).statusCode).toBe(422);
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+    expect((err as AppError).message).toMatch(/209|199/); // actionable: carries the conflicting numbers
+    expect(calls).toBe(1); // no deletion retry — user config is never destroyed
+  });
+
+  it('price-only ReviseInventoryStatus conflict carries all-null details — thresholds live on eBay (P3 25afd214, fast path)', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<ReviseInventoryStatusResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></ReviseInventoryStatusResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307034606520', { price: 25, quantity: 1, currency: 'USD' }).catch((e: unknown) => e);
+
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+    expect((err as AppError).details).toEqual([
+      { bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null, healed: false },
+    ]);
+  });
+
+  it('carries the submitted thresholds as structured BestOfferConflictDetails (P3 25afd214, full revise)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Auto decline amount cannot be greater than or equal to the Buy It Now price.</ShortMessage><ErrorCode>22003</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307100136291', {
+      ...baseInput, price: 199, title: 'New', ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 199, bestOfferAutoAcceptPrice: 209 },
+    } as any).catch((e: unknown) => e);
+
+    expect((err as AppError).details).toEqual([
+      { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199, healed: false },
+    ]);
+  });
+});
+
+describe('EbayAdapter.getEbayItemVerification — Best Offer read-back (BO-3)', () => {
+  it('forwards the live Best Offer state from GetItem for the conflict-time heal', async () => {
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url)
+        ? new Response('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item><ItemID>307100024169</ItemID><BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails><ListingDetails><BestOfferAutoAcceptPrice currencyID="USD">269.0</BestOfferAutoAcceptPrice><MinimumBestOfferPrice currencyID="USD">249.0</MinimumBestOfferPrice></ListingDetails></Item></GetItemResponse>', { status: 200 })
+        : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+    const v = await adapter.getEbayItemVerification('307100024169');
+
+    expect(v.found).toBe(true);
+    expect(v.bestOfferEnabled).toBe(true);
+    expect(v.bestOfferAutoAcceptPrice).toBe(269);
+    expect(v.minimumBestOfferPrice).toBe(249);
+  });
+});
+
+describe('EbayAdapter.updateListing — explicit Best Offer disable (BO-4)', () => {
+  it('bestOfferEnabled === false sends BestOfferEnabled false plus DeletedField for both thresholds on the FIRST call — the only deletion path, driven by seller intent', async () => {
+    let body = '';
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      body = String((opts as RequestInit).body);
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>', { status: 200 });
     });
     const adapter = new EbayAdapter('user-1');
     const result = await adapter.updateListing('307034606520', {
       ...baseInput, title: 'New', ebaySku: 'PRT-000016',
-      marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 18 },
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: false },
     } as any);
 
-    expect(calls).toBe(2);
     expect(result.status).toBe('active');
-    expect(result.warning).toMatch(/best offer/i);
+    expect(body).toContain('<BestOfferEnabled>false</BestOfferEnabled>');
+    expect(body).toContain('<DeletedField>Item.ListingDetails.BestOfferAutoAcceptPrice</DeletedField>');
+    expect(body).toContain('<DeletedField>Item.ListingDetails.MinimumBestOfferPrice</DeletedField>');
+  });
+});
+
+describe('EbayAdapter.updateListing — category-level rejection, floor-only config (BO-2)', () => {
+  it('classifies a floor-only config (enabled + minimum, no auto-accept) as BEST_OFFER_UNSUPPORTED too — no retry', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      calls++;
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Best Offer is not supported for this category.</ShortMessage></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307102403404', {
+      ...baseInput, title: 'New', ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 20 },
+    } as any).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('BEST_OFFER_UNSUPPORTED');
+    expect(calls).toBe(1);
   });
 });
 
@@ -717,6 +1273,85 @@ describe('EbayAdapter.createListing — inline-shipping data guard (Trading)', (
       } as any),
     ).rejects.toBeInstanceOf(EbayWeightRequiredError);
     expect(fetchMock.mock.calls.find(([u]) => isTradingCall(u))).toBeUndefined();
+  });
+});
+
+describe('EbayAdapter — per-listing ebayShipping (beta 17be7322)', () => {
+  it('flows specific.ebayShipping (flat) into the Trading XML: Flat type, cost, service, DispatchTimeMax', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: {
+        ...tradingSetup,
+        ebayShipping: { method: 'flat', flatCost: 6.5, service: 'UPSGround', handlingDays: 3 },
+      },
+    } as any);
+    const body = tradingXml();
+    expect(body).toContain('<ShippingType>Flat</ShippingType>');
+    expect(body).toContain('<ShippingServiceCost currencyID="USD">6.50</ShippingServiceCost>');
+    expect(body).toContain('<ShippingService>UPSGround</ShippingService>');
+    expect(body).toContain('<DispatchTimeMax>3</DispatchTimeMax>');
+    expect(body).not.toContain('CalculatedShippingRate');
+  });
+
+  it('ebayShipping.localPickup adds the Pickup service option alongside the method', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: {
+        ...tradingSetup,
+        ebayShipping: { method: 'calculated', localPickup: true },
+      },
+    } as any);
+    const body = tradingXml();
+    expect(body).toContain('<ShippingService>Pickup</ShippingService>');
+    expect(body).toContain('<ShippingType>Calculated</ShippingType>');
+  });
+
+  it('skips the weight/dims gate for flat and free methods (calculated-only requirement)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    // No weight, no dimensions — legacy calculated path would throw EbayWeightRequiredError.
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: {
+        categoryId: '15032',
+        originPostalCode: '10001',
+        ebayShipping: { method: 'free' },
+      },
+    } as any);
+    const body = tradingXml();
+    expect(body).toContain('<FreeShipping>true</FreeShipping>');
+  });
+
+  it('translates stored Inventory package enums into Trading ShippingPackage values (raw pass-through = live error 37)', async () => {
+    // items.ebayPackageType stores Inventory-API enums (MAILING_BOX/LETTER/…);
+    // Trading takes ShippingPackageCodeType (live GeteBayDetails 2026-08-01:
+    // Letter, LargeEnvelope, PackageThickEnvelope, USPSLargePack).
+    const cases: Array<[string, string]> = [
+      ['MAILING_BOX', 'PackageThickEnvelope'],
+      ['PACKAGE_THICK_ENVELOPE', 'PackageThickEnvelope'],
+      ['LARGE_ENVELOPE', 'LargeEnvelope'],
+      ['LETTER', 'Letter'],
+      ['USPS_LARGE_PACKAGE', 'USPSLargePack'],
+      ['LARGE_PACKAGE', 'USPSLargePack'],
+    ];
+    for (const [stored, trading] of cases) {
+      fetchMock.mockClear();
+      const adapter = new EbayAdapter('user-1');
+      await adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: { ...tradingSetup, packageType: stored },
+      } as any);
+      expect(tradingXml(), stored).toContain(`<ShippingPackage>${trading}</ShippingPackage>`);
+    }
+    // Unknown value: drop it — builder default (PackageThickEnvelope) applies.
+    fetchMock.mockClear();
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, packageType: 'SOMETHING_NEW' },
+    } as any);
+    expect(tradingXml()).toContain('<ShippingPackage>PackageThickEnvelope</ShippingPackage>');
   });
 });
 
@@ -903,6 +1538,23 @@ describe('EbayAdapter.getOrders — line-item title for orphan-order backfill', 
   });
 });
 
+describe('EbayAdapter.findListingBySku — stale publish-claim recheck', () => {
+  const page = (items: Array<[string, string]>, total: number) =>
+    `<?xml version="1.0"?><GetMyeBaySellingResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack>` +
+    `<ActiveList><PaginationResult><TotalNumberOfPages>${total}</TotalNumberOfPages></PaginationResult><ItemArray>` +
+    items.map(([id, sku]) => `<Item><ItemID>${id}</ItemID><SKU>${sku}</SKU></Item>`).join('') +
+    `</ItemArray></ActiveList></GetMyeBaySellingResponse>`;
+
+  it('returns the ItemID whose SKU matches, scanning past the first page', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({ ok: true, text: async () => page([['1', 'PRT-000001']], 2) })
+      .mockResolvedValueOnce({ ok: true, text: async () => page([['307147990898', 'PRT-000146']], 2) }));
+    const adapter = new EbayAdapter('user-1');
+    await expect(adapter.findListingBySku('PRT-000146')).resolves.toBe('307147990898');
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('EbayAdapter.getOrders — sold date from eBay creationDate', () => {
   it('maps Order.creationDate onto soldAt (not the sync time)', async () => {
     fetchMock.mockImplementation(async (url: unknown) => {
@@ -948,5 +1600,109 @@ describe('EbayAdapter.getOrders — marketplace fees', () => {
     const orders = await adapter.getOrders();
 
     expect(orders[0].marketplaceFees).toBe(0);
+  });
+});
+
+describe('EbayAdapter — ebayShipping hardening (review findings 2026-08-02)', () => {
+  it('an unknown shipping method still requires weight/dims (falls back to Calculated XML)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: {
+          categoryId: '15032', originPostalCode: '10001',
+          ebayShipping: { method: 'expedited' }, // not a real method — schema is open
+        },
+      } as any),
+    ).rejects.toBeInstanceOf(EbayWeightRequiredError);
+  });
+});
+
+describe('EbayAdapter — flat shipping requires a positive cost', () => {
+  it('rejects method=flat without flatCost — a $0.00 "Flat" listing masquerades as free', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await expect(
+      adapter.createListing({
+        ...baseInput,
+        marketplaceSpecific: { ...tradingSetup, ebayShipping: { method: 'flat' } },
+      } as any),
+    ).rejects.toMatchObject({ code: 'EBAY_FLAT_COST_REQUIRED' });
+    expect(fetchMock.mock.calls.find(([u]) => isTradingCall(u))).toBeUndefined();
+  });
+});
+
+describe('isCategoryBestOfferSupported — Metadata API semantics (advisor review 2026-08-04)', () => {
+  const addOk = () => new Response(ADD_ITEM_OK, { status: 200 });
+  const policyRow = (categoryId: string, flags: Record<string, boolean>) =>
+    new Response(JSON.stringify({ negotiatedPricePolicies: [{ categoryId, ...flags }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const publish = (categoryId: string) => new EbayAdapter('user-1').createListing({
+    ...baseInput,
+    marketplaceSpecific: { ...tradingSetup, categoryId, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 85 },
+  } as any);
+  const addBodies = () => fetchMock.mock.calls.filter(([u, o]) => isTradingCall(u) && !isFeaturesCall(u, o)).map(([, o]) => String((o as RequestInit).body));
+
+  it('uses the application token (client-credentials api_scope), never the user token — user token lacks the scope and 401s silently', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return policyRow('7777', { bestOfferAutoAcceptEnabled: true });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    const metaCall = fetchMock.mock.calls.find(([u]) => isFeaturesCall(u));
+    const auth = ((metaCall![1] as RequestInit).headers as Record<string, string>).Authorization;
+    expect(auth).toBe('Bearer test-app-token');
+  });
+
+  it('treats ROW PRESENCE as supported even with all three automation flags false (migration guide: returned-in-container = supports Best Offer)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return policyRow('7777', { bestOfferAutoAcceptEnabled: false, bestOfferAutoDeclineEnabled: false, bestOfferCounterEnabled: false });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    const result = await publish('7777');
+    expect(addBodies()[0]).toContain('<BestOfferDetails>');
+    expect(result.warning ?? '').not.toMatch(/best offer/i);
+  });
+
+  it('fails OPEN (config sent, no downgrade) on a 401 from the metadata endpoint', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return new Response('Unauthorized', { status: 401 });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    expect(addBodies()[0]).toContain('<BestOfferDetails>');
+  });
+
+  it('fails OPEN on a malformed (non-JSON) metadata body', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return new Response('<html>gateway error</html>', { status: 200 });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    expect(addBodies()[0]).toContain('<BestOfferDetails>');
+  });
+
+  it('caches a definitive verdict (one metadata fetch across two publishes) but never caches unknown (401 refetches)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return policyRow('7777', { bestOfferCounterEnabled: true });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    await publish('7777');
+    expect(fetchMock.mock.calls.filter(([u]) => isFeaturesCall(u)).length).toBe(1);
+
+    clearEbayTaxonomyCaches();
+    fetchMock.mockClear();
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return new Response('Unauthorized', { status: 401 });
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return addOk();
+    });
+    await publish('7777');
+    await publish('7777');
+    expect(fetchMock.mock.calls.filter(([u]) => isFeaturesCall(u)).length).toBe(2);
   });
 });

@@ -2,6 +2,7 @@
 title: "eBay listing publish hardening + draft/live publish mode + auto-setup of business policies & inventory location"
 sidebar_label: "eBay listing publish hardening + draft/live publis"
 sidebar_position: 45
+registry_id: dd9e8b52-3c11-46d3-b80d-ec4c2040dff7
 ---
 
 # eBay listing publish hardening + draft/live publish mode + auto-setup of business policies & inventory location

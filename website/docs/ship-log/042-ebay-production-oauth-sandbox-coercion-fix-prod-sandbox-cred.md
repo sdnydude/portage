@@ -2,6 +2,7 @@
 title: "eBay production OAuth — sandbox coercion fix + prod/sandbox credential selection + callback page + legal pages"
 sidebar_label: "eBay production OAuth — sandbox coercion fix + pro"
 sidebar_position: 42
+registry_id: 211d0a65-a22a-4a78-bd57-e30286d930b0
 ---
 
 # eBay production OAuth — sandbox coercion fix + prod/sandbox credential selection + callback page + legal pages

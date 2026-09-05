@@ -3,8 +3,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
+import type { Item } from "@/hooks/use-items";
 import { useListings } from "@/hooks/use-listings";
 import { ListingCard } from "@/components/listing/listing-card";
+import { useSyncStatus } from "@/hooks/use-sync-status";
 import { ConfirmSheet } from "@/components/ui/confirm-sheet";
 import { useAuth } from "@/hooks/use-auth";
 import { useEnhance } from "@/hooks/use-enhance";
@@ -16,12 +18,14 @@ import { ListingOptimizerPanel } from "@/components/listing/listing-optimizer-pa
 import { CropTool } from "@/components/listing-flow/crop-tool";
 import { ExposureTool } from "@/components/capture/exposure-tool";
 import { useComps } from "@/hooks/use-comps";
+import { usePublishCurrentItem } from "@/hooks/use-current-item";
 import { api, apiUpload } from "@/lib/api";
 import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
 import type { CompListing, ItemPhoto } from "@portage/shared";
 import { movePhoto, removePhotoAt } from "@/lib/photos";
 import { formatCondition } from "@/lib/format";
 import { resolvePublishPriceWithSource } from "@/lib/price";
+import { withKeys } from "@/lib/list-keys";
 
 const conditionColors: Record<string, string> = {
   new: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -52,6 +56,8 @@ export function ItemDetail({
 }: ItemDetailProps) {
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
+  // Publish the on-screen item so the Porter dock is context-aware (Phase R3).
+  usePublishCurrentItem(itemId);
   const { item, isLoading, error, deleteItem, updateItem, refetch: refetchItem } = useItem(itemId);
   const { isProcessing: isEnhancing, result: enhanceResult, error: enhanceError, enhance, reset: resetEnhance } = useEnhance();
   const { isProcessing: isRemovingBg, resultUrl: bgResultUrl, resultKey: bgResultKey, error: bgError, removeBackground, reset: resetBgRemoval } = useBgRemoval();
@@ -59,6 +65,8 @@ export function ItemDetail({
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCrop, setShowCrop] = useState(false);
@@ -66,10 +74,17 @@ export function ItemDetail({
   const [isRotating, setIsRotating] = useState(false);
   const [showListingSheet, setShowListingSheet] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  // True while a photo-save PATCH is in flight — on a Reverb-published item
+  // that PATCH runs a synchronous marketplace photo re-sync and takes seconds;
+  // tools/accepts must serialize behind it (photo-race review, 2026-08-02).
+  const [isSavingPhoto, setIsSavingPhoto] = useState(false);
+  // Ref twin for same-tick reentrancy (a double-tap lands before the state
+  // commit); state drives the UI, the ref drives the guard.
+  const isSavingPhotoRef = useRef(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(itemId);
-  const isToolProcessing = isRotating || isEnhancing || isRemovingBg;
+  const isToolProcessing = isRotating || isEnhancing || isRemovingBg || isSavingPhoto;
 
   // Optimistic photo order: live drag moves update pendingPhotos instantly;
   // ONE coalesced PATCH commits on release (adversarial-review fix — a PATCH
@@ -90,7 +105,11 @@ export function ItemDetail({
   const applyToPhoto = useCallback(
     (target: { key?: string }, fallbackIndex: number, patch: Partial<ItemPhoto>): ItemPhoto[] | null => {
       const base = photosRef.current;
-      const idx = target.key ? base.findIndex((p) => p.key === target.key) : fallbackIndex;
+      // Prefer the stable key; fall back to the index slot when the key is
+      // gone — tool saves ROTATE keys (enhance/rotate mint new R2 objects), and
+      // reorders never change keys, so the slot is still the right target.
+      const byKey = target.key ? base.findIndex((p) => p.key === target.key) : -1;
+      const idx = byKey >= 0 ? byKey : fallbackIndex;
       if (idx < 0 || !base[idx]) return null;
       return base.map((p, i) => (i === idx ? { ...p, ...patch } : p));
     },
@@ -170,6 +189,11 @@ export function ItemDetail({
   // target isn't in the DOM until the archive section expands, so marking
   // "handled" any earlier would silently drop the deep link.
   const scrolledRef = useRef(false);
+  // The 2 s highlight timer lives in a ref and is cleared on unmount only — a
+  // per-run cleanup would cancel it whenever a listing refetch re-ran the
+  // effect within those 2 s, leaving the card highlighted for good.
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(highlightTimerRef.current), []);
   useEffect(() => {
     if (scrolledRef.current || !focusListingId || listingsLoading || isLoading) return;
     const target = itemListings.find((l) => l.id === focusListingId);
@@ -185,7 +209,7 @@ export function ItemDetail({
       scrolledRef.current = true;
       el.scrollIntoView({ block: "center" });
       setHighlightId(focusListingId);
-      setTimeout(() => setHighlightId(null), 2000);
+      highlightTimerRef.current = setTimeout(() => setHighlightId(null), 2000);
     }));
   }, [focusListingId, listingsLoading, isLoading, itemListings, showArchived]);
 
@@ -197,15 +221,22 @@ export function ItemDetail({
   const availableMarketplaces = (["ebay", "reverb"] as const).filter(
     (m) => !visibleListings.some((l) => l.marketplace === m),
   );
+  // P3 truth surface: one batched status fetch for every listing on the page;
+  // cards render the badge and the failed-state retry.
+  const { syncStatuses, retrySync } = useSyncStatus(itemListings.map((l) => l.id), token);
   const renderListingCard = (l: (typeof itemListings)[number]) => (
     <div key={l.id} id={`listing-${l.id}`}>
       <ListingCard
         listing={l}
         token={token}
-        onChanged={refetchListings}
+        // Price truth (Housekeeping-1): a card price edit writes back to
+        // items.price, so the item header must refetch too, not just listings.
+        onChanged={() => { refetchListings(); refetchItem(); }}
         highlight={l.id === highlightId}
         itemBrand={item?.brand || undefined}
         itemModel={item?.model || undefined}
+        syncStatus={syncStatuses[l.id]}
+        onRetrySync={retrySync}
       />
     </div>
   );
@@ -263,8 +294,10 @@ export function ItemDetail({
 
   const handleSaveEditedPhoto = useCallback(
     async (newUrl: string, newKey?: string) => {
-      if (!item) return;
-      const target = (item.photos ?? [])[photoIndex];
+      if (!item || isSavingPhotoRef.current) return;
+      // Anchor on the DISPLAYED array (pendingPhotos-aware) — item.photos can
+      // lag it during a reorder commit, which mis-anchored the write.
+      const target = photosRef.current[photoIndex];
       if (!target) return;
       const updatedPhotos = applyToPhoto(target, photoIndex, {
         url: newUrl,
@@ -272,8 +305,14 @@ export function ItemDetail({
       });
       if (!updatedPhotos) {
         setUploadError("Photo changed while editing — please retry.");
+        // Clear the stale before/after preview too, or "retry" re-offers the
+        // same doomed accept forever.
+        resetEnhance();
+        resetBgRemoval();
         return;
       }
+      isSavingPhotoRef.current = true;
+      setIsSavingPhoto(true);
       try {
         await updateItem({ photos: updatedPhotos });
       } catch (err) {
@@ -282,6 +321,8 @@ export function ItemDetail({
         setUploadError(err instanceof Error ? err.message : "Failed to save edited photo");
         return;
       } finally {
+        isSavingPhotoRef.current = false;
+        setIsSavingPhoto(false);
         resetEnhance();
         resetBgRemoval();
       }
@@ -292,9 +333,8 @@ export function ItemDetail({
   // Rotate persists immediately (same UX as scan-flow): the server writes a
   // new R2 image, then the item's photo entry is updated via PATCH.
   const handleRotate = useCallback(async () => {
-    const itemPhotos = item?.photos ?? [];
-    const photo = itemPhotos[photoIndex];
-    if (!token || isRotating || isEnhancing || !photo) return;
+    const photo = photosRef.current[photoIndex];
+    if (!token || isToolProcessing || !photo) return;
     setIsRotating(true);
     setUploadError(null);
     try {
@@ -320,9 +360,8 @@ export function ItemDetail({
 
   const handleCropApply = useCallback(
     async (crop: { x: number; y: number; width: number; height: number }) => {
-      const itemPhotos = item?.photos ?? [];
-      const photo = itemPhotos[photoIndex];
-      if (!token || !photo) return;
+      const photo = photosRef.current[photoIndex];
+      if (!token || isSavingPhoto || !photo) return;
       setUploadError(null);
       try {
         const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/crop", {
@@ -349,9 +388,8 @@ export function ItemDetail({
 
   const handleExposureApply = useCallback(
     async (ev: number) => {
-      const itemPhotos = item?.photos ?? [];
-      const photo = itemPhotos[photoIndex];
-      if (!token || !photo) return;
+      const photo = photosRef.current[photoIndex];
+      if (!token || isSavingPhoto || !photo) return;
       setUploadError(null);
       try {
         const data = await api<{ image: { key: string; url: string; width: number; height: number } }>("/images/exposure", {
@@ -438,16 +476,25 @@ export function ItemDetail({
     );
   }
 
+  // Status lock: a live/draft/sold listing derives the item's status (T6) —
+  // same precedence as the API's displayStatus. While listings are still
+  // loading the lock is unknown, so the control stays disabled.
+  const lockedStatus = itemListings.some((l) => l.status === "active")
+    ? "active"
+    : itemListings.some((l) => l.status === "draft")
+      ? "draft"
+      : itemListings.some((l) => l.status === "sold")
+        ? "sold"
+        : null;
+
   // pendingPhotos first: the strip/sheet must render the optimistic order
   // DURING the drag, not after the PATCH round-trip.
   const photos = pendingPhotos ?? item.photos ?? [];
   const currentPhoto = photos[photoIndex];
 
-  const valueDisplay = item.estimatedValueMin && item.estimatedValueMax
-    ? `$${item.estimatedValueMin} – $${item.estimatedValueMax}`
-    : item.estimatedValueRecommended
-      ? `~$${item.estimatedValueRecommended}`
-      : null;
+  // Price truth (Housekeeping-1): the header shows the seller's one price
+  // (items.price ⇄ listings.price); the AI estimated-value range is retired.
+  const valueDisplay = item.price != null ? `$${item.price}` : null;
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -632,6 +679,43 @@ export function ItemDetail({
                 )}
               </div>
 
+              {/* Item status (Housekeeping-1): manual for non-marketplace
+                  states; a live listing owns it (Active/Draft read-only). */}
+              <div className="flex items-center gap-2">
+                <label htmlFor="item-status" className="text-xs font-medium text-text-secondary">Status</label>
+                <select
+                  id="item-status"
+                  value={lockedStatus ?? item.status ?? "unlisted"}
+                  disabled={!!lockedStatus || listingsLoading || statusSaving}
+                  onChange={async (e) => {
+                    const next = e.target.value as NonNullable<Item["status"]>;
+                    setStatusSaving(true);
+                    setStatusError(null);
+                    try {
+                      // syncWarnings must never be discarded (use-item contract).
+                      const saved = (await updateItem({ status: next })) as { syncWarnings?: string[] } | undefined;
+                      if (saved?.syncWarnings?.length) setStatusError(saved.syncWarnings.join(" "));
+                    } catch (err) {
+                      setStatusError(err instanceof Error ? err.message : "Failed to update status");
+                    } finally {
+                      setStatusSaving(false);
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-text-primary border-none focus:outline-none disabled:opacity-70"
+                >
+                  {lockedStatus && (
+                    <option value={lockedStatus}>
+                      {lockedStatus === "active" ? "Active (live listing)" : lockedStatus === "draft" ? "Draft (listing)" : "Sold (listing)"}
+                    </option>
+                  )}
+                  <option value="unlisted">Unlisted</option>
+                  <option value="asset">Not for sale — Asset</option>
+                  <option value="sold">Sold</option>
+                  <option value="archived">Archived</option>
+                </select>
+                {statusError && <span className="text-xs text-accent-error">{statusError}</span>}
+              </div>
+
               {/* Condition + Category */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${conditionColors[item.condition] ?? "bg-muted text-text-secondary"}`}>
@@ -679,41 +763,14 @@ export function ItemDetail({
             <div>
               <h2 className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-2">Features</h2>
               <div className="flex flex-wrap gap-1.5">
-                {item.features.map((feature, i) => (
+                {withKeys(item.features, (f) => f).map(([key, feature]) => (
                   <span
-                    key={i}
+                    key={key}
                     className="px-2.5 py-1 bg-muted rounded-lg text-xs text-text-primary"
                   >
                     {feature}
                   </span>
                 ))}
-              </div>
-            </div>
-          )}
-
-          {/* Value Breakdown */}
-          {item.estimatedValueMin && item.estimatedValueMax && (
-            <div className="bg-forest-green-50 dark:bg-forest-green/10 rounded-xl p-4">
-              <h2 className="text-xs font-medium text-forest-green uppercase tracking-wider mb-2">Estimated Value</h2>
-              <div className="flex items-baseline gap-3">
-                <div>
-                  <span className="text-xs text-text-secondary">Low</span>
-                  <p className="text-sm font-medium text-text-primary">${item.estimatedValueMin}</p>
-                </div>
-                <div className="flex-1 h-px bg-forest-green/20" />
-                {item.estimatedValueRecommended && (
-                  <>
-                    <div className="text-center">
-                      <span className="text-xs text-forest-green font-medium">Recommended</span>
-                      <p className="text-lg font-semibold text-forest-green">${item.estimatedValueRecommended}</p>
-                    </div>
-                    <div className="flex-1 h-px bg-forest-green/20" />
-                  </>
-                )}
-                <div>
-                  <span className="text-xs text-text-secondary">High</span>
-                  <p className="text-sm font-medium text-text-primary">${item.estimatedValueMax}</p>
-                </div>
               </div>
             </div>
           )}
@@ -814,7 +871,7 @@ export function ItemDetail({
                           <span className="text-xs text-text-secondary">Sold Avg</span>
                           <p className="text-lg font-semibold text-text-primary">${comps.stats.soldAvg.toFixed(0)}</p>
                           <span className="text-xs text-text-secondary">
-                            median ${comps.stats.soldMedian?.toFixed(0)}
+                            median {"$"}{comps.stats.soldMedian?.toFixed(0)}
                           </span>
                         </div>
                       )}
@@ -823,7 +880,7 @@ export function ItemDetail({
                           <span className="text-xs text-text-secondary">Active Avg</span>
                           <p className="text-lg font-semibold text-text-primary">${comps.stats.activeAvg.toFixed(0)}</p>
                           <span className="text-xs text-text-secondary">
-                            median ${comps.stats.activeMedian?.toFixed(0)}
+                            median {"$"}{comps.stats.activeMedian?.toFixed(0)}
                           </span>
                         </div>
                       )}

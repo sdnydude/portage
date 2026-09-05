@@ -153,6 +153,42 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     expect(screen.getByText("Review Terms")).toBeInTheDocument();
   });
 
+  it("a double-tap on Accept & Publish sends exactly ONE POST /listings (2026-08-26 six-tap double-list)", async () => {
+    let posts = 0;
+    let release: (v: unknown) => void = () => {};
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/listings") { posts++; return new Promise((r) => { release = r; }); }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} initialPublishNow onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Review Terms"));
+    const accept = screen.getByText("accept-terms");
+    // iOS fires the second tap before React repaints `disabled` — the guard
+    // must be synchronous, not a rendered attribute.
+    fireEvent.click(accept);
+    fireEvent.click(accept);
+
+    await waitFor(() => expect(posts).toBe(1));
+    release({ id: "L1", status: "active" });
+    await waitFor(() => expect(posts).toBe(1));
+  });
+
+  it("renders the server's 409 PUBLISH_IN_PROGRESS as an in-progress notice, not a failure", async () => {
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/listings") {
+        throw new h.ApiError(409, "PUBLISH_IN_PROGRESS", "This listing is already being published — wait for that result.");
+      }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} initialPublishNow onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms"));
+
+    await waitFor(() => expect(screen.getByText(/already being published/i)).toBeInTheDocument());
+  });
+
   it("carries scan prefill (categoryId + aspects + eBay-draft default) into the listing POST", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
@@ -182,6 +218,196 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
       Brand: ["Apple"],
       MPN: ["Does Not Apply"],
     });
+  });
+
+  it("sends bestOfferEnabled + min/auto-accept in marketplaceSpecificFields when Accept offers is toggled on (eBay)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Accept offers").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByLabelText("Minimum offer ($)"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("Auto-accept at ($)"), { target: { value: "85" } });
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown>;
+    expect(fields.bestOfferEnabled).toBe(true);
+    expect(fields.minimumBestOfferPrice).toBe(60);
+    expect(fields.bestOfferAutoAcceptPrice).toBe(85);
+  });
+
+  it("Reverb local pickup is ADDITIVE: pickup toggle + shipping profile ride the POST together (RV-2)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      if (path === "/marketplace/reverb/shipping-profiles") return { profiles: [{ id: "p1", name: "Std" }] };
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Reverb"));
+    // Choose a shipping profile AND turn pickup on — both must survive.
+    fireEvent.change(await screen.findByLabelText(/shipping profile|reverb shipping/i), { target: { value: "p1" } });
+    fireEvent.click(screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!);
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const ship = (bodies[0].marketplaceSpecificFields as Record<string, unknown>)?.reverbShipping as Record<string, unknown>;
+    expect(ship).toEqual({ profileId: "p1", localPickup: true });
+  });
+
+  it("C1 pin: eBay seed survives switching to Reverb, toggling Reverb offers off, and switching back — per-marketplace state", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} initialBestOffer={{ bestOfferAutoAcceptPrice: 85 }} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Reverb"));
+    // Turn REVERB offers off — must not touch the eBay slice.
+    fireEvent.click(screen.getByText("Accept offers").closest("label")!.querySelector("div")!);
+    fireEvent.click(screen.getByText("eBay"));
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown>;
+    expect(bodies[0].marketplace).toBe("ebay");
+    expect(fields.bestOfferEnabled).toBe(true);           // seeded eBay config intact
+    expect(fields.bestOfferAutoAcceptPrice).toBe(85);
+    expect(fields.offersEnabledExplicit).toBeUndefined(); // Reverb key never rides an eBay POST
+  });
+
+  it("C1 pin (Reverb side): the Reverb toggle-off posts offersEnabledExplicit false and never any eBay threshold keys", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} initialBestOffer={{ bestOfferAutoAcceptPrice: 85 }} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Reverb"));
+    fireEvent.click(screen.getByText("Accept offers").closest("label")!.querySelector("div")!);
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown> | undefined;
+    expect(bodies[0].marketplace).toBe("reverb");
+    expect(fields?.offersEnabledExplicit).toBe(false);
+    expect(fields?.bestOfferEnabled).toBeUndefined();
+    expect(fields?.bestOfferAutoAcceptPrice).toBeUndefined();
+    expect(fields?.minimumBestOfferPrice).toBeUndefined();
+  });
+
+  it("seeds visible Best Offer fields from initialBestOffer so an AI-prepared floor is seen, not invisible config (BO-5)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} initialBestOffer={{ bestOfferAutoAcceptPrice: 85 }} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    // The seed is visible in the sheet, not just riding the POST silently.
+    expect(screen.getByLabelText("Auto-accept at ($)")).toHaveValue(85);
+
+    fireEvent.click(screen.getByText("Save Draft"));
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown>;
+    expect(fields.bestOfferEnabled).toBe(true);
+    expect(fields.bestOfferAutoAcceptPrice).toBe(85);
+  });
+
+  it("sends offersEnabledExplicit only when the Reverb toggle is touched; untouched sends no offer fields", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    // Untouched eBay draft-save → no offer keys at all (profile/server defaults own it).
+    const first = render(<CreateListingSheet itemId="i1" suggestedPrice={100} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Save Draft"));
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const untouched = (bodies[0].marketplaceSpecificFields ?? {}) as Record<string, unknown>;
+    expect(untouched.bestOfferEnabled).toBeUndefined();
+    expect(untouched.offersEnabledExplicit).toBeUndefined();
+    first.unmount();
+
+    // Reverb: toggle defaults ON; flipping it OFF sends offersEnabledExplicit: false.
+    render(<CreateListingSheet itemId="i2" suggestedPrice={100} allowedMarketplaces={["reverb"]} onCreated={vi.fn()} onClose={vi.fn()} />);
+    const toggle = screen.getByText("Accept offers").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Save Draft"));
+    await waitFor(() => expect(bodies.length).toBe(2));
+    const fields = bodies[1].marketplaceSpecificFields as Record<string, unknown>;
+    expect(fields.offersEnabledExplicit).toBe(false);
+    expect(fields.bestOfferEnabled).toBeUndefined();
+  });
+
+  it("sends ebayAdRate when Promote is toggled on with a rate (eBay)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Promote this listing").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByLabelText("Ad rate (% of sale)"), { target: { value: "5" } });
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown>;
+    expect(fields.ebayAdRate).toBe(5);
+  });
+
+  it("sends reverbBumpBid as a fraction of the selected percent (Reverb)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} allowedMarketplaces={["reverb"]} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Promote this listing").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByLabelText("Bump bid (% of sale)"), { target: { value: "2.5" } });
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(bodies.length).toBe(1));
+    const fields = bodies[0].marketplaceSpecificFields as Record<string, unknown>;
+    expect(fields.reverbBumpBid).toBe(0.025);
+    expect(fields.ebayAdRate).toBeUndefined();
+  });
+
+  it("blocks submit with an inline error when the bump bid is outside 0.5-30% — no API call (10% is legal; fabricated 3.5 cap corrected 2026-08-05)", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { bodies.push(opts?.body ?? {}); return { id: "L1", status: "draft" }; }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={100} allowedMarketplaces={["reverb"]} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = screen.getByText("Promote this listing").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByLabelText("Bump bid (% of sale)"), { target: { value: "35" } });
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await screen.findByText(/between 0\.5% and 30%/);
+    expect(bodies.length).toBe(0);
   });
 
   it("sends disclaimerAccepted on a publish-now (after accepting terms) so consent is recorded", async () => {
@@ -449,5 +675,284 @@ describe("CreateListingSheet — publish idempotencyKey", () => {
     expect(bodies[0].idempotencyKey).toEqual(expect.any(String));
     expect(bodies[0].idempotencyKey!.length).toBeGreaterThan(0);
     expect(bodies[1].idempotencyKey).toBe(bodies[0].idempotencyKey);
+  });
+});
+
+describe("CreateListingSheet — per-listing shipping (beta 17be7322)", () => {
+  it("shows the Shipping method control for eBay, defaulting to Calculated", () => {
+    const noop = () => {};
+    render(<CreateListingSheet itemId="i1" suggestedPrice={10} onCreated={noop} onClose={noop} />);
+    const select = screen.getByLabelText(/shipping method/i) as HTMLSelectElement;
+    expect(select.value).toBe("calculated");
+  });
+
+  it("sends ebayShipping on the POST only when touched — flat cost, service and handling ride along", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/shipping method/i), { target: { value: "flat" } });
+    fireEvent.change(screen.getByLabelText(/buyer pays/i), { target: { value: "6.50" } });
+    fireEvent.change(screen.getByLabelText(/^service$/i), { target: { value: "UPSGround" } });
+    fireEvent.change(screen.getByLabelText(/handling/i), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "flat", flatCost: 6.5, service: "UPSGround", handlingDays: 3,
+    });
+  });
+
+  // The pickup-ONLY toggle test was superseded 2026-08-03 (operator): pickup
+  // is an ADD-ON that rides alongside the shipping choice — pinned by the
+  // RV-2 additive test above.
+
+  it("Reverb: loads shipping profiles into the select and sends reverbShipping.profileId when chosen", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/marketplace/reverb/shipping-profiles") {
+        return { profiles: [{ id: "789", name: "Guitars (US)" }] };
+      }
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    const select = (await screen.findByLabelText(/shipping profile/i)) as HTMLSelectElement;
+    await screen.findByRole("option", { name: "Guitars (US)" });
+    fireEvent.change(select, { target: { value: "789" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbShipping).toEqual({ profileId: "789" });
+  });
+
+  it("initialShipping (scan-review ride-along) seeds the fields AND counts as touched", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(
+      <CreateListingSheet
+        itemId="i1" suggestedPrice={50}
+        initialShipping={{ method: "flat", flatCost: "7.25", service: "USPSMedia", handlingDays: "" }}
+        onCreated={vi.fn()} onClose={vi.fn()}
+      />,
+    );
+    expect((screen.getByLabelText(/shipping method/i) as HTMLSelectElement).value).toBe("flat");
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "flat", flatCost: 7.25, service: "USPSMedia",
+    });
+  });
+
+  it("Local pickup toggle rides the POST as ebayShipping.localPickup", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    const toggle = screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "calculated", localPickup: true,
+    });
+  });
+
+  it("pickup toggle survives later shipping edits (service/handling) — no stale-state clobber", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/shipping method/i), { target: { value: "flat" } });
+    fireEvent.change(screen.getByLabelText(/buyer pays/i), { target: { value: "6.50" } });
+    const toggle = screen.getByText(/offer local pickup/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    // Later edits must not drop the flag.
+    fireEvent.change(screen.getByLabelText(/^service$/i), { target: { value: "UPSGround" } });
+    fireEvent.change(screen.getByLabelText(/handling/i), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).ebayShipping).toEqual({
+      method: "flat", flatCost: 6.5, service: "UPSGround", handlingDays: 3, localPickup: true,
+    });
+  });
+
+  it("untouched shipping sends no ebayShipping key (server defaults stay in charge)", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: string, opts: { body?: Record<string, unknown> }) => {
+      if (path === "/listings") { body = opts.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    const fields = body!.marketplaceSpecificFields as Record<string, unknown> | undefined;
+    expect(fields?.ebayShipping).toBeUndefined();
+  });
+});
+
+describe("CreateListingSheet — Reverb category cascade", () => {
+  it("sends the chosen category as marketplaceSpecificFields.categoryUuid on a Reverb POST", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    fireEvent.change(await screen.findByLabelText(/product type/i), { target: { value: "root-fx" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).categoryUuid).toBe("root-fx");
+  });
+});
+
+describe("CreateListingSheet — Reverb bump rate input", () => {
+  it("bump rate is a user-typed field (not a popup menu) and rides the POST as a fraction", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/marketplace/reverb/product-types") return { productTypes: [] };
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    const promoteToggle = screen.getByText(/promote this listing/i).closest("label")!.querySelector("div")!;
+    fireEvent.click(promoteToggle);
+
+    const bump = screen.getByLabelText(/bump bid/i) as HTMLInputElement;
+    expect(bump.tagName).toBe("INPUT");
+    fireEvent.change(bump, { target: { value: "2.2" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect((body!.marketplaceSpecificFields as Record<string, unknown>).reverbBumpBid).toBeCloseTo(0.022);
+  });
+});
+
+describe("CreateListingSheet — Reverb category pre-seed", () => {
+  it("seeds the cascade with the category that will publish: item cache first, suggestion fallback", async () => {
+    h.apiMock.mockImplementation(async (path: unknown) => {
+      const p = String(path ?? "");
+      if (p === "/items/i1") {
+        return { id: "i1", title: "ProCo RAT 2", category: "pedals", marketplaceData: {} }; // no reverb cache
+      }
+      if (p.startsWith("/marketplace/reverb/category-suggestion")) {
+        return { suggestion: { uuid: "u-dist", fullName: "Effects and Pedals / Distortion" } };
+      }
+      if (p === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p === "/marketplace/reverb/subcategories?parent=root-fx") {
+        return { subcategories: [{ uuid: "u-dist", fullName: "Effects and Pedals / Distortion", name: "Distortion", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    // The cascade hydrates to the suggested category — not an unexplained default.
+    await waitFor(() => {
+      expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("root-fx");
+    });
+    expect((screen.getByLabelText(/subcategory 1/i) as HTMLSelectElement).value).toBe("u-dist");
+  });
+});
+
+describe("CreateListingSheet — review findings (2026-08-02)", () => {
+  it("does NOT re-seed a category the seller explicitly reset after toggling marketplaces away and back", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/items/i1") return { id: "i1", title: "ProCo RAT 2", category: "pedals", marketplaceData: {} };
+      if (p.startsWith("/marketplace/reverb/category-suggestion")) {
+        return { suggestion: { uuid: "u-dist", fullName: "Effects and Pedals / Distortion" } };
+      }
+      if (p === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p === "/marketplace/reverb/subcategories?parent=root-fx") {
+        return { subcategories: [{ uuid: "u-dist", fullName: "Effects and Pedals / Distortion", name: "Distortion", rootUuid: "root-fx", listable: true }] };
+      }
+      if (p.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    await waitFor(() => {
+      expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("root-fx");
+    });
+    // Seller explicitly resets to the default…
+    fireEvent.change(screen.getByLabelText(/product type/i), { target: { value: "" } });
+    // …then flips to eBay and back to Reverb.
+    fireEvent.click(screen.getByRole("button", { name: "eBay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    await screen.findByLabelText(/shipping profile/i);
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    // The rejected seed must NOT ride the POST.
+    expect((body!.marketplaceSpecificFields as Record<string, unknown> | undefined)?.categoryUuid).toBeUndefined();
+  });
+});
+
+describe("CreateListingSheet — offers touched is per-marketplace (review finding)", () => {
+  it("an eBay offers touch must NOT ride a later Reverb POST as offersEnabledExplicit", async () => {
+    let body: Record<string, unknown> | undefined;
+    h.apiMock.mockImplementation(async (path: unknown, opts?: { body?: Record<string, unknown> }) => {
+      const p = String(path ?? "");
+      if (p === "/listings") { body = opts?.body; return { id: "L1", status: "draft" }; }
+      if (p === "/marketplace/reverb/shipping-profiles") return { profiles: [] };
+      if (p === "/marketplace/reverb/product-types") return { productTypes: [] };
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    // On eBay (default): flip Accept offers on, then off — touched, value false.
+    const toggle = screen.getByText("Accept offers").closest("label")!.querySelector("div")!;
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    // Switch to Reverb (whose default is offers ON) and save without touching offers.
+    fireEvent.click(screen.getByRole("button", { name: "Reverb" }));
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await waitFor(() => expect(body).toBeDefined());
+    const fields = body!.marketplaceSpecificFields as Record<string, unknown> | undefined;
+    expect(fields?.offersEnabledExplicit).toBeUndefined();
+  });
+});
+
+describe("CreateListingSheet — flat rate requires a cost (review finding)", () => {
+  it("blocks the save with an error when method=flat and no buyer cost is entered", async () => {
+    let posted = false;
+    h.apiMock.mockImplementation(async (path: unknown) => {
+      const p = String(path ?? "");
+      if (p === "/listings") { posted = true; return { id: "L1", status: "draft" }; }
+      return {};
+    });
+    render(<CreateListingSheet itemId="i1" suggestedPrice={50} onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/shipping method/i), { target: { value: "flat" } });
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    expect(await screen.findByText(/flat-rate shipping needs a buyer cost/i)).toBeInTheDocument();
+    expect(posted).toBe(false);
   });
 });

@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { TUTORIAL_TOPICS, CAPTURE_MANIFESTS, getTopic } from "./index";
 
 describe("tutorial content registry", () => {
@@ -57,6 +59,27 @@ describe("tutorial content registry", () => {
       expect(topic, m.topic).toBeDefined();
       const captured = m.actions.filter((a) => a.type === "capture").map((a) => (a as { step: string }).step);
       expect(captured.sort()).toEqual(topic!.steps.map((s) => s.id).sort());
+    }
+  });
+
+  // P4 (4-tab truth): Listings left the bottom bar 2026-07-17 (PR #240) and
+  // More is the avatar menu, not a tab — no tutorial copy may still say so.
+  it("no topic title or body calls Listings or More a tab", () => {
+    for (const t of TUTORIAL_TOPICS) {
+      for (const step of t.steps) {
+        for (const text of [step.title, step.body]) {
+          expect(text, `${t.slug}/${step.id}`).not.toMatch(/Listings tab|More tab|More button|5 tabs|five tabs/i);
+        }
+      }
+    }
+  });
+
+  // A renamed or deleted capture must fail in CI, not on a reader's screen.
+  it("every step's screenshot exists under public/", () => {
+    for (const t of TUTORIAL_TOPICS) {
+      for (const step of t.steps) {
+        expect(fs.existsSync(path.join(process.cwd(), "public", step.screenshot)), `${t.slug}/${step.id} → ${step.screenshot}`).toBe(true);
+      }
     }
   });
 });

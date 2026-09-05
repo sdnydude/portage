@@ -7,7 +7,7 @@ Type-only monorepo package. Zero external dependencies, zero runtime code.
 ```
 src/
 ├── index.ts         # Barrel export
-├── types.ts         # All type definitions (~580 lines)
+├── types.ts         # All type definitions (~630 lines)
 ├── constants.ts     # Enums and limits
 └── marketplace.ts   # Adapter interface contract
 ```

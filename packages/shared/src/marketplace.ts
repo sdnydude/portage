@@ -7,6 +7,10 @@ export interface MarketplaceListingInput {
   currency: string;
   category: string;
   condition: string;
+  // Seller's condition notes from the item record. eBay maps this to
+  // ConditionDescription (when no prepared conditionDescription is present);
+  // Reverb has no such field, so the adapter appends it to the description.
+  conditionNotes?: string | null;
   photos: { url: string; isPrimary?: boolean }[];
   brand?: string;
   model?: string;
@@ -64,6 +68,21 @@ export interface MarketplaceCategoryResult {
   isLeaf: boolean;
 }
 
+/**
+ * Minimal live-listing snapshot used to reconstruct a local item+listing when an
+ * order references a listing Portage never stored (orphan-order backfill).
+ * `found:false` means the marketplace read failed — caller falls back to the
+ * order payload.
+ */
+export interface MarketplaceItemDetail {
+  found: boolean;
+  title: string | null;
+  photos: string[];
+  price: number | null;
+  brand: string | null;
+  aspects: Record<string, string[]>;
+}
+
 export interface MarketplaceAdapter {
   readonly marketplace: MarketplaceType;
   createListing(input: MarketplaceListingInput): Promise<MarketplaceListingResult>;
@@ -72,4 +91,12 @@ export interface MarketplaceAdapter {
   getListingStatus(marketplaceListingId: string): Promise<'active' | 'sold' | 'ended' | 'unknown'>;
   getOrders(since?: Date): Promise<MarketplaceOrderResult[]>;
   searchCategories(query: string): Promise<MarketplaceCategoryResult[]>;
+  /** Optional: adapters that can read a live listing implement this for
+   *  orphan-order backfill; callers must handle its absence. */
+  getItemDetail?(marketplaceListingId: string): Promise<MarketplaceItemDetail>;
+  /** Optional: find a live listing by the seller SKU Portage stamped at create
+   *  time. Used by the stale publish-claim resume to adopt a listing whose
+   *  create landed but whose ItemID write was lost (crash mid-publish) instead
+   *  of creating it again. Adapters without SKU carriage omit it. */
+  findListingBySku?(sku: string): Promise<string | null>;
 }

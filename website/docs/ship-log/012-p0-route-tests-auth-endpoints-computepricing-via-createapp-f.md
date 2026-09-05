@@ -2,6 +2,7 @@
 title: "P0 route tests — auth endpoints + computePricing via createApp factory + supertest"
 sidebar_label: "P0 route tests — auth endpoints + computePricing v"
 sidebar_position: 12
+registry_id: 0f2afacd-4afa-4818-941d-db5cf9edaed3
 ---
 
 # P0 route tests — auth endpoints + computePricing via createApp factory + supertest

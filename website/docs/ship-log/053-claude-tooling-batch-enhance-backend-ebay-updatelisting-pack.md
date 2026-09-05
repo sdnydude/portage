@@ -2,6 +2,7 @@
 title: "Claude tooling + batch-enhance backend + eBay updateListing packageType fix"
 sidebar_label: "Claude tooling + batch-enhance backend + eBay upda"
 sidebar_position: 53
+registry_id: aec8fb11-7651-48d4-8fcd-d24ac66f8883
 ---
 
 # Claude tooling + batch-enhance backend + eBay updateListing packageType fix

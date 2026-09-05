@@ -2,9 +2,10 @@ vi.mock('./token-manager.js', () => ({
   getReverbAccessToken: vi.fn().mockResolvedValue('test-reverb-pat'),
 }));
 
-import { ReverbAdapter, clearReverbConditionsCache } from './reverb-adapter.js';
+import { ReverbAdapter, REVERB_PHOTO_INGEST, clearReverbConditionsCache, clearReverbCategoriesCache } from './reverb-adapter.js';
 import { getReverbAccessToken } from './token-manager.js';
 import { loadEnv, resetEnv } from '../lib/env.js';
+import { AppError } from '../middleware/error.js';
 
 const LISTING_RESPONSE = {
   listing: {
@@ -37,9 +38,15 @@ const BASE_INPUT = {
 // leakage never bleeds into other suites in the same worker.
 const ORIGINAL_REVERB_API_TOKEN = process.env.REVERB_API_TOKEN;
 
+// No real sleeps in tests — the ingestion-poll delay is a test-tunable.
+beforeEach(() => { REVERB_PHOTO_INGEST.delayMs = 0; });
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getReverbAccessToken).mockResolvedValue('test-reverb-pat');
+  // searchCategories + getFlatCategories share a module-level cache — clear it
+  // so each test's stubbed fetch is what actually gets consumed.
+  clearReverbCategoriesCache();
 });
 
 afterEach(() => {
@@ -50,6 +57,18 @@ afterEach(() => {
     process.env.REVERB_API_TOKEN = ORIGINAL_REVERB_API_TOKEN;
   }
   resetEnv();
+});
+
+describe('ReverbAdapter.setBump', () => {
+  it('PUTs a bid above the fabricated 3.5% cap (Reverb suggests 4.5%+; real cap is 30%)', async () => {
+    const fetchMock = stubFetch({}, true, 200);
+    const adapter = new ReverbAdapter('user-1');
+    await adapter.setBump('15191342', 0.075);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe('https://api.reverb.com/api/bump/v2/bids');
+    expect((init as RequestInit).method).toBe('PUT');
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ products: [15191342], bid: 0.075 });
+  });
 });
 
 describe('ReverbAdapter.createListing', () => {
@@ -103,6 +122,17 @@ describe('ReverbAdapter.createListing', () => {
       shipping: { rates: [{ region_code: 'US_CON', rate: { amount: '25.00', currency: 'USD' } }], local: true },
       publish: 'true',
     });
+  });
+
+  it('omits make/model keys entirely when brand/model are absent — an explicit "" 422s ("Localized contents model for English can\'t be blank"), an omitted key lets Reverb title-guess', async () => {
+    const fetchMock = stubFetch();
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing(BASE_INPUT);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string) as Record<string, unknown>;
+    expect('make' in body).toBe(false);
+    expect('model' in body).toBe(false);
   });
 
   it('normalizes profile-shaped shippingRates (camelCase regionCode) to the API region_code shape', async () => {
@@ -197,6 +227,9 @@ describe('ReverbAdapter.createListing', () => {
       marketplaceListingId: '999',
       marketplaceUrl: 'https://reverb.com/item/999',
       status: 'draft',
+      // Non-live create states retry publish via PUT, then warn that the
+      // listing is parked in Reverb drafts.
+      warning: expect.stringMatching(/saved the listing as a draft/),
     });
   });
 
@@ -208,6 +241,142 @@ describe('ReverbAdapter.createListing', () => {
 
     const result = await adapter.createListing(BASE_INPUT);
     expect(result.status).toBe('active');
+  });
+});
+
+describe('ReverbAdapter.createListing — publish retry + verbatim blockers', () => {
+  // Live-verified 2026-07-21: POST with publish:"true" that fails Reverb's
+  // publish validation returns 201 state=draft with NO error — the listing
+  // parks in Reverb drafts silently and never flips live on its own (the
+  // earlier "async flip" theory was wrong — Stephen was publishing manually).
+  // A follow-up PUT publish surfaces the exact blockers verbatim
+  // (e.g. "Please set a shipping rate or enable local pickup.").
+  it('retries publish via PUT when create returns non-live, and surfaces Reverb\'s verbatim blocker message on 422', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ listing: { id: 555, state: { slug: 'draft' } } }),
+        { status: 201, headers: { 'Content-Type': 'application/hal+json' } },
+      ))
+      // ingestion-poll GET: photos already ingested
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ listing: { id: 555, state: { slug: 'draft' }, photos: [{}] } }),
+        { status: 200, headers: { 'Content-Type': 'application/hal+json' } },
+      ))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ message: 'Please set a shipping rate or enable local pickup.' }),
+        { status: 422, headers: { 'Content-Type': 'application/hal+json' } },
+      ));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.createListing(BASE_INPUT);
+
+    const [putUrl, putInit] = fetchMock.mock.calls[2];
+    expect(putUrl).toBe('https://api.reverb.com/api/listings/555');
+    expect(putInit!.method).toBe('PUT');
+    expect(JSON.parse(putInit!.body as string)).toEqual({ publish: 'true' });
+    expect(result.status).toBe('draft');
+    expect(result.warning).toContain('Please set a shipping rate or enable local pickup.');
+  });
+});
+
+describe('ReverbAdapter.createListing — non-live create state', () => {
+  // A non-live create means publish validation soft-failed (silent 201 draft).
+  // The adapter retries publish via PUT; if Reverb still reports non-live with
+  // no error, warn that the listing is parked in drafts — never claim it will
+  // go live on its own (it won't; live-verified 2026-07-21).
+  it('warns that the listing is parked in Reverb drafts when the publish retry also returns non-live', async () => {
+    stubFetch({
+      listing: { id: 555, state: { slug: 'draft', description: 'Draft' } },
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.createListing(BASE_INPUT);
+
+    expect(result.status).toBe('draft');
+    expect(result.warning).toMatch(/saved the listing as a draft \(state: draft\)/i);
+  });
+});
+
+describe('ReverbAdapter.createListing — shipping profile reference', () => {
+  // Reverb strongly discourages per-listing shipping_rates; the recommended
+  // path is referencing a Reverb-side shipping profile by id. When a profile
+  // id is present it wins — sending both would be redundant.
+  it('sends shipping_profile_id instead of shipping rates when shippingProfileId is set', async () => {
+    const fetchMock = stubFetch();
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing({
+      ...BASE_INPUT,
+      marketplaceSpecific: {
+        shippingProfileId: '456',
+        shippingRates: [{ regionCode: 'US_CON', rate: { amount: '12.00', currency: 'USD' } }],
+      },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.shipping_profile_id).toBe('456');
+    expect(body.shipping).toBeUndefined();
+  });
+});
+
+describe('ReverbAdapter.createListing — pickup rides alongside a shipping profile', () => {
+  // Live-probe-verified 2026-08-05 on listing 100019158: Reverb accepts
+  // shipping_profile_id AND shipping.local together (profile rates stay,
+  // pickup shows). Pickup must NEVER shut off shipping (operator rule) —
+  // the old profile-only branch silently dropped localPickup.
+  it('sends shipping_profile_id AND shipping.local when both profile and localPickup are set', async () => {
+    const fetchMock = stubFetch();
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing({
+      ...BASE_INPUT,
+      marketplaceSpecific: {
+        shippingProfileId: '456',
+        localPickup: true,
+      },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.shipping_profile_id).toBe('456');
+    expect(body.shipping).toEqual({ local: true });
+  });
+});
+
+describe('ReverbAdapter.createListing — UPC requirement for Brand New', () => {
+  // Reverb blocks publish on Brand New items without a UPC: "A valid UPC/EAN
+  // must be entered in the UPC field or the 'UPC does not apply' field must be
+  // marked true for a Brand New item" (verbatim from the live shop 2026-07-21).
+  it('sends upc_does_not_apply for a new-condition item with no upc', async () => {
+    const fetchMock = stubFetch();
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing({ ...BASE_INPUT, condition: 'new' });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.upc_does_not_apply).toBe('true');
+    expect(body.upc).toBeUndefined();
+  });
+});
+
+describe('ReverbAdapter.createListing — condition notes', () => {
+  // Reverb's API has no condition-notes/condition-description field (only the
+  // main description), so the notes must ride inside the description or they
+  // never reach the marketplace at all.
+  it('appends conditionNotes to the description sent to Reverb', async () => {
+    const fetchMock = stubFetch();
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing({
+      ...BASE_INPUT,
+      conditionNotes: 'Small ding on the lower bout, frets show light wear.',
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init!.body as string);
+    expect(body.description).toBe(
+      'A fine guitar\n\nCondition notes: Small ding on the lower bout, frets show light wear.',
+    );
   });
 });
 
@@ -266,6 +435,100 @@ describe('ReverbAdapter.updateListing', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
     expect(body.make).toBe('Fender');
     expect(body.model).toBe('Stratocaster');
+  });
+});
+
+describe('ReverbAdapter.updateListing — publish passthrough', () => {
+  // A Portage draft row that already has a marketplaceListingId means the
+  // listing EXISTS on Reverb as a remote draft — re-publishing must PUT
+  // publish on that listing, never POST a second one (double-list).
+  it('sends publish:"true" on update when marketplaceSpecific.publish is set', async () => {
+    const fetchMock = stubFetch({ listing: { state: { slug: 'live' } } });
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.updateListing('99270095', {
+      price: 76.08,
+      marketplaceSpecific: { publish: true },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init!.body as string).publish).toBe('true');
+    expect(result.status).toBe('active');
+  });
+});
+
+describe('ReverbAdapter.updateListing — shipping profile reference', () => {
+  it('sends shipping_profile_id on update when shippingProfileId is set', async () => {
+    const fetchMock = stubFetch({ listing: { state: { slug: 'live' } } });
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.updateListing('99606134', {
+      marketplaceSpecific: {
+        shippingProfileId: '456',
+        shippingRates: [{ regionCode: 'US_CON', rate: { amount: '12.00', currency: 'USD' } }],
+      },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.shipping_profile_id).toBe('456');
+    expect(body.shipping).toBeUndefined();
+  });
+
+  it('sends shipping_profile_id AND shipping.local on update when both are set — pickup never shuts off shipping', async () => {
+    const fetchMock = stubFetch({ listing: { state: { slug: 'live' } } });
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.updateListing('99606134', {
+      marketplaceSpecific: { shippingProfileId: '456', localPickup: true },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.shipping_profile_id).toBe('456');
+    expect(body.shipping).toEqual({ local: true });
+  });
+
+  it('sends shipping {local:true} on update for a pickup-only listing (no profile, no rates) — create/update parity', async () => {
+    const fetchMock = stubFetch({ listing: { state: { slug: 'live' } } });
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.updateListing('99606134', {
+      marketplaceSpecific: { localPickup: true },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.shipping).toEqual({ local: true });
+    expect(body.shipping_profile_id).toBeUndefined();
+  });
+});
+
+describe('ReverbAdapter.updateListing — UPC on publish', () => {
+  it('sends upc_does_not_apply when publishing a new-condition listing without a upc', async () => {
+    const fetchMock = stubFetch({ listing: { state: { slug: 'live' } } });
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.updateListing('99606134', {
+      condition: 'new',
+      marketplaceSpecific: { publish: true },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.upc_does_not_apply).toBe('true');
+  });
+});
+
+describe('ReverbAdapter.updateListing — condition notes', () => {
+  it('appends conditionNotes to the description on update', async () => {
+    const fetchMock = stubFetch({ listing: { state: 'live' } });
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.updateListing('99999', {
+      description: 'Updated description',
+      conditionNotes: 'Replaced pots in 2020.',
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init!.body as string);
+    expect(body.description).toBe('Updated description\n\nCondition notes: Replaced pots in 2020.');
   });
 });
 
@@ -395,6 +658,30 @@ describe('ReverbAdapter.updateListing — status mapping', () => {
   });
 });
 
+describe('ReverbAdapter.deleteListing — live listings end, drafts delete', () => {
+  // Live-verified 2026-07-21: DELETE /listings/:id 400s with "Only drafts can
+  // be deleted" on a live listing — a live one must be ENDED via
+  // PUT /my/listings/:id/state/end {reason:"not_sold"}. Without the fallback,
+  // archive/delete of published reverb listings silently left them live.
+  it('falls back to the state/end call when DELETE reports the listing is not a draft', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ message: 'Only drafts can be deleted' }),
+        { status: 400, headers: { 'Content-Type': 'application/hal+json' } },
+      ))
+      .mockResolvedValueOnce(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/hal+json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.deleteListing('99606179');
+
+    const [endUrl, endInit] = fetchMock.mock.calls[1];
+    expect(endUrl).toBe('https://api.reverb.com/api/my/listings/99606179/state/end');
+    expect(endInit!.method).toBe('PUT');
+    expect(JSON.parse(endInit!.body as string)).toEqual({ reason: 'not_sold' });
+  });
+});
+
 describe('ReverbAdapter.deleteListing', () => {
   it('issues DELETE against the listing path with per-user auth', async () => {
     const fetchMock = stubFetch({});
@@ -452,7 +739,9 @@ describe('ReverbAdapter.getOrders', () => {
     const fetchMock = stubFetch({
       orders: [{
         order_number: 'RV-100',
-        listing_id: '12345678',
+        // Reverb order objects carry product_id (+ _links.listing), never
+        // listing_id — reverb-api.com "Retrieve Orders" example, 2026-08-07.
+        product_id: '12345678',
         buyer_name: 'Buyer Bob',
         amount_product: { amount: '850.00', currency: 'USD' },
         shipping: { amount: '35.00' },
@@ -473,7 +762,12 @@ describe('ReverbAdapter.getOrders', () => {
     const orders = await adapter.getOrders(since);
 
     const [url] = fetchMock.mock.calls[0];
-    expect(url).toBe(`https://api.reverb.com/api/my/orders/selling?created_after=${encodeURIComponent(since.toISOString())}`);
+    // /my/orders/selling/ALL + updated_start_date per Reverb's published docs
+    // (reverb-api.com "Retrieve Orders", verified 2026-08-07). The previous
+    // bare /my/orders/selling + created_after were UNDOCUMENTED — Reverb
+    // answered 200 with no orders key, so every order sync silently imported
+    // nothing (root cause of the reverb_orders=0 live finding).
+    expect(url).toBe(`https://api.reverb.com/api/my/orders/selling/all?updated_start_date=${encodeURIComponent(since.toISOString())}`);
     expect(orders).toEqual([{
       marketplaceOrderId: 'RV-100',
       marketplaceListingId: '12345678',
@@ -493,6 +787,347 @@ describe('ReverbAdapter.getOrders', () => {
       },
     }]);
   });
+
+  it('follows _links.next through every page so orders past page 1 are not silently dropped', async () => {
+    // Live-verified 2026-08-07: the endpoint is HAL-paginated (total_pages +
+    // _links.next.href, absolute URL). One-page reads recreate the exact
+    // "orders missing" class this endpoint fix addressed.
+    const page1 = {
+      orders: [{
+        order_number: 'RV-1',
+        product_id: '111',
+        buyer_name: 'A',
+        amount_product: { amount: '10.00', currency: 'USD' },
+        shipping: { amount: '0' },
+      }],
+      _links: { next: { href: 'https://api.reverb.com/api/my/orders/selling/all?page=2' } },
+    };
+    const page2 = {
+      orders: [{
+        order_number: 'RV-2',
+        product_id: '222',
+        buyer_name: 'B',
+        amount_product: { amount: '20.00', currency: 'USD' },
+        shipping: { amount: '0' },
+      }],
+      _links: {},
+    };
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => new Response(
+      JSON.stringify(String(url).includes('page=2') ? page2 : page1),
+      { status: 200, headers: { 'Content-Type': 'application/hal+json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    const orders = await adapter.getOrders();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.reverb.com/api/my/orders/selling/all?page=2');
+    expect(orders.map((o) => o.marketplaceOrderId)).toEqual(['RV-1', 'RV-2']);
+  });
+
+  it('re-anchors a next href that lacks the /api segment instead of producing a doubled URL', async () => {
+    // The old regex replace(/^https?:\/\/[^/]+\/api/) was a silent no-op on any
+    // href without a literal /api after the host — request() then built
+    // "https://api.reverb.com/apihttps://…" and pages past 1 were dropped.
+    const page1 = {
+      orders: [{
+        order_number: 'RV-1',
+        product_id: '111',
+        buyer_name: 'A',
+        amount_product: { amount: '10.00', currency: 'USD' },
+        shipping: { amount: '0' },
+      }],
+      _links: { next: { href: 'https://rvb-edge.reverb.com/my/orders/selling/all?page=2' } },
+    };
+    const page2 = { orders: [], _links: {} };
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => new Response(
+      JSON.stringify(String(url).includes('page=2') ? page2 : page1),
+      { status: 200, headers: { 'Content-Type': 'application/hal+json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.getOrders();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.reverb.com/api/my/orders/selling/all?page=2');
+  });
+
+  it('skips an order missing amount_product instead of throwing the whole batch away', async () => {
+    // Untrusted marketplace input: one malformed order must not abort the
+    // user's entire order sync (order-sync wraps getOrders in one try/catch).
+    stubFetch({
+      orders: [
+        { order_number: 'RV-BAD', product_id: '1', buyer_name: 'A', shipping: { amount: '0' } },
+        { order_number: 'RV-OK', product_id: '2', buyer_name: 'B', amount_product: { amount: '15.00', currency: 'USD' }, shipping: { amount: '0' } },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    const orders = await adapter.getOrders();
+
+    expect(orders.map((o) => o.marketplaceOrderId)).toEqual(['RV-OK']);
+  });
+
+  it('maps title, soldAt (paid_at), fulfillmentStatus and selling_fee from the live payload', async () => {
+    // Live-verified field vocabulary 2026-08-07 (real shop, 17 orders):
+    // status ∈ {shipped, cancelled} (British spelling), paid_at/shipped_at
+    // ISO strings, selling_fee {amount}. Without this mapping every import
+    // got soldAt=sync-time, status=payment_received (a cancelled order sat
+    // in the ship queue), fees=0 despite selling_fee in the payload.
+    stubFetch({
+      orders: [
+        {
+          order_number: 'RV-SHIPPED',
+          product_id: '1',
+          title: 'Donner Harmonic Square',
+          buyer_name: 'A',
+          status: 'shipped',
+          paid_at: '2026-08-07T11:58:10-04:00',
+          created_at: '2026-08-07T11:58:07-04:00',
+          amount_product: { amount: '25.00', currency: 'USD' },
+          selling_fee: { amount: '1.25' },
+          shipping: { amount: '0' },
+        },
+        {
+          order_number: 'RV-CANCELLED',
+          product_id: '2',
+          title: 'Cancelled Pedal',
+          buyer_name: 'B',
+          status: 'cancelled',
+          created_at: '2026-07-26T13:54:24-04:00',
+          amount_product: { amount: '30.00', currency: 'USD' },
+          shipping: { amount: '0' },
+        },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    const orders = await adapter.getOrders();
+
+    expect(orders[0]).toMatchObject({
+      title: 'Donner Harmonic Square',
+      soldAt: new Date('2026-08-07T11:58:10-04:00'),
+      fulfillmentStatus: 'shipped',
+      marketplaceFees: 1.25,
+    });
+    // cancelled: no paid_at — soldAt falls back to created_at; no selling_fee — 0.
+    expect(orders[1]).toMatchObject({
+      title: 'Cancelled Pedal',
+      soldAt: new Date('2026-07-26T13:54:24-04:00'),
+      fulfillmentStatus: 'canceled',
+      marketplaceFees: 0,
+    });
+  });
+});
+
+describe('ReverbAdapter.searchCategories', () => {
+  // Live-verified 2026-07-21: GET /categories/flat IGNORES its ?query= param —
+  // identical 320-row list for any query. Matching must happen client-side or
+  // every caller gets "Acoustic Guitars / 12-String" (the first flat entry)
+  // regardless of what the item is.
+  it('filters the flat list client-side so a pedal query never returns guitar categories', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'uuid-12string', full_name: 'Acoustic Guitars / 12-String' },
+        { uuid: 'uuid-distortion', full_name: 'Effects and Pedals / Distortion' },
+        { uuid: 'uuid-mics', full_name: 'Pro Audio / Microphones' },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    const results = await adapter.searchCategories('distortion pedal');
+
+    expect(results.map(r => r.id)).toEqual(['uuid-distortion']);
+  });
+
+  it('fetches the flat list with the seller\'s own Reverb token', async () => {
+    const fetchMock = stubFetch({ categories: [{ uuid: 'uuid-distortion', full_name: 'Effects and Pedals / Distortion' }] });
+
+    await new ReverbAdapter('user-1').searchCategories('distortion pedal');
+
+    expect(getReverbAccessToken).toHaveBeenCalledWith('user-1');
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer test-reverb-pat');
+  });
+
+  // Live repro 2026-07-21: item category "Solid State Drives" matched
+  // "Electric Guitars / Solid Body" on the single token "solid" and published
+  // an SSD as a guitar. A lone token hit out of several is noise — require a
+  // majority of the query tokens to match before trusting a category.
+  it('rejects minority-token matches — "solid state drives" must not match Electric Guitars / Solid Body', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'uuid-solidbody', full_name: 'Electric Guitars / Solid Body' },
+        { uuid: 'uuid-distortion', full_name: 'Effects and Pedals / Distortion' },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    expect(await adapter.searchCategories('solid state drives')).toEqual([]);
+  });
+
+  it('derives path segments with the real " / " separator (was split on " > " — always 1 element)', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'uuid-distortion', full_name: 'Effects and Pedals / Distortion' },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+    const [result] = await adapter.searchCategories('distortion pedals effects');
+    expect(result.path).toEqual(['Effects and Pedals', 'Distortion']);
+  });
+
+  it('returns [] when nothing matches so the route 422 guard fires instead of a blind first-entry guess', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'uuid-12string', full_name: 'Acoustic Guitars / 12-String' },
+        { uuid: 'uuid-distortion', full_name: 'Effects and Pedals / Distortion' },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    expect(await adapter.searchCategories('vintage film camera')).toEqual([]);
+  });
+});
+
+describe('ReverbAdapter.getShippingProfiles', () => {
+  // Reverb's recommended shipping setup: profiles created ON Reverb
+  // (reverb.com/my/selling/shipping_rates — not creatable via API) and
+  // referenced per listing by shipping_profile_id. GET /shop lists them.
+  it('reads the shop shipping profiles from GET /shop', async () => {
+    const fetchMock = stubFetch({
+      name: 'Digital Harmony Group Closet',
+      shipping_profiles: [
+        { id: '456', name: 'Pedals + small gear' },
+        { id: '789', name: 'Heavy amps' },
+      ],
+    });
+    const adapter = new ReverbAdapter('user-1');
+
+    const profiles = await adapter.getShippingProfiles();
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.reverb.com/api/shop');
+    expect(profiles).toEqual([
+      { id: '456', name: 'Pedals + small gear' },
+      { id: '789', name: 'Heavy amps' },
+    ]);
+  });
+});
+
+describe('ReverbAdapter.getFlatCategories', () => {
+  // The flat list is static reference data (320 rows) fetched on a public,
+  // unauthenticated endpoint — cache it like getConditions so prepare +
+  // category search don't refetch it on every call.
+  it('caches the flat list across calls and clearReverbCategoriesCache forces a refetch', async () => {
+    const fetchMock = stubFetch({
+      categories: [{ uuid: 'u1', full_name: 'Effects and Pedals / Distortion' }],
+    });
+
+    const first = await ReverbAdapter.getFlatCategories();
+    const second = await ReverbAdapter.getFlatCategories();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(first).toEqual(second);
+    expect(first[0]).toEqual({
+      uuid: 'u1', fullName: 'Effects and Pedals / Distortion',
+      // Hierarchy fields default sanely when the payload omits them.
+      name: 'Distortion', rootUuid: '', listable: true,
+    });
+
+    clearReverbCategoriesCache();
+    await ReverbAdapter.getFlatCategories();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('getProductTypes returns only the 14 root entries (fullName === name)', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'root-fx', full_name: 'Effects and Pedals', name: 'Effects and Pedals', root_uuid: 'root-fx', listable: true },
+        { uuid: 'u1', full_name: 'Effects and Pedals / Distortion', name: 'Distortion', root_uuid: 'root-fx', listable: true },
+        { uuid: 'root-keys', full_name: 'Keyboards and Synths', name: 'Keyboards and Synths', root_uuid: 'root-keys', listable: true },
+      ],
+    });
+    const roots = await ReverbAdapter.getProductTypes();
+    expect(roots.map(r => r.uuid)).toEqual(['root-fx', 'root-keys']);
+  });
+
+  it('getCategoryChildren returns DIRECT children only, safe for leaf names containing " / "', async () => {
+    stubFetch({
+      categories: [
+        { uuid: 'root-keys', full_name: 'Keyboards and Synths', name: 'Keyboards and Synths', root_uuid: 'root-keys', listable: true },
+        { uuid: 'u-acc', full_name: 'Keyboards and Synths / Keyboard and Synth Accessories', name: 'Keyboard and Synth Accessories', root_uuid: 'root-keys', listable: true },
+        { uuid: 'u-mod', full_name: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories', name: 'Modular Synth Accessories', root_uuid: 'root-keys', listable: true },
+        // Leaf whose NAME contains " / " — must be a child of u-mod, not split apart.
+        { uuid: 'u-split', full_name: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs', name: 'Modular Synth Splitters / Hubs', root_uuid: 'root-keys', listable: true },
+      ],
+    });
+    expect((await ReverbAdapter.getCategoryChildren('root-keys')).map(c => c.uuid)).toEqual(['u-acc']);
+    expect((await ReverbAdapter.getCategoryChildren('u-mod')).map(c => c.uuid)).toEqual(['u-split']);
+    expect(await ReverbAdapter.getCategoryChildren('u-split')).toEqual([]);
+  });
+
+  it('retains the hierarchy fields (name, rootUuid, listable) — cascades need them', async () => {
+    stubFetch({
+      categories: [{
+        uuid: 'u1', full_name: 'Effects and Pedals / Distortion', name: 'Distortion',
+        root_uuid: 'root-fx', listable: true,
+      }],
+    });
+    const [cat] = await ReverbAdapter.getFlatCategories();
+    expect(cat).toEqual({
+      uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion',
+      rootUuid: 'root-fx', listable: true,
+    });
+  });
+
+  // Live incident 2026-09-02: Reverb's edge (Cloudflare) began answering
+  // unauthenticated, non-browser requests to /categories/flat with a 403 HTML
+  // page. Any bearer token passes the edge, so the fetch carries the caller's.
+  it('sends the given bearer token on the flat-categories fetch', async () => {
+    const fetchMock = stubFetch({ categories: [{ uuid: 'u1', full_name: 'Effects and Pedals / Distortion' }] });
+
+    await ReverbAdapter.getFlatCategories('seller-pat');
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer seller-pat');
+  });
+
+  // The 2026-09-02 block reached the phone as a bare 403 — the web client reads
+  // 403 as a permission problem and nothing was logged. An edge block on a
+  // reference-data endpoint is an upstream outage, not a permission: 502.
+  it('maps a 403 HTML edge block on the flat-categories fetch to 502 REVERB_UNAVAILABLE', async () => {
+    stubFetch(null, false, 403, '<!DOCTYPE html><html><title>The Marketplace for Musicians | Reverb.com</title></html>');
+
+    await expect(ReverbAdapter.getFlatCategories()).rejects.toMatchObject({
+      statusCode: 502,
+      code: 'REVERB_UNAVAILABLE',
+    });
+  });
+});
+
+describe('ReverbAdapter.referenceToken', () => {
+  // Reference data (categories, conditions) is seller-agnostic, but Reverb's
+  // edge now wants *a* bearer token. Prefer the seller's own; the static
+  // callers (routes, prepare-listing) hand this to getFlatCategories/getConditions.
+  it('returns the seller\'s Reverb token when the account is connected', async () => {
+    await expect(ReverbAdapter.referenceToken('user-1')).resolves.toBe('test-reverb-pat');
+    expect(getReverbAccessToken).toHaveBeenCalledWith('user-1');
+  });
+
+  // Category browsing must keep working for a seller who has not connected
+  // Reverb yet (eBay-only, or mid-setup): fall back to the service token.
+  it('falls back to the service REVERB_API_TOKEN when the seller has no Reverb account', async () => {
+    vi.mocked(getReverbAccessToken).mockRejectedValueOnce(
+      new AppError(400, 'REVERB_SETUP_REQUIRED', 'Reverb selling is not set up.'),
+    );
+    process.env.REVERB_API_TOKEN = 'service-token-fixture-1234567890';
+    resetEnv();
+    loadEnv();
+
+    await expect(ReverbAdapter.referenceToken('user-1')).resolves.toBe('service-token-fixture-1234567890');
+  });
 });
 
 describe('ReverbAdapter.getConditions', () => {
@@ -511,6 +1146,26 @@ describe('ReverbAdapter.getConditions', () => {
     clearReverbConditionsCache();
     await ReverbAdapter.getConditions();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends the given bearer token on the conditions fetch', async () => {
+    clearReverbConditionsCache();
+    const fetchMock = stubFetch({ conditions: [{ uuid: 'c-1', display_name: 'Excellent' }] });
+
+    await ReverbAdapter.getConditions('seller-pat');
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer seller-pat');
+  });
+
+  it('maps a 403 HTML edge block on the conditions fetch to 502 REVERB_UNAVAILABLE', async () => {
+    clearReverbConditionsCache();
+    stubFetch(null, false, 403, '<!DOCTYPE html><html><title>The Marketplace for Musicians | Reverb.com</title></html>');
+
+    await expect(ReverbAdapter.getConditions()).rejects.toMatchObject({
+      statusCode: 502,
+      code: 'REVERB_UNAVAILABLE',
+    });
   });
 
   it('throws a typed REVERB_API_ERROR when the conditions fetch fails', async () => {
@@ -556,5 +1211,78 @@ describe('ReverbAdapter.searchComps', () => {
     expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer global-service-token');
     expect(result.stats).toEqual({ median: 1250, avg: 1250, sampleSize: 2 });
     expect(result.listings).toHaveLength(2);
+  });
+});
+
+describe('ReverbAdapter.searchCategories — leaf-safe path derivation', () => {
+  it('does not over-split a leaf name containing " / " (review finding)', async () => {
+    stubFetch({
+      categories: [{
+        uuid: 'u-split',
+        full_name: 'Keyboards and Synths / Keyboard and Synth Accessories / Modular Synth Accessories / Modular Synth Splitters / Hubs',
+        name: 'Modular Synth Splitters / Hubs',
+        root_uuid: 'r-keys', listable: true,
+      }],
+    });
+    const adapter = new ReverbAdapter('user-1');
+    const [hit] = await adapter.searchCategories('modular synth splitters hubs accessories');
+    expect(hit.path).toEqual([
+      'Keyboards and Synths', 'Keyboard and Synth Accessories', 'Modular Synth Accessories', 'Modular Synth Splitters / Hubs',
+    ]);
+  });
+});
+
+describe('ReverbAdapter.createListing — photo-ingestion race guard', () => {
+  // Live failure 2026-08-04 (RC-30 100095335, Verb Square 100097689): POST
+  // publish:"true" returns 201 draft, Reverb ingests photo URLs ASYNC, and
+  // the immediate PUT publish retry 422'd "must have at least one image" in
+  // the same second the listing was created. The retry must wait for
+  // ingestion before publishing.
+  beforeEach(() => { REVERB_PHOTO_INGEST.delayMs = 0; });
+
+  it('polls the listing until photos are ingested before the publish retry, then goes live', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' } } }), { status: 201, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' }, photos: [] } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' }, photos: [{ _links: {} }] } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'live' } } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.createListing(BASE_INPUT);
+
+    expect(fetchMock.mock.calls.map(([, init]) => (init as RequestInit)?.method ?? 'GET')).toEqual(['POST', 'GET', 'GET', 'PUT']);
+    expect(result.status).toBe('active');
+    expect(result.warning).toBeUndefined();
+  });
+
+  it('gives up after the poll budget and still attempts the publish retry (existing draft-warning path)', async () => {
+    const emptyGet = () => new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' }, photos: [] } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' } } }), { status: 201, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(emptyGet())
+      .mockResolvedValueOnce(emptyGet())
+      .mockResolvedValueOnce(emptyGet())
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'You must have at least one image on your listing to submit it to the marketplace.' }), { status: 422, headers: { 'Content-Type': 'application/hal+json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    const result = await adapter.createListing(BASE_INPUT);
+
+    expect(fetchMock.mock.calls.length).toBe(5); // POST + 3 polls + PUT
+    expect(result.status).toBe('draft');
+    expect(result.warning).toContain('at least one image');
+  });
+
+  it('skips polling entirely when the input has no photos', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'draft' } } }), { status: 201, headers: { 'Content-Type': 'application/hal+json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ listing: { id: 777, state: { slug: 'live' } } }), { status: 200, headers: { 'Content-Type': 'application/hal+json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ReverbAdapter('user-1');
+
+    await adapter.createListing({ ...BASE_INPUT, photos: [] });
+
+    expect(fetchMock.mock.calls.map(([, init]) => (init as RequestInit)?.method ?? 'GET')).toEqual(['POST', 'PUT']);
   });
 });

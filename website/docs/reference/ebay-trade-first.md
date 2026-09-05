@@ -50,11 +50,15 @@ Two behaviors around `AddFixedPriceItem` are worth knowing:
   `Failure` — so `parseAddItemResponse()` extracts the ItemID from any non-fatal
   response and the listing is treated as live. A parsed response with **no** ItemID
   is a hard `502 EBAY_PUBLISH_FAILED`.
-- **Best Offer downgrade retry.** eBay publishes no stable error id for
-  category-level Best Offer support, so if an Add (or Revise) fails with a
-  best-offer-shaped message, the adapter retries once without `bestOfferTerms`
-  and surfaces a "Listed without Best Offer auto-accept" warning instead of
-  failing the whole publish.
+- **Best Offer: two different failures.** A *threshold* conflict (stable eBay
+  codes 22003 auto-decline / 23004 auto-accept at or above the price) is never
+  retried or downgraded — the adapter throws `422 BEST_OFFER_CONFLICT` carrying
+  `BestOfferConflictDetails` so the client can render a guided fix (P3,
+  2026-08-22; BO-2 decision: seller config is never deleted to force an edit).
+  Only the *category-unsupported* case (prose-only, no stable id) keeps the
+  publish-time downgrade: Add retries once without `bestOfferTerms` and surfaces
+  a "Listed without Best Offer auto-accept" warning; Revise never downgrades
+  and throws `422 BEST_OFFER_UNSUPPORTED` instead.
 
 A sixth call, `VerifyAddFixedPriceItem`, exists as an operator dry-run only: the
 standalone script `apps/api/src/scripts/ebay-verify-dryrun.ts` sends the exact
@@ -74,6 +78,12 @@ Add/Revise payload includes:
 - `<ShippingPackageDetails>` with the package weight (lbs/oz) and dimensions
   (inches) that calculated shipping requires
 - `DispatchTimeMax` (default 1)
+
+Since 2026-08-01 (PR #274) calculated is only the **default**: a per-listing
+`ebayShipping` choice can switch the payload to flat-rate or free shipping,
+override the service and handling time, and add a local-pickup option — all
+live-verified shapes. See
+[Per-Listing Shipping Controls](/docs/reference/shipping-controls).
 
 Because the terms are inline, the old "set up four eBay Business Policies before
 your first listing" gate no longer exists. What replaces it are two pre-flight
@@ -192,6 +202,32 @@ Only the listing lifecycle moved to Trading. Orders still sync via the
 **Fulfillment API**, categories and required aspects come from the **Taxonomy
 API**, comps from the **Browse API**, and per-category condition policies from the
 **Metadata API** — all unchanged by the migration.
+
+## Marketplace Account Deletion notifications
+
+eBay requires every production keyset that stores eBay user data to subscribe
+to **Marketplace Account Deletion / Closure** notifications and delete that
+user's data on request (deferral `c683b4bc`, shipped 2026-08-19). Portage exposes
+a **public** endpoint for it — the only unauthenticated path on the API host,
+carved out of Cloudflare Access by exact path:
+
+`GET|POST https://portage-api.digitalharmonyai.com/marketplace/ebay/account-deletion`
+
+| Step | Behaviour |
+|------|-----------|
+| Endpoint validation | `GET ?challenge_code=…` → `200 application/json {"challengeResponse": sha256hex(challengeCode + EBAY_DELETION_VERIFICATION_TOKEN + EBAY_DELETION_ENDPOINT_URL)}` — hash order per eBay's guide |
+| Signature check | `x-ebay-signature` (base64 JSON `{alg:"ecdsa", kid, signature, digest:"SHA1"}`) verified ECDSA-SHA1 over the body against the key from `GET /commerce/notification/v1/public_key/{kid}` (prod app token, 1 h cache, 5 min negative cache, ≤10 new-kid fetches/min, kid must be UUID-shaped). Invalid/missing → `412`, no processing. Key unavailable → `503` (eBay retries) |
+| Anonymization | Synchronous, one DB transaction: `marketplace_accounts` row for the seller identity deleted (tokens gone); `orders.buyer_username` → `deleted-ebay-user`, `shipping_address` → `{"redacted":"ebay-account-deletion"}`; `ebay_messages` buyer/subject/body redacted, `conversation_key` → `deleted-ebay-user-<hmac8>:<itemId>` (threads stay distinct, no plaintext); `buyer_message` notifications (title + body excerpt) redacted; `admin_audit_log` row with `admin_user_id NULL` (system actor) and per-table counts. Success → `204`; DB failure → `500` so eBay redelivers, plus a best-effort `failed` audit row. Outcomes: `ok`, `unknown_user`, `duplicate`, `partial` (eBay sent a userId but no username — buyer rows key on username only, since eBay's buyer APIs never expose a buyer userId), `no_identity` |
+| Idempotency + re-population guard | The identity is claimed insert-first in `ebay_deleted_identities` as `HMAC-SHA256(ENCRYPTION_KEY, lower(username))` — never plaintext; a redelivered notification reports `duplicate` but still runs the idempotent redaction sweep. Order sync and message sync check the table before writing (marker instead of live data) **and** re-check the batch after writing (`sweepDeletedBuyerRows`) so a deletion committing mid-sync cannot leave PII behind |
+| Abuse controls | Two-tier rate limit (300/min per socket IP, 60/min per `CF-Connecting-IP`), 100 kB raw-body cap (`413`), no auth (by design), Prometheus `portage_ebay_deletion_notifications_total{result}` |
+
+Operator setup: mint the token into Doppler, set the endpoint URL, add the
+Cloudflare Access bypass for the exact path, then register URL + token on the
+eBay developer portal (Application Keys → Notifications → Marketplace Account
+Deletion) and use *Send Test Notification*. Reference: eBay's
+[Marketplace User Account Deletion guide](https://developer.ebay.com/develop/guides/sell/marketplace-user-account-deletion)
+(unacknowledged notifications are resent until acked; 24 h unacked marks the
+endpoint down; 30 days → non-compliant).
 
 ## Related pages
 
