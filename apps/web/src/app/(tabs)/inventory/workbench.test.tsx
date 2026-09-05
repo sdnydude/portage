@@ -28,6 +28,7 @@ const useItemsMock = vi.fn(() => ({
 }));
 vi.mock("@/hooks/use-items", () => ({
   useItems: () => useItemsMock(),
+  useItemCategories: () => ({ categories: [], refetch: vi.fn() }),
 }));
 vi.mock("@/hooks/use-export", () => ({
   useExport: () => ({ exportItems: vi.fn(), isExporting: false }),
@@ -85,6 +86,49 @@ describe("Inventory workbench (lg master-detail)", () => {
     ).toHaveTextContent("i2");
   });
 
+  it("ignores the ?item= deep link below the lg breakpoint — the hidden pane must not fetch (P3 14efa906)", () => {
+    const original = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true, writable: true,
+      value: vi.fn((q: string) => ({ matches: false, media: q, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    });
+    try {
+      window.history.replaceState(null, "", "/inventory?item=i2");
+      render(<InventoryPage />);
+      expect(screen.queryByTestId("item-detail-stub")).not.toBeInTheDocument();
+      expect(window.matchMedia).toHaveBeenCalledWith("(min-width: 1024px)");
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: original });
+    }
+  });
+
+  it("honors the ?item= deep link at the lg breakpoint (matchMedia matches)", () => {
+    const original = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true, writable: true,
+      value: vi.fn((q: string) => ({ matches: true, media: q, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    });
+    try {
+      window.history.replaceState(null, "", "/inventory?item=i2");
+      render(<InventoryPage />);
+      expect(within(screen.getByTestId("workbench")).getByTestId("item-detail-stub")).toHaveTextContent("i2");
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: original });
+    }
+  });
+
+  it("with no matchMedia at all (non-browser), the deep link fails open to the desktop pane", () => {
+    const original = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: undefined });
+    try {
+      window.history.replaceState(null, "", "/inventory?item=i2");
+      render(<InventoryPage />);
+      expect(within(screen.getByTestId("workbench")).getByTestId("item-detail-stub")).toHaveTextContent("i2");
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: original });
+    }
+  });
+
   it("updates the URL via history.replaceState when an item is selected", () => {
     render(<InventoryPage />);
     const workbench = screen.getByTestId("workbench");
@@ -109,7 +153,8 @@ describe("Inventory workbench (lg master-detail)", () => {
     render(<InventoryPage />);
     const workbench = screen.getByTestId("workbench");
     expect(within(workbench).getByPlaceholderText("Search items...")).toBeInTheDocument();
-    expect(within(workbench).getByRole("button", { name: "All" })).toBeInTheDocument();
+    const categoryRow = within(workbench).getByRole("group", { name: "Filter by category" });
+    expect(within(categoryRow).getByRole("button", { name: "All" })).toBeInTheDocument();
   });
 
   it("shows a loading spinner in the list pane while items are loading", () => {

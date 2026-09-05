@@ -51,8 +51,8 @@ export default function AdminInventoryPage() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}><td colSpan={6} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse" /></td></tr>
+              Array.from({ length: 5 }, (_, i) => `skeleton-${i}`).map((k) => (
+                <tr key={k}><td colSpan={6} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse" /></td></tr>
               ))
             ) : data?.items.map(item => (
               <tr key={item.id} className="hover:bg-muted/50">

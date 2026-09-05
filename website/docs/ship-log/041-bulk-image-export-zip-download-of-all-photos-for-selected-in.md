@@ -2,6 +2,7 @@
 title: "bulk image export — zip download of all photos for selected inventory items"
 sidebar_label: "bulk image export — zip download of all photos for"
 sidebar_position: 41
+registry_id: e0ce10e8-ce8f-4a81-bd43-eb54b7f1a0e0
 ---
 
 # bulk image export — zip download of all photos for selected inventory items

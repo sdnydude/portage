@@ -37,9 +37,10 @@ const { mockReverbSearchCategories } = vi.hoisted(() => ({
 
 vi.mock('../marketplace/reverb-adapter.js', () => {
   const ReverbAdapter = Object.assign(
-    vi.fn(() => ({ searchCategories: mockReverbSearchCategories })),
+    vi.fn(function () { return ({ searchCategories: mockReverbSearchCategories }); }),
     {
       searchComps: vi.fn().mockResolvedValue({ listings: [], stats: { median: null, avg: null, sampleSize: 0 } }),
+      referenceToken: vi.fn().mockResolvedValue(undefined),
       getConditions: vi.fn().mockResolvedValue([]),
       getFlatCategories: vi.fn().mockResolvedValue([
         { uuid: 'u-dist', fullName: 'Effects and Pedals / Distortion' },
@@ -66,11 +67,11 @@ vi.mock('../lib/vision.js', () => ({
 }));
 
 vi.mock('stripe', () => ({
-  default: vi.fn(() => ({
+  default: vi.fn(function () { return ({
     checkout: { sessions: { create: vi.fn() } },
     billingPortal: { sessions: { create: vi.fn() } },
     webhooks: { constructEvent: vi.fn() },
-  })),
+  }); }),
 }));
 
 let app: ReturnType<typeof createApp>;

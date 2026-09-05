@@ -2,6 +2,7 @@
 title: "Memory intelligence Loops 2+3 activated end-to-end"
 sidebar_label: "Memory intelligence Loops 2+3 activated end-to-end"
 sidebar_position: 17
+registry_id: 4871a29b-8209-4f1d-ab4f-d40067292620
 ---
 
 # Memory intelligence Loops 2+3 activated end-to-end

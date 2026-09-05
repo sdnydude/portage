@@ -1,0 +1,30 @@
+== GET no challenge_code
+{"error":"challenge_code is required","code":"CHALLENGE_CODE_REQUIRED"} [400]
+== GET challenge
+{"challengeResponse":"62cd2127c96841f85cbb0f13468dec457fed58db10c14d269bb6e84f1a765dc5"} [200] ct=application/json; charset=utf-8
+== independent sha256(code+token+endpoint)
+62cd2127c96841f85cbb0f13468dec457fed58db10c14d269bb6e84f1a765dc5
+== POST no signature
+{"error":"signature verification failed","code":"INVALID_SIGNATURE"} [412]
+== POST >100kb
+{"error":"payload too large","code":"PAYLOAD_TOO_LARGE"} [413]
+== POST well-formed header, unknown kid (live eBay public_key fetch → key unavailable)
+{"error":"signature key unavailable, retry","code":"KEY_UNAVAILABLE"} [503]
+== sibling authed route still 401
+{"error":"Missing or invalid authorization header","code":"UNAUTHORIZED"} [401]
+== metrics
+portage_ebay_deletion_notifications_total{result="invalid_sig"} 1
+portage_ebay_deletion_notifications_total{result="payload_too_large"} 1
+portage_ebay_deletion_notifications_total{result="key_unavailable"} 1
+== api log (deletion lines)
+{"level":40,"time":1787121181693,"pid":1777893,"hostname":"g700data1","name":"ebay-account-deletion","bytes":115,"msg":"eBay deletion notification rejected: invalid or missing signature"}
+{"level":40,"time":1787121181700,"pid":1777893,"hostname":"g700data1","name":"ebay-account-deletion","ip":"::ffff:127.0.0.1","contentLength":"110000","msg":"eBay deletion endpoint: payload over 100kb rejected"}
+{"level":40,"time":1787121182219,"pid":1777893,"hostname":"g700data1","name":"ebay-notification-verify","kid":"00000000-0000-4000-8000-000000000001","err":{"type":"Error","message":"eBay public_key/00000000-0000-4000-8000-000000000001 retur
+{"level":40,"time":1787121182219,"pid":1777893,"hostname":"g700data1","name":"ebay-account-deletion","msg":"eBay deletion notification: public key unavailable — answering 503 so eBay retries"}
+== POST eBay SDK VALID vector (kid 9936261a…, real 2021 eBay key)
+{"error":"Internal server error","code":"INTERNAL_ERROR"} [500]
+== log tail
+{"level":40,"time":1787121206906,"pid":1777893,"hostname":"g700data1","name":"sync-worker","error":"Failed query: update \"sync_jobs\" set \"status\" = $1, \"updated_at\" = $2 where (\"sync_jobs\".\"status\" = $3 and \"sync_jobs\".\"updated_at\" <= $4)\nparams
+{"level":50,"time":1787121208377,"pid":1777893,"hostname":"g700data1","name":"ebay-deletion-anonymize","notificationId":"49feeaeb-4982-42d9-a377-9645b8479411_33f7e043-fed8-442b-9d44-791923bd9a6d","identityHash":"9530804840ab82243092d15743b558bbc16c93998764e6f6
+{"level":50,"time":1787121208379,"pid":1777893,"hostname":"g700data1","name":"ebay-deletion-anonymize","notificationId":"49feeaeb-4982-42d9-a377-9645b8479411_33f7e043-fed8-442b-9d44-791923bd9a6d","err":{"type":"DrizzleQueryError","message":"Failed query: inser
+{"level":50,"time":1787121208380,"pid":1777893,"hostname":"g700data1","name":"error-handler","err":{"type":"Error","message":"connect ECONNREFUSED 10.0.0.251:5436","stack":"Error: connect ECONNREFUSED 10.0.0.251:5436\n    at TCPConnectWrap.afterConnect [as onc

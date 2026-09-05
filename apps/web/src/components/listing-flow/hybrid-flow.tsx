@@ -20,6 +20,7 @@ import { PhotoCaptureOverlay } from "./photo-capture-overlay";
 import { PhotoGalleryStrip } from "../capture/photo-gallery-strip";
 import { PhotoEditOverlay } from "../capture/photo-edit-overlay";
 import { usePhotoEdit } from "@/hooks/use-photo-edit";
+import { withKeys } from "@/lib/list-keys";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -398,6 +399,9 @@ function ChatMode({
   const { state, lastStep, setField, updateWeightDims, confirmRecognition, fetchComps, applyPricingStrategy } = flow;
   const bottomRef = useRef<HTMLDivElement>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
+  // P3 T5b: confirm-time item creation can fail — say so, with a Retry (the
+  // "Looks right" pill unmounts on confirm, so the retry must live here).
+  const [createError, setCreateError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   // Once the review card is on screen, the editable Item Details card collapses
   // to a one-line summary (the visible duplication confused sellers); this
@@ -436,7 +440,7 @@ function ChatMode({
   const [weightNeeded, setWeightNeeded] = useState(false);
   const [weightSaving, setWeightSaving] = useState(false);
   const [weightError, setWeightError] = useState<string | null>(null);
-  const pendingPublishOpts = useRef<PublishOpts | undefined>(undefined);
+  const pendingPublishOptsRef = useRef<PublishOpts | undefined>(undefined);
 
   const runPublish = async (opts?: PublishOpts) => {
     const fillingAspects = !!opts?.aspects;
@@ -459,11 +463,11 @@ function ChatMode({
       setWeightNeeded(false);
       onPublish();
     } else if (result.aspectsRequired) {
-      pendingPublishOpts.current = opts;
+      pendingPublishOptsRef.current = opts;
       setAspectsNeeded(result.aspectsRequired);
       if (fillingAspects) setAspectError("eBay needs a few more details to publish.");
     } else if (result.weightRequired) {
-      pendingPublishOpts.current = opts;
+      pendingPublishOptsRef.current = opts;
       setWeightNeeded(true);
       if (fillingWeight) setWeightError("Add the package weight and dimensions to continue.");
     } else if (fillingAspects) {
@@ -619,15 +623,14 @@ function ChatMode({
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {state.recognition.reasoning.length > 0 && (
                 <ul style={{ margin: "0 0 10px 0", paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3 }}>
-                  {state.recognition.reasoning.map((r, i) => (
-                    <li key={i} style={{ fontSize: 12, color: SECONDARY, lineHeight: 1.4 }}>{r}</li>
+                  {withKeys(state.recognition.reasoning, (r) => r).map(([key, r]) => (
+                    <li key={key} style={{ fontSize: 12, color: SECONDARY, lineHeight: 1.4 }}>{r}</li>
                   ))}
                 </ul>
               )}
               <KVRow label="Category" value={candidate.category} />
               <KVRow label="Condition" value={candidate.condition} />
               {candidate.brand && <KVRow label="Brand" value={candidate.brand} />}
-              <KVRow label="Est. value" value={`$${candidate.estimatedValueLow}–$${candidate.estimatedValueHigh}`} />
             </div>
           </InlineCard>
 
@@ -635,13 +638,14 @@ function ChatMode({
             <Pill primary onClick={() => {
               confirmRecognition(state.recognition.selectedIndex);
               fetchComps();
+              setCreateError(null);
               // Fresh scans have no inventoryItemId yet — create the item now
               // so prepare() (AI fields + comps + preview card) runs on every
-              // path. Creation failure degrades to the old manual flow;
-              // prepare failures surface via prepareListing.error.
+              // path. Creation failure is surfaced below (P3 T5b); prepare
+              // failures surface via prepareListing.error.
               void flow.ensureItemCreated()
                 .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
-                .catch(() => {});
+                .catch((e: unknown) => setCreateError(e instanceof Error ? e.message : "Couldn't save the item — try again."));
             }}>
               Looks right
             </Pill>
@@ -785,6 +789,24 @@ function ChatMode({
         </div>
       )}
 
+      {createError && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }} role="alert">
+          <PorterMessage>
+            I couldn&apos;t save this item — {createError}.
+          </PorterMessage>
+          <div style={{ marginLeft: 34 }}>
+            <Pill primary onClick={() => {
+              setCreateError(null);
+              void flow.ensureItemCreated()
+                .then((id) => { if (id) prepareListing.prepare(id, ['ebay']); })
+                .catch((e: unknown) => setCreateError(e instanceof Error ? e.message : "Couldn't save the item — try again."));
+            }}>
+              Retry
+            </Pill>
+          </div>
+        </div>
+      )}
+
       {/* Prepare failed: the item is already saved (confirm-time creation), so
           surface the failure and offer a retry instead of a silent stall. */}
       {prepareListing.error && !prepareListing.data && !prepareListing.isLoading && showConfirmed && (
@@ -867,17 +889,9 @@ function ChatMode({
         </div>
       )}
 
-      {/* ── Ready for review trigger ── */}
-      {showConfirmed && state.title && state.price === null && lastStep === "confirmed" && (
-        <div style={{ marginLeft: 34 }}>
-          <Pill
-            primary
-            onClick={() => flow.setField("price", candidate?.estimatedValueLow ?? 0)}
-          >
-            Set a price →
-          </Pill>
-        </div>
-      )}
+      {/* The old "Set a price →" pill prefilled the AI low estimate; with the
+          range retired it would only write a sentinel 0 (dead end). The
+          always-visible Pricing input above is the path. */}
 
       <div ref={bottomRef} />
 
@@ -894,7 +908,7 @@ function ChatMode({
             setAspectsNeeded(null);
             setAspectError(null);
           }}
-          onSave={(aspects) => runPublish({ ...pendingPublishOpts.current, aspects })}
+          onSave={(aspects) => runPublish({ ...pendingPublishOptsRef.current, aspects })}
         />
       )}
 
@@ -913,7 +927,7 @@ function ChatMode({
             setWeightNeeded(false);
             setWeightError(null);
           }}
-          onSave={(value) => runPublish({ ...pendingPublishOpts.current, weightDims: value })}
+          onSave={(value) => runPublish({ ...pendingPublishOptsRef.current, weightDims: value })}
         />
       )}
     </div>
@@ -1192,12 +1206,12 @@ export function HybridFlow({ itemId }: HybridFlowProps) {
   const [localCompact, setLocalCompact] = useState<boolean | null>(null);
   const [showCapture, setShowCapture] = useState(false);
   const isCompact = localCompact !== null ? localCompact : compactMode;
-  const initialized = useRef(false);
+  const initializedRef = useRef(false);
 
   // Load from item if itemId provided
   useEffect(() => {
-    if (itemId && !initialized.current) {
-      initialized.current = true;
+    if (itemId && !initializedRef.current) {
+      initializedRef.current = true;
       flow.startFromItem(itemId);
     }
   }, [itemId, flow]);

@@ -2,6 +2,7 @@
 title: "Billing enforcement gates — marketplace count + bg-removal"
 sidebar_label: "Billing enforcement gates — marketplace count + bg"
 sidebar_position: 33
+registry_id: 15880001-f868-42ab-a33d-079cd5cb03ac
 ---
 
 # Billing enforcement gates — marketplace count + bg-removal

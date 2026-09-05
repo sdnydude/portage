@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo } from "react";
+import { messageKeys } from "@/lib/porter-keys";
 import Link from "next/link";
 import { usePorter } from "@/hooks/use-porter-context";
 import { usePorterAutosend } from "@/hooks/use-porter-autosend";
@@ -31,6 +32,8 @@ export default function PorterPage() {
     porter.setChatInput("");
     porter.sendMessage(text);
   };
+
+  const keys = useMemo(() => messageKeys(porter.messages), [porter.messages]);
 
   return (
     // (tabs) <main> has pb-20 (5rem) clearance for the fixed tab bar; height:100%
@@ -94,11 +97,11 @@ export default function PorterPage() {
           </div>
         )}
 
-        {porter.messages.map((msg, i) => (
+        {porter.messages.map((msg) => (
           <StreamingMessage
-            key={i}
+            key={keys.get(msg)}
             message={msg}
-            pills={i === porter.messages.length - 1 ? porter.pills : []}
+            pills={msg === porter.messages[porter.messages.length - 1] ? porter.pills : []}
             onPillSelect={(message) => porter.sendMessage(message)}
           />
         ))}

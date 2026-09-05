@@ -229,6 +229,7 @@ describe('GET /marketplace/reverb/shipping-profiles', () => {
 describe('GET /marketplace/reverb/categories', () => {
   it('returns the cached flat category list for the picker', async () => {
     const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce(undefined);
     const spy = vi.spyOn(ReverbAdapter, 'getFlatCategories')
       .mockResolvedValueOnce([{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'root-fx', listable: true }]);
 
@@ -238,13 +239,29 @@ describe('GET /marketplace/reverb/categories', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ categories: [{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'root-fx', listable: true }] });
-    spy.mockRestore();
+    tokenSpy.mockRestore(); spy.mockRestore();
+  });
+});
+
+describe('GET /marketplace/reverb/categories — reference token', () => {
+  it('passes the caller\'s reference token to the flat-list fetch', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce('ref-tok');
+    const spy = vi.spyOn(ReverbAdapter, 'getFlatCategories').mockResolvedValueOnce([]);
+
+    await request(app)
+      .get('/marketplace/reverb/categories')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(spy).toHaveBeenCalledWith('ref-tok');
+    tokenSpy.mockRestore(); spy.mockRestore();
   });
 });
 
 describe('GET /marketplace/reverb/product-types', () => {
   it('returns the taxonomy roots for the cascade first level', async () => {
     const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce(undefined);
     const spy = vi.spyOn(ReverbAdapter, 'getProductTypes')
       .mockResolvedValueOnce([{ uuid: 'root-fx', fullName: 'Effects and Pedals', name: 'Effects and Pedals', rootUuid: 'root-fx', listable: true }]);
 
@@ -254,13 +271,30 @@ describe('GET /marketplace/reverb/product-types', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ productTypes: [{ uuid: 'root-fx', fullName: 'Effects and Pedals', name: 'Effects and Pedals', rootUuid: 'root-fx', listable: true }] });
-    spy.mockRestore();
+    tokenSpy.mockRestore(); spy.mockRestore();
+  });
+
+  // 2026-09-02: Reverb's edge rejects unauthenticated reference-data fetches;
+  // the route resolves the caller's token and hands it to the adapter.
+  it('passes the caller\'s reference token to the adapter', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce('ref-tok');
+    const spy = vi.spyOn(ReverbAdapter, 'getProductTypes').mockResolvedValueOnce([]);
+
+    await request(app)
+      .get('/marketplace/reverb/product-types')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(tokenSpy).toHaveBeenCalledWith('test-user-id');
+    expect(spy).toHaveBeenCalledWith('ref-tok');
+    tokenSpy.mockRestore(); spy.mockRestore();
   });
 });
 
 describe('GET /marketplace/reverb/subcategories', () => {
   it('returns direct children of the parent uuid; 400 without a parent', async () => {
     const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValue(undefined);
     const spy = vi.spyOn(ReverbAdapter, 'getCategoryChildren')
       .mockResolvedValueOnce([{ uuid: 'u1', fullName: 'Effects and Pedals / Distortion', name: 'Distortion', rootUuid: 'root-fx', listable: true }]);
 
@@ -268,14 +302,27 @@ describe('GET /marketplace/reverb/subcategories', () => {
       .get('/marketplace/reverb/subcategories?parent=root-fx')
       .set('Authorization', `Bearer ${authToken}`);
     expect(res.status).toBe(200);
-    expect(spy).toHaveBeenCalledWith('root-fx');
+    expect(spy).toHaveBeenCalledWith('root-fx', undefined);
     expect(res.body.subcategories[0].uuid).toBe('u1');
 
     const missing = await request(app)
       .get('/marketplace/reverb/subcategories')
       .set('Authorization', `Bearer ${authToken}`);
     expect(missing.status).toBe(400);
-    spy.mockRestore();
+    tokenSpy.mockRestore(); spy.mockRestore();
+  });
+
+  it('passes the caller\'s reference token to the adapter alongside the parent uuid', async () => {
+    const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
+    const tokenSpy = vi.spyOn(ReverbAdapter, 'referenceToken').mockResolvedValueOnce('ref-tok');
+    const spy = vi.spyOn(ReverbAdapter, 'getCategoryChildren').mockResolvedValueOnce([]);
+
+    await request(app)
+      .get('/marketplace/reverb/subcategories?parent=root-fx')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(spy).toHaveBeenCalledWith('root-fx', 'ref-tok');
+    tokenSpy.mockRestore(); spy.mockRestore();
   });
 });
 

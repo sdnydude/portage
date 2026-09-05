@@ -52,7 +52,7 @@ export function DevSteps({ direction, steps, currentStep }: DevStepsProps) {
 
             return (
               <div
-                key={i}
+                key={step.title}
                 className={`relative rounded-xl px-3 py-2.5 transition-all duration-300 ${
                   isActive
                     ? "bg-[#F15A22]/10 border border-[#F15A22]/30"

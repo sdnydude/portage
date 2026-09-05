@@ -66,8 +66,11 @@ test("price editor shows thresholds; conflict rejects 422 with the numbers; comb
   // any save; the error carries the actual numbers.
   await page.getByLabel("Price", { exact: true }).fill("199");
   await page.getByRole("button", { name: /^save$/i }).click();
-  const err = page.getByText(/auto-accept.*\$209|\$209.*auto-accept/i);
+  // P3 (cf6d2ce2): the conflict now renders as the guided-fix banner, which
+  // carries both the server sentence and the threshold line — scope to it.
+  const err = page.getByTestId("bo-conflict-banner");
   await expect(err).toBeVisible();
+  await expect(err).toContainText(/auto-accept.*\$209|\$209.*auto-accept/i);
   await page.screenshot({ path: path.join(SHOT_DIR, "2-conflict-422-with-numbers.png"), fullPage: true });
 
   // DB proof: nothing was saved by the rejected edit.

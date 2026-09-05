@@ -39,4 +39,25 @@ describe("DesktopIngestPanel", () => {
       expect(screen.getByTestId("ingest-queue")).toBeInTheDocument(),
     );
   });
+
+  it("reports a successful save upward so the inventory list and category chips refresh (wiring audit)", async () => {
+    apiUploadMock.mockResolvedValue({ image: { url: "http://img/1.jpg", key: "k1", width: 10, height: 10 } });
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/scan/refine") {
+        return { detailed: { candidates: [{ name: "Dropped Thing", description: "", category: "other", condition: "good", conditionNotes: "", estimatedValueLow: 0, estimatedValueHigh: 0, brand: "", model: "", features: [], confidence: 0.9 }], reasoning: [] } };
+      }
+      if (path === "/items") return { id: "new-1" };
+      return {};
+    });
+    const onSaved = vi.fn();
+    render(
+      <DesktopIngestPanel onSaved={onSaved}>
+        <div>list</div>
+      </DesktopIngestPanel>,
+    );
+    fireEvent.drop(screen.getByText("list"), { dataTransfer: { files: [makeFile("a.jpg")] } });
+    const saveBtn = await screen.findByRole("button", { name: /^save$/i }, { timeout: 5000 });
+    fireEvent.click(saveBtn);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+  });
 });

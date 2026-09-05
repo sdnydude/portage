@@ -153,6 +153,42 @@ describe("CreateListingSheet — required aspects are collectable, not a dead-en
     expect(screen.getByText("Review Terms")).toBeInTheDocument();
   });
 
+  it("a double-tap on Accept & Publish sends exactly ONE POST /listings (2026-08-26 six-tap double-list)", async () => {
+    let posts = 0;
+    let release: (v: unknown) => void = () => {};
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/listings") { posts++; return new Promise((r) => { release = r; }); }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} initialPublishNow onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Review Terms"));
+    const accept = screen.getByText("accept-terms");
+    // iOS fires the second tap before React repaints `disabled` — the guard
+    // must be synchronous, not a rendered attribute.
+    fireEvent.click(accept);
+    fireEvent.click(accept);
+
+    await waitFor(() => expect(posts).toBe(1));
+    release({ id: "L1", status: "active" });
+    await waitFor(() => expect(posts).toBe(1));
+  });
+
+  it("renders the server's 409 PUBLISH_IN_PROGRESS as an in-progress notice, not a failure", async () => {
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/listings") {
+        throw new h.ApiError(409, "PUBLISH_IN_PROGRESS", "This listing is already being published — wait for that result.");
+      }
+      return {};
+    });
+
+    render(<CreateListingSheet itemId="i1" suggestedPrice={65} initialPublishNow onCreated={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Review Terms"));
+    fireEvent.click(screen.getByText("accept-terms"));
+
+    await waitFor(() => expect(screen.getByText(/already being published/i)).toBeInTheDocument());
+  });
+
   it("carries scan prefill (categoryId + aspects + eBay-draft default) into the listing POST", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     h.apiMock.mockImplementation(async (path: string, opts?: { body?: Record<string, unknown> }) => {

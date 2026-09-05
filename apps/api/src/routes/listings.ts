@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { eq, desc, and, sql, inArray, isNull, getTableColumns } from 'drizzle-orm';
+import { eq, desc, and, or, lt, sql, inArray, isNull, getTableColumns } from 'drizzle-orm';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { listings, items, sellerProfiles, disclaimerAcceptances, users, notifications } from '../db/schema.js';
@@ -9,6 +9,7 @@ import { shouldAutoEnd } from '../lib/gtc-renewal.js';
 import { CURRENT_DISCLAIMER_VERSION } from '@portage/shared';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/error.js';
+import { EbayTradingError } from '../marketplace/ebay-trading-client.js';
 import { EbayAdapter, resolveEbayCategoryId } from '../marketplace/ebay-adapter.js';
 import { validateBestOfferThresholds, healBestOfferFromLive } from '../lib/best-offer.js';
 import { ensureItemEbaySku } from '../marketplace/ebay-sku.js';
@@ -16,9 +17,39 @@ import { toEbayWeight, toEbayDimensions } from '../lib/shipping-units.js';
 import { applyFooter, descriptionLimitFor } from '../lib/footer.js';
 import { logSyncAttempt } from '../lib/sync-log.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
-import type { MarketplaceAdapter, ReverbCacheEntry } from '@portage/shared';
+import type { BestOfferConflictDetails, MarketplaceAdapter, MarketplaceListingResult, ReverbCacheEntry } from '@portage/shared';
 
 const logger = createLogger('listings');
+
+// Publish-claim staleness window: a stamp older than this is treated as a
+// crashed publisher (container rebuild mid-create) rather than an in-flight one.
+export const PUBLISH_CLAIM_STALE_MS = 5 * 60_000;
+export function publishClaimStaleBefore(): Date {
+  return new Date(Date.now() - PUBLISH_CLAIM_STALE_MS);
+}
+
+// Release the claim only on a DEFINITIVE marketplace outcome: a typed AppError
+// (pre-network gates: aspects/category/ship-from/weight/flat-cost; Reverb 4xx)
+// or an eBay ack:Failure (EbayTradingError) — nothing was created, so the retry
+// may claim immediately. A raw network/HTTP error (fetch failed, timeout,
+// 'Trading API HTTP 5xx') is ambiguous: the create may have landed, so the
+// stamp stays and only the stale-claim path (SKU recheck) may resume.
+export function isDefinitivePublishFailure(err: unknown): boolean {
+  return err instanceof AppError || err instanceof EbayTradingError;
+}
+async function releasePublishClaimIfDefinitive(listingId: string, err: unknown): Promise<void> {
+  if (!isDefinitivePublishFailure(err)) return;
+  try {
+    await db.update(listings)
+      .set({ publishClaimedAt: null, updatedAt: new Date() })
+      .where(eq(listings.id, listingId))
+      .returning();
+  } catch (releaseErr) {
+    // Runs inside catch paths — never mask the original error; the stale
+    // window / sweep will resolve the row.
+    logger.warn({ listingId, error: (releaseErr as Error).message }, 'publish claim release failed');
+  }
+}
 
 /**
  * Inject the item's stored package weight/dimensions into marketplaceSpecific in
@@ -228,13 +259,13 @@ export async function applyReverbEnrichment(
 }
 
 const createListingSchema = z.object({
-  itemId: z.string().uuid(),
+  itemId: z.guid(),
   marketplace: z.enum(['ebay', 'reverb']),
   price: z.number().positive(),
   currency: z.string().length(3).default('USD'),
   publishImmediately: z.boolean().default(false),
   publishMode: z.enum(['draft', 'live', 'ebay_draft']).optional(),
-  marketplaceSpecificFields: z.record(z.unknown()).optional(),
+  marketplaceSpecificFields: z.record(z.string(), z.unknown()).optional(),
   // R3 idempotency: a client-supplied key that is stable across retries of the same
   // publish intent. When present, a partial unique index serializes concurrent/retried
   // submits so a non-idempotent AddFixedPriceItem can't double-list. Server generates
@@ -252,13 +283,13 @@ const createListingSchema = z.object({
 const updateListingSchema = z.object({
   price: z.number().positive().optional(),
   status: z.enum(['draft', 'active', 'archived']).optional(),
-  marketplaceSpecificFields: z.record(z.unknown()).optional(),
+  marketplaceSpecificFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 const listQuerySchema = z.object({
   status: z.enum(['draft', 'active', 'sold', 'archived']).optional(),
   marketplace: z.enum(['ebay', 'reverb']).optional(),
-  itemId: z.string().uuid().optional(),
+  itemId: z.guid().optional(),
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).default(0),
 });
@@ -456,6 +487,7 @@ listingsRouter.get('/:id/ebay-offer', async (req, res, next) => {
 });
 
 listingsRouter.post('/', async (req, res, next) => {
+  let claimedListingId: string | null = null;
   try {
     const userId = req.user!.sub;
     const body = createListingSchema.parse(req.body);
@@ -499,6 +531,14 @@ listingsRouter.post('/', async (req, res, next) => {
     // (userId, idempotencyKey) serializes concurrent submits that share a key.
     const idempotencyKey = body.idempotencyKey ?? randomUUID();
     let listing: typeof listings.$inferSelect;
+    // True when this request took over a STALE claim (a publisher that stamped
+    // the row and never wrote an ItemID) — its create may already be live.
+    let staleTakeover = false;
+    // Set once THIS request holds the claim; the outer catch releases it on
+    // any definitive error thrown between the claim and the marketplace call
+    // (Reverb category-required, aspects, etc.) — not only inside the adapter
+    // try. Never set on a lost claim.
+    claimedListingId = null;
     try {
       [listing] = await db.insert(listings).values({
         itemId: body.itemId,
@@ -513,7 +553,10 @@ listingsRouter.post('/', async (req, res, next) => {
         currency: body.currency,
         publishedAt: null,
         idempotencyKey,
+        // Live publish: the inserter is the first claimant (see claim WHERE below).
+        publishClaimedAt: shouldPublish ? new Date() : null,
       }).returning();
+      if (shouldPublish) claimedListingId = listing.id;
     } catch (e) {
       // A duplicate (userId, idempotencyKey) means a concurrent or retried submit already
       // created this listing (R3). The partial unique index is what raises 23505 before
@@ -545,20 +588,38 @@ listingsRouter.post('/', async (req, res, next) => {
               price: body.price,
               currency: body.currency,
               marketplaceSpecificFields: body.marketplaceSpecificFields ?? null,
+              // The claim must CHANGE the row (2026-08-26 six-tap incident): a
+              // refresh-only SET left the WHERE true for every contender until
+              // the winner wrote the ItemID ~2.5s later.
+              publishClaimedAt: new Date(),
               updatedAt: new Date(),
             })
             .where(and(
               eq(listings.id, existing.id),
               eq(listings.status, 'draft'),
               isNull(listings.marketplaceListingId),
+              // A fresh stamp means a contender is mid-create — not claimable.
+              // Stale (>5 min) covers a crash between the marketplace 200 and
+              // the ItemID write; that path re-checks the marketplace by SKU
+              // before creating again.
+              or(isNull(listings.publishClaimedAt), lt(listings.publishClaimedAt, publishClaimStaleBefore())),
             ))
             .returning();
+          staleTakeover = !!listing && existing.publishClaimedAt != null;
+          if (listing) claimedListingId = listing.id;
           if (!listing) {
             // Lost the claim — replay whatever state the winner produced.
             const [claimed] = await db.select().from(listings)
               .where(eq(listings.id, existing.id))
               .limit(1);
-            return res.status(201).json(claimed ?? existing);
+            const state = claimed ?? existing;
+            // Lost to an in-flight winner (no ItemID yet, fresh stamp): say so —
+            // a 201 here would report "created" for a row still mid-publish.
+            if (!state.marketplaceListingId && state.publishClaimedAt
+              && state.publishClaimedAt > publishClaimStaleBefore()) {
+              throw new AppError(409, 'PUBLISH_IN_PROGRESS', 'This listing is already being published — wait for that result.');
+            }
+            return res.status(201).json(state);
           }
         } else {
           throw e;
@@ -604,8 +665,25 @@ listingsRouter.post('/', async (req, res, next) => {
         .limit(1);
 
       let result;
+      // Stale-claim takeover: the previous publisher may have died AFTER the
+      // marketplace accepted the create. Look the listing up by our SKU and
+      // adopt it; a blind create here is the double-list, just minutes later.
+      // A lookup failure propagates (ambiguous ≠ absent); adapters without
+      // SKU carriage (Reverb) cannot recheck and create, warn-logged.
+      let adopted: MarketplaceListingResult | null = null;
+      if (staleTakeover) {
+        if (adapter.findListingBySku && stableSku) {
+          const found = await adapter.findListingBySku(stableSku);
+          if (found) {
+            logger.warn({ userId, listingId: listing.id, marketplaceListingId: found, sku: stableSku }, 'Stale publish claim: adopted live listing found by SKU');
+            adopted = { marketplaceListingId: found, status: 'active', ebaySku: stableSku, marketplaceUrl: `https://www.ebay.com/itm/${found}` };
+          }
+        } else {
+          logger.warn({ userId, listingId: listing.id, marketplace: body.marketplace }, 'Stale publish claim: no SKU recheck available — creating');
+        }
+      }
       try {
-        result = await adapter.createListing({
+        result = adopted ?? await adapter.createListing({
           title: item.title,
           description: applyFooter(item.description, footerRow?.footer, descriptionLimitFor(body.marketplace)),
           price: body.price,
@@ -647,6 +725,7 @@ listingsRouter.post('/', async (req, res, next) => {
           ebaySku: result.ebaySku ?? null,
           status: result.status === 'active' ? 'active' : 'draft',
           publishedAt: result.status === 'active' ? new Date() : null,
+          publishClaimedAt: null,
           updatedAt: new Date(),
         })
         .where(eq(listings.id, listing.id))
@@ -724,12 +803,16 @@ listingsRouter.post('/', async (req, res, next) => {
     const response: Record<string, unknown> = { ...listing };
     if (adapterWarning) {
       response.warning = adapterWarning;
-    } else if (body.publishImmediately && status === 'draft') {
+    } else if (shouldPublish && status === 'draft') {
+      // Keys on shouldPublish (publishMode-aware), not the legacy
+      // publishImmediately flag — a publishMode:'live' client falling back to
+      // draft must see the warning too (P7 17c90eea).
       response.warning = 'Listing was created but could not be published. It has been saved as a draft.';
     }
 
     res.status(201).json(response);
   } catch (err) {
+    if (claimedListingId) await releasePublishClaimIfDefinitive(claimedListingId, err);
     next(err);
   }
 });
@@ -827,22 +910,48 @@ listingsRouter.patch('/:id', async (req, res, next) => {
               .set({ marketplaceSpecificFields: specificsMergeExpression(healPatch()), updatedAt: new Date() })
               .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)));
           }
-          throw new AppError(422, 'BEST_OFFER_CONFLICT', check.message);
+          // 25afd214: ship the effective (post-heal) thresholds so price
+          // editors can render a guided fix instead of prose. `healed` tells
+          // the client whether these values were PERSISTED (heal path) or are
+          // its own submitted values echoed back — an unpersisted echo must
+          // stay "touched" client-side or a price-only retry silently drops
+          // the seller's Best Offer edit (CR#3, BO-5 contract).
+          throw new AppError(422, 'BEST_OFFER_CONFLICT', check.message, [{
+            bestOfferEnabled: (effectiveSpecific.bestOfferEnabled as boolean | undefined) ?? null,
+            bestOfferAutoAcceptPrice: (effectiveSpecific.bestOfferAutoAcceptPrice as number | undefined) ?? null,
+            minimumBestOfferPrice: (effectiveSpecific.minimumBestOfferPrice as number | undefined) ?? null,
+            healed: healResult.healed,
+          } satisfies BestOfferConflictDetails]);
         }
       }
     }
 
-    const [updated] = await db.update(listings)
-      .set({
-        ...updates,
-        // C2: specifics ride the atomic merge expression, not the JS preview.
-        ...(specificsPatch !== undefined
-          ? { marketplaceSpecificFields: specificsMergeExpression(specificsPatch) as unknown as Record<string, unknown> }
-          : {}),
-        updatedAt: new Date(),
-      })
-      .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.update(listings)
+        .set({
+          ...updates,
+          // C2: specifics ride the atomic merge expression, not the JS preview.
+          ...(specificsPatch !== undefined
+            ? { marketplaceSpecificFields: specificsMergeExpression(specificsPatch) as unknown as Record<string, unknown> }
+            : {}),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)))
+        .returning();
+
+      // Price truth (Housekeeping-1): listings.price and items.price are ONE
+      // value — a card price edit must land on the item too, or the edit page
+      // and item header keep showing the stale number. Only a row that still
+      // owns the item's price (active/draft) writes back: an archived or sold
+      // row's price is history, and mirroring it would later ride the
+      // item-edit mirror onto a LIVE listing. Same scope as the forward mirror.
+      if (body.price !== undefined && (row.status === 'active' || row.status === 'draft')) {
+        await tx.update(items)
+          .set({ price: body.price, updatedAt: new Date() })
+          .where(and(eq(items.id, row.itemId), eq(items.userId, userId)));
+      }
+      return row;
+    });
 
     // Skip marketplace sync when archiving — the listing was already removed above.
     // Sync edits (e.g. price) to the marketplace only for a published listing. Under
@@ -922,6 +1031,44 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             durationMs: Date.now() - syncStartedAt,
           });
         } catch (err) {
+          // P3 (25afd214): eBay rejected the price on thresholds the local
+          // pre-flight never saw (stored on the live listing, not in our row).
+          // The local save landed, but a 200+warning hides the numbers the
+          // seller needs — heal from live (same conflict-time GetItem as the
+          // pre-flight), persist, and rethrow 422 with the real thresholds so
+          // the guided fix renders. Never delete seller config.
+          if (err instanceof AppError && err.code === 'BEST_OFFER_CONFLICT') {
+            void logSyncAttempt({
+              userId, itemId: updated.itemId, listingId: updated.id, marketplace: updated.marketplace,
+              trigger: 'listing_edit', status: 'failure', message: err.message, durationMs: Date.now() - syncStartedAt,
+            });
+            const healResult = await healBestOfferFromLive(
+              getAdapter(userId, 'ebay') as EbayAdapter, ebaySyncId!, (updated.marketplaceSpecificFields ?? {}) as Record<string, unknown>,
+            );
+            // One normalized triple serves both the atomic DB patch (null = delete key) and the client payload.
+            const live = {
+              bestOfferEnabled: (healResult.specific.bestOfferEnabled as boolean | undefined) ?? null,
+              bestOfferAutoAcceptPrice: (healResult.specific.bestOfferAutoAcceptPrice as number | undefined) ?? null,
+              minimumBestOfferPrice: (healResult.specific.minimumBestOfferPrice as number | undefined) ?? null,
+            };
+            // `healed` promises the client these values are PERSISTED — only
+            // claim it once the write landed; a failed heal write still yields
+            // the informative 422, never an opaque 500 after a saved edit.
+            let healed = false;
+            if (healResult.healed) {
+              try {
+                await db.update(listings)
+                  .set({ marketplaceSpecificFields: specificsMergeExpression(live), updatedAt: new Date() })
+                  .where(and(eq(listings.id, req.params.id), eq(listings.userId, userId)));
+                healed = true;
+              } catch (healErr) {
+                logger.warn({ listingId: updated.id, error: (healErr as Error).message }, 'Best Offer heal persist failed after conflict');
+              }
+            }
+            throw new AppError(422, 'BEST_OFFER_CONFLICT', `Saved locally, but eBay rejected the update: ${err.message}`, [
+              { ...live, healed } satisfies BestOfferConflictDetails,
+            ]);
+          }
           // The local write already landed above — a parked marketplace (stray
           // etsy row) can never sync, so throwing 400 would tell the client
           // nothing saved when the change is persisted. Report the truth.
@@ -963,6 +1110,7 @@ listingsRouter.patch('/:id', async (req, res, next) => {
 });
 
 listingsRouter.post('/:id/publish', async (req, res, next) => {
+  let claimedListingId: string | null = null;
   try {
     const userId = req.user!.sub;
 
@@ -973,6 +1121,25 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
 
     if (!listing) throw new AppError(404, 'NOT_FOUND', 'Listing not found');
     if (listing.status !== 'draft') throw new AppError(400, 'INVALID_STATUS', 'Only draft listings can be published');
+
+    // Atomic publish claim — BEFORE the self-heal reads below. Two concurrent
+    // publishes of one draft both passed the status check and both reached
+    // createListing (advisor finding 2026-08-26); only the row-level UPDATE
+    // serializes them. Reverb remote drafts keep their ItemID, so the claim
+    // keys on status + stamp, not on a null ItemID.
+    const [claimedRow] = await db.update(listings)
+      .set({ publishClaimedAt: new Date(), updatedAt: new Date() })
+      .where(and(
+        eq(listings.id, listing.id),
+        eq(listings.status, 'draft'),
+        or(isNull(listings.publishClaimedAt), lt(listings.publishClaimedAt, publishClaimStaleBefore())),
+      ))
+      .returning();
+    if (!claimedRow) {
+      throw new AppError(409, 'PUBLISH_IN_PROGRESS', 'This listing is already being published — wait for that result.');
+    }
+    claimedListingId = listing.id;
+    const staleTakeover = listing.publishClaimedAt != null;
 
     const [item] = await db.select()
       .from(items)
@@ -1125,13 +1292,23 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
     // POSTing a create here is what double-listed. Everything else creates.
     const publishStartedAt = Date.now();
     let result;
+    // Stale-claim takeover (crashed publisher): adopt a live listing found by
+    // SKU rather than creating again — see POST /listings for the rationale.
+    let adopted: MarketplaceListingResult | null = null;
+    if (staleTakeover && !listing.marketplaceListingId && adapter.findListingBySku && publishInput.ebaySku) {
+      const found = await adapter.findListingBySku(publishInput.ebaySku);
+      if (found) {
+        logger.warn({ userId, listingId: listing.id, marketplaceListingId: found, sku: publishInput.ebaySku }, 'Stale publish claim: adopted live listing found by SKU');
+        adopted = { marketplaceListingId: found, status: 'active', ebaySku: publishInput.ebaySku, marketplaceUrl: `https://www.ebay.com/itm/${found}` };
+      }
+    }
     try {
-      result = isExistingReverbListing
+      result = adopted ?? (isExistingReverbListing
         ? await adapter.updateListing(listing.marketplaceListingId!, {
             ...publishInput,
             marketplaceSpecific: { ...(publishInput.marketplaceSpecific ?? {}), publish: true },
           })
-        : await adapter.createListing(publishInput);
+        : await adapter.createListing(publishInput));
     } catch (err) {
       // Durable failure record (P1); the publish error still propagates.
       void logSyncAttempt({
@@ -1164,6 +1341,7 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
         ebaySku: result.ebaySku ?? null,
         status: result.status === 'active' ? 'active' : 'draft',
         publishedAt: result.status === 'active' ? new Date() : null,
+        publishClaimedAt: null,
         updatedAt: new Date(),
       })
       .where(and(eq(listings.id, listing.id), eq(listings.userId, userId)))
@@ -1202,6 +1380,7 @@ listingsRouter.post('/:id/publish', async (req, res, next) => {
     // non-active result is never presented as a successful publish.
     res.json({ ...updated, warning: [enrichWarning, result.warning, adWarning].filter(Boolean).join('; ') || undefined });
   } catch (err) {
+    if (claimedListingId) await releasePublishClaimIfDefinitive(claimedListingId, err);
     next(err);
   }
 });
@@ -1244,7 +1423,7 @@ listingsRouter.delete('/:id', async (req, res, next) => {
 // ─── Bulk Endpoints ───────────────────────────────────────────────────────────
 
 const bulkListingIdsSchema = z.object({
-  ids: z.array(z.string().uuid()).min(1).max(50),
+  ids: z.array(z.guid()).min(1).max(50),
 });
 
 listingsRouter.post('/bulk/delete', async (req, res, next) => {

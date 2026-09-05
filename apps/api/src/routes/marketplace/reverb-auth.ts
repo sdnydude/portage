@@ -170,7 +170,8 @@ reverbAuthRouter.get('/shipping-profiles', async (req, res, next) => {
 reverbAuthRouter.get('/categories', async (req, res, next) => {
   try {
     const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
-    const categories = await ReverbAdapter.getFlatCategories();
+    const token = await ReverbAdapter.referenceToken(req.user!.sub);
+    const categories = await ReverbAdapter.getFlatCategories(token);
     res.json({ categories });
   } catch (err) {
     next(err);
@@ -182,7 +183,8 @@ reverbAuthRouter.get('/categories', async (req, res, next) => {
 reverbAuthRouter.get('/product-types', async (req, res, next) => {
   try {
     const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
-    const productTypes = await ReverbAdapter.getProductTypes();
+    const token = await ReverbAdapter.referenceToken(req.user!.sub);
+    const productTypes = await ReverbAdapter.getProductTypes(token);
     res.json({ productTypes });
   } catch (err) {
     next(err);
@@ -209,7 +211,8 @@ reverbAuthRouter.get('/subcategories', async (req, res, next) => {
   try {
     const { parent } = z.object({ parent: z.string().min(1) }).parse(req.query);
     const { ReverbAdapter } = await import('../../marketplace/reverb-adapter.js');
-    const subcategories = await ReverbAdapter.getCategoryChildren(parent);
+    const token = await ReverbAdapter.referenceToken(req.user!.sub);
+    const subcategories = await ReverbAdapter.getCategoryChildren(parent, token);
     res.json({ subcategories });
   } catch (err) {
     next(err);

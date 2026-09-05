@@ -28,8 +28,8 @@ const statusQuerySchema = z.object({
   // Postgres "invalid input syntax for type uuid" 500 instead of a clean 400.
   listingIds: z.string().min(1)
     .transform((s) => s.split(',').filter(Boolean).slice(0, 50))
-    .refine((ids) => ids.every((id) => z.string().uuid().safeParse(id).success), {
-      message: 'listingIds must be UUIDs',
+    .refine((ids) => ids.every((id) => z.guid().safeParse(id).success), {
+      error: 'listingIds must be UUIDs',
     }),
 });
 
@@ -142,7 +142,7 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   offset: z.coerce.number().int().min(0).default(0),
   status: z.enum(['success', 'failure']).optional(),
-  listingId: z.string().uuid().optional(),
+  listingId: z.guid().optional(),
 });
 
 const retryBodySchema = z.object({ listingId: z.string().min(1) });

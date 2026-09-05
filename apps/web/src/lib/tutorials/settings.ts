@@ -6,12 +6,12 @@ export const settingsTopic: TutorialTopic = {
   description: "Profile, marketplaces, billing, notifications, help.",
   steps: [
     {
-      id: "more-tab",
-      title: "Everything lives under More",
-      body: "Profile, Billing & Plan, Marketplace Accounts, Messages, Seller Profile, Notifications, and Help — all one tap from the More tab.",
-      screenshot: "/tutorials/settings/more-tab.png",
+      id: "more-menu",
+      title: "Everything lives under your avatar",
+      body: "Profile, Billing & Plan, Marketplace Accounts, Messages, Seller Profile, Notifications, and Help — all one tap from your avatar menu.",
+      screenshot: "/tutorials/settings/more-menu.png",
       // Ring the full settings list (Profile → Help & Support) per pixel
-      // measurement of more-tab.png; stops short of the Log Out row, which
+      // measurement of more-menu.png; stops short of the Log Out row, which
       // sits close to the tab bar.
       overlays: [{ type: "highlight", x: 5, y: 20, w: 90, h: 67 }],
     },
@@ -41,7 +41,7 @@ export const settingsManifest: CaptureManifest = {
   actions: [
     { type: "goto", path: "/more" },
     { type: "wait", ms: 800 },
-    { type: "capture", step: "more-tab" },
+    { type: "capture", step: "more-menu" },
     { type: "goto", path: "/settings/marketplace" },
     { type: "wait", ms: 800 },
     { type: "capture", step: "marketplace-accounts" },

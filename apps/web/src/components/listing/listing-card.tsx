@@ -10,6 +10,8 @@ import { formatCurrency, formatMarketplace } from "@/lib/format";
 import { parsePriceInput } from "@/lib/price";
 import { AspectFillSheet, type AspectRequirement } from "./aspect-fill-sheet";
 import { ShippingFieldsSection, SHIPPING_FIELDS_DEFAULT, type ShippingFieldsValue } from "./shipping-fields-section";
+import { ReverbCategorySection } from "./reverb-category-section";
+import type { BestOfferConflictDetails, EbayListingShipping } from "@portage/shared";
 import type { ListingSyncStatus } from "@/lib/sync-status";
 import { WeightFillSheet } from "./weight-fill-sheet";
 import type { WeightDimsValue } from "./weight-dims-inputs";
@@ -75,6 +77,10 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
   // the stored config on open; only sent when touched (server merges).
   const [boFields, setBoFields] = useState({ enabled: false, autoAccept: "", minimum: "" });
   const [boTouched, setBoTouched] = useState(false);
+  // P3 (cf6d2ce2): a BEST_OFFER_CONFLICT 422 carries the live thresholds —
+  // held here so the price editor renders a guided fix, not just prose.
+  const [boConflict, setBoConflict] = useState<(BestOfferConflictDetails & { message: string }) | null>(null);
+  const [boAdjusted, setBoAdjusted] = useState(false);
   const isEbay = listing.marketplace === "ebay";
   // RV-1: Reverb's offers is a single explicit per-listing override — the
   // post-publish parity surface for Reverb (eBay has the threshold fields).
@@ -90,6 +96,8 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       minimum: typeof stored.minimumBestOfferPrice === "number" ? String(stored.minimumBestOfferPrice) : "",
     });
     setBoTouched(false);
+    setBoConflict(null);
+    setBoAdjusted(false);
     // RV-1: explicit override wins; else the profile-driven stored value; else on.
     setReverbOffers(
       typeof stored.offersEnabledExplicit === "boolean" ? stored.offersEnabledExplicit
@@ -97,6 +105,58 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
         : true,
     );
     setReverbOffersTouched(false);
+  };
+
+  // P3 (cf6d2ce2): the price, shipping, archive and publish actions all
+  // re-sync the live listing and can trip a Best Offer conflict. One catch path:
+  // re-seed fields from details, open the price editor, show the guided fix.
+  const applyBoConflict = (err: unknown): boolean => {
+    if (!(err instanceof ApiError) || err.code !== "BEST_OFFER_CONFLICT") return false;
+    const conflictDetails = err.details?.[0] as BestOfferConflictDetails | undefined;
+    if (!conflictDetails) return false;
+    setBoFields({
+      enabled: conflictDetails.bestOfferEnabled === true,
+      autoAccept: typeof conflictDetails.bestOfferAutoAcceptPrice === "number" ? String(conflictDetails.bestOfferAutoAcceptPrice) : "",
+      minimum: typeof conflictDetails.minimumBestOfferPrice === "number" ? String(conflictDetails.minimumBestOfferPrice) : "",
+    });
+    // CR#3 / BO-5: only un-touch when the server HEALED (and persisted)
+    // these values. An unpersisted echo of the seller's own edit must
+    // stay touched, or a price-only retry silently drops their change.
+    setBoTouched(conflictDetails.healed !== true);
+    setBoConflict({ ...conflictDetails, message: err.message });
+    setBoAdjusted(false);
+    // The fix lives in the price editor — close any other open editor/sheet so
+    // two forms never stack, and seed the price input when the conflict came
+    // from a non-price action (adjust-to-fit computes from this value).
+    setEditingShipping(false);
+    setShowArchiveConfirm(false);
+    if (!editingPrice) setEditedPrice(String(listing.price));
+    setEditingPrice(true);
+    return true;
+  };
+
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  // Thresholds must sit strictly below the price (eBay 22003/23004) and
+  // auto-accept strictly above minimum (23005) — clamp so tiny prices can't
+  // round into a second conflict.
+  const handleAdjustToFit = () => {
+    const p = parsePriceInput(editedPrice);
+    if (p == null) return;
+    const accept = Math.max(0.01, Math.min(round2(p * 0.9), round2(p - 0.01)));
+    const minimum = Math.min(round2(p * 0.8), round2(accept - 0.01));
+    // A minimum is optional on eBay; below ~$0.03 there is no room for one
+    // under the auto-accept, so leave it empty rather than equal (23005).
+    setBoFields({ enabled: true, autoAccept: String(accept), minimum: minimum >= 0.01 ? String(minimum) : "" });
+    setBoTouched(true);
+    setBoConflict(null);
+    setBoAdjusted(true);
+  };
+
+  const handleTurnOffOffers = () => {
+    setBoFields((f) => ({ ...f, enabled: false }));
+    setBoTouched(true);
+    setBoConflict(null);
+    setBoAdjusted(true);
   };
 
   const handleSavePrice = async () => {
@@ -136,9 +196,13 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       });
       if (updated.warning) setActionWarning(updated.warning);
       setEditingPrice(false);
+      setBoConflict(null);
+      setBoAdjusted(false);
       onChanged();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Failed to save changes");
+      // The banner carries the server's own sentence (e.g. "Saved locally,
+      // but eBay rejected the price…") — don't render it twice below.
+      if (!applyBoConflict(err)) setActionError(err instanceof ApiError ? err.message : "Failed to save changes");
     } finally {
       setIsSaving(false);
     }
@@ -146,22 +210,32 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
   const [aspectMissing, setAspectMissing] = useState<AspectRequirement[] | null>(null);
   const [aspectSaving, setAspectSaving] = useState(false);
   const [aspectError, setAspectError] = useState<string | null>(null);
+  // 307ffa75: publish of a category-less Reverb draft 422s — collect the
+  // category via the cascade (same collect-then-republish flow as aspects).
+  const [reverbCategoryMissing, setReverbCategoryMissing] = useState(false);
+  const [reverbCategoryPick, setReverbCategoryPick] = useState<{ uuid: string; fullName: string } | null>(null);
+  const [reverbCategorySaving, setReverbCategorySaving] = useState(false);
+  const [reverbCategoryError, setReverbCategoryError] = useState<string | null>(null);
   // Shipping edit (beta 17be7322): inline editor seeded from the stored
-  // ebayShipping. PATCH full-replaces marketplaceSpecificFields server-side,
-  // so save must client-side spread the stored keys (aspect-merge pattern).
+  // ebayShipping. Save sends only the ebayShipping key — the server merges
+  // marketplaceSpecificFields atomically per top-level key (C2), replacing
+  // this nested object wholesale while leaving sibling keys untouched.
   const [editingShipping, setEditingShipping] = useState(false);
   const [shipFields, setShipFields] = useState<ShippingFieldsValue>(SHIPPING_FIELDS_DEFAULT);
   const [shippingSaving, setShippingSaving] = useState(false);
 
   const handleOpenShipping = () => {
+    // Canonical stored shape from shared — the previous inline hand-copy of
+    // this type drifted (missing localPickup) and caused 6454017d.
     const stored = ((listing.marketplaceSpecificFields ?? {}) as Record<string, unknown>).ebayShipping as
-      | { method?: string; flatCost?: number; service?: string; handlingDays?: number }
+      | Partial<EbayListingShipping>
       | undefined;
     setShipFields({
       method: (stored?.method as ShippingFieldsValue["method"]) ?? "calculated",
       flatCost: stored?.flatCost != null ? String(stored.flatCost) : "",
       service: stored?.service ?? "",
       handlingDays: stored?.handlingDays != null ? String(stored.handlingDays) : "",
+      localPickup: stored?.localPickup ?? false,
     });
     setEditingShipping(true);
   };
@@ -179,6 +253,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
         ...(shipFields.method === "flat" && cost > 0 ? { flatCost: cost } : {}),
         ...(shipFields.service ? { service: shipFields.service } : {}),
         ...(days >= 0 && shipFields.handlingDays !== "" ? { handlingDays: days } : {}),
+        ...(shipFields.localPickup ? { localPickup: true } : {}),
       };
       // C2: key-scoped payload — the server merges atomically, so spreading
       // the (possibly stale) stored object would clobber concurrent writers.
@@ -191,7 +266,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       setEditingShipping(false);
       onChanged();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Failed to save shipping");
+      if (!applyBoConflict(err)) setActionError(err instanceof ApiError ? err.message : "Failed to save shipping");
     } finally {
       setShippingSaving(false);
     }
@@ -249,7 +324,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       setShowArchiveConfirm(false);
       onChanged();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Failed to archive listing");
+      if (!applyBoConflict(err)) setActionError(err instanceof ApiError ? err.message : "Failed to archive listing");
     } finally {
       setIsArchiving(false);
     }
@@ -274,12 +349,16 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
     try {
       await publishAndRefresh();
     } catch (err) {
+      if (applyBoConflict(err)) return;
       // eBay needs category-required item specifics — collect them, then re-publish.
       if (err instanceof ApiError && err.code === "EBAY_ASPECTS_REQUIRED") {
         setAspectMissing((err.details as unknown as AspectRequirement[]) ?? []);
       } else if (err instanceof ApiError && err.code === "EBAY_WEIGHT_REQUIRED") {
         // Calculated shipping needs package weight/dims — collect, then re-publish.
         setWeightMissing(true);
+      } else if (err instanceof ApiError && err.code === "REVERB_CATEGORY_REQUIRED") {
+        // Reverb needs a category — open the cascade, then re-publish (307ffa75).
+        setReverbCategoryMissing(true);
       } else {
         setActionError(err instanceof ApiError ? err.message : "Failed to publish listing");
       }
@@ -323,6 +402,29 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       }
     } finally {
       setWeightSaving(false);
+    }
+  };
+
+  // 307ffa75: persist the cascade pick, then re-publish (aspect-flow parity).
+  const handleReverbCategorySave = async () => {
+    if (!token || !reverbCategoryPick) return;
+    setReverbCategorySaving(true);
+    setReverbCategoryError(null);
+    try {
+      // C2: only categoryUuid rides — the server's atomic merge leaves
+      // sibling keys untouched (same key the create sheet writes).
+      await api(`/listings/${listing.id}`, {
+        method: "PATCH",
+        token,
+        body: { marketplaceSpecificFields: { categoryUuid: reverbCategoryPick.uuid } },
+      });
+      await publishAndRefresh();
+      setReverbCategoryMissing(false);
+      setReverbCategoryPick(null);
+    } catch (err) {
+      setReverbCategoryError(err instanceof ApiError ? err.message : "Failed to publish listing");
+    } finally {
+      setReverbCategorySaving(false);
     }
   };
 
@@ -405,6 +507,30 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       <div className="mt-2 flex items-center justify-between">
         {editingPrice ? (
           <div className="flex flex-col gap-2">
+            {boConflict && (
+              <div data-testid="bo-conflict-banner" className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-2 text-xs text-red-700 dark:text-red-300 flex flex-col gap-1.5">
+                <span className="font-medium">{boConflict.message}</span>
+                <span>
+                  Best Offer thresholds must be below the price
+                  {typeof boConflict.bestOfferAutoAcceptPrice === "number" && ` · auto-accept $${boConflict.bestOfferAutoAcceptPrice}`}
+                  {typeof boConflict.minimumBestOfferPrice === "number" && ` · minimum $${boConflict.minimumBestOfferPrice}`}.
+                  {boConflict.healed
+                    ? " These were refreshed from your live eBay listing."
+                    : " These are your current settings."}
+                </span>
+                <span className="flex gap-2">
+                  <button type="button" onClick={handleAdjustToFit} disabled={parsePriceInput(editedPrice) == null} className="px-2 py-0.5 rounded-lg border border-red-300 dark:border-red-700 font-medium disabled:opacity-50">
+                    Adjust to fit price
+                  </button>
+                  <button type="button" onClick={handleTurnOffOffers} className="px-2 py-0.5 rounded-lg border border-red-300 dark:border-red-700 font-medium">
+                    Turn off offers
+                  </button>
+                </span>
+              </div>
+            )}
+            {boAdjusted && (
+              <p className="text-xs text-amber-700 dark:text-amber-300">Offer settings adjusted — Save to confirm.</p>
+            )}
             <div className="flex items-center gap-2">
               <div className="relative">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
@@ -429,6 +555,8 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
                   // No re-seed needed: opening the editor always seeds fresh.
                   setEditingPrice(false);
                   setActionError(null);
+                  setBoConflict(null);
+                  setBoAdjusted(false);
                 }}
                 className="px-2 py-1.5 text-sm text-text-secondary"
               >
@@ -662,6 +790,44 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
           }}
           onSave={handleAspectsSave}
         />
+      )}
+      {reverbCategoryMissing && (
+        <div className="mt-3 p-3 bg-muted rounded-xl space-y-3">
+          <p className="text-sm text-text-primary">
+            Reverb needs a category before this listing can publish. Pick one:
+          </p>
+          <ReverbCategorySection
+            idPrefix={`card-cat-${listing.id}-`}
+            value={reverbCategoryPick}
+            onChange={setReverbCategoryPick}
+            token={token}
+            onLoadError={() =>
+              setReverbCategoryError("Couldn't load Reverb categories — check your connection and try again.")
+            }
+          />
+          {reverbCategoryError && <p className="text-sm text-red-700 dark:text-red-300">{reverbCategoryError}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleReverbCategorySave}
+              disabled={!reverbCategoryPick || reverbCategorySaving}
+              className="px-4 py-2 bg-forest-green text-white rounded-xl text-sm font-medium disabled:opacity-50"
+            >
+              {reverbCategorySaving ? "Publishing..." : "Save & publish"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setReverbCategoryMissing(false);
+                setReverbCategoryPick(null);
+                setReverbCategoryError(null);
+              }}
+              className="px-4 py-2 text-sm text-text-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
       {weightMissing && (
         <WeightFillSheet

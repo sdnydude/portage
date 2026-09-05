@@ -31,9 +31,9 @@ npm workspaces monorepo with three packages:
 
 ### Database
 
-Drizzle ORM, schema-push workflow (no migration files). 18 tables:
+Drizzle ORM, schema-push workflow (no migration files). 21 tables (items.status enum added 2026-08-23):
 
-users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages, faqs, export_tokens
+users, items, listings, orders, conversations, notifications, marketplace_accounts, admin_audit_log, app_settings, design_survey_responses, design_review_comments, disclaimer_acceptances, listing_drafts, seller_profiles, stripe_events, ebay_messages, faqs, export_tokens, marketplace_sync_log, sync_jobs, ebay_deleted_identities
 
 Notable JSONB columns: `items.photos`, `items.marketplaceData` (eBay category/title cache), `orders.shippingAddress`.
 
@@ -44,7 +44,7 @@ Cloudflare Access is the identity provider — no password. `GET /auth/session` 
 ### Marketplace Adapters
 
 Shared TypeScript interface in `packages/shared/src/marketplace.ts`. Three adapters:
-- **eBay:** OAuth2 auth code grant. Listing lifecycle runs on the **Trading API** (Trade-First, PR #133, live-proven): AddFixedPriceItem / ReviseFixedPriceItem / ReviseInventoryStatus / EndFixedPriceItem / GetItem, inline shipping terms — no Business Policies, no Inventory-API offers (`ebayOfferId` removed from the adapter interface; DB column inert). Insert-first idempotency on publish (`listings.idempotency_key`). Fulfillment API for orders, Taxonomy API for categories/aspects
+- **eBay:** OAuth2 auth code grant. Listing lifecycle runs on the **Trading API** (Trade-First, PR #133, live-proven): AddFixedPriceItem / ReviseFixedPriceItem / ReviseInventoryStatus / EndFixedPriceItem / GetItem, inline shipping terms — no Business Policies, no Inventory-API offers (`ebayOfferId` removed from the adapter interface; DB column inert). Insert-first idempotency on publish (`listings.idempotency_key`). Fulfillment API for orders, Taxonomy API for categories/aspects. **Marketplace Account Deletion** compliance endpoint (public `/marketplace/ebay/account-deletion`, challenge + ECDSA-SHA1 signature verify, synchronous anonymization, HMAC-keyed `ebay_deleted_identities` re-population guard — `apps/api/src/routes/marketplace/ebay-deletion.ts`)
 - **Etsy:** PARKED 2026-07-09 (tag `etsy-parked-2026-07`) pending API key approval — adapter/auth routes/UI removed; DB enum value remains, inert
 - **Reverb:** Publish path shipped + live-proven (PRs #173-#177, 2026-07-08): per-user PAT token auth, comps search, create/update listing — listings live and sold on the real shop since 2026-07-13
 
@@ -57,7 +57,7 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 ### AI
 
 - **Item scanning:** configurable provider chain defined by the `VISION_PROVIDERS` env var, consumed in `apps/api/src/lib/ai-client.ts` (`apps/api/src/lib/vision.ts` holds the vision prompt/schema logic) — Gemini 2.5 primary, Claude fallback in prod
-- **Porter assistant:** Claude Sonnet SSE streaming via `client.messages.stream()`, 3 tools (search_inventory, get_inventory_stats, suggest_listing), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback)
+- **Porter assistant:** local-first chat chain (`CHAT_PROVIDERS=local:granite4.1:8b,gemini` — granite via Ollama, gemini-2.5-flash fallback; model eval + switch 2026-08-13, PR #303) with SSE streaming, 3 tools (search_inventory, get_inventory_stats, suggest_listing), runtime grounding validation (post-tool-loop item check, buffer-after-first-tool streaming, 3-attempt retry w/ gemini force, 45s budget — `apps/api/src/lib/porter-grounding.ts`), action pills, JSONB conversation in `blocks: ContentBlock[]` format. Routes: `POST /porter/stream` (SSE), `POST /porter/message` (non-streaming fallback)
 - **Voice (STT/TTS):** REMOVED 2026-07-01 (parked for a future release) — pre-removal code preserved at git tag `voice-parked-2026-07`
 - **Background removal:** Server-side via portage-rembg container (`POST /images/remove-bg`, `REMBG_URL`), billing-gated per tier
 - **Auto-enhance:** Server-side Sharp pipeline, billing-gated per tier
@@ -102,6 +102,8 @@ Three-interface listing creation: Conversational, Swipe, and Hybrid modes. `useL
 | Scan flow | apps/web/src/components/capture/scan-flow.tsx |
 | Messages routes | apps/api/src/routes/messages.ts |
 | Trading API client | apps/api/src/marketplace/ebay-trading-client.ts |
+| eBay account-deletion endpoint | apps/api/src/routes/marketplace/ebay-deletion.ts (+ apps/api/src/marketplace/ebay-notification-verify.ts, ebay-deletion-anonymize.ts) |
+| Prod boot guard | apps/api/src/lib/prod-env-guard.ts |
 | Messages hooks | apps/web/src/hooks/use-messages.ts |
 | Conversations list | apps/web/src/app/messages/page.tsx |
 | Conversation thread | apps/web/src/app/messages/[conversationKey]/page.tsx |
@@ -192,8 +194,133 @@ beta bug batch + auth-exchange hardening (PRs #262-263), accept-offers +
 advertising toggles (PRs #264-265), TabBar overlay fix + audit gate (PR #266),
 Trust Gates enforcement docs + proof-before-push hook (PRs #267-268),
 CF_ACCESS_AUD login-outage fix + boot guard (PR #269), Langfuse Porter
-agent-observation typing (PR #270).
-Test suite: 785 API / 590 web as of 2026-08-02.
+agent-observation typing (PR #270), per-listing shipping controls + local
+pickup (PRs #274/#276/#278), Reverb category cascade + review batch (PR #280),
+marketplace sync refactor — durable log, outbox worker, UI truth surface
+(PR #283), sync audit fix batch (PR #287), Best Offer redesign — PR #285's
+DeletedField hotfix caused a config-deletion crisis, rebuilt ground-up with
+typed errors + conflict-time heal + never-delete semantics (PRs #288-289),
+Reverb Bump-bid range validation + publish-retry photo-ingestion race fix,
+vision provider schema-drift coercion + fail-over, beta-blocker UI batch —
+pickup seed/save, Best Offer guided fix w/ healed flag, Reverb cascade (PR #295).
+Marketplace-truth sync shipped (PR #299, 08-10): periodic status sweep +
+Reverb order sync/backfill, 10-finding review batch, Reverb blank-model 422
+publish fix (omit make/model when absent) — live-verified.
+Ship-program Phase 3a shipped (PR #303, 08-13): Porter reliability
+(blank-reply fix, AI_UNAVAILABLE guard, Langfuse per-purpose names,
+chatModel override), runtime grounding validation, granite4.1:8b model
+switch (125-prompt eval, 0 fabrications, ~1s turns; supersedes gemma4:12b
+rec and qwen3:14b), search_inventory recall merge + photos-strip fix —
+live-proven with DB-verified screenshots.
+Category-mismatch guard shipped (PR #304, 08-13): eBay suggestion
+plausibility check (ancestor-root table + rich-vision token overlap),
+advisory banner in scan review + edit page (Use anyway / Find different /
+Don't use it, per-category dismissal memory), Tier-2 persisted
+visionCategory + publish-time self-heal warn-log — caught the live
+Baseball Jackets recurrence in scan-flow during PoD.
+Deferral program P1 (compliance/security) shipped 2026-08-19: eBay Marketplace
+Account Deletion endpoint (c683b4bc), self-hosted-runner fork-PR refusal in
+e2e.yml + claude-review.yml (223b0419), prod boot-guard widening to 14 requirements
+(73dd1664) — see docs/deferral-plan-2026-08-15.md for P2–P8.
+Deferral P2 (capture-pipeline integrity) shipped 2026-08-22 across 3 repos
+(dhg-memreg#1, dhgaifactory3.5#26, portage#313): registry write-auth ENFORCE
+live (bearer token, ~/.claude/secrets/registry-write-token; reads + */search
+stay open), landing-verified captures (2xx-without-id dead-letters; idempotency
+rides natural-key upserts, no new column), DLQ sibling-lockfile + atomic-replace
+durability with 5-min timed replay, capture-guarantee landing-diff via
+GET /api/captures/lookup as a user-level Stop hook, stale portage capture-script
+copies deleted (canonical = ~/.claude/scripts symlinks to dhg-memreg). Ship-log
+057. NOTE: LangGraph retired going forward — Pydantic AI + Langfuse (e038a72a).
+Deferral P3 (beta UX truth) shipped 2026-08-22 (PR #315, 734ae42): Best Offer
+conflicts carry structured details from every adapter throw, the post-save
+PATCH catch heals from live and rethrows 422 instead of a 200+warning, and
+ListingCard renders a guided fix (Adjust to fit price / Turn off offers) —
+live-proven on a real listing; swipe flow photo-first with Retry; scan review
+surfaces comps/category/aspect outages with retries, condition-snap notice,
+"Unavailable" instead of a false "Complete"; mobile ?item= deep link no longer
+mounts the hidden pane. Ship-log 058; proof page 2026-08-22-p3-beta-ux-truth.
+Housekeeping batch 1 shipped 2026-08-23 (PR #317, 2607211): items.price ⇄
+listings.price one value both directions; aspect null-delete on items PATCH +
+listing-row strip in one transaction; estimated-value range retired from every
+surface (columns kept); items.status enum (unlisted|asset|sold|archived) with
+derived displayStatus + ?status= filter + detail/edit control; shared
+StatusChip/MarketplaceChip on --chip-* tokens (≥6.3:1 both themes);
+data-driven category chips (GET /items/categories) + case-insensitive filter
++ lowercase-trim writes; 5-row/2000-char
+condition notes. Live-proven (e2e/housekeeping-1.spec.ts, E2E_EBAY_LIVE=1);
+the live run caught a drizzle array-param bug the mocked tests could not.
+Ship-log 059; proof page 2026-08-23-housekeeping-1.
+Deferral P4 (docs & observability truth) shipped 2026-08-23 (PR #319, efdf4bd):
+ship-log generator revived as an additive, tested tool
+(`.claude/scripts/shiplog/gen.py`; wrapper `generate-ship-log.sh`): every
+page carries `registry_id:`, hand-written pages are never regenerated, and
+`deploy-docs.yml` runs `--check` as a drift gate — **git is the source of
+truth for `website/docs/ship-log`, the registry for sessions**; a session
+with no committed page fails the docs deploy (run the generator locally and
+commit). /ship Phase 7 hand-written pages must include `registry_id:`.
+Backfilled 74 sessions (135 pages = 134 registry sessions + 1 hand-written). Also: /about page (+ links on avatar
+menu, sidebar, More), `rsync --delete` for static images, tutorials
+re-captured on the 4-tab app with a CI gate (`npm run check:tutorials`),
+`docs/api/ebay.md`; deploy-docs now has a pre-restart smoke gate and auto-opens
+a GitHub issue on failure (drill: `gh workflow run deploy-docs.yml -f drill=true`).
+Ship-log 134; proof page 2026-08-23-p4-docs-truth.
+Test suite: 1064 API / 710 web / 27 generator as of 2026-08-27 (P6).
+Deferral P5 (log program) SPEC approved 2026-08-23 (PR #323, ship-log 135):
+docs/log-program-architecture-2026-08-23.md rev 3 — keep-all retention (operator
+directive: no automatic deletion, operator-only), 2-layer redaction (pino
+redact + promtail stages), SecretLeakDetected/LokiStoreGrowth alerts, dashboard
+v2, local-only log-chat + web panel (B9). Build B0–B9 is the next /ship
+(stopped at Phase 1 on 2026-08-23; resume Phase 2).
+P5 BUILD shipped 2026-08-25 (dhgaifactory3.5#27 + portage#325): Loki 3.7.6
++ Alloy keep-all foundation (promtail EOL'd out), ruler→Alertmanager v2 fix
+(prod 410 black hole, 13,652 dropped), 2-layer redaction live-proven
+(pino redact + Alloy stages; seeded proof), SecretLeak/LokiStoreGrowth/
+AlloyDown/LokiDown alerts drilled to incidents, logs-chat (granite4.1:8b
+local-only, audited) + /logs panel in dhg-frontend. Ship-log 136; runbook
+operations/log-program-runbook. Registry items 13699992/c9c15852 resolved.
+Deferral P7 (paper-cuts) shipped 2026-08-26 (PRs #327-#329): all 14 §P7
+items — publish-fallback warning fix, seller-profile race, export row cap,
+export-token sweep, SSRF/identity regression tests, json_object no-tools
+mode, taxonomy cache hit/miss metrics, tdd-guard docs reconcile, gh 2.98 —
+plus EbayTradingError → 422 EBAY_REJECTED (prod-incident fix, deployed).
+Ship-log 137. Program remaining: P6 (dependency majors), P8 (settle pass).
+Publish claim race fixed 2026-08-26 (PR #331, c81916d): six same-key
+POST /listings from an iPhone passed the R3 resume claim (latent since 07-09)
+and double-listed on eBay. `listings.publishClaimedAt` claim on both publish
+routes (409 PUBLISH_IN_PROGRESS on in-flight loss, release only on definitive
+errors, stale-claim adopt-by-SKU via GetMyeBaySelling, stuck-claim sweep),
+web in-flight guard + DisclaimerSheet busy. Live-proven on the real account
+(bursts → one AddFixedPriceItem). Ship-log 138; proof page
+2026-08-26-publish-claim-race. Tests: 1060 API / 704 web.
+Deferral P6 (dependency majors) shipped 2026-08-27: Node 24 runtime
+(Dockerfiles ×6, CI ×4, .nvmrc, engines) + @types/node 24 (api; web stays 25),
+TypeScript ~6.0 (TS 7 blocked: typescript-eslint peer <6.1 until TS 7.1's
+compiler API), vitest 4 / vite 8 (constructor-style mocks must be `function`,
+spyOn reuses spies), zod 4 (`.issues`, two-arg `z.record`, `z.partialRecord`
+for enum-keyed limitOverrides, `z.guid()` = v3-permissive uuid,
+`z.flattenError`), pino 10 + pino-http 11 (`@pinojs/redact`; redaction
+re-proven live), eslint 10 — `eslint` is now a ROOT devDependency so one copy
+hoists; `eslint-plugin-jsx-a11y` (peer ≤9) was installed with `--force` and
+the lockfile records it (`npm ci` replays cleanly; a future `npm install` of
+jsx-a11y needs `--force` until it ships v10 support); eslint-config-next
+replaced by a composed stack (`@next/eslint-plugin-next` + `@eslint-react`
++ `react-hooks` + `jsx-a11y` ×6 rules + `import-x`); every `@eslint-react`
+recommended rule enforced except the two that duplicate react-hooks rules —
+72 sites fixed, `withKeys()` (`apps/web/src/lib/list-keys.ts`) for
+occurrence-safe list keys, lint 0 errors / 27 warnings = prior baseline; CI
+has a plugin-load canary. `npm audit` 0 high (next 16.3.3; postcss override
+^8.5.23 — 8.5.26 does not resolve under next's exact pin). Dependabot ignores
+TS >=6.1, @types/node >=25 (api) / >=26 (web). Live-proven on the deployed
+branch: home, Porter stream, inventory/detail, draft payload, scan → review,
+AddFixedPriceItem. Proof page 2026-08-27-p6-dependency-majors.
+Deferral P8 (settle pass) closed 2026-08-29: all 7 items resolved with
+evidence (item bbaddd00 moot, docs domain public, dhg-docs `absolute_redirect
+off;` fix live, agentlint no-force-push over-fire gone in 2.5.3, hook-chain
+latency measured <0.5s/action, R2 portage-images CORS set via API and
+live-verified), 14 unreferenced verification PNGs removed. Cloudflare writes
+now use `CF_OPS_TOKEN` (Doppler dhg-infra/prd + portage/prd, scope C per the
+2026-06-06 cloudflare-ops spec). Program P1–P8 CLOSED. Residue: `86b12195`
+session_reports KB source.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.

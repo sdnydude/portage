@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, use, useMemo, useState } from "react";
 import { usePorterStream, type PorterStreamState } from "./use-porter-stream";
 
 interface PorterContextValue extends PorterStreamState {
@@ -28,11 +28,11 @@ export function PorterProvider({ children }: { children: React.ReactNode }) {
     [stream, chatInput, isEngaged]
   );
 
-  return <PorterContext.Provider value={value}>{children}</PorterContext.Provider>;
+  return <PorterContext value={value}>{children}</PorterContext>;
 }
 
 export function usePorter(): PorterContextValue {
-  const ctx = useContext(PorterContext);
+  const ctx = use(PorterContext);
   if (!ctx) throw new Error("usePorter must be used inside PorterProvider");
   return ctx;
 }

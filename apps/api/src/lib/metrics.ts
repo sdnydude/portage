@@ -47,8 +47,14 @@ export const aiLatency = new client.Histogram({
 
 export const ebayTaxonomyCalls = new client.Counter({
   name: 'portage_ebay_taxonomy_calls_total',
-  help: 'eBay taxonomy lookup requests by operation (route-level; upstream calls may be cache-served)',
-  labelNames: ['operation'] as const,
+  help: 'eBay taxonomy/metadata cache lookups by operation and result (cache_hit|cache_miss) — P7 7107c1b8',
+  labelNames: ['operation', 'result'] as const,
+});
+
+export const ebayDeletionNotifications = new client.Counter({
+  name: 'portage_ebay_deletion_notifications_total',
+  help: 'eBay Marketplace Account Deletion notifications by outcome (ok|partial|duplicate|no_identity|unknown_user|invalid_sig|ignored_topic|key_unavailable|db_error|payload_too_large)',
+  labelNames: ['result'] as const,
 });
 
 export const metricsRegistry = client.register;

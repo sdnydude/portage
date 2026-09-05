@@ -3,6 +3,7 @@ id: redesign-ship-1-build
 title: "Redesign Ship 1 — DHG design system + Porter home + tab bar + /porter page + theme toggle"
 sidebar_label: "Redesign Ship 1 — DHG design system + Porter home "
 sidebar_position: 50
+registry_id: 9cd6adf6-0f5d-46ac-a290-67128f19722f
 ---
 
 # Redesign Ship 1 — DHG design system + Porter home + tab bar + /porter page + theme toggle

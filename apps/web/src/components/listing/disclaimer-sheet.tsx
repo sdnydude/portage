@@ -54,14 +54,17 @@ const DISCLAIMER_CLAUSES = [
 ];
 
 interface DisclaimerSheetProps {
-  listingId: string;
+  itemId: string;
   isFirstTime: boolean;
   /** suppress7d = the seller ticked "don't show again for 7 days" (display only). */
   onAccept: (suppress7d: boolean) => void;
   onCancel: () => void;
+  /** Publish in flight — disables Accept so a second tap cannot re-submit
+   *  (UX layer; the parent's synchronous in-flight ref is the real guard). */
+  busy?: boolean;
 }
 
-export function DisclaimerSheet({ listingId, isFirstTime, onAccept, onCancel }: DisclaimerSheetProps) {
+export function DisclaimerSheet({ itemId, isFirstTime, onAccept, onCancel, busy = false }: DisclaimerSheetProps) {
   const [isExpanded, setIsExpanded] = useState(isFirstTime);
   const [isChecked, setIsChecked] = useState(false);
   // F3b: opt-in to skip this sheet for 7 days. Unchecked by default.
@@ -72,7 +75,7 @@ export function DisclaimerSheet({ listingId, isFirstTime, onAccept, onCancel }: 
     setIsChecked(false);
     setSuppress7d(false);
     setIsExpanded(isFirstTime);
-  }, [listingId, isFirstTime]);
+  }, [itemId, isFirstTime]);
 
   return (
     <div className="rounded-2xl border border-border bg-surface p-4" style={{ boxShadow: "var(--shadow-subtle)" }}>
@@ -107,7 +110,7 @@ export function DisclaimerSheet({ listingId, isFirstTime, onAccept, onCancel }: 
       {isExpanded && (
         <div className="mb-3 max-h-64 overflow-y-auto space-y-3 pr-1">
           {DISCLAIMER_CLAUSES.map((clause, index) => (
-            <div key={index}>
+            <div key={clause.title}>
               <h4 className="text-xs font-semibold text-text-primary mb-0.5">
                 {index + 1}. {clause.title}
               </h4>
@@ -173,10 +176,10 @@ export function DisclaimerSheet({ listingId, isFirstTime, onAccept, onCancel }: 
         </button>
         <button
           onClick={() => onAccept(suppress7d)}
-          disabled={!isChecked}
+          disabled={!isChecked || busy}
           className="flex-1 py-2.5 rounded-xl bg-forest-green text-white text-sm font-medium disabled:opacity-50"
         >
-          Accept & Publish
+          {busy ? "Publishing…" : "Accept & Publish"}
         </button>
       </div>
     </div>

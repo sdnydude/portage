@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 
 export function useBulkSelect<T extends { id: string }>() {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [isSelecting, setIsSelecting] = useState(false);
 
   const toggle = useCallback((id: string) => {

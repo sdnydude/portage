@@ -115,10 +115,11 @@ export function useDesktopIngest() {
     [commit, process],
   );
 
+  /** Resolves true when the item was created — callers refresh the list on it. */
   const save = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<boolean> => {
       const item = queueRef.current.find((it) => it.id === id);
-      if (!item?.fields) return;
+      if (!item?.fields) return false;
       patch(id, { status: "saving" });
       try {
         await api("/items", {
@@ -127,11 +128,13 @@ export function useDesktopIngest() {
           body: candidateToItemBody(item.fields, item.uploadedUrls),
         });
         patch(id, { status: "saved" });
+        return true;
       } catch (e) {
         patch(id, {
           status: "error",
           error: e instanceof Error ? e.message : "save failed",
         });
+        return false;
       }
     },
     [patch, token],

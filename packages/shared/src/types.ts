@@ -66,6 +66,8 @@ export interface ReverbCacheEntry {
 export interface MarketplaceData {
   ebay?: MarketplaceCacheEntry;
   reverb?: ReverbCacheEntry;
+  /** Vision scan's coarse category — read by the category-mismatch guard. */
+  scan?: { visionCategory?: string };
 }
 
 export interface Item {
@@ -521,6 +523,20 @@ export interface EbayListingShipping {
   /** Offer local pickup alongside the method (add-on only — eBay rejects
    *  pickup-only for flat/calculated, live-verified 2026-08-01). */
   localPickup?: boolean;
+}
+
+/**
+ * Payload of details[0] on a 422 BEST_OFFER_CONFLICT (25afd214): the effective
+ * (post-heal) thresholds so price editors can render a guided fix. `healed`
+ * distinguishes server-persisted live values (client may un-touch its form)
+ * from an unpersisted echo of the client's own submission (must stay touched,
+ * or a price-only retry silently drops the seller's edit — CR#3/BO-5).
+ */
+export interface BestOfferConflictDetails {
+  bestOfferEnabled: boolean | null;
+  bestOfferAutoAcceptPrice: number | null;
+  minimumBestOfferPrice: number | null;
+  healed: boolean;
 }
 
 /**

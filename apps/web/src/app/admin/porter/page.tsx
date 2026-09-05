@@ -47,8 +47,8 @@ export default function AdminPorterPage() {
         </div>
         <div className="divide-y divide-border">
           {isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-48" /></div>
+            Array.from({ length: 5 }, (_, i) => `skeleton-${i}`).map((k) => (
+              <div key={k} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-48" /></div>
             ))
           ) : convos?.conversations.length ? (
             convos.conversations.map(c => (

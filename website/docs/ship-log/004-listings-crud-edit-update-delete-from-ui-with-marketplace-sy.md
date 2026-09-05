@@ -2,6 +2,7 @@
 title: "Listings CRUD — edit/update/delete from UI with marketplace sync"
 sidebar_label: "Listings CRUD — edit/update/delete from UI with ma"
 sidebar_position: 4
+registry_id: f43656bb-6dc2-4a6e-acc6-eb273a6f9b23
 ---
 
 # Listings CRUD — edit/update/delete from UI with marketplace sync

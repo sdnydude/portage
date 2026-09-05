@@ -81,6 +81,10 @@
             "type": "command",
             "command": "bash /home/swebber64/DHG/portage/.claude/hooks/git-gate.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash /home/swebber64/DHG/portage/.claude/hooks/review-before-commit.sh"
           }
         ]
       },
@@ -168,27 +172,6 @@
             "_agentlint": "v2",
             "command": "/home/swebber64/.local/bin/agentlint check --event Notification",
             "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 /home/swebber64/DHG/portage/.claude/hooks/capture-guarantee.py 2>/dev/null || true",
-            "timeout": 30
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "_agentlint": "v2",
-            "command": "/home/swebber64/.local/bin/agentlint report",
-            "timeout": 30
           }
         ]
       }

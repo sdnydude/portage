@@ -61,29 +61,29 @@ export function CropTool({ imageUrl, imageWidth, imageHeight, onApply, onCancel 
   }, [imageWidth, imageHeight, windowSide]);
 
   // ── Pointer pan + two-finger pinch ────────────────────────────────────────
-  const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const pinchDist = useRef<number | null>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchDistRef = useRef<number | null>(null);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.current.size === 2) {
-      const [a, b] = [...pointers.current.values()];
-      pinchDist.current = Math.hypot(a.x - b.x, a.y - b.y);
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointersRef.current.size === 2) {
+      const [a, b] = [...pointersRef.current.values()];
+      pinchDistRef.current = Math.hypot(a.x - b.x, a.y - b.y);
     }
   }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
-    const prev = pointers.current.get(e.pointerId);
+    const prev = pointersRef.current.get(e.pointerId);
     if (!prev) return;
     const next = { x: e.clientX, y: e.clientY };
-    pointers.current.set(e.pointerId, next);
+    pointersRef.current.set(e.pointerId, next);
 
-    if (pointers.current.size === 2 && pinchDist.current) {
-      const [a, b] = [...pointers.current.values()];
+    if (pointersRef.current.size === 2 && pinchDistRef.current) {
+      const [a, b] = [...pointersRef.current.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      const ratio = dist / pinchDist.current;
-      pinchDist.current = dist;
+      const ratio = dist / pinchDistRef.current;
+      pinchDistRef.current = dist;
       setZoom((z) => {
         const nz = Math.min(MAX_ZOOM, Math.max(1, z * ratio));
         const r = nz / z;
@@ -93,14 +93,14 @@ export function CropTool({ imageUrl, imageWidth, imageHeight, onApply, onCancel 
         setOffset((o) => clamp({ x: rescaleOffset(o.x, cx, r), y: rescaleOffset(o.y, cy, r) }, nz));
         return nz;
       });
-    } else if (pointers.current.size === 1) {
+    } else if (pointersRef.current.size === 1) {
       setOffset((o) => clamp({ x: o.x + (next.x - prev.x), y: o.y + (next.y - prev.y) }, zoom));
     }
   }, [clamp, zoom, windowSide]);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
-    pointers.current.delete(e.pointerId);
-    if (pointers.current.size < 2) pinchDist.current = null;
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size < 2) pinchDistRef.current = null;
   }, []);
 
   // Desktop: wheel zooms, anchored at the cursor.

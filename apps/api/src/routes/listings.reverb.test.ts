@@ -17,14 +17,14 @@ const { mockReverbCreateListing, mockReverbUpdateListing, mockReverbDeleteListin
     mockReverbSearchCategories,
     mockReverbGetListingStatus,
     mockReverbSetBump,
-    ReverbAdapterMock: vi.fn(() => ({
+    ReverbAdapterMock: vi.fn(function () { return ({
       createListing: mockReverbCreateListing,
       updateListing: mockReverbUpdateListing,
       deleteListing: mockReverbDeleteListing,
       searchCategories: mockReverbSearchCategories,
       getListingStatus: mockReverbGetListingStatus,
       setBump: mockReverbSetBump,
-    })),
+    }); }),
   };
 });
 
@@ -95,6 +95,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // PATCH /listings/:id now writes inside db.transaction — pass db through as tx.
+  vi.mocked(db.transaction).mockImplementation((async (fn: (tx: unknown) => unknown) => fn(db)) as any);
   vi.mocked(db.update).mockReturnValue({
     set: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'listing-1', status: 'active' }]) }),
@@ -562,7 +564,13 @@ describe('POST /listings/:id/publish — reverb', () => {
     const listingUpdateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: LISTING_ID, status: 'active' }]) }),
     });
+    // Publish-claim UPDATE (2026-08-26) runs first on this route, before the
+    // self-heal persist-back.
+    const claimSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: LISTING_ID, status: 'draft' }]) }),
+    });
     vi.mocked(db.update)
+      .mockReturnValueOnce({ set: claimSet } as any)
       .mockReturnValueOnce({ set: itemUpdateSet } as any)
       .mockReturnValueOnce({ set: listingUpdateSet } as any);
     mockReverbCreateListing.mockResolvedValueOnce({

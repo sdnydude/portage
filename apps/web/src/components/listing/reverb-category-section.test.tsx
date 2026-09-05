@@ -7,6 +7,25 @@ vi.mock("@/lib/api", () => ({ api: h.apiMock, ApiError: class extends Error {} }
 import { ReverbCategorySection } from "./reverb-category-section";
 
 describe("ReverbCategorySection", () => {
+  it("renders two cascade levels that share a label without a duplicate-key warning", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/marketplace/reverb/product-types") {
+        return { productTypes: [{ uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true }] };
+      }
+      if (path.startsWith("/marketplace/reverb/subcategories")) {
+        return { subcategories: [{ uuid: "c1", fullName: "Effects and Pedals > Fuzz", name: "Fuzz", rootUuid: "root-fx", listable: true }] };
+      }
+      return {};
+    });
+    render(<ReverbCategorySection value={null} onChange={vi.fn()} token="t" />);
+    fireEvent.change(await screen.findByLabelText(/product type/i), { target: { value: "root-fx" } });
+    await waitFor(() => expect(screen.getAllByRole("combobox").length).toBeGreaterThan(1));
+    const dupKey = errorSpy.mock.calls.some((c) => String(c[0]).includes("same key"));
+    errorSpy.mockRestore();
+    expect(dupKey).toBe(false);
+  });
+
   it("loads the Product Type roots into the first cascade level", async () => {
     h.apiMock.mockImplementation(async (path: string) => {
       if (path === "/marketplace/reverb/product-types") {
@@ -72,5 +91,28 @@ describe("ReverbCategorySection", () => {
     // Stepping back to "(stop here)" reverts the choice to the parent.
     fireEvent.change(sub1, { target: { value: "" } });
     expect(onChange).toHaveBeenLastCalledWith({ uuid: "root-fx", fullName: "Effects and Pedals" });
+  });
+
+  it("keeps a seeded non-listable node visible as the current selection (PR #280 review gap)", async () => {
+    h.apiMock.mockImplementation(async (path: string) => {
+      if (path === "/marketplace/reverb/product-types") {
+        return {
+          productTypes: [
+            { uuid: "root-parts", fullName: "Parts", name: "Parts", rootUuid: "root-parts", listable: false },
+            { uuid: "root-fx", fullName: "Effects and Pedals", name: "Effects and Pedals", rootUuid: "root-fx", listable: true },
+          ],
+        };
+      }
+      if (path.startsWith("/marketplace/reverb/subcategories")) return { subcategories: [] };
+      return {};
+    });
+    render(
+      <ReverbCategorySection value={{ uuid: "root-parts", fullName: "Parts" }} onChange={vi.fn()} token="t" />,
+    );
+    // The seeded choice must render AS the selection, not vanish into the placeholder.
+    await waitFor(() => {
+      expect((screen.getByLabelText(/product type/i) as HTMLSelectElement).value).toBe("root-parts");
+    });
+    expect(screen.getByRole("option", { name: "Parts" })).toBeInTheDocument();
   });
 });

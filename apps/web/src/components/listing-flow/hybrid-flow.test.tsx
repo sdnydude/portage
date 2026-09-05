@@ -214,6 +214,25 @@ describe("HybridFlow — fresh-scan prepare (item created at confirm)", () => {
       h.lastStep = "confirmed";
     }
   });
+
+  it("item create failure is shown as a Porter message — no silent draft (P3 T5b)", async () => {
+    h.lastStep = "recognition";
+    h.ensureItemCreated.mockRejectedValue(new Error("Item save failed: 500"));
+    h.prepare.mockClear();
+    try {
+      render(<HybridFlow />);
+      fireEvent.click(screen.getByText("Looks right"));
+      expect(await screen.findByText(/Item save failed: 500/)).toBeInTheDocument();
+      expect(h.prepare).not.toHaveBeenCalled();
+      // The Looks right pill is gone by now — the Retry in the message is the only way forward.
+      h.ensureItemCreated.mockResolvedValue("item-9");
+      fireEvent.click(screen.getByRole("button", { name: /^retry$/i }));
+      await vi.waitFor(() => expect(h.prepare).toHaveBeenCalledWith("item-9", ["ebay"]));
+    } finally {
+      h.lastStep = "confirmed";
+      h.ensureItemCreated.mockReset();
+    }
+  });
 });
 
 describe("HybridFlow — prepare failure surface", () => {

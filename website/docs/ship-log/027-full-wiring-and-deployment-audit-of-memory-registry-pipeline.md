@@ -2,6 +2,7 @@
 title: "Full wiring and deployment audit of memory/registry pipeline"
 sidebar_label: "Full wiring and deployment audit of memory/registr"
 sidebar_position: 27
+registry_id: bbc5ab70-f6bf-4847-9b5c-028acccd6351
 ---
 
 # Full wiring and deployment audit of memory/registry pipeline

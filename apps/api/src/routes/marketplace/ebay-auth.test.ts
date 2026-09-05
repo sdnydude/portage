@@ -159,6 +159,29 @@ describe('POST /marketplace/ebay/callback identity capture', () => {
     expect((tokenInit.headers as Record<string, string>)['User-Agent']).toBe(EBAY_USER_AGENT);
   });
 
+  it('still connects when the Identity fetch THROWS (network error), leaving marketplaceUserId null (P7 d56aff62)', async () => {
+    const setMock = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+
+    const state = await getValidState();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 7200 }) })
+        .mockRejectedValueOnce(new TypeError('fetch failed: getaddrinfo ENOTFOUND apiz.ebay.com')),
+    );
+
+    const res = await request(app)
+      .post('/marketplace/ebay/callback')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ code: 'auth-code', state });
+
+    expect(res.status).toBe(200);
+    expect(res.body.connected).toBe(true);
+    expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ marketplaceUserId: null }));
+  });
+
   it('still connects when the Identity API fails, leaving marketplaceUserId null', async () => {
     const setMock = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
     vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
@@ -185,7 +208,7 @@ describe('POST /marketplace/ebay/callback identity capture', () => {
 
 describe('GET /marketplace/ebay/category-suggestion', () => {
   it('returns the suggested category bundled with its valid condition IDs', async () => {
-    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({ categoryId: '619', categoryName: 'Guitar Amplifiers' });
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({ categoryId: '619', categoryName: 'Guitar Amplifiers', rootCategoryId: null, rootCategoryName: null });
     vi.spyOn(EbayAdapter, 'getValidConditions').mockResolvedValue(['1000', '3000']);
 
     const res = await request(app)
@@ -197,8 +220,57 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
     expect(EbayAdapter.getCategorySuggestion).toHaveBeenCalledWith('fender deluxe reverb amp');
     expect(EbayAdapter.getValidConditions).toHaveBeenCalledWith('619');
     expect(res.body).toEqual({
-      suggestion: { categoryId: '619', categoryName: 'Guitar Amplifiers', conditionIds: ['1000', '3000'] },
+      suggestion: { categoryId: '619', categoryName: 'Guitar Amplifiers', rootCategoryId: null, rootCategoryName: null, conditionIds: ['1000', '3000'] },
+      mismatch: false, // no visionCategory param sent — guard fails open
     });
+  });
+
+  it('flags mismatch:true when visionCategory is implausible for the suggestion root (Baseball Jackets incident)', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    vi.spyOn(EbayAdapter, 'getValidConditions').mockResolvedValue([]);
+
+    const res = await request(app)
+      .get('/marketplace/ebay/category-suggestion')
+      .query({ q: 'fiber optic audio cable', visionCategory: 'electronics' })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.mismatch).toBe(true);
+    expect(res.body.suggestion.categoryId).toBe('181335');
+  });
+
+  it('accepts an over-50-char visionCategory (AI drift) instead of 400ing — truncated, guard still works', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    vi.spyOn(EbayAdapter, 'getValidConditions').mockResolvedValue([]);
+
+    const res = await request(app)
+      .get('/marketplace/ebay/category-suggestion')
+      .query({ q: 'fiber optic audio cable', visionCategory: 'electronics'.padEnd(80, 'x') })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('flags mismatch for RICH vision strings too (scan refine path sends eBay-style names, not the coarse enum)', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    vi.spyOn(EbayAdapter, 'getValidConditions').mockResolvedValue([]);
+
+    const res = await request(app)
+      .get('/marketplace/ebay/category-suggestion')
+      .query({ q: 'Impeto Digital Fiber Optic Audio Cable', visionCategory: 'Audio Cables & Adapters' })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.mismatch).toBe(true);
   });
 
   it('returns {suggestion: null} when the Taxonomy API has no suggestion', async () => {
@@ -218,7 +290,7 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
   it('still returns the suggestion with empty conditionIds when the Metadata lookup throws', async () => {
     // A conditions failure must not 500 the whole route — the suggestion alone
     // is still useful; the client treats [] as "constrain nothing".
-    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({ categoryId: '619', categoryName: 'Guitar Amplifiers' });
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({ categoryId: '619', categoryName: 'Guitar Amplifiers', rootCategoryId: null, rootCategoryName: null });
     vi.spyOn(EbayAdapter, 'getValidConditions').mockRejectedValue(new Error('metadata token failure'));
 
     const res = await request(app)
@@ -228,7 +300,8 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      suggestion: { categoryId: '619', categoryName: 'Guitar Amplifiers', conditionIds: [] },
+      suggestion: { categoryId: '619', categoryName: 'Guitar Amplifiers', rootCategoryId: null, rootCategoryName: null, conditionIds: [] },
+      mismatch: false,
     });
   });
 
@@ -260,7 +333,7 @@ describe('GET /marketplace/ebay/category-suggestion', () => {
 
     const metric = await metrics.ebayTaxonomyCalls.get();
     expect(metric.values).toEqual([
-      { labels: { operation: 'category_suggestion' }, value: 1 },
+      { labels: { operation: 'category_suggestion', result: 'request' }, value: 1 },
     ]);
   });
 

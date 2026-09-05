@@ -15,7 +15,7 @@ const reportSchema = z.object({
   area: z.string().max(100).optional(),
   severity: z.enum(['low', 'medium', 'high', 'critical']),
   description: z.string().min(1).max(10_000),
-  screenshotUrl: z.string().url().max(2000).optional(),
+  screenshotUrl: z.url().max(2000).optional(),
 });
 
 export const betaRouter = Router();

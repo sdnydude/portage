@@ -3,6 +3,11 @@ import { loadEnv } from '../lib/env.js';
 import { AppError } from '../middleware/error.js';
 import { resolveEbayCondition, resolveEbayConditionId, selectValidEbayCondition, resolveEbayCategoryCondition, resolveEbayCategoryId, EbayAdapter, EbayWeightRequiredError, clearEbayTaxonomyCaches } from './ebay-adapter.js';
 
+const loggerSpies = vi.hoisted(() => ({
+  warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn(),
+}));
+vi.mock('../lib/logger.js', () => ({ createLogger: () => loggerSpies }));
+
 vi.mock('./token-manager.js', () => ({
   getEbayAccessToken: vi.fn().mockResolvedValue('test-token'),
   getEbayProdAppToken: vi.fn().mockResolvedValue('test-app-token'),
@@ -390,6 +395,23 @@ describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
     expect(calls).toBe(1); // no downgrade — the seller fixes the numbers
   });
 
+  it('publish-time conflict carries structured details with absent thresholds as null (P3 25afd214, create)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<AddFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></AddFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, bestOfferAutoAcceptPrice: 500 },
+    } as any).catch((e: unknown) => e);
+
+    expect((err as AppError).details).toEqual([
+      { bestOfferEnabled: null, bestOfferAutoAcceptPrice: 500, minimumBestOfferPrice: null, healed: false },
+    ]);
+  });
+
   it('the narrowed prose backstop ignores unrelated errors that merely mention auto-accept wording (BO-M)', async () => {
     fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
       if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
@@ -560,6 +582,23 @@ describe('EbayAdapter.getValidConditions — Metadata API condition policies', (
 });
 
 describe('eBay taxonomy TTL caches', () => {
+  it('counts taxonomy cache lookups with cache_miss/cache_hit labels (P7 7107c1b8)', async () => {
+    const { ebayTaxonomyCalls } = await import('../lib/metrics.js');
+    ebayTaxonomyCalls.reset();
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      itemConditionPolicies: [{ itemConditions: [{ conditionId: '1000' }] }],
+    }), { status: 200 }));
+
+    await EbayAdapter.getValidConditions('555555'); // cold → miss
+    await EbayAdapter.getValidConditions('555555'); // warm → hit
+
+    const metric = await ebayTaxonomyCalls.get();
+    const value = (labels: Record<string, string>) =>
+      metric.values.find((v) => Object.entries(labels).every(([k, val]) => (v.labels as Record<string, string>)[k] === val))?.value ?? 0;
+    expect(value({ operation: 'valid_conditions', result: 'cache_miss' })).toBe(1);
+    expect(value({ operation: 'valid_conditions', result: 'cache_hit' })).toBe(1);
+  });
+
   it('serves getValidConditions from cache within the TTL — one upstream fetch for two calls', async () => {
     fetchMock.mockImplementation(async () => new Response(JSON.stringify({
       itemConditionPolicies: [{ itemConditions: [{ conditionId: '1000' }, { conditionId: '3000' }] }],
@@ -613,10 +652,224 @@ describe('eBay taxonomy TTL caches', () => {
   });
 });
 
+describe('getCategorySuggestion — category-tree root for the mismatch guard', () => {
+  it('parses categoryTreeNodeAncestors into rootCategoryId/rootCategoryName (root = highest ancestor)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      categorySuggestions: [{
+        category: { categoryId: '181335', categoryName: 'Baseball Jackets' },
+        categoryTreeNodeAncestors: [
+          { categoryId: '181334', categoryName: 'Jackets & Vests', categoryTreeNodeLevel: 3 },
+          { categoryId: '1059', categoryName: "Men's Clothing", categoryTreeNodeLevel: 2 },
+          { categoryId: '11450', categoryName: 'Clothing, Shoes & Accessories', categoryTreeNodeLevel: 1 },
+        ],
+      }],
+    }), { status: 200 }));
+
+    const result = await EbayAdapter.getCategorySuggestion('fiber optic audio cable');
+    expect(result).toEqual({
+      categoryId: '181335',
+      categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450',
+      rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+  });
+});
+
+describe('getCategorySuggestion — ancestors without level fields', () => {
+  it('falls back to the LAST ancestor as root when categoryTreeNodeLevel is absent (eBay orders leaf-parent first, root last)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      categorySuggestions: [{
+        category: { categoryId: '181335', categoryName: 'Baseball Jackets' },
+        categoryTreeNodeAncestors: [
+          { categoryId: '181334', categoryName: 'Jackets & Vests' },
+          { categoryId: '1059', categoryName: "Men's Clothing" },
+          { categoryId: '11450', categoryName: 'Clothing, Shoes & Accessories' },
+        ],
+      }],
+    }), { status: 200 }));
+
+    const result = await EbayAdapter.getCategorySuggestion('no levels');
+    expect(result?.rootCategoryId).toBe('11450');
+  });
+});
+
+describe('getCategorySuggestion — mixed level fields', () => {
+  it('falls back to last-ancestor ordering when ANY entry lacks a level (partial levels cannot elect a leveled non-root)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      categorySuggestions: [{
+        category: { categoryId: '181335', categoryName: 'Baseball Jackets' },
+        categoryTreeNodeAncestors: [
+          { categoryId: '181334', categoryName: 'Jackets & Vests', categoryTreeNodeLevel: 3 },
+          { categoryId: '11450', categoryName: 'Clothing, Shoes & Accessories' }, // true root, level omitted
+        ],
+      }],
+    }), { status: 200 }));
+
+    const result = await EbayAdapter.getCategorySuggestion('mixed levels');
+    expect(result?.rootCategoryId).toBe('11450');
+  });
+});
+
+describe('isPlausibleSuggestion — rich vision strings (scan refine path)', () => {
+  it('flags a rich vision category with zero token overlap against leaf+root (live 08-13: "Audio Cables & Adapters" vs Baseball Jackets slipped through fail-open)', () => {
+    expect(EbayAdapter.isPlausibleSuggestion('Audio Cables & Adapters', {
+      categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450',
+      rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(false);
+  });
+});
+
+describe('isPlausibleSuggestion — pass-throughs', () => {
+  it('accepts token-overlapping rich strings, coarse-enum table hits, and fails open on garbage', () => {
+    // rich string overlaps the leaf name — plausible
+    expect(EbayAdapter.isPlausibleSuggestion('Audio Cables & Adapters', {
+      categoryName: 'Audio Cables & Interconnects', rootCategoryId: '293', rootCategoryName: 'Consumer Electronics',
+    })).toBe(true);
+    // rich string overlaps only the ROOT name — plausible
+    expect(EbayAdapter.isPlausibleSuggestion('Consumer Electronics Accessories', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(true); // "accessories" overlaps root
+    // coarse enum routes through the table
+    expect(EbayAdapter.isPlausibleSuggestion('electronics', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(false);
+    // garbage/short input fails open
+    expect(EbayAdapter.isPlausibleSuggestion('a&b', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(true);
+    expect(EbayAdapter.isPlausibleSuggestion('', {
+      categoryName: 'Baseball Jackets', rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    })).toBe(true);
+  });
+});
+
+describe('isPlausibleRoot — vision-category vs eBay root sanity check', () => {
+  it('flags electronics vs Clothing root as implausible (the Baseball Jackets incident shape)', () => {
+    expect(EbayAdapter.isPlausibleRoot('electronics', '11450')).toBe(false);
+  });
+
+  it('fails open on an unknown vision value (schema is z.string, enum is prompt-convention only)', () => {
+    expect(EbayAdapter.isPlausibleRoot('sprockets', '11450')).toBe(true);
+  });
+
+  it('accepts electronics under its own plausible roots (Consumer Electronics, Computers, Musical Instruments & Gear)', () => {
+    expect(EbayAdapter.isPlausibleRoot('electronics', '293')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('electronics', '58058')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('electronics', '619')).toBe(true);
+  });
+
+  it('music maps: band-merch tee under Clothing is surprising-but-correct, must not flag', () => {
+    expect(EbayAdapter.isPlausibleRoot('music', '11450')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('music', '619')).toBe(true);
+  });
+
+  it('music has a real row — an absurd root (eBay Motors) flags instead of failing open', () => {
+    expect(EbayAdapter.isPlausibleRoot('music', '6000')).toBe(false);
+  });
+
+  it('clothing maps: Clothing and Sporting Goods roots pass, Consumer Electronics flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('clothing', '293')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('clothing', '11450')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('clothing', '888')).toBe(true);
+  });
+
+  it('sports maps: Sporting Goods, memorabilia, and apparel pass, eBay Motors flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('sports', '6000')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('sports', '888')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('sports', '64482')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('sports', '11450')).toBe(true);
+  });
+
+  it('furniture maps: Home & Garden and Antiques pass, Consumer Electronics flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('furniture', '293')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('furniture', '11700')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('furniture', '20081')).toBe(true);
+  });
+
+  it('collectibles maps: Collectibles, Antiques, memorabilia, coins, stamps, dolls pass, eBay Motors flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '6000')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '1')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '64482')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('collectibles', '11116')).toBe(true);
+  });
+
+  it('home maps: Home & Garden, Crafts, appliances-as-electronics, Pottery & Glass pass, Clothing flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('home', '11450')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('home', '11700')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('home', '14339')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('home', '293')).toBe(true);
+  });
+
+  it('books maps: Books & Magazines and Collectibles pass, Clothing flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('books', '11450')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('books', '267')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('books', '1')).toBe(true);
+  });
+
+  it('toys maps: Toys & Hobbies, Dolls & Bears, Video Games pass, Home & Garden flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('toys', '11700')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('toys', '220')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('toys', '237')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('toys', '1249')).toBe(true);
+  });
+
+  it('art maps: Art, Antiques, Crafts, Collectibles pass, Consumer Electronics flags; other stays fail-open', () => {
+    expect(EbayAdapter.isPlausibleRoot('art', '293')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('art', '550')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('art', '20081')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('other', '11450')).toBe(true);
+  });
+
+  it('jewelry maps: Jewelry & Watches, Antiques, Collectibles pass, eBay Motors flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('jewelry', '6000')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('jewelry', '281')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('jewelry', '20081')).toBe(true);
+  });
+
+  it('automotive maps: eBay Motors and Business & Industrial pass, Clothing flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('automotive', '11450')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('automotive', '6000')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('automotive', '12576')).toBe(true);
+  });
+
+  it('tools maps: Business & Industrial, Home & Garden, eBay Motors pass, Jewelry flags', () => {
+    expect(EbayAdapter.isPlausibleRoot('tools', '281')).toBe(false);
+    expect(EbayAdapter.isPlausibleRoot('tools', '12576')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('tools', '11700')).toBe(true);
+    expect(EbayAdapter.isPlausibleRoot('tools', '6000')).toBe(true);
+  });
+});
+
+describe('resolveEbayCategoryId — mismatch guard on live resolution', () => {
+  it('warn-logs when the live suggestion is implausible for the persisted vision category, but returns the id unchanged', async () => {
+    vi.spyOn(EbayAdapter, 'getCategorySuggestion').mockResolvedValue({
+      categoryId: '181335', categoryName: 'Baseball Jackets',
+      rootCategoryId: '11450', rootCategoryName: 'Clothing, Shoes & Accessories',
+    });
+    const warnSpy = loggerSpies.warn;
+
+    const resolved = await resolveEbayCategoryId(undefined, {
+      title: 'Fiber Optic Audio Cable',
+      marketplaceData: { scan: { visionCategory: 'electronics' } },
+    });
+
+    // Advisory only — the eBay id is never substituted or blocked.
+    expect(resolved.categoryId).toBe('181335');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ visionCategory: 'electronics', rootCategoryId: '11450' }),
+      expect.stringContaining('implausible'),
+    );
+  });
+});
+
 describe('resolveEbayCategoryId — self-healing leaf category for publish', () => {
   it('resolves by priority: explicit field > item cache > Taxonomy API (explicit/cache skip the API)', async () => {
     const spy = vi.spyOn(EbayAdapter, 'getCategorySuggestion')
-      .mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops' });
+      .mockResolvedValue({ categoryId: '111422', categoryName: 'Laptops', rootCategoryId: null, rootCategoryName: null });
+    // vitest 4: spyOn returns the existing spy (with prior call history) when the
+    // method is already spied — clear the previous test's calls before asserting.
+    spy.mockClear();
 
     // 1. an explicit categoryId on the listing wins and never calls the API (user/listing intent preserved)
     const explicit = await resolveEbayCategoryId({ categoryId: '177' }, { title: 'X', marketplaceData: null });
@@ -732,9 +985,12 @@ describe('resolveEbayCategoryCondition — auto-correct decision + warning polic
     expect(r.warning).toMatch(/USED_EXCELLENT/);
   });
 
-  it('does nothing (no override, no warning) when the supported list is empty', () => {
-    // Metadata API unavailable → keep the static default silently
-    expect(resolveEbayCategoryCondition('good', [])).toEqual({});
+  it('keeps the static default but warns when the supported list is empty (P7 8f94d453)', () => {
+    // Metadata API unavailable → no override, but the seller must know the
+    // condition was not validated against the category.
+    const r = resolveEbayCategoryCondition('good', []);
+    expect(r.condition).toBeUndefined();
+    expect(r.warning).toMatch(/could not be verified/);
   });
 
   it('warns without overriding when no supported grade matches (e.g. used item, NEW-only category)', () => {
@@ -910,6 +1166,37 @@ describe('EbayAdapter.updateListing — Best Offer threshold conflict (BO-2)', (
     expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
     expect((err as AppError).message).toMatch(/209|199/); // actionable: carries the conflicting numbers
     expect(calls).toBe(1); // no deletion retry — user config is never destroyed
+  });
+
+  it('price-only ReviseInventoryStatus conflict carries all-null details — thresholds live on eBay (P3 25afd214, fast path)', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<ReviseInventoryStatusResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Invalid AutoAccept price.</ShortMessage><ErrorCode>23004</ErrorCode></Errors></ReviseInventoryStatusResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307034606520', { price: 25, quantity: 1, currency: 'USD' }).catch((e: unknown) => e);
+
+    expect((err as AppError).code).toBe('BEST_OFFER_CONFLICT');
+    expect((err as AppError).details).toEqual([
+      { bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null, healed: false },
+    ]);
+  });
+
+  it('carries the submitted thresholds as structured BestOfferConflictDetails (P3 25afd214, full revise)', async () => {
+    fetchMock.mockImplementation(async (url: unknown, opts: unknown) => {
+      if (isFeaturesCall(url, opts)) return metadataPolicyResponse(url);
+      if (!isTradingCall(url)) return new Response('{}', { status: 200 });
+      return new Response('<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Auto decline amount cannot be greater than or equal to the Buy It Now price.</ShortMessage><ErrorCode>22003</ErrorCode></Errors></ReviseFixedPriceItemResponse>', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const err = await adapter.updateListing('307100136291', {
+      ...baseInput, price: 199, title: 'New', ebaySku: 'PRT-000016',
+      marketplaceSpecific: { ...tradingSetup, bestOfferEnabled: true, minimumBestOfferPrice: 199, bestOfferAutoAcceptPrice: 209 },
+    } as any).catch((e: unknown) => e);
+
+    expect((err as AppError).details).toEqual([
+      { bestOfferEnabled: true, bestOfferAutoAcceptPrice: 209, minimumBestOfferPrice: 199, healed: false },
+    ]);
   });
 });
 
@@ -1248,6 +1535,23 @@ describe('EbayAdapter.getOrders — line-item title for orphan-order backfill', 
 
     expect(orders[0].marketplaceListingId).toBe('306972688941');
     expect(orders[0].title).toBe('Shure SM7B Microphone');
+  });
+});
+
+describe('EbayAdapter.findListingBySku — stale publish-claim recheck', () => {
+  const page = (items: Array<[string, string]>, total: number) =>
+    `<?xml version="1.0"?><GetMyeBaySellingResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack>` +
+    `<ActiveList><PaginationResult><TotalNumberOfPages>${total}</TotalNumberOfPages></PaginationResult><ItemArray>` +
+    items.map(([id, sku]) => `<Item><ItemID>${id}</ItemID><SKU>${sku}</SKU></Item>`).join('') +
+    `</ItemArray></ActiveList></GetMyeBaySellingResponse>`;
+
+  it('returns the ItemID whose SKU matches, scanning past the first page', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({ ok: true, text: async () => page([['1', 'PRT-000001']], 2) })
+      .mockResolvedValueOnce({ ok: true, text: async () => page([['307147990898', 'PRT-000146']], 2) }));
+    const adapter = new EbayAdapter('user-1');
+    await expect(adapter.findListingBySku('PRT-000146')).resolves.toBe('307147990898');
+    vi.unstubAllGlobals();
   });
 });
 

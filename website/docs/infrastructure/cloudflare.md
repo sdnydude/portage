@@ -90,4 +90,8 @@ From `apps/api/src/lib/env.ts`:
 
 Values for all of these live in Doppler — see [Secrets & Storage](/docs/infrastructure/secrets-and-storage).
 
+### Access bypass: eBay account-deletion endpoint
+
+`https://portage-api.digitalharmonyai.com/marketplace/ebay/account-deletion` must be reachable by eBay **without** Cloudflare Access (eBay's notification service cannot log in). It is the only path on the API hostname with an Access bypass policy; the endpoint authenticates itself instead — challenge-response on `GET`, ECDSA signature verification on `POST`, two-tier rate limiting, 100 kB body cap. See [Marketplace Account Deletion notifications](/docs/reference/ebay-trade-first#marketplace-account-deletion-notifications). Do not widen the bypass beyond the exact path.
+
 For the full session-exchange contract from the client's perspective, see [Authentication API](/docs/api/authentication). For the rest of the host layout, see [Infrastructure Overview](/docs/infrastructure/overview).

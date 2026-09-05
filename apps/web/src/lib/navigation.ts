@@ -17,6 +17,8 @@ export const BAR_TABS = [
 export const SIDEBAR_SECONDARY = [
   { href: "/messages", label: "Messages" },
   { href: "/more", label: "Settings" },
+  // P4: the publish disclaimer links /about — it needs a standing home in nav.
+  { href: "/about", label: "About" },
 ] as const;
 
 export function isTabRoute(pathname: string): boolean {
@@ -31,6 +33,7 @@ const PAGE_TITLES: Array<[prefix: string, title: string]> = [
   ["/porter", "Porter"],
   ["/orders", "Orders"],
   ["/more", "Settings"],
+  ["/about", "About"],
   ["/settings/seller-profile", "Seller Profile"],
   ["/settings/marketplace", "Marketplace Accounts"],
   ["/settings/billing", "Billing & Plan"],

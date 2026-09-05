@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { withKeys } from "@/lib/list-keys";
 
 /**
  * Reverb category cascade (Product Type → Subcategory 1 → 2 → 3), fed from
@@ -25,6 +26,11 @@ interface ReverbCategorySectionProps {
   onChange: (value: { uuid: string; fullName: string } | null) => void;
   token: string | null;
   idPrefix?: string;
+  /** Fired when a category fetch fails (roots or subcategories). Soft-fail
+   *  consumers (create sheet — server enrichment still applies) omit it;
+   *  hard-required flows (listing-card publish recovery) surface it, else the
+   *  seller faces a dead cascade with no signal (review A, 307ffa75). */
+  onLoadError?: () => void;
 }
 
 const selectClass =
@@ -32,11 +38,19 @@ const selectClass =
 const labelClass =
   "block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5";
 
-export function ReverbCategorySection({ value, onChange, token, idPrefix = "" }: ReverbCategorySectionProps) {
+export function ReverbCategorySection({ value, onChange, token, idPrefix = "", onLoadError }: ReverbCategorySectionProps) {
   const [roots, setRoots] = useState<ReverbCategoryNode[]>([]);
   // Chosen path, deepest last. Each entry also caches the children fetched for it.
   const [path, setPath] = useState<ReverbCategoryNode[]>([]);
   const [childrenByUuid, setChildrenByUuid] = useState<Record<string, ReverbCategoryNode[]>>({});
+
+  // Ref, not dep: callers pass inline arrows — depping the callback would
+  // re-fire the roots fetch on every parent render. Assigned in an effect
+  // (never during render, per the React 19 ref rule).
+  const onLoadErrorRef = useRef(onLoadError);
+  useEffect(() => {
+    onLoadErrorRef.current = onLoadError;
+  }, [onLoadError]);
 
   useEffect(() => {
     if (!token) return;
@@ -45,7 +59,12 @@ export function ReverbCategorySection({ value, onChange, token, idPrefix = "" }:
       try {
         const r = await api<{ productTypes: ReverbCategoryNode[] }>("/marketplace/reverb/product-types", { token });
         if (!cancelled && r?.productTypes) setRoots(r.productTypes);
-      } catch { /* cascade stays empty; server enrichment still applies */ }
+      } catch {
+        // Soft-fail by default (server enrichment still applies); hard-required
+        // consumers get the signal so they can show an error instead of a
+        // permanently disabled Save.
+        if (!cancelled) onLoadErrorRef.current?.();
+      }
     })();
     return () => { cancelled = true; };
   }, [token]);
@@ -58,6 +77,9 @@ export function ReverbCategorySection({ value, onChange, token, idPrefix = "" }:
       setChildrenByUuid((prev) => ({ ...prev, [uuid]: kids }));
       return kids;
     } catch {
+      // Same signal as the roots fetch: a swallowed subcategory failure looks
+      // like "no deeper levels" — hard-required consumers need to know.
+      onLoadErrorRef.current?.();
       return [];
     }
   };
@@ -128,8 +150,8 @@ export function ReverbCategorySection({ value, onChange, token, idPrefix = "" }:
           Category: <span className="text-text-primary font-medium">{value.fullName}</span>
         </p>
       )}
-      {levels.map((lvl, i) => (
-        <div key={`${lvl.label}-${i}`}>
+      {withKeys(levels, (lvl) => lvl.label).map(([key, lvl], i) => (
+        <div key={key}>
           <label htmlFor={`${idPrefix}reverb-cat-${i}`} className={labelClass}>{lvl.label}</label>
           <select
             id={`${idPrefix}reverb-cat-${i}`}
@@ -138,7 +160,10 @@ export function ReverbCategorySection({ value, onChange, token, idPrefix = "" }:
             className={selectClass}
           >
             <option value="">{i === 0 ? "AI / profile default" : "Stop here (use parent)"}</option>
-            {lvl.pool.filter((c) => c.listable).map((c) => (
+            {/* Non-listable nodes are hidden EXCEPT the current selection — a
+                seeded (AI/cache) choice must render as the selection, never
+                vanish into the placeholder (PR #280 review gap). */}
+            {lvl.pool.filter((c) => c.listable || c.uuid === lvl.chosen).map((c) => (
               <option key={c.uuid} value={c.uuid}>{c.name}</option>
             ))}
           </select>

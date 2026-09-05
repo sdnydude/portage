@@ -2,6 +2,7 @@
 title: "Full codebase code health review — 37 findings"
 sidebar_label: "Full codebase code health review — 37 findings"
 sidebar_position: 24
+registry_id: f82e0609-895d-4d2a-a93c-4e594391af65
 ---
 
 # Full codebase code health review — 37 findings

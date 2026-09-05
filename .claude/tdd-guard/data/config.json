@@ -1,1 +1,17 @@
-{"guardEnabled":true}
+{
+  "guardEnabled": true,
+  "ignorePatterns": [
+    "*.css",
+    "*.erb",
+    "*.html",
+    "*.json",
+    "*.log",
+    "*.md",
+    "*.rst",
+    "*.txt",
+    "*.xml",
+    "*.yaml",
+    "*.yml",
+    ".claude/scripts/**"
+  ]
+}

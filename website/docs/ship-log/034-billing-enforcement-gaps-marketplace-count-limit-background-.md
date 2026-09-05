@@ -2,6 +2,7 @@
 title: "Billing enforcement gaps — marketplace count limit + background removal billing gate"
 sidebar_label: "Billing enforcement gaps — marketplace count limit"
 sidebar_position: 34
+registry_id: 6f1f771f-06b1-4a6c-8b66-5fe83e279784
 ---
 
 # Billing enforcement gaps — marketplace count limit + background removal billing gate

@@ -28,6 +28,7 @@ import {
   type PortageCondition,
 } from "@/lib/ebay-condition-map";
 import type { RecognitionCandidate, CompResult } from "@portage/shared";
+import { withKeys } from "@/lib/list-keys";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [isRotating, setIsRotating] = useState(false);
   const [comps, setComps] = useState<CompResult | null>(null);
   const [compsLoading, setCompsLoading] = useState(false);
+  // P3 (e955f1b9): a comps outage is told, not swallowed — pricing proceeds
+  // on the AI estimate alone.
+  const [compsError, setCompsError] = useState(false);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const [isListingForSale, setIsListingForSale] = useState(false);
   // F1: after "Save & List" creates the item, open the unified publish-confirm
@@ -148,6 +152,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   const [weightEstimated, setWeightEstimated] = useState(false);
   // Override search text for the eBay category control.
   const [categorySearch, setCategorySearch] = useState("");
+  const categorySearchInputRef = useRef<HTMLInputElement>(null);
   const [activeTool, setActiveTool] = useState<"none" | "crop" | "exposure">("none");
   // Which photo the full-screen editor overlay is open for (null = closed).
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
@@ -170,12 +175,21 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     missingRequired,
     buildAspects,
     aspectsBlockPublish,
+    aspectsError,
+    refetchAspects,
+    resolveError,
     conditionIds,
+    categoryMismatch,
+    resolvedVisionCategory,
+    dismissCategoryMismatch,
+    clearCategoryResolution,
   } = useScanAspects(
     editName,
     `${editName} ${editDescription}`,
     // Phase A AI-filled specifics from the selected candidate → surfaced as [AI] chips.
     candidates[selectedCandidateIndex]?.aspects,
+    // Vision coarse category feeds the server-side mismatch guard (advisory banner).
+    candidates[selectedCandidateIndex]?.category,
   );
 
   // Constrain the condition pills to what the resolved eBay category accepts;
@@ -206,10 +220,26 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   // If the current condition (AI-suggested or comp-copied) is disallowed for
   // the resolved category, snap to the nearest allowed grade instead of
   // failing later at publish.
+  // P3 (62e1061e): the snap still happens, but it is told — the seller sees
+  // what changed and why instead of a silently different condition.
+  const [conditionNotice, setConditionNotice] = useState<{ from: PortageCondition; to: PortageCondition } | null>(null);
+  const conditionLabel = (c: string) => conditionOptions.find((o) => o.value === c)?.label ?? c;
+  // Every user-driven condition change goes through here so a stale notice
+  // never outlives the choice it described.
+  const chooseCondition = (c: string) => {
+    setConditionNotice(null);
+    setEditCondition(c);
+  };
+  // A new category starts clean — declared BEFORE the snap effect so a snap
+  // the new category causes still lands its own notice in the same commit.
+  useEffect(() => { setConditionNotice(null); }, [resolvedCategoryId]);
   useEffect(() => {
     if (availableConditions.length === 0) return;
     if (availableConditions.includes(editCondition as PortageCondition)) return;
-    setEditCondition(nearestAllowedCondition(editCondition as PortageCondition, availableConditions));
+    const next = nearestAllowedCondition(editCondition as PortageCondition, availableConditions);
+    if (next === editCondition) return;
+    setEditCondition(next);
+    setConditionNotice({ from: editCondition as PortageCondition, to: next });
   }, [availableConditions, editCondition]);
 
 
@@ -413,9 +443,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       setState("review");
 
       setCompsLoading(true);
+      setCompsError(false);
+      setConditionNotice(null);
       api<CompResult>(`/items/comps/search?q=${encodeURIComponent(resultCandidates[0].name)}`, { token })
         .then((c) => setComps(c))
-        .catch(() => {})
+        .catch(() => setCompsError(true))
         .finally(() => setCompsLoading(false));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
@@ -532,12 +564,14 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   // ─── Save to inventory ────────────────────────────────────────────────────
 
   // Resolve the price shown/used in the review step: the seller's edited value
-  // wins, else fall back to comps/estimate via the unit-tested helper.
+  // wins, else fall back to comps via the unit-tested helper. The AI value
+  // range (editValueLow/High) is retired from the UI (Housekeeping-1) but is
+  // still written to the item silently from the candidate.
   const valueLowNum = parseFloat(editValueLow) || 0;
   const valueHighNum = parseFloat(editValueHigh) || 0;
   const recommendedNum = Math.round((valueLowNum + valueHighNum) / 2) || null;
   const { price: reviewPrice, source: reviewPriceSource } = resolvePublishPriceWithSource(
-    { price: listPrice, estimatedValueRecommended: recommendedNum, estimatedValueMin: valueLowNum || null },
+    { price: listPrice },
     comps?.stats,
   );
 
@@ -592,8 +626,17 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           // resolve the category (resolveEbayCategoryId reads marketplaceData.
           // ebay.categoryId) instead of falling back to a title guess.
           ...(resolvedCategoryId
-            ? { marketplaceData: { ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } } }
-            : {}),
+            ? {
+              marketplaceData: {
+                ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName },
+                // Vision coarse category persists so the edit page and
+                // publish-time self-heal can re-run the mismatch guard.
+                ...(selectedCandidate?.category ? { scan: { visionCategory: selectedCandidate.category } } : {}),
+              },
+            }
+            : selectedCandidate?.category
+              ? { marketplaceData: { scan: { visionCategory: selectedCandidate.category } } }
+              : {}),
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes,
           quantity: Math.max(1, Math.floor(Number(editQuantity)) || 1),
@@ -657,8 +700,15 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           // Cache the resolved eBay leaf id on the item too (not just the listing
           // payload) so a re-list from inventory resolves the category.
           ...(resolvedCategoryId
-            ? { marketplaceData: { ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } } }
-            : {}),
+            ? {
+              marketplaceData: {
+                ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName },
+                ...(selectedCandidate?.category ? { scan: { visionCategory: selectedCandidate.category } } : {}),
+              },
+            }
+            : selectedCandidate?.category
+              ? { marketplaceData: { scan: { visionCategory: selectedCandidate.category } } }
+              : {}),
           // Persist the seller's price so it prefills future publishes.
           ...(price && price > 0 ? { price } : {}),
           // Packaged weight/dims from the review inputs (seeded from the AI estimate).
@@ -1079,9 +1129,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                     AI Matches
                   </label>
                   <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-                    {candidates.map((c, i) => (
+                    {withKeys(candidates, (c) => `${c.name}-${c.confidence}`).map(([key, c], i) => (
                       <button
-                        key={i}
+                        key={key}
                         onClick={() => handleSelectCandidate(i)}
                         className={`flex-shrink-0 px-3 py-2 rounded-xl text-left transition-colors border ${
                           i === selectedCandidateIndex
@@ -1116,8 +1166,8 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               )}
               {showReasoning && (
                 <ul className="px-3 space-y-1.5">
-                  {reasoning.map((r, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-text-secondary">
+                  {withKeys(reasoning, (r) => r).map(([key, r]) => (
+                    <li key={key} className="flex gap-2 text-sm text-text-secondary">
                       <span className="text-[var(--teal)] mt-0.5">•</span>
                       <span>{r}</span>
                     </li>
@@ -1136,29 +1186,12 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 />
               </div>
 
-              {/* Value range */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Value Low ($)</label>
-                  <input
-                    type="number"
-                    value={editValueLow}
-                    onChange={(e) => setEditValueLow(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary focus:border-border-focus focus:outline-none transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Value High ($)</label>
-                  <input
-                    type="number"
-                    value={editValueHigh}
-                    onChange={(e) => setEditValueHigh(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary focus:border-border-focus focus:outline-none transition-colors"
-                  />
-                </div>
-              </div>
-
               {/* eBay Comp Price */}
+              {compsError && !compsLoading && (
+                <p data-testid="comps-error" className="text-xs text-[var(--accent-warning)] px-1">
+                  Comps unavailable — using AI estimate only.
+                </p>
+              )}
               {compsLoading ? (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface border border-border">
                   <div className="w-4 h-4 border-2 border-[var(--teal)] border-t-transparent rounded-full animate-spin" />
@@ -1169,7 +1202,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                   <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--accent-success-soft)] border border-[var(--accent-success)]/30">
                     <span className="text-xs font-medium text-[var(--accent-success)]">eBay Comp Price</span>
                     <span className="text-sm font-semibold text-[var(--accent-success)]">
-                      ${(comps.stats.soldMedian ?? comps.stats.activeMedian ?? 0).toFixed(0)}
+                      {`$${(comps.stats.soldMedian ?? comps.stats.activeMedian ?? 0).toFixed(0)}`}
                       <span className="text-xs font-normal text-[var(--accent-success)]/70 ml-1">
                         ({comps.stats.sampleSize} sold)
                         {demandLabel(comps.stats.sellThrough) && (
@@ -1246,7 +1279,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                                 <div className="px-2.5 pb-2.5 space-y-2 border-t border-border pt-2">
                                   <div className="flex gap-2">
                                     <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Title</button>
-                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
+                                    <button onClick={() => chooseCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
                                   </div>
                                   <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="block text-center py-2 rounded-lg border border-border text-xs font-medium text-text-secondary">View on eBay</a>
                                 </div>
@@ -1287,7 +1320,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                                 <div className="px-2.5 pb-2.5 space-y-2 border-t border-border pt-2">
                                   <div className="flex gap-2">
                                     <button onClick={() => setEditName(comp.title)} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Title</button>
-                                    <button onClick={() => setEditCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
+                                    <button onClick={() => chooseCondition(mapEbayCondition(comp.condition))} className="flex-1 py-2 rounded-lg bg-[var(--teal-soft)] text-[var(--teal)] text-xs font-medium">Use Condition</button>
                                   </div>
                                   <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="block text-center py-2 rounded-lg border border-border text-xs font-medium text-text-secondary">View on eBay</a>
                                 </div>
@@ -1309,11 +1342,16 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                     This eBay category uses condition grades Portage doesn&apos;t map yet — condition will be captured at listing time.
                   </p>
                 )}
+                {conditionNotice && (
+                  <p data-testid="condition-notice" className="mb-1 text-xs text-[var(--accent-warning)]">
+                    {`Condition adjusted to ${conditionLabel(conditionNotice.to)} — ${conditionLabel(conditionNotice.from)} isn't offered in this category.`}
+                  </p>
+                )}
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                   {conditionOptions.filter((opt) => availableConditions.includes(opt.value)).map((opt) => (
                     <button
                       key={opt.value}
-                      onClick={() => setEditCondition(opt.value)}
+                      onClick={() => chooseCondition(opt.value)}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                         editCondition === opt.value
                           ? "bg-[var(--teal)] text-white"
@@ -1329,12 +1367,13 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               {/* Condition Notes */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Condition Notes</label>
-                <input
-                  type="text"
+                <textarea
                   value={editConditionNotes}
                   onChange={(e) => setEditConditionNotes(e.target.value)}
+                  rows={5}
+                  maxLength={2000}
                   placeholder="e.g. Minor scuff on left side"
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors"
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors resize-none"
                 />
               </div>
 
@@ -1363,8 +1402,42 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                       ? (resolvedCategoryName ?? resolvedCategoryId)
                       : "Not matched yet — search below"}
                 </div>
+                {categoryMismatch && !isCategoryResolving && resolvedCategoryId !== null && (
+                  <div className="mt-2 px-3 py-2.5 rounded-xl border border-[var(--accent-warning,#b45309)] bg-[color-mix(in_srgb,var(--accent-warning,#b45309)_10%,transparent)] text-sm text-text-primary">
+                    <p>
+                      Double-check this category — eBay filed this under{" "}
+                      <strong>{resolvedCategoryName ?? resolvedCategoryId}</strong>, which doesn&apos;t
+                      look like a match for what was scanned
+                      {resolvedVisionCategory ? ` (${resolvedVisionCategory})` : ""}.
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={dismissCategoryMismatch}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-text-primary"
+                      >
+                        Use anyway
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => categorySearchInputRef.current?.focus()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-text-primary"
+                      >
+                        Find different category
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearCategoryResolution}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-text-primary"
+                      >
+                        Don&apos;t use it
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="mt-2 flex gap-2">
                   <input
+                    ref={categorySearchInputRef}
                     type="text"
                     value={categorySearch}
                     onChange={(e) => setCategorySearch(e.target.value)}
@@ -1381,9 +1454,26 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                     Find category
                   </button>
                 </div>
-                {!isCategoryResolving && resolvedCategoryId === null && (
+                {/* P3 truth split (125cbc53 / 2b8aefb1 / a5a2b944) — three
+                    independent states, never one ambiguous line:
+                    [1] lookup failed (any resolution state, prior one retained)
+                    [2] genuinely no match
+                    [3] category known, but its required-details schema failed */}
+                {resolveError && !isCategoryResolving && (
+                  <p data-testid="resolve-error" className="mt-1 text-xs text-[var(--accent-warning)] flex items-center gap-2">
+                    <span>Category lookup failed — specifics may be skipped.</span>
+                    <button type="button" onClick={() => { void resolveCategory(editName); }} className="underline font-medium">Retry lookup</button>
+                  </p>
+                )}
+                {!isCategoryResolving && !resolveError && resolvedCategoryId === null && (
                   <p className="mt-1 text-xs text-text-secondary">
-                    eBay category unresolved — specifics captured at listing time.
+                    No eBay category matched — specifics captured at listing time.
+                  </p>
+                )}
+                {aspectsError && !isAspectsLoading && (
+                  <p data-testid="aspects-error" className="mt-1 text-xs text-[var(--accent-warning)] flex items-center gap-2">
+                    <span>eBay category details unavailable — required specifics can&apos;t be checked.</span>
+                    <button type="button" onClick={refetchAspects} className="underline font-medium">Retry</button>
                   </p>
                 )}
               </div>
@@ -1400,6 +1490,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 isCategoryResolving={isCategoryResolving}
                 isAspectsLoading={isAspectsLoading}
                 categoryResolved={resolvedCategoryId !== null}
+                aspectsError={aspectsError}
               />
 
               {/* Brand & Model */}
@@ -1469,7 +1560,9 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 aspectsBlockPublish
                   ? missingRequired.length > 0
                     ? `Complete ${missingRequired.length} required eBay detail${missingRequired.length === 1 ? "" : "s"} first`
-                    : "Checking eBay requirements…"
+                    : aspectsError
+                      ? "eBay category details unavailable — retry before listing"
+                      : "Checking eBay requirements…"
                   : null
               }
             />

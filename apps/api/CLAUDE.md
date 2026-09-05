@@ -7,9 +7,10 @@ Express 5 backend. See root CLAUDE.md for architecture overview.
 1. `helmet()`
 2. CORS — prod restricts to `portage.digitalharmonyai.com`; dev allows `10.0.0.251` variants
 3. Billing webhook router (mounted **before** JSON parse — Stripe needs raw body)
+3b. eBay account-deletion router `/marketplace/ebay/account-deletion` (public, signature-verified, own `express.raw` 100kb parser — also before JSON parse)
 4. `express.json({ limit: '10mb' })`
 5. `pinoHttp()` — debug in dev, info in prod
-6. Route handlers (25 routers)
+6. Route handlers (26 routers)
 7. `notFoundHandler`
 8. `errorHandler` (must be last)
 
@@ -98,11 +99,13 @@ Reads SSL certs from `../../../certs/`. Falls back to HTTP in dev. Exits with er
 | Billing | `/billing` | requireAuth |
 | Admin | `/admin/*` | requireAdmin |
 | Marketplace OAuth | `/marketplace/ebay` | requireAuth |
+| eBay account deletion | `/marketplace/ebay/account-deletion` | None (eBay signature) |
 | Reverb Auth | `/marketplace/reverb` | requireAuth |
 | Messages | `/messages` | requireAuth |
 | Dashboard | `/dashboard` | requireAuth |
 | Beta | `/beta` | requireAuth |
+| Sync log | `/sync-log` | requireAuth |
 
 ## Testing
 
-Vitest. Run `npm test` (once) or `npm run test:watch`. 768 tests across 72 files covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, and FAQs.
+Vitest. Run `npm test` (once) or `npm run test:watch`. 1064 tests across 86 files (2026-08-27, post P6 dependency majors) covering crypto, JWT, CF Access auth, admin, routes, vision, scan, billing, eBay CSV export, eBay messaging, Reverb adapter, marketplace sync, Porter grounding, the category-mismatch guard, the eBay account-deletion endpoint (challenge/signature/anonymization), the prod boot guard, FAQs, and the publish-claim race (claim stamp/WHERE/409/release/adopt/sweep).

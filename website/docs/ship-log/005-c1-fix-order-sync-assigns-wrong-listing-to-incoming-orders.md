@@ -2,6 +2,7 @@
 title: "C1 — Fix order sync assigns wrong listing to incoming orders"
 sidebar_label: "C1 — Fix order sync assigns wrong listing to incom"
 sidebar_position: 5
+registry_id: 82388a54-3dda-4e3b-8f88-f504133c82bd
 ---
 
 # C1 — Fix order sync assigns wrong listing to incoming orders

@@ -14,7 +14,7 @@ const { mockEbayUpdateListing, mockReverbUpdateListing, mockGetEbayItemVerificat
   mockEbayUpdateListing: vi.fn(), mockReverbUpdateListing: vi.fn(), mockGetEbayItemVerification: vi.fn(),
 }));
 vi.mock('../marketplace/ebay-adapter.js', () => {
-  const EbayAdapter = vi.fn(() => ({ updateListing: mockEbayUpdateListing, getEbayItemVerification: mockGetEbayItemVerification }));
+  const EbayAdapter = vi.fn(function () { return ({ updateListing: mockEbayUpdateListing, getEbayItemVerification: mockGetEbayItemVerification }); });
   (EbayAdapter as unknown as Record<string, unknown>).getCategorySuggestion = vi.fn();
   return {
     EbayAdapter,
@@ -24,7 +24,7 @@ vi.mock('../marketplace/ebay-adapter.js', () => {
   };
 });
 vi.mock('../marketplace/reverb-adapter.js', () => ({
-  ReverbAdapter: vi.fn(() => ({ updateListing: mockReverbUpdateListing })),
+  ReverbAdapter: vi.fn(function () { return ({ updateListing: mockReverbUpdateListing }); }),
 }));
 
 function mockSelectReturnOnce(rows: unknown[]) {

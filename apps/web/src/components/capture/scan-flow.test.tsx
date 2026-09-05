@@ -76,7 +76,14 @@ const scanAspectsState = {
   missingRequired: [] as string[],
   buildAspects: vi.fn(() => ({}) as Record<string, string[]>),
   aspectsBlockPublish: false,
+  aspectsError: false,
+  refetchAspects: vi.fn(),
+  resolveError: false,
   resolveCategory: vi.fn(),
+  categoryMismatch: false,
+  resolvedVisionCategory: "electronics" as string | undefined,
+  dismissCategoryMismatch: vi.fn(),
+  clearCategoryResolution: vi.fn(),
 };
 
 vi.mock("@/hooks/use-scan-aspects", () => ({
@@ -123,10 +130,14 @@ async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: 
     return {};
   });
 
-  render(<ScanFlow onClose={opts?.onClose ?? vi.fn()} />);
+  const view = render(<ScanFlow onClose={opts?.onClose ?? vi.fn()} />);
   fireEvent.click(screen.getByText("Choose from Gallery"));
   fireEvent.click(await screen.findByText(/Scan 1 Photo with Porter/));
   await screen.findByText("Review");
+  // Housekeeping-1 T4: the AI value range no longer prefills a price, so the
+  // review fixture enters one the way a seller does (Price is a required field).
+  fireEvent.change(screen.getByLabelText("Price (USD)"), { target: { value: "75" } });
+  return view;
 }
 
 describe("ScanFlow review wiring", () => {
@@ -396,6 +407,34 @@ describe("ScanFlow review wiring", () => {
     expect((itemsCall?.[1] as { body: { price?: number } }).body.price).toBe(65);
   });
 
+  it("Save persists the vision coarse category under marketplaceData.scan (Tier-2 mismatch guard data)", async () => {
+    await renderInReview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { marketplaceData?: { scan?: { visionCategory?: string } } } }).body;
+    expect(body.marketplaceData?.scan?.visionCategory).toBe("Guitars");
+  });
+
+  it("Save & List persists the vision coarse category under marketplaceData.scan too", async () => {
+    await renderInReview();
+
+    fireEvent.click(screen.getByRole("button", { name: /Save & List/ }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    const body = (itemsCall?.[1] as { body: { marketplaceData?: { scan?: { visionCategory?: string } } } }).body;
+    expect(body.marketplaceData?.scan?.visionCategory).toBe("Guitars");
+  });
+
   it("review captures quantity and Save persists it to the item (editable from default 1)", async () => {
     await renderInReview();
 
@@ -541,14 +580,27 @@ describe("ScanFlow review wiring", () => {
     expect(selects.map((s) => s.value)).toEqual(["flat", "flat"]);
   });
 
-  it("opens the confirm sheet with a price provenance hint (estimate fallback)", async () => {
+  it("review Condition Notes is a 5-row textarea capped at 2000 chars (Housekeeping-1 T9)", async () => {
+    await renderInReview();
+    const notes = screen.getByPlaceholderText(/minor scuff/i) as HTMLTextAreaElement;
+    expect(notes.tagName).toBe("TEXTAREA");
+    expect(notes.rows).toBe(5);
+    expect(notes.maxLength).toBe(2000);
+  });
+
+  it("review shows no AI value-range inputs (Housekeeping-1 T4)", async () => {
+    await renderInReview();
+    expect(screen.queryByText("Value Low ($)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Value High ($)")).not.toBeInTheDocument();
+  });
+
+  it("opens the confirm sheet with a price provenance hint (seller price — the AI estimate never prefills)", async () => {
     await renderInReview();
     fireEvent.click(screen.getByRole("button", { name: "Save & List" }));
 
     expect(await screen.findByText("Create Listing")).toBeInTheDocument();
-    // No seller price + no comps in this fixture → the prefill falls back to the
-    // AI estimate, and the sheet labels its provenance.
-    expect(screen.getByText("Estimated")).toBeInTheDocument();
+    expect(screen.getByText("From your price")).toBeInTheDocument();
+    expect(screen.queryByText("Estimated")).not.toBeInTheDocument();
   });
 
   it("defaults the confirm sheet to draft (publish-now off) when the seller-profile fetch fails — no accidental live", async () => {
@@ -588,6 +640,41 @@ describe("ScanFlow review wiring", () => {
     expect(screen.getByText("Electric Guitars")).toBeInTheDocument();
     // Find is disabled until the seller types a search
     expect(screen.getByRole("button", { name: "Find category" })).toBeDisabled();
+  });
+
+  it("shows the category-mismatch banner when the suggestion is implausible for the scanned kind", async () => {
+    scanAspectsState.categoryMismatch = true;
+    scanAspectsState.resolvedCategoryName = "Baseball Jackets";
+    try {
+      await renderInReview();
+      expect(screen.getByText(/Double-check this category/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Use anyway" })).toBeInTheDocument();
+    } finally {
+      scanAspectsState.categoryMismatch = false;
+      scanAspectsState.resolvedCategoryName = "Electric Guitars";
+    }
+  });
+
+  it("Don't use it rejects the suggestion outright via clearCategoryResolution", async () => {
+    scanAspectsState.categoryMismatch = true;
+    try {
+      await renderInReview();
+      fireEvent.click(screen.getByRole("button", { name: "Don't use it" }));
+      expect(scanAspectsState.clearCategoryResolution).toHaveBeenCalled();
+    } finally {
+      scanAspectsState.categoryMismatch = false;
+    }
+  });
+
+  it("Use anyway dismisses the mismatch banner via the hook", async () => {
+    scanAspectsState.categoryMismatch = true;
+    try {
+      await renderInReview();
+      fireEvent.click(screen.getByRole("button", { name: "Use anyway" }));
+      expect(scanAspectsState.dismissCategoryMismatch).toHaveBeenCalled();
+    } finally {
+      scanAspectsState.categoryMismatch = false;
+    }
   });
 
   it("warns instead of rendering an empty pill row when no conditionIds are recognized", async () => {
@@ -638,5 +725,92 @@ describe("ScanFlow multi-shot camera session", () => {
       camHolder.props!.onClose();
     });
     expect(await screen.findByText(/Scan 2 Photos with Porter/)).toBeInTheDocument();
+  });
+});
+
+describe("ScanFlow — silent paths made visible (P3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiUploadMock.mockResolvedValue({ image: { url: "http://img/1.jpg", key: "k1", width: 100, height: 100 } });
+    scanAspectsState.aspects = {};
+    scanAspectsState.missingRequired = [];
+    scanAspectsState.aspectsBlockPublish = false;
+    scanAspectsState.conditionIds = [];
+    scanAspectsState.resolvedCategoryId = "33034";
+    scanAspectsState.resolvedCategoryName = "Electric Guitars";
+    scanAspectsState.aspectsError = false;
+    scanAspectsState.resolveError = false;
+  });
+
+  it("aspect-schema outage: outage copy + Retry, and List is blocked with an honest reason — not 'complete' (125cbc53 + 2b8aefb1)", async () => {
+    scanAspectsState.aspectsError = true;
+    scanAspectsState.aspectsBlockPublish = true;
+    await renderInReview();
+    const notice = await screen.findByTestId("aspects-error");
+    expect(notice).toHaveTextContent(/eBay category details unavailable/i);
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(scanAspectsState.refetchAspects).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/eBay category details unavailable — retry/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Checking eBay requirements/)).not.toBeInTheDocument();
+  });
+
+  it("category lookup failure shows its own notice with a retry that re-runs the lookup on the item name (a5a2b944)", async () => {
+    scanAspectsState.resolveError = true;
+    await renderInReview();
+    const notice = await screen.findByTestId("resolve-error");
+    expect(notice).toHaveTextContent(/Category lookup failed/);
+    fireEvent.click(screen.getByRole("button", { name: /retry lookup/i }));
+    expect(scanAspectsState.resolveCategory).toHaveBeenCalledWith("Fender Stratocaster");
+    // resolved category is retained → no no-match copy alongside
+    expect(screen.queryByText(/No eBay category matched/)).not.toBeInTheDocument();
+  });
+
+  it("a genuine no-match (resolved null, no error) shows the no-match copy, never the outage copy", async () => {
+    scanAspectsState.resolvedCategoryId = null;
+    scanAspectsState.resolvedCategoryName = null;
+    await renderInReview();
+    expect(await screen.findByText(/No eBay category matched/)).toBeInTheDocument();
+    expect(screen.queryByTestId("aspects-error")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("resolve-error")).not.toBeInTheDocument();
+  });
+
+  it("comps fetch failure shows a notice and pricing still proceeds (e955f1b9)", async () => {
+    await renderInReview(); // comps search throws in this helper
+    expect(await screen.findByText(/comps unavailable — using AI estimate only/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/price/i)).toBeInTheDocument();
+  });
+
+  it("condition snap tells the seller what changed and why (62e1061e)", async () => {
+    scanAspectsState.conditionIds = ["1000"]; // category accepts New only; candidate is Good
+    await renderInReview();
+    expect(await screen.findByTestId("condition-notice")).toHaveTextContent(
+      /Condition adjusted to New — Good isn't offered in this category/,
+    );
+  });
+
+  it("no snap → no notice", async () => {
+    scanAspectsState.conditionIds = ["1000", "5000"]; // New + Good — candidate's Good is allowed
+    await renderInReview();
+    expect(screen.getByRole("button", { name: /^good$/i })).toBeInTheDocument();
+    expect(screen.queryByTestId("condition-notice")).not.toBeInTheDocument();
+  });
+
+  it("a category change that accepts the snapped condition clears the stale notice", async () => {
+    scanAspectsState.conditionIds = ["1000"]; // Good → New, notice shown
+    const view = await renderInReview();
+    await screen.findByTestId("condition-notice");
+    // Re-resolve to a category that accepts New → nothing to snap, notice must go.
+    scanAspectsState.resolvedCategoryId = "99999";
+    scanAspectsState.conditionIds = ["1000", "5000"];
+    view.rerender(<ScanFlow onClose={vi.fn()} />); // static hook stub — rerender to read the mutated state
+    await waitFor(() => expect(screen.queryByTestId("condition-notice")).not.toBeInTheDocument());
+  });
+
+  it("a tap on a condition chip clears the snap notice", async () => {
+    scanAspectsState.conditionIds = ["1000", "1500"]; // New only (two ids) → Good snaps to New
+    await renderInReview();
+    await screen.findByTestId("condition-notice");
+    fireEvent.click(screen.getByRole("button", { name: /^new$/i }));
+    expect(screen.queryByTestId("condition-notice")).not.toBeInTheDocument();
   });
 });

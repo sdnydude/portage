@@ -1,0 +1,47 @@
+{
+  "id": "f49ed4f7-174d-47b0-ade7-d66a373151ac",
+  "project_name": "portage",
+  "feature": "Housekeeping batch 1 \u2014 price truth, aspect removal, est-value retirement, item status, chips, category filter, condition notes",
+  "approach": "10 operator items; live-proof PoD via e2e/housekeeping-1.spec.ts (7/7, 20 screenshots); 6-agent review, 8 findings fixed + 6 gaps closed; drizzle jsonb path-array bug caught live",
+  "status": "complete",
+  "complexity": "complex",
+  "tdd": true,
+  "pr_url": "https://github.com/sdnydude/portage/pull/317",
+  "branch": "feat/housekeeping-1",
+  "commits": [
+    "db21c49 feat(housekeeping): price truth, aspect removal, est-value retirement, item status, chips, category filter, condition notes"
+  ],
+  "deferred": [],
+  "surprises": [],
+  "decisions": [
+    "items.price \u21c4 listings.price one value both directions",
+    "items.status manual only for non-marketplace states",
+    "est-value hidden everywhere, columns kept"
+  ],
+  "review": {
+    "agents": [
+      "6 reviewers"
+    ],
+    "critical_found": 1,
+    "important_found": 7
+  },
+  "verification": {
+    "lint": "clean",
+    "tests": "api 1032/1032, web 695/695, e2e 7/7 live",
+    "typecheck": "pass"
+  },
+  "file_map": null,
+  "tags": [
+    "housekeeping",
+    "price",
+    "status",
+    "aspects",
+    "chips"
+  ],
+  "session_id": null,
+  "model_name": "claude-fable-5",
+  "meta_data": null,
+  "completed_at": "2026-08-23T08:57:00Z",
+  "created_at": "2026-08-23T08:56:57.911802Z",
+  "updated_at": "2026-08-23T08:56:57.911802Z"
+}

@@ -1,3 +1,4 @@
+// One test appended 2026-08-11 (search recall): see bottom of file.
 import request from 'supertest';
 import { createApp } from '../../app.js';
 import { createTestToken } from '../../test/helpers.js';
@@ -140,7 +141,7 @@ describe('suggest_listing tool', () => {
 });
 
 describe('search_inventory tool', () => {
-  it('returns photos in structured result', async () => {
+  it('excludes photos from the tool result (photo-URL noise made granite4.1 misread items as duplicates, live 08-12; FE never renders tool results)', async () => {
     mockUserSelect();
     mockConversationFlow(TEST_CONV_ID);
 
@@ -178,10 +179,82 @@ describe('search_inventory tool', () => {
       .send({ message: 'Find my guitar', conversationId: TEST_CONV_ID });
 
     expect(toolResult).not.toBeNull();
-    const items = toolResult!.structured as Array<{ photos: unknown[] }>;
+    const items = toolResult!.structured as Array<Record<string, unknown>>;
     expect(Array.isArray(items)).toBe(true);
-    expect(items[0].photos).toEqual([
-      { url: 'https://s3.example.com/photo.jpg', key: 'photos/photo.jpg', isPrimary: true },
-    ]);
+    expect(items[0].title).toBe('Gibson Les Paul');
+    expect(items[0]).not.toHaveProperty('photos');
+  });
+
+  it('retries a plural query as singular when it matches nothing ("cables" finds "Cable")', async () => {
+    mockUserSelect();
+    mockConversationFlow(TEST_CONV_ID);
+
+    const CABLE_ROW = {
+      id: 'item-2', title: 'Impeto Fiber Optic Audio Cable 3.3ft', category: 'cables',
+      condition: 'good', brand: 'Impeto', model: null,
+      estimatedValueMin: 5, estimatedValueMax: 20, estimatedValueRecommended: 10, photos: [],
+    };
+
+    function mockSearchSelect(rows: unknown[]) {
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue(rows) }),
+          }),
+        }),
+      } as never);
+    }
+
+    let toolResult: StreamToolResult | null = null;
+    vi.mocked(chatStream).mockImplementationOnce(async (_msgs, _sys, _tools, execTool, onEvent) => {
+      mockSearchSelect([]);           // "cables" — no title contains the plural
+      mockSearchSelect([CABLE_ROW]);  // singular retry "cable" hits
+      toolResult = await execTool('search_inventory', { query: 'cables' });
+      onEvent({ type: 'done', model: 'm', inputTokens: 1, outputTokens: 1 });
+    });
+
+    await request(app)
+      .post('/porter/stream')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'What cables do I have?', conversationId: TEST_CONV_ID });
+
+    const items = toolResult!.structured as Array<{ title: string }>;
+    expect(Array.isArray(items)).toBe(true);
+    expect(items[0].title).toBe('Impeto Fiber Optic Audio Cable 3.3ft');
+  });
+
+  it('merges plural and singular matches instead of stopping at the plural subset (live 08-11: "cables" hid 9 of 10)', async () => {
+    mockUserSelect();
+    mockConversationFlow(TEST_CONV_ID);
+
+    const DONNER = { id: 'd1', title: 'Donner Verb Square 7-Mode Reverb Pedal with Patch Cables', category: 'pedals', condition: 'good', brand: 'Donner', model: null, estimatedValueMin: 25, estimatedValueMax: 35, estimatedValueRecommended: 30, photos: [] };
+    const IMPETO = { id: 'i1', title: 'Impeto Fiber Optic Audio Cable 3.3ft', category: 'cables', condition: 'good', brand: 'Impeto', model: null, estimatedValueMin: 20, estimatedValueMax: 40, estimatedValueRecommended: 30, photos: [] };
+
+    function mockSearchSelect2(rows: unknown[]) {
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue(rows) }),
+          }),
+        }),
+      } as never);
+    }
+
+    let toolResult: StreamToolResult | null = null;
+    vi.mocked(chatStream).mockImplementationOnce(async (_msgs, _sys, _tools, execTool, onEvent) => {
+      mockSearchSelect2([DONNER]);           // plural "cables" — 1 hit
+      mockSearchSelect2([IMPETO, DONNER]);   // singular "cable" — more hits incl. duplicate
+      toolResult = await execTool('search_inventory', { query: 'cables' });
+      onEvent({ type: 'done', model: 'm', inputTokens: 1, outputTokens: 1 });
+    });
+
+    await request(app)
+      .post('/porter/stream')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'What cables do I have?', conversationId: TEST_CONV_ID });
+
+    const items = toolResult!.structured as Array<{ id: string }>;
+    const ids = items.map(i => i.id).sort();
+    expect(ids).toEqual(['d1', 'i1']); // merged, deduped
   });
 });

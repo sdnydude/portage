@@ -55,6 +55,8 @@ All API errors use the `AppError` class with consistent HTTP status codes and ma
 | 409 | `EMAIL_EXISTS` | Admin user-create hit an existing email |
 | 409 | `STRIPE_SUBSCRIPTION_ACTIVE` | User delete blocked — cancel the Stripe subscription first or archive instead |
 | 409 | `HAS_AUDIT_HISTORY` | User delete blocked — admin audit history must be preserved; archive instead |
+| 422 | `BEST_OFFER_CONFLICT` | Price vs Best Offer thresholds (eBay 22003/23004) — pre-flight or post-save; `details[0]` = `{ bestOfferEnabled, bestOfferAutoAcceptPrice, minimumBestOfferPrice, healed }` |
+| 422 | `BEST_OFFER_UNSUPPORTED` | eBay does not allow Best Offer in the listing's category — turn offers off and retry |
 | 422 | `REVERB_CATEGORY_REQUIRED` | No Reverb category could be resolved for the item |
 | 422 | `NO_PHOTOS` | No photos available within the export photo limit |
 
@@ -88,7 +90,7 @@ class ApiError extends Error {
   status: number;
   code: string;
   message: string;
-  details?: string[];
+  details?: unknown[]; // shape depends on `code` — e.g. BestOfferConflictDetails for BEST_OFFER_CONFLICT
 }
 ```
 

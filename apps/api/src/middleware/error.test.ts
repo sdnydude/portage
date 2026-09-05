@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { AppError, errorHandler, notFoundHandler } from './error.js';
+import { EbayTradingError } from '../marketplace/ebay-trading-client.js';
 
 function mockRes() {
   const res = {
@@ -62,6 +63,17 @@ describe('errorHandler', () => {
     });
     expect((res.body as { details: string[] }).details).toBeInstanceOf(Array);
     expect((res.body as { details: string[] }).details.length).toBeGreaterThan(0);
+  });
+
+  it('maps EbayTradingError to 422 EBAY_REJECTED with the eBay message, never a generic 500 (prod incident 2026-08-25)', () => {
+    const res = mockRes();
+    const err = new EbayTradingError('The item cannot be listed or modified.', [240]);
+
+    errorHandler(err, mockReq, res, mockNext);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body.code).toBe('EBAY_REJECTED');
+    expect(res.body.error).toBe('The item cannot be listed or modified.');
   });
 
   it('handles unknown Error with 500 and generic message', () => {

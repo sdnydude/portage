@@ -2,6 +2,7 @@
 title: "eBay buyer messaging — read inbox + reply via Trading API"
 sidebar_label: "eBay buyer messaging — read inbox + reply via Trad"
 sidebar_position: 38
+registry_id: e7ad3808-5b3d-4e43-8ad1-164ac0c78456
 ---
 
 # eBay buyer messaging — read inbox + reply via Trading API

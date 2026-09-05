@@ -13,6 +13,8 @@ import type {
 import { api, API_BASE } from "@/lib/api";
 
 export interface StreamingBlock {
+  /** Monotonic per-stream id assigned at creation — the React key for the block. */
+  id: number;
   type: "text" | "tool";
   text?: string;
   toolId?: string;
@@ -152,11 +154,12 @@ export function usePorterStream(): PorterStreamState {
         if (last?.type === "text") {
           last.text = (last.text ?? "") + event.text;
         } else {
-          streamingRef.current.push({ type: "text", text: event.text });
+          streamingRef.current.push({ id: streamingRef.current.length, type: "text", text: event.text });
         }
         setStreamingBlocks(stripActions([...streamingRef.current]));
       } else if (event.type === "tool_start") {
         streamingRef.current.push({
+          id: streamingRef.current.length,
           type: "tool",
           toolId: event.toolId,
           toolName: event.toolName,

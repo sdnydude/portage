@@ -154,8 +154,6 @@ export class ReverbAdapter implements MarketplaceAdapter {
       : undefined;
 
     const body: Record<string, unknown> = {
-      make: input.brand ?? '',
-      model: input.model ?? '',
       title: input.title,
       // Reverb has no condition-notes field (verified against the create-listings
       // API doc 2026-07-21) — the description is the only place they can live.
@@ -170,6 +168,12 @@ export class ReverbAdapter implements MarketplaceAdapter {
       // the adapter (route-owned shouldPublish gate), so always publish.
       publish: 'true',
     };
+
+    // Omit make/model when absent — Reverb title-guesses missing fields, but an
+    // explicit "" fails validation: 422 "Localized contents model for English
+    // can't be blank" (live 2026-08-09, model-less cable/accessory items).
+    if (input.brand) body.make = input.brand;
+    if (input.model) body.model = input.model;
 
     if (specific.categoryUuid) {
       body.categories = [{ uuid: specific.categoryUuid }];
@@ -406,36 +410,90 @@ export class ReverbAdapter implements MarketplaceAdapter {
   }
 
   async getOrders(since?: Date): Promise<MarketplaceOrderResult[]> {
+    // /my/orders/selling/ALL + updated_start_date per Reverb's published docs
+    // (reverb-api.com "Retrieve Orders", verified 2026-08-07). The bare
+    // /my/orders/selling path and created_after param were undocumented —
+    // Reverb answered 200 without an orders key, so order sync silently
+    // imported nothing (live finding 2026-08-07, reverb_orders=0).
     const params = new URLSearchParams();
-    if (since) params.set('created_after', since.toISOString());
+    if (since) params.set('updated_start_date', since.toISOString());
 
-    const data = await this.request<{
-      orders?: Array<{
-        order_number: string;
-        listing_id?: string;
-        buyer_name: string;
-        amount_product: { amount: string; currency: string };
-        shipping: { amount: string };
-        shipping_address?: {
-          name: string;
-          street_address: string;
-          extended_address?: string;
-          locality: string;
-          region: string;
-          postal_code: string;
-          country_code: string;
-        };
-      }>;
-    }>(`/my/orders/selling?${params}`);
+    type ReverbOrder = {
+      order_number: string;
+      // Reverb order objects carry product_id, never listing_id
+      // (reverb-api.com "Retrieve Orders", verified 2026-08-07).
+      product_id?: string | number;
+      title?: string;
+      buyer_name?: string;
+      // Live-observed vocabulary (real shop, 2026-08-07): 'shipped',
+      // 'cancelled' (British spelling). Untrusted input — everything optional.
+      status?: string;
+      paid_at?: string;
+      created_at?: string;
+      amount_product?: { amount?: string; currency?: string };
+      selling_fee?: { amount?: string };
+      shipping?: { amount?: string };
+      shipping_address?: {
+        name: string;
+        street_address: string;
+        extended_address?: string;
+        locality: string;
+        region: string;
+        postal_code: string;
+        country_code: string;
+      };
+    };
+    type OrdersPage = { orders?: ReverbOrder[]; _links?: { next?: { href?: string } } };
 
-    return (data.orders ?? []).map(order => ({
+    // HAL pagination (live-verified 2026-08-07: total_pages + _links.next.href,
+    // absolute URL). One-page reads recreate the "orders missing" class this
+    // endpoint fix addressed. MAX_PAGES bounds a runaway next chain — twin of
+    // the loop in ebay-adapter.ts getOrders; keep cap/shape changes in sync.
+    const MAX_PAGES = 10;
+    const allOrders: ReverbOrder[] = [];
+    let path: string | undefined = `/my/orders/selling/all?${params}`;
+    for (let page = 0; page < MAX_PAGES && path; page++) {
+      const data: OrdersPage = await this.request<OrdersPage>(path);
+      allOrders.push(...(data.orders ?? []));
+      const next = data._links?.next?.href;
+      // next is absolute — re-anchor to a path for request() (REVERB_BASE ends
+      // in /api). URL-parse instead of a regex: a href without a literal /api
+      // after the host made the old replace() a silent no-op, and request()
+      // then built a doubled "https://api.reverb.com/apihttps://…" URL.
+      if (next) {
+        const parsed = new URL(next);
+        path = parsed.pathname.replace(/^\/api(?=\/|$)/, '') + parsed.search;
+      } else {
+        path = undefined;
+      }
+    }
+
+    // Untrusted marketplace input: a malformed order (no amount_product) must
+    // not throw — order-sync wraps this whole call in one try/catch, so a
+    // single bad order would otherwise block every other order for the user.
+    return allOrders.filter(order => {
+      if (order.amount_product?.amount != null) return true;
+      logger.warn({ orderNumber: order.order_number }, 'Reverb order missing amount_product — skipping');
+      return false;
+    }).map(order => ({
       marketplaceOrderId: order.order_number,
-      marketplaceListingId: order.listing_id ?? null,
-      buyerUsername: order.buyer_name,
-      salePrice: parseFloat(order.amount_product.amount),
+      marketplaceListingId: order.product_id != null ? String(order.product_id) : null,
+      title: order.title,
+      buyerUsername: order.buyer_name ?? '',
+      salePrice: parseFloat(order.amount_product!.amount!),
       shippingCost: parseFloat(order.shipping?.amount ?? '0'),
-      marketplaceFees: 0,
-      currency: order.amount_product.currency,
+      // Reverb DOES return the real fee (unlike eBay's Fulfillment API).
+      marketplaceFees: parseFloat(order.selling_fee?.amount ?? '0'),
+      currency: order.amount_product!.currency ?? 'USD',
+      // Reverb's actual sale date (paid_at; created_at for never-paid orders).
+      // Without this, order-sync falls back to new Date() and every synced
+      // order shows the sync time.
+      soldAt: order.paid_at ? new Date(order.paid_at)
+        : order.created_at ? new Date(order.created_at) : undefined,
+      // Live-observed vocabulary only — unrecognized statuses give no signal
+      // rather than a wrong one.
+      fulfillmentStatus: order.status === 'cancelled' ? 'canceled' as const
+        : order.status === 'shipped' ? 'shipped' as const : undefined,
       shippingAddress: {
         name: order.shipping_address?.name ?? '',
         street1: order.shipping_address?.street_address ?? '',
@@ -465,7 +523,7 @@ export class ReverbAdapter implements MarketplaceAdapter {
     // returns the same full list (first entry "Acoustic Guitars / 12-String"),
     // so matching MUST happen client-side — passing the query through meant
     // every caller took the first flat entry and mis-categorized as guitars.
-    const categories = await ReverbAdapter.getFlatCategories();
+    const categories = await ReverbAdapter.getFlatCategories(await getReverbAccessToken(this.userId));
 
     const tokens = query.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 3);
     // Majority rule: a lone token hit out of several is noise ("Solid State
@@ -501,15 +559,56 @@ export class ReverbAdapter implements MarketplaceAdapter {
    * category uuids/names; the endpoint's ?query= param is ignored by Reverb,
    * so all matching against this list happens client-side.
    */
-  static async getFlatCategories(): Promise<ReverbFlatCategory[]> {
+  /** Headers for Reverb's reference-data endpoints (categories, conditions).
+   *  Documented as public, but since 2026-09-02 Reverb's edge rejects
+   *  unauthenticated non-browser requests with a 403 HTML page; any bearer
+   *  token passes it, so callers hand in whichever token they hold. */
+  private static publicHeaders(token?: string): Record<string, string> {
+    return {
+      'Accept': 'application/hal+json',
+      'Accept-Version': '3.0',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+  }
+
+  /** Error for a failed reference-data fetch. Logs the body head (the 2026-09-02
+   *  block returned an HTML page, invisible until this). A 401/403 here is the
+   *  edge refusing us, not a seller permission — surface it as an upstream
+   *  outage so the web client never treats it as an auth failure. */
+  private static async publicFetchError(response: Response, what: string): Promise<AppError> {
+    const body = (await response.text().catch(() => '')).slice(0, 200);
+    logger.error({ status: response.status, what, body }, 'Reverb reference-data fetch failed');
+    if (response.status === 401 || response.status === 403) {
+      return new AppError(502, 'REVERB_UNAVAILABLE', `Reverb ${what} are temporarily unavailable (${response.status} from Reverb).`);
+    }
+    return new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb ${what}: ${response.status}`);
+  }
+
+  /** Token for reference-data fetches made on a user's behalf: the seller's
+   *  own Reverb PAT when connected. Reference data is seller-agnostic; the
+   *  token only satisfies the edge, so the shared cache stays shared. */
+  static async referenceToken(userId: string): Promise<string | undefined> {
+    try {
+      return await getReverbAccessToken(userId);
+    } catch (err) {
+      // Not connected yet (REVERB_SETUP_REQUIRED): reference data must still
+      // load, so use the service token; anything else is a real failure.
+      if (err instanceof AppError && err.code === 'REVERB_SETUP_REQUIRED') {
+        return env().REVERB_API_TOKEN || undefined;
+      }
+      throw err;
+    }
+  }
+
+  static async getFlatCategories(token?: string): Promise<ReverbFlatCategory[]> {
     if (cachedCategories && Date.now() - categoriesCachedAt < CONDITIONS_TTL) return cachedCategories;
 
     const response = await fetch(`${REVERB_BASE}/categories/flat`, {
-      headers: { 'Accept': 'application/hal+json', 'Accept-Version': '3.0' },
+      headers: ReverbAdapter.publicHeaders(token),
     });
 
     if (!response.ok) {
-      throw new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb categories: ${response.status}`);
+      throw await ReverbAdapter.publicFetchError(response, 'categories');
     }
 
     const data = await response.json() as {
@@ -534,30 +633,30 @@ export class ReverbAdapter implements MarketplaceAdapter {
 
   /** The 14 taxonomy roots — Reverb's Product Type axis. Root entries are the
    *  flat rows whose fullName equals their own name. */
-  static async getProductTypes(): Promise<ReverbFlatCategory[]> {
-    const cats = await ReverbAdapter.getFlatCategories();
+  static async getProductTypes(token?: string): Promise<ReverbFlatCategory[]> {
+    const cats = await ReverbAdapter.getFlatCategories(token);
     return cats.filter(c => c.fullName === c.name);
   }
 
   /** Direct children of a taxonomy node. Parent/child derived by prefix:
    *  child.fullName === parent.fullName + ' / ' + child.name — anchored on the
    *  API's own `name` field because leaf names can contain " / " themselves. */
-  static async getCategoryChildren(parentUuid: string): Promise<ReverbFlatCategory[]> {
-    const cats = await ReverbAdapter.getFlatCategories();
+  static async getCategoryChildren(parentUuid: string, token?: string): Promise<ReverbFlatCategory[]> {
+    const cats = await ReverbAdapter.getFlatCategories(token);
     const parent = cats.find(c => c.uuid === parentUuid);
     if (!parent) return [];
     return cats.filter(c => c.uuid !== parent.uuid && c.fullName === `${parent.fullName} / ${c.name}`);
   }
 
-  static async getConditions(): Promise<Array<{ uuid: string; displayName: string }>> {
+  static async getConditions(token?: string): Promise<Array<{ uuid: string; displayName: string }>> {
     if (cachedConditions && Date.now() - conditionsCachedAt < CONDITIONS_TTL) return cachedConditions;
 
     const response = await fetch(`${REVERB_BASE}/listing_conditions`, {
-      headers: { 'Accept': 'application/hal+json', 'Accept-Version': '3.0' },
+      headers: ReverbAdapter.publicHeaders(token),
     });
 
     if (!response.ok) {
-      throw new AppError(response.status, 'REVERB_API_ERROR', `Failed to fetch Reverb conditions: ${response.status}`);
+      throw await ReverbAdapter.publicFetchError(response, 'conditions');
     }
 
     const data = await response.json() as {

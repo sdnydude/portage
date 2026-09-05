@@ -246,13 +246,18 @@ function InlineInput({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function FormatBold({ text }: { text: string }) {
+export function FormatBold({ text }: { text: string }) {
   const parts = text.split(/(\*\*.+?\*\*)/g);
+  // Key bold runs by their char offset in `text` (content-derived; bold text can repeat).
+  const offsets = parts.reduce<number[]>((acc, _part, i) => {
+    acc.push(i === 0 ? 0 : acc[i - 1] + parts[i - 1].length);
+    return acc;
+  }, []);
   return (
     <>
       {parts.map((part, i) => {
         const bold = part.match(/^\*\*(.+)\*\*$/);
-        return bold ? <strong key={i}>{bold[1]}</strong> : part;
+        return bold ? <strong key={offsets[i]}>{bold[1]}</strong> : part;
       })}
     </>
   );
@@ -345,10 +350,6 @@ function deriveMessages(
   // 4. Recognition complete
   if (state.recognition.status === "complete" && candidate) {
     const conf = Math.round(state.recognition.confidence * 100);
-    const priceRange =
-      candidate.estimatedValueLow && candidate.estimatedValueHigh
-        ? ` I'd estimate it's worth **$${candidate.estimatedValueLow}–$${candidate.estimatedValueHigh}**.`
-        : "";
 
     const reasoningBullets =
       state.recognition.reasoning.length > 0
@@ -361,7 +362,7 @@ function deriveMessages(
     msgs.push({
       id: "recognition",
       role: "porter",
-      content: `Got it! This looks like a **${candidate.name}**${candidate.brand ? ` by **${candidate.brand}**` : ""}. Condition: **${formatCondition(candidate.condition)}**.${priceRange} (${conf}% confidence)${reasoningBullets}`,
+      content: `Got it! This looks like a **${candidate.name}**${candidate.brand ? ` by **${candidate.brand}**` : ""}. Condition: **${formatCondition(candidate.condition)}**. (${conf}% confidence)${reasoningBullets}`,
       pills: !hasConfirmed
         ? [
             {

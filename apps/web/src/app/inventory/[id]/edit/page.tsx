@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useItem } from "@/hooks/use-item";
+import type { Item } from "@/hooks/use-items";
 import { useListings } from "@/hooks/use-listings";
 import { useAuth } from "@/hooks/use-auth";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
@@ -26,7 +28,7 @@ export default function EditItemPage() {
   const { item, isLoading, error, updateItem } = useItem(params.id);
   // Shared-fields notice: title/description edits propagate to live eBay
   // listings via the PATCH /items sync (items.ts) — tell the seller.
-  const { listings: itemListings } = useListings({ itemId: params.id });
+  const { listings: itemListings, isLoading: listingsLoading } = useListings({ itemId: params.id });
   const hasLiveListing = itemListings.some((l) => l.status !== "archived");
 
   const [title, setTitle] = useState("");
@@ -42,6 +44,17 @@ export default function EditItemPage() {
   });
   const [weightEstimated, setWeightEstimated] = useState(false);
   const [price, setPrice] = useState<number | null>(null);
+  // Item status (Housekeeping-1): manual only; a live/draft listing locks it.
+  const [status, setStatus] = useState<NonNullable<Item["status"]>>("unlisted");
+  const lockedStatus = itemListings.some((l) => l.status === "active")
+    ? "active"
+    : itemListings.some((l) => l.status === "draft")
+      ? "draft"
+      : itemListings.some((l) => l.status === "sold")
+        ? "sold"
+        : null;
+  // Unknown until listings load — never send a manual status on that window.
+  const statusLocked = !!lockedStatus || listingsLoading;
   const [categorySearch, setCategorySearch] = useState("");
   // Auto-resolution from the title is display/constraint-only; the resolved
   // eBay name is persisted ONLY after the seller explicitly invokes Find
@@ -49,6 +62,9 @@ export default function EditItemPage() {
   const [categoryUserResolved, setCategoryUserResolved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // P3 T4: the edit saved but a marketplace sync was refused/queued with a
+  // warning — stay here and say so instead of navigating away from the truth.
+  const [syncWarning, setSyncWarning] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (item) {
@@ -57,6 +73,7 @@ export default function EditItemPage() {
       setCategory(item.category);
       setCondition(item.condition);
       setConditionNotes(item.conditionNotes);
+      setStatus(item.status ?? "unlisted");
       setBrand(item.brand);
       setModel(item.model);
       setQuantity(item.quantity ?? 1);
@@ -87,7 +104,17 @@ export default function EditItemPage() {
     resolveCategory,
     isCategoryResolving,
     conditionIds,
-  } = useScanAspects(title, `${title} ${description}`);
+    categoryMismatch,
+    resolvedVisionCategory,
+    dismissCategoryMismatch,
+    clearCategoryResolution,
+  } = useScanAspects(
+    title,
+    `${title} ${description}`,
+    undefined,
+    // Persisted vision coarse category (Tier-2) feeds the mismatch guard.
+    item?.marketplaceData?.scan?.visionCategory,
+  );
   const availableConditions = getAvailablePortageConditions(conditionIds);
   const conditionOptions = availableConditions.length > 0
     ? conditions.filter((c) =>
@@ -129,11 +156,12 @@ export default function EditItemPage() {
   const handleSave = async () => {
     setIsSaving(true);
     setSaveError(null);
+    setSyncWarning(null);
     try {
       // weight column is ounces; the route requires a positive weightOz, so a
       // sub-half-ounce or empty value is sent as undefined (left unchanged).
       const rawOz = weightDims.weight != null ? Math.round(weightDims.weight * 16) : 0;
-      await updateItem({
+      const saved = await updateItem({
         title: title.trim(),
         description: description.trim(),
         // eBay name persists only when the seller explicitly resolved it
@@ -146,6 +174,7 @@ export default function EditItemPage() {
           : {}),
         condition,
         conditionNotes: conditionNotes.trim(),
+        ...(statusLocked ? {} : { status }),
         brand: brand.trim(),
         model: model.trim(),
         quantity,
@@ -157,6 +186,11 @@ export default function EditItemPage() {
         ebayPackageType: weightDims.ebayPackageType ?? undefined,
         weightEstimated,
       });
+      if (saved?.syncWarnings?.length) {
+        setSyncWarning(saved.syncWarnings);
+        setIsSaving(false);
+        return;
+      }
       router.back();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
@@ -172,6 +206,7 @@ export default function EditItemPage() {
     category !== item.category ||
     condition !== item.condition ||
     conditionNotes !== item.conditionNotes ||
+    (!statusLocked && status !== (item.status ?? "unlisted")) ||
     brand !== item.brand ||
     model !== item.model ||
     quantity !== (item.quantity ?? 1) ||
@@ -209,6 +244,18 @@ export default function EditItemPage() {
         {saveError && (
           <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
             {saveError}
+          </div>
+        )}
+        {syncWarning && (
+          <div data-testid="sync-warning" className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm text-amber-800 dark:text-amber-300 flex flex-col gap-2">
+            <span className="font-medium">Saved — but a marketplace sync needs attention:</span>
+            <ul className="list-disc pl-4 space-y-1">
+              {syncWarning.map((w) => <li key={w}>{w}</li>)}
+            </ul>
+            <span className="flex gap-3">
+              <Link href={`/inventory/${item.id}`} className="font-medium underline">Fix offer settings</Link>
+              <button type="button" onClick={() => router.back()} className="font-medium underline">Back</button>
+            </span>
           </div>
         )}
 
@@ -256,6 +303,29 @@ export default function EditItemPage() {
           </FieldGroup>
         </div>
 
+        <FieldGroup label="Status" htmlFor="item-status">
+          <select
+            id="item-status"
+            value={lockedStatus ?? status}
+            disabled={statusLocked}
+            onChange={(e) => setStatus(e.target.value as NonNullable<Item["status"]>)}
+            className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none disabled:opacity-70"
+          >
+            {lockedStatus && (
+              <option value={lockedStatus}>
+                {lockedStatus === "active" ? "Active (live listing)" : lockedStatus === "draft" ? "Draft (listing)" : "Sold (listing)"}
+              </option>
+            )}
+            <option value="unlisted">Unlisted</option>
+            <option value="asset">Not for sale — Asset</option>
+            <option value="sold">Sold</option>
+            <option value="archived">Archived</option>
+          </select>
+          {lockedStatus && (
+            <p className="mt-1 text-xs text-text-secondary">Set by the listing — archive or end it to change the item status.</p>
+          )}
+        </FieldGroup>
+
         <FieldGroup label="Category">
           <div className="px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary">
             {isCategoryResolving
@@ -264,6 +334,37 @@ export default function EditItemPage() {
                 ? resolvedCategoryName
                 : category || "Not set — search below"}
           </div>
+          {categoryMismatch && !isCategoryResolving && resolvedCategoryId !== null && (
+            <div className="mt-2 px-3 py-2.5 rounded-xl border border-[var(--accent-warning,#b45309)] bg-[color-mix(in_srgb,var(--accent-warning,#b45309)_10%,transparent)] text-sm text-text-primary">
+              <p>
+                Double-check this category — eBay suggests{" "}
+                <strong>{resolvedCategoryName ?? resolvedCategoryId}</strong>, which doesn&apos;t look
+                like a match for what was scanned
+                {resolvedVisionCategory ? ` (${resolvedVisionCategory})` : ""}.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={dismissCategoryMismatch}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-primary"
+                >
+                  Use anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Rejecting the suggestion also withdraws the explicit
+                    // resolve flag — Save keeps the stored category.
+                    setCategoryUserResolved(false);
+                    clearCategoryResolution();
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-primary"
+                >
+                  Don&apos;t use it
+                </button>
+              </div>
+            </div>
+          )}
           <div className="mt-2 flex gap-2">
             <input
               type="text"
@@ -292,8 +393,8 @@ export default function EditItemPage() {
           <textarea
             value={conditionNotes}
             onChange={(e) => setConditionNotes(e.target.value)}
-            maxLength={500}
-            rows={2}
+            maxLength={2000}
+            rows={5}
             placeholder="Any scratches, wear, defects..."
             className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary placeholder:text-text-placeholder border border-transparent focus:border-border-focus focus:outline-none resize-none"
           />
@@ -349,10 +450,10 @@ export default function EditItemPage() {
   );
 }
 
-function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
+function FieldGroup({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+      <label htmlFor={htmlFor} className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
         {label}
       </label>
       {children}

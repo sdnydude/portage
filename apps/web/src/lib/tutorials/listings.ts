@@ -6,10 +6,10 @@ export const listingsTopic: TutorialTopic = {
   description: "Create, publish, and manage marketplace listings.",
   steps: [
     {
-      id: "listings-tab",
+      id: "listings-hub",
       title: "All your listings, one place",
-      body: "The Listings tab shows every active and sold listing across eBay and Reverb, with live status. No more juggling seller dashboards.",
-      screenshot: "/tutorials/listings/listings-tab.png",
+      body: "Open Listings from Home or Inventory to see every active and sold listing across eBay and Reverb, with live status. No more juggling seller dashboards.",
+      screenshot: "/tutorials/listings/listings-hub.png",
       overlays: [{ type: "highlight", x: 6, y: 15, w: 88, h: 31 }],
     },
     {
@@ -36,7 +36,7 @@ export const listingsManifest: CaptureManifest = {
   actions: [
     { type: "goto", path: "/listings" },
     { type: "wait", ms: 1000 },
-    { type: "capture", step: "listings-tab" },
+    { type: "capture", step: "listings-hub" },
     { type: "goto", path: "/list" },
     { type: "wait", ms: 1000 },
     { type: "capture", step: "create-listing" },

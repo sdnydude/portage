@@ -109,8 +109,8 @@ export function DeviceFrame({ screenshot, overlays, animationKey, alt, compact }
               }}
             />
             <div key={animationKey} className="absolute inset-0" aria-hidden="true">
-              {(compact ? overlays.filter((o) => o.type === "highlight") : overlays).map((o, i) => (
-                <div key={i} data-testid="tutorial-overlay" className="tutorial-overlay" style={overlayStyle(o)}>
+              {(compact ? overlays.filter((o) => o.type === "highlight") : overlays).map((o) => (
+                <div key={`${o.type}-${o.x}-${o.y}`} data-testid="tutorial-overlay" className="tutorial-overlay" style={overlayStyle(o)}>
                   {o.type === "callout" && o.text && (
                     <span
                       className="block rounded-xl px-3 py-1.5 text-xs font-semibold text-white shadow-lg"

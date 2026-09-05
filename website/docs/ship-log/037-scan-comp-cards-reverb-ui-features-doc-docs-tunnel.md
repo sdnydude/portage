@@ -2,6 +2,7 @@
 title: "scan comp cards + reverb UI + features doc + docs tunnel"
 sidebar_label: "scan comp cards + reverb UI + features doc + docs "
 sidebar_position: 37
+registry_id: 4cb383a3-f037-49d9-8076-8d2fc86079d3
 ---
 
 # scan comp cards + reverb UI + features doc + docs tunnel

@@ -2,6 +2,7 @@
 title: "Stripe subscription billing — Pro tier, trials, credit packs"
 sidebar_label: "Stripe subscription billing — Pro tier, trials, cr"
 sidebar_position: 32
+registry_id: 13089612-1289-4311-834f-c5eece70f896
 ---
 
 # Stripe subscription billing — Pro tier, trials, credit packs
