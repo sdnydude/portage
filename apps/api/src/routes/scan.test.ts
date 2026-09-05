@@ -96,9 +96,9 @@ describe('POST /scan?detail=full', () => {
       candidates: [candidate({ aspects: {} })],
       reasoning: [],
     } as any);
-    vi.mocked(prefillCandidateAspects).mockImplementation(async (cands: any) =>
-      cands.map((c: any, i: number) => (i === 0 ? { ...c, aspects: { Brand: ['Sony'] } } : c)),
-    );
+    vi.mocked(prefillCandidateAspects).mockImplementation(async (cands: any) => ({
+      candidates: cands.map((c: any, i: number) => (i === 0 ? { ...c, aspects: { Brand: ['Sony'] } } : c)),
+    }));
 
     const res = await request(app)
       .post('/scan?detail=full')
@@ -177,9 +177,9 @@ describe('POST /scan/refine', () => {
       }],
       reasoning: [],
     });
-    vi.mocked(prefillCandidateAspects).mockImplementation(async (cands: any) =>
-      cands.map((c: any, i: number) => (i === 0 ? { ...c, aspects: { Type: ['Portable External SSD'] } } : c)),
-    );
+    vi.mocked(prefillCandidateAspects).mockImplementation(async (cands: any) => ({
+      candidates: cands.map((c: any, i: number) => (i === 0 ? { ...c, aspects: { Type: ['Portable External SSD'] } } : c)),
+    }));
 
     const res = await request(app)
       .post('/scan/refine')
@@ -192,6 +192,37 @@ describe('POST /scan/refine', () => {
     expect(prefillCandidateAspects).toHaveBeenCalledWith(expect.anything(), 'imgA');
     expect(res.body.identification.aspects).toEqual({ Type: ['Portable External SSD'] });
     expect(res.body.detailed.candidates[0].aspects).toEqual({ Type: ['Portable External SSD'] });
+  });
+
+  it('returns detailed.provenance with the identification and aspect-prefill calls', async () => {
+    mockUserSelect();
+    mockUpdateReturns();
+
+    vi.mocked(fetchPhotosAsBase64).mockResolvedValue([{ base64: 'imgA', mediaType: 'image/jpeg' }]);
+    vi.mocked(identifyItemsMulti).mockResolvedValue({
+      candidates: [{
+        name: 'Nextorage SSD', description: 'External SSD', category: 'electronics',
+        condition: 'good' as const, conditionNotes: '', brand: 'Nextorage', model: 'AtomX',
+        features: [], estimatedValueLow: 50, estimatedValueHigh: 90, confidence: 0.9,
+      }],
+      reasoning: [],
+      provenance: { identification: { provider: 'local', model: 'qwen3-vl:8b-instruct', fallbacks: 0 } },
+    });
+    vi.mocked(prefillCandidateAspects).mockImplementation(async (cands: any) => ({
+      candidates: cands,
+      provenance: { provider: 'gemini', model: 'gemini-2.5-flash', fallbacks: 1 },
+    }));
+
+    const res = await request(app)
+      .post('/scan/refine')
+      .set('Authorization', `Bearer ${token}`)
+      .send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(res.body.detailed.provenance).toEqual({
+      identification: { provider: 'local', model: 'qwen3-vl:8b-instruct', fallbacks: 0 },
+      aspects: { provider: 'gemini', model: 'gemini-2.5-flash', fallbacks: 1 },
+    });
   });
 
   it('rejects URLs not starting with R2_PUBLIC_URL (SSRF protection)', async () => {

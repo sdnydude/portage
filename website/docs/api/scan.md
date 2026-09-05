@@ -6,7 +6,7 @@ sidebar_position: 3
 
 # Scan
 
-AI-powered item identification using a configurable vision provider chain (`VISION_PROVIDERS` — Gemini primary with Claude fallback).
+AI-powered item identification using a configurable vision provider chain (`VISION_PROVIDERS` — Gemini 3.5 Flash-Lite primary, Gemini 3.8 Flash then Claude Haiku fallback, since 2026-09-05). Every scan response carries `detailed.provenance` — `{ identification, aspects }`, each `{ provider, model, fallbacks }` — naming which model answered each call; the client persists it on the item under `marketplaceData.scan.provenance`.
 
 ## Endpoints
 

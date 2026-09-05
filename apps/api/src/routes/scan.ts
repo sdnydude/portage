@@ -113,7 +113,11 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
           detailedResult = await identifyItemDetailed(imageBase64, 'image/jpeg');
           // Best-effort: pre-fill required eBay specifics on the top candidate so the
           // scan review screen already shows them. Never throws; non-fatal on failure.
-          detailedResult.candidates = await prefillCandidateAspects(detailedResult.candidates, imageBase64);
+          const prefill = await prefillCandidateAspects(detailedResult.candidates, imageBase64);
+          detailedResult.candidates = prefill.candidates;
+          if (prefill.provenance) {
+            detailedResult.provenance = { ...detailedResult.provenance, aspects: prefill.provenance };
+          }
           return detailedResult.candidates[0];
         }
         return identifyItem(imageBase64, 'image/jpeg');
@@ -137,7 +141,7 @@ scanRouter.post('/', upload.single('image'), async (req, res, next) => {
 
     await incrementScanCount(userId);
 
-    logger.info({ userId, name: identification.name }, 'Scan complete');
+    logger.info({ userId, name: identification.name, provenance: detailedResult?.provenance }, 'Scan complete');
 
     res.status(201).json({
       identification,
@@ -215,14 +219,23 @@ scanRouter.post('/refine', async (req, res, next) => {
         // path must also fill the top candidate's required eBay specifics, or the
         // scan review shows an empty aspect list. Best-effort, never throws; threads
         // the first image so generateListingFields takes the vision (JSON) path.
-        detailedResult.candidates = await prefillCandidateAspects(detailedResult.candidates, images[0]?.base64);
+        const prefill = await prefillCandidateAspects(detailedResult.candidates, images[0]?.base64);
+        detailedResult.candidates = prefill.candidates;
+        if (prefill.provenance) {
+          detailedResult.provenance = { ...detailedResult.provenance, aspects: prefill.provenance };
+        }
         return detailedResult.candidates[0];
       },
     );
 
     await incrementScanCount(userId);
 
-    logger.info({ userId, name: identification.name, imageCount: images.length }, 'Refine scan complete');
+    // provenance on the completion line: one Loki query answers "which model
+    // did this scan" without re-pairing the two per-call vision lines.
+    logger.info(
+      { userId, name: identification.name, imageCount: images.length, provenance: detailedResult.provenance },
+      'Refine scan complete',
+    );
 
     res.status(201).json({
       identification,

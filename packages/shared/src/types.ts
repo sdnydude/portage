@@ -63,11 +63,30 @@ export interface ReverbCacheEntry {
   cachedAt: string;
 }
 
+// Which provider/model answered a vision call, and how many chain entries
+// failed before it. Stamped by the API at scan time so "which LLM produced
+// this item" is a column query, not log archaeology (Loki was the only trace
+// before 2026-09-05).
+export interface VisionCallProvenance {
+  provider: string;
+  model: string;
+  /** Chain entries that failed before this one answered. Absent on the
+   *  photo-less chat path, which does not report it. */
+  fallbacks?: number;
+}
+
+export interface ScanProvenance {
+  /** identifyItemsMulti / identifyItemDetailed — the identification call. */
+  identification?: VisionCallProvenance;
+  /** prefillCandidateAspects → generateListingFields — the aspect-prefill call. */
+  aspects?: VisionCallProvenance;
+}
+
 export interface MarketplaceData {
   ebay?: MarketplaceCacheEntry;
   reverb?: ReverbCacheEntry;
   /** Vision scan's coarse category — read by the category-mismatch guard. */
-  scan?: { visionCategory?: string };
+  scan?: { visionCategory?: string; provenance?: ScanProvenance };
 }
 
 export interface Item {

@@ -4,7 +4,7 @@ import { createLogger } from './logger.js';
 import type { ImageInput } from './ai-client.js';
 import { AppError } from '../middleware/error.js';
 import { pickMissingRequiredAspects } from './aspect-pick.js';
-import type { RecognitionCandidate } from '@portage/shared';
+import type { RecognitionCandidate, ScanProvenance, VisionCallProvenance } from '@portage/shared';
 
 const logger = createLogger('vision');
 
@@ -267,10 +267,13 @@ Order candidates by confidence (highest first). Respond with ONLY valid JSON.`;
 export interface DetailedVisionResult {
   candidates: RecognitionCandidate[];
   reasoning: string[];
+  // Which provider/model answered (and how many chain entries failed first).
+  // Flows to the client and onto items.marketplaceData.scan.provenance.
+  provenance?: ScanProvenance;
 }
 
 export async function identifyItemDetailed(imageBase64: string, mediaType: string): Promise<DetailedVisionResult> {
-  const { text } = await analyzeImage(
+  const { text, provider, model, fallbacks } = await analyzeImage(
     imageBase64,
     mediaType,
     DETAILED_SYSTEM_PROMPT,
@@ -285,11 +288,12 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
       purpose: 'scan-vision',
     },
   );
+  const provenance: ScanProvenance = { identification: { provider, model, fallbacks } };
 
   const parsed = safeParseJSON(text);
 
   const detailed = DetailedVisionResultSchema.safeParse(parsed);
-  if (detailed.success) return detailed.data;
+  if (detailed.success) return { ...detailed.data, provenance };
 
   const single = VisionResultSchema.safeParse(parsed);
   if (single.success) {
@@ -302,6 +306,7 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
       reasoning: Array.isArray((parsed as Record<string, unknown>).reasoning)
         ? (parsed as Record<string, unknown>).reasoning as string[]
         : ['Identified by visual analysis'],
+      provenance,
     };
   }
 
@@ -412,7 +417,7 @@ export async function identifyItemsMulti(
     ? 'Identify this item with multiple candidates and reasoning. Respond with ONLY valid JSON.'
     : `You are viewing ${images.length} photos of the SAME item from different angles. Cross-reference all photos to identify it precisely. Respond with ONLY valid JSON.`;
 
-  const { text } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, {
+  const { text, provider, model, fallbacks } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, {
     temperature: 0,
     maxTokens: 2048,
     validate: schemaValidator([
@@ -421,11 +426,12 @@ export async function identifyItemsMulti(
     ]),
     purpose: 'scan-vision',
   });
+  const provenance: ScanProvenance = { identification: { provider, model, fallbacks } };
 
   const parsed = safeParseJSON(text);
 
   const detailed = DetailedVisionResultSchema.safeParse(parsed);
-  if (detailed.success) return detailed.data;
+  if (detailed.success) return { ...detailed.data, provenance };
 
   const single = VisionResultSchema.safeParse(parsed);
   if (single.success) {
@@ -438,6 +444,7 @@ export async function identifyItemsMulti(
       reasoning: Array.isArray((parsed as Record<string, unknown>).reasoning)
         ? (parsed as Record<string, unknown>).reasoning as string[]
         : ['Identified by visual analysis'],
+      provenance,
     };
   }
 
@@ -474,7 +481,9 @@ export async function fetchPhotosAsBase64(urls: string[], limit: number): Promis
   return results;
 }
 
-export async function generateListingFields(input: ListingFieldsInput): Promise<ListingFieldsOutput> {
+export async function generateListingFields(
+  input: ListingFieldsInput,
+): Promise<ListingFieldsOutput & { provenance?: VisionCallProvenance }> {
   const userPrompt = `ITEM SCAN DATA:
 ${JSON.stringify(input.scanData, null, 2)}
 
@@ -502,6 +511,7 @@ Generate all listing fields as JSON.`;
     : await fetchPhotosAsBase64(input.photoUrls, 5);
 
   let text: string;
+  let provenance: VisionCallProvenance;
   if (images.length > 0) {
     const result = await analyzeImages(images, LISTING_FIELDS_SYSTEM_PROMPT, userPrompt, {
       temperature: 0,
@@ -510,6 +520,7 @@ Generate all listing fields as JSON.`;
       purpose: 'prepare-listing',
     });
     text = result.text;
+    provenance = { provider: result.provider, model: result.model, fallbacks: result.fallbacks };
   } else {
     // chat() gained validate support in Phase 3a — the photo-less path now
     // fails over on schema-invalid output like the vision chains do.
@@ -520,6 +531,7 @@ Generate all listing fields as JSON.`;
       purpose: 'prepare-listing',
     });
     text = result.text;
+    provenance = { provider: result.provider, model: result.model };
   }
 
   const parsed = safeParseJSON(text);
@@ -543,5 +555,5 @@ Generate all listing fields as JSON.`;
       },
     });
   }
-  return fields;
+  return { ...fields, provenance };
 }

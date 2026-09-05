@@ -53,6 +53,7 @@ describe('identifyItem', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     const result = await identifyItem('base64data', 'image/jpeg');
@@ -76,6 +77,7 @@ describe('identifyItem', () => {
       model: 'claude-sonnet-4-6',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     const result = await identifyItem('base64data', 'image/jpeg');
@@ -91,6 +93,7 @@ describe('identifyItem', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     const result = await identifyItem('base64data', 'image/jpeg');
@@ -106,6 +109,7 @@ describe('identifyItem', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     const result = await identifyItem('base64data', 'image/png');
@@ -120,6 +124,7 @@ describe('identifyItem', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     await expect(identifyItem('base64data', 'image/jpeg'))
@@ -133,6 +138,7 @@ describe('identifyItem', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     await expect(identifyItem('base64data', 'image/jpeg'))
@@ -146,6 +152,7 @@ describe('identifyItem', () => {
       model: 'claude-haiku-4-5',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     await identifyItem('base64data', 'image/jpeg');
@@ -164,6 +171,7 @@ describe('identifyItem', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     const result = await identifyItem('base64data', 'image/jpeg');
@@ -179,6 +187,7 @@ describe('identifyItem', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     const result = await identifyItem('base64data', 'image/jpeg');
@@ -194,6 +203,7 @@ describe('identifyItemDetailed', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     const result = await identifyItemDetailed('base64data', 'image/jpeg');
@@ -215,7 +225,7 @@ describe('identifyItemDetailed', () => {
         }],
         reasoning: [],
       }),
-      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50,
+      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await identifyItemDetailed('base64data', 'image/jpeg');
@@ -234,7 +244,7 @@ describe('identifyItemDetailed', () => {
         }],
         reasoning: [],
       }),
-      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50,
+      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await identifyItemDetailed('base64data', 'image/jpeg');
@@ -251,7 +261,7 @@ describe('identifyItemDetailed', () => {
         }],
         reasoning: [],
       }),
-      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50,
+      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await identifyItemDetailed('base64data', 'image/jpeg');
@@ -265,6 +275,7 @@ describe('identifyItemDetailed', () => {
       model: 'claude-haiku-4-5',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     await identifyItemDetailed('base64data', 'image/jpeg');
@@ -283,6 +294,7 @@ describe('identifyItemDetailed', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     const result = await identifyItemDetailed('base64data', 'image/jpeg');
@@ -300,6 +312,7 @@ describe('identifyItemDetailed', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     await expect(identifyItemDetailed('base64data', 'image/jpeg'))
@@ -308,6 +321,19 @@ describe('identifyItemDetailed', () => {
         code: 'AI_RESPONSE_INVALID',
         message: expect.stringMatching(/detailed:.*single:/s),
       });
+  });
+
+  it('stamps identification provenance from the single-image vision call', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'local', model: 'qwen3-vl:8b-instruct', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    const result = await identifyItemDetailed('base64data', 'image/jpeg');
+
+    expect(result.provenance).toEqual({
+      identification: { provider: 'local', model: 'qwen3-vl:8b-instruct', fallbacks: 0 },
+    });
   });
 });
 
@@ -324,6 +350,7 @@ describe('identifyItemsMulti', () => {
       model: 'claude-sonnet-4',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     const result = await identifyItemsMulti(mockImages);
@@ -344,6 +371,7 @@ describe('identifyItemsMulti', () => {
       model: 'gemini-2.5-flash',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     const result = await identifyItemsMulti(mockImages);
@@ -357,6 +385,7 @@ describe('identifyItemsMulti', () => {
       model: 'claude-sonnet-4',
       inputTokens: 100,
       outputTokens: 50,
+      fallbacks: 0,
     });
 
     await identifyItemsMulti([mockImages[0]]);
@@ -372,6 +401,7 @@ describe('identifyItemsMulti', () => {
       model: 'claude-sonnet-4',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     await identifyItemsMulti(mockImages);
@@ -386,6 +416,7 @@ describe('identifyItemsMulti', () => {
       model: 'claude-sonnet-4',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     const result = await identifyItemsMulti(mockImages);
@@ -405,6 +436,7 @@ describe('identifyItemsMulti', () => {
       model: 'gemini-3.5-flash',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     const result = await identifyItemsMulti(mockImages);
@@ -422,6 +454,7 @@ describe('identifyItemsMulti', () => {
       model: 'gemini-2.5-flash',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     const result = await identifyItemsMulti(mockImages);
@@ -439,6 +472,7 @@ describe('identifyItemsMulti', () => {
       model: 'gemini-2.5-flash',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     const result = await identifyItemsMulti(mockImages);
@@ -452,6 +486,7 @@ describe('identifyItemsMulti', () => {
       model: 'claude-sonnet-4',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     await expect(identifyItemsMulti(mockImages))
@@ -465,6 +500,7 @@ describe('identifyItemsMulti', () => {
       model: 'gemini-2.5-flash',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     await identifyItemsMulti(mockImages);
@@ -490,10 +526,24 @@ describe('identifyItemsMulti', () => {
       model: 'claude-sonnet-4',
       inputTokens: 200,
       outputTokens: 100,
+      fallbacks: 0,
     });
 
     const result = await identifyItemsMulti(mockImages);
     expect(result.candidates[0].condition).toBe('like_new');
+  });
+
+  it('stamps identification provenance (provider, model, fallbacks) from the vision call', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 1,
+    });
+
+    const result = await identifyItemsMulti([{ base64: 'a', mediaType: 'image/jpeg' }]);
+
+    expect(result.provenance).toEqual({
+      identification: { provider: 'gemini', model: 'gemini-2.5-flash', fallbacks: 1 },
+    });
   });
 });
 
@@ -507,10 +557,21 @@ describe('generateListingFields', () => {
     sellerDefaults: { weightUnit: 'oz', dimensionUnit: 'in', packageType: 'box', currency: 'USD' },
   };
 
+  it('returns the vision call provenance alongside the listing fields', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 1,
+    });
+
+    const fields = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    expect(fields.provenance).toEqual({ provider: 'gemini', model: 'gemini-2.5-flash', fallbacks: 1 });
+  });
+
   it('uses provided images via the vision path instead of fetching from photoUrls', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: ['Sony'] } } }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const images = [{ base64: 'b64', mediaType: 'image/jpeg' }];
@@ -536,7 +597,7 @@ describe('generateListingFields', () => {
   it('injects the Reverb flat-category list into the prompt so the AI picks a real category verbatim', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     await generateListingFields({
@@ -554,7 +615,7 @@ describe('generateListingFields', () => {
   it('instructs the AI to pick the DEEPEST fitting category path (cascade resolution)', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
     await generateListingFields({
       ...baseInput,
@@ -568,7 +629,7 @@ describe('generateListingFields', () => {
   it('coerces scalar-string aspect values to string arrays', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: 'Sony', Color: ['Black'] } } }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
@@ -579,7 +640,7 @@ describe('generateListingFields', () => {
   it('degrades a malformed aspect value instead of throwing a 502 — good values survive', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: ['Sony'], Bad: null } } }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
@@ -593,7 +654,7 @@ describe('generateListingFields', () => {
         title: 't', description: 'd',
         ebay: { title: 'et', aspects: {}, weight: 12 },
       }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
@@ -604,7 +665,7 @@ describe('generateListingFields', () => {
   it('passes a validate hook so schema-invalid listing-fields responses fail over down the chain', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
@@ -621,7 +682,7 @@ describe('generateListingFields', () => {
         title: 't', description: 'd',
         ebay: { title: 'et', aspects: {}, weight: 99999 },
       }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
@@ -635,7 +696,7 @@ describe('generateListingFields', () => {
         title: 't', description: 'd',
         ebay: { title: 'et', aspects: {}, weight: null },
       }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
@@ -650,7 +711,7 @@ describe('generateListingFields', () => {
         ebay: { title: 'et', aspects: {} },
         reverb: { make: 'Roland', model: 'TR-808', title: 'rt', year: 1984 },
       }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
@@ -661,7 +722,7 @@ describe('generateListingFields', () => {
   it('runs the constrained pick pass for a required enum aspect the first call left unfilled', async () => {
     vi.mocked(analyzeImages).mockResolvedValue({
       text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Brand: ['Sony'] } } }),
-      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50,
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
     vi.mocked(chatText).mockResolvedValue({
       text: '{"Type":"Canal Earbud (In Ear Canal)"}',
