@@ -44,6 +44,7 @@ The vision and chat pipelines use configurable provider chains (comma-separated,
 | Variable | Description |
 |----------|-------------|
 | `VISION_PROVIDERS` | Vision provider chain, entries `provider[:model][@reasoning_effort]` (e.g. `gemini:gemini-3.5-flash-lite@minimal,gemini:gemini-3.8-flash,anthropic:claude-haiku-4-5`) — providers: `local`, `gemini`, `openai`, `huggingface`, `anthropic`. `@effort` (one of `none`, `minimal`, `low`, `medium`, `high`) overrides the provider default (`none` for gemini; Flash-Lite needs `minimal`); it is sent only on OpenAI-compatible providers and each model accepts its own subset — an unsupported value 400s on that entry and fails over |
+| `VISION_CALL_TIMEOUT_MS` | Per-call ceiling for OpenAI-compatible vision calls, default `12000`. A call past it throws inside the chain loop and fails over to the next entry, keeping a scan (two calls) inside the web proxy's 30s budget |
 | `CHAT_PROVIDERS` | Chat provider chain, same provider names |
 | `GEMINI_API_KEY` | Google AI key (Gemini 2.5 is the primary vision provider) |
 | `GEMINI_VISION_MODEL` / `GEMINI_CHAT_MODEL` | Model overrides (defaults `gemini-2.5-pro` / `gemini-2.5-flash`) |

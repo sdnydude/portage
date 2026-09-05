@@ -70,6 +70,17 @@ describe('identifyItem', () => {
     expect(result.suggestedTags).toEqual(['headphones', 'wireless', 'sony', 'noise-cancelling']);
   });
 
+  it('clamps an over-long description to what POST /items will accept (fuller descriptions, 2026-09-05)', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify({ ...VALID_VISION_JSON, description: 'D'.repeat(2500) }),
+      provider: 'gemini', model: 'gemini-3.5-flash-lite', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    const result = await identifyItem('base64data', 'image/jpeg');
+
+    expect(result.description).toHaveLength(2000);
+  });
+
   it('clamps an over-long conditionNotes to what POST /items will accept', async () => {
     vi.mocked(analyzeImage).mockResolvedValue({
       text: JSON.stringify({ ...VALID_VISION_JSON, conditionNotes: 'A'.repeat(2500) }),
@@ -531,6 +542,33 @@ describe('identifyItemsMulti', () => {
 
     const result = await identifyItemsMulti(mockImages);
     expect(result.candidates[0].condition).toBe('like_new');
+  });
+
+  it('asks for a structured buyer-facing description (specs + what the photos show), not a one-liner', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'gemini', model: 'gemini-3.5-flash-lite', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    await identifyItemsMulti(mockImages);
+
+    const systemPrompt = vi.mocked(analyzeImages).mock.calls[0][1];
+    expect(systemPrompt).toMatch(/description: .*60.*120 words/s);
+    expect(systemPrompt).toMatch(/no invented specs/i);
+  });
+
+  it('asks for condition notes in the seller\'s first-person voice with no hedging or "untested" disclaimers', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'gemini', model: 'gemini-3.5-flash-lite', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    await identifyItemsMulti(mockImages);
+
+    const systemPrompt = vi.mocked(analyzeImages).mock.calls[0][1];
+    expect(systemPrompt).toMatch(/conditionNotes: .*first person/s);
+    expect(systemPrompt).toMatch(/never .*"appears to be"/is);
+    expect(systemPrompt).toMatch(/never .*"untested"/is);
   });
 
   it('stamps identification provenance (provider, model, fallbacks) from the vision call', async () => {

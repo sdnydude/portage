@@ -23,6 +23,16 @@ function getAnthropicClient(config: ProviderConfig): Anthropic {
   return client;
 }
 
+// Per-request ceiling for the OpenAI-compat vision calls. The SDK default is a
+// 10-minute timeout with 2 retries, so a slow provider never failed over — the
+// web proxy's 30s cutoff fired first and threw the work away (51s Flash-Lite
+// call, live 2026-09-05). A timeout here surfaces as a thrown error inside the
+// chain loop, which is exactly the fail-over trigger. No SDK retries: the chain
+// is the retry.
+function visionRequestOptions(): { timeout: number; maxRetries: number } {
+  return { timeout: env().VISION_CALL_TIMEOUT_MS, maxRetries: 0 };
+}
+
 function getOpenAIClient(config: ProviderConfig, purpose?: string): OpenAI {
   // One wrapped client per provider+purpose: observeOpenAI fixes the Langfuse
   // generation name at wrap time, so per-purpose names need distinct wrappers.
@@ -300,7 +310,7 @@ async function visionOpenAI(
         ],
       },
     ],
-  });
+  }, visionRequestOptions());
 
   return {
     text: response.choices[0]?.message?.content || '',
@@ -432,7 +442,7 @@ async function visionMultiOpenAI(
         ],
       },
     ],
-  });
+  }, visionRequestOptions());
 
   return {
     text: response.choices[0]?.message?.content || '',

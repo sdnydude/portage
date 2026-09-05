@@ -41,7 +41,7 @@ const MAX_CONDITION_NOTES = 2000;
 
 const VisionResultSchema = z.object({
   name: z.string(),
-  description: z.string(),
+  description: z.string().transform((v) => v.slice(0, MAX_CONDITION_NOTES)),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
   // Clamped to the POST /items cap: the model treats "brief" as a suggestion,
@@ -57,7 +57,7 @@ const VisionResultSchema = z.object({
 
 const CandidateSchema = z.object({
   name: z.string(),
-  description: z.string(),
+  description: z.string().transform((v) => v.slice(0, MAX_CONDITION_NOTES)),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
   // Clamped to the POST /items cap: the model treats "brief" as a suggestion,
@@ -96,7 +96,7 @@ const DetailedVisionResultSchema = z.object({
 
 const ListingFieldsOutputSchema = z.object({
   title: z.string(),
-  description: z.string(),
+  description: z.string().transform((v) => v.slice(0, MAX_CONDITION_NOTES)),
   condition: z.string().optional().default('good'),
   conditionDescription: z.string().optional().default(''),
   brand: z.string().optional().default(''),
@@ -245,7 +245,21 @@ Your job is to identify items from photos and provide multiple possible matches 
 
 Analyze the image and return a JSON object with:
 - candidates: array of 1-3 possible matches, each with:
-  - name, description, category, condition, conditionNotes
+  - name, category, condition
+  - conditionNotes: written by the seller in the first person ("I", "my"), as plain
+    statements of fact about physical condition and function: specific wear
+    (scratches, scuffs, dents, discoloration, missing or damaged parts) and what
+    works. Never hedge — never write "appears to be", "looks", "seems", "may", or
+    "likely". Never write "untested", "functionality unknown", "as-is", or any
+    similar disclaimer. If no wear is visible: "No scratches, dents, or wear."
+  - description: buyer-facing, 60–120 words, two short paragraphs, plain factual
+    sentences. Paragraph 1 — what it is: product type, brand, model/generation, and
+    the concrete specs that matter for THIS exact model (capacity, connectivity,
+    power, dimensions, color/finish, version/year). Paragraph 2 — what the photos
+    show: included accessories, box, cables, labels/serials visible, and notable
+    condition observations. No marketing adjectives, no "perfect for",
+    no invented specs — if a spec is not visible and not certain for this model, leave it out
+    (the packaged weight/dimensions fields below are estimates by rule and exempt).
   - brand (string|null), model (string|null), features (string[])
   - mpn (string|null): the Manufacturer Part Number — the real part/SKU number printed on
     the item's label, box, plate, or sticker (e.g. "WH1000XM4/B", "DSR-PD170"). This is NOT
@@ -280,7 +294,9 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     'Identify this item with multiple candidates and reasoning.',
     {
       temperature: 0,
-      maxTokens: 2048,
+      // 3 candidates × ~120-word descriptions + reasoning ≈ 1.5k tokens; headroom
+      // so a long answer never truncates the JSON (truncation = 502 + fail-over).
+      maxTokens: 4096,
       validate: schemaValidator([
         { name: 'detailed', schema: DetailedVisionResultSchema },
         { name: 'single', schema: VisionResultSchema },
@@ -319,8 +335,9 @@ const LISTING_FIELDS_SYSTEM_PROMPT = `You are a marketplace listing expert. Gene
 RULES:
 - eBay title must be ≤80 characters. Pack keywords: Brand + Model + Key Attributes + Condition hint
 - Fill EVERY required item specific. When a specific provides a list of allowed values, you MUST output the single closest-matching value FROM THAT LIST — map the item to the best fit (e.g. an external SSD → "Portable External SSD", a hand tool → its closest "Type"). Never leave a required specific blank, never output "N/A" when the list has any reasonable match, and never invent a value that is not in the provided list. Only use "N/A" for a free-text specific (no allowed list) you genuinely cannot determine.
-- Condition description must reference specific wear visible in photos (scratches, scuffs, patina, etc.)
-- If no wear is visible, say "Item appears to be in [condition] condition with no visible wear."
+- Description: 80–160 words, up to three short paragraphs, plain factual sentences. (1) What it is — product type, brand, model/generation, and the concrete specs a buyer searches for on THIS model (capacity, connectivity, power, size, color/finish, version/year). (2) What is included and what the photos show — accessories, box, cables, labels/serials, and the condition as seen. (3) Optional one line of compatibility or usage facts. No hype, no invented specs (the packaged weight/dimensions fields are estimates by rule and exempt), no shipping/returns boilerplate.
+- Condition description is written by the seller in the first person ("I", "my") as statements of fact about physical condition and function: specific wear visible in photos (scratches, scuffs, dents, patina, missing parts) and what works. Never hedge — never "appears to be", "looks", "seems", "may", "likely". Never "untested", "functionality unknown", "as-is", or any similar disclaimer.
+- If no wear is visible, say "No scratches, dents, or wear."
 - Price suggestion should target slightly below sold median for faster sale
 - ALWAYS estimate a realistic PACKAGED shipping weight (item + box + padding) in ounces and the shipping box dimensions in inches, inferred from the item type, brand/model, and what is visible. These are required for shipping — NEVER return 0 for weight or any dimension. If unsure, estimate from a comparable item. Anchor examples: guitar pedal ≈ 12–18 oz in a 7×5×4 in box; vinyl LP ≈ 9 oz in 13×13×1; paperback book ≈ 8 oz in 9×6×1; wireless mic/instrument system ≈ 24–40 oz in a 12×9×4 box; coffee mug ≈ 16 oz in 6×6×5. Pick the closest analog and adjust. Flag them as estimates.
 - Determine if item is music gear (instruments, amps, pedals, audio equipment, accessories)
@@ -419,7 +436,8 @@ export async function identifyItemsMulti(
 
   const { text, provider, model, fallbacks } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, {
     temperature: 0,
-    maxTokens: 2048,
+    // See identifyItemDetailed: headroom for 3 full-description candidates.
+    maxTokens: 4096,
     validate: schemaValidator([
       { name: 'detailed', schema: DetailedVisionResultSchema },
       { name: 'single', schema: VisionResultSchema },
