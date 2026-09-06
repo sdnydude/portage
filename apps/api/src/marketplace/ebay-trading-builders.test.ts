@@ -72,6 +72,14 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(xml).toContain('<ConditionDescription>Light wear on headband.</ConditionDescription>');
   });
 
+  it('turns description newlines into <br> (XML-escaped) — eBay renders Description as HTML, so the sectioned scan description keeps its paragraphs', () => {
+    const xml = buildAddFixedPriceItemXml(
+      { ...baseInput, description: 'Overview\nSecond line.\n\nCondition\nNo scratches, dents, or wear.' },
+      'T',
+    );
+    expect(xml).toContain('<Description>Overview&lt;br&gt;Second line.&lt;br&gt;&lt;br&gt;Condition&lt;br&gt;No scratches, dents, or wear.</Description>');
+  });
+
   it('omits ConditionDescription for brand-new items (ConditionID 1000) — eBay rejects it (live revise failure 2026-08-05)', () => {
     const xml = buildAddFixedPriceItemXml(
       { ...baseInput, conditionId: '1000', conditionDescription: 'Sealed in box.' },

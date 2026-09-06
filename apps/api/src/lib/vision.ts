@@ -38,10 +38,13 @@ function normalizeCondition(raw: string): 'new' | 'like_new' | 'good' | 'fair' |
 
 /** Mirrors the `conditionNotes` cap in createItemSchema (routes/items.ts). */
 const MAX_CONDITION_NOTES = 2000;
+// items.description accepts 4000 (raised from 2000 on 2026-09-06 for the
+// fuller eBay-style descriptions); the eBay listing Description is this text.
+const MAX_DESCRIPTION = 4000;
 
 const VisionResultSchema = z.object({
   name: z.string(),
-  description: z.string().transform((v) => v.slice(0, MAX_CONDITION_NOTES)),
+  description: z.string().transform((v) => v.slice(0, MAX_DESCRIPTION)),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
   // Clamped to the POST /items cap: the model treats "brief" as a suggestion,
@@ -57,7 +60,7 @@ const VisionResultSchema = z.object({
 
 const CandidateSchema = z.object({
   name: z.string(),
-  description: z.string().transform((v) => v.slice(0, MAX_CONDITION_NOTES)),
+  description: z.string().transform((v) => v.slice(0, MAX_DESCRIPTION)),
   category: z.string(),
   condition: z.string().transform(normalizeCondition),
   // Clamped to the POST /items cap: the model treats "brief" as a suggestion,
@@ -96,7 +99,7 @@ const DetailedVisionResultSchema = z.object({
 
 const ListingFieldsOutputSchema = z.object({
   title: z.string(),
-  description: z.string().transform((v) => v.slice(0, MAX_CONDITION_NOTES)),
+  description: z.string().transform((v) => v.slice(0, MAX_DESCRIPTION)),
   condition: z.string().optional().default('good'),
   conditionDescription: z.string().optional().default(''),
   brand: z.string().optional().default(''),
@@ -252,12 +255,33 @@ Analyze the image and return a JSON object with:
     works. Never hedge — never write "appears to be", "looks", "seems", "may", or
     "likely". Never write "untested", "functionality unknown", "as-is", or any
     similar disclaimer. If no wear is visible: "No scratches, dents, or wear."
-  - description: buyer-facing, 60–120 words, two short paragraphs, plain factual
-    sentences. Paragraph 1 — what it is: product type, brand, model/generation, and
-    the concrete specs that matter for THIS exact model (capacity, connectivity,
-    power, dimensions, color/finish, version/year). Paragraph 2 — what the photos
-    show: included accessories, box, cables, labels/serials visible, and notable
-    condition observations. No marketing adjectives, no "perfect for",
+  - description: this text is published verbatim as the eBay listing description,
+    written by the seller in the first person. 150–300 words, plain text (no HTML,
+    no special characters, no emoji, no all-caps), short paragraphs, "- " bullets
+    for lists. Sections in this order, each starting with its label on its own line:
+      Overview — 2–3 sentences: product type, brand, exact model/part number, the
+        one or two specs that define it, condition in a few words, and what is
+        included. These first two sentences must stand alone: eBay shows only them
+        in the mobile and AI summary.
+      Condition — specific, per surface, from the photos: where the scuffs, scratches,
+        dents, discoloration, or missing parts are (never just "good condition").
+        If nothing is visible: "No scratches, dents, or wear."
+      Function — what it does, stated as fact in the seller's voice. eBay's Used
+        condition means fully operational, so a Used item is described as working;
+        name the functions that matter for this product type (powers on, all
+        inputs/outputs, buttons, display, battery, wheels, latches).
+      Included — every item, cable, box, manual, accessory visible in the photos;
+        state what is NOT included if the product normally ships with it.
+      Specs — 4–8 "- " bullets of the concrete specs a buyer searches for on THIS
+        model (capacity, connectivity, power, dimensions, weight, color/finish,
+        year/version, compatibility). Category extras: electronics — storage,
+        firmware/OS, battery health, carrier/unlock status; audio/music gear — serial
+        if legible, year/country, mods or repairs; cameras/lenses — mount, shutter
+        count if visible, fungus/haze/dust; tools — corded/cordless, battery
+        platform, each battery and charger listed.
+    Never: hedging ("appears", "seems", "may"), "untested", "as-is", "no returns",
+    shipping or return terms, marketing adjectives, keyword lists, competitor brand
+    names, copied manufacturer copy, URLs, email, phone, other marketplaces, and
     no invented specs — if a spec is not visible and not certain for this model, leave it out
     (the packaged weight/dimensions fields below are estimates by rule and exempt).
   - brand (string|null), model (string|null), features (string[])
@@ -294,9 +318,10 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     'Identify this item with multiple candidates and reasoning.',
     {
       temperature: 0,
-      // 3 candidates × ~120-word descriptions + reasoning ≈ 1.5k tokens; headroom
-      // so a long answer never truncates the JSON (truncation = 502 + fail-over).
-      maxTokens: 4096,
+      // 3 candidates × 150–300-word sectioned descriptions + reasoning ≈ 2–3k
+      // tokens; headroom so a long answer never truncates the JSON
+      // (truncation = 502 + fail-over). Billed on tokens used, not the cap.
+      maxTokens: 6144,
       validate: schemaValidator([
         { name: 'detailed', schema: DetailedVisionResultSchema },
         { name: 'single', schema: VisionResultSchema },
@@ -334,8 +359,9 @@ const LISTING_FIELDS_SYSTEM_PROMPT = `You are a marketplace listing expert. Gene
 
 RULES:
 - eBay title must be ≤80 characters. Pack keywords: Brand + Model + Key Attributes + Condition hint
-- Fill EVERY required item specific. When a specific provides a list of allowed values, you MUST output the single closest-matching value FROM THAT LIST — map the item to the best fit (e.g. an external SSD → "Portable External SSD", a hand tool → its closest "Type"). Never leave a required specific blank, never output "N/A" when the list has any reasonable match, and never invent a value that is not in the provided list. Only use "N/A" for a free-text specific (no allowed list) you genuinely cannot determine.
-- Description: 80–160 words, up to three short paragraphs, plain factual sentences. (1) What it is — product type, brand, model/generation, and the concrete specs a buyer searches for on THIS model (capacity, connectivity, power, size, color/finish, version/year). (2) What is included and what the photos show — accessories, box, cables, labels/serials, and the condition as seen. (3) Optional one line of compatibility or usage facts. No hype, no invented specs (the packaged weight/dimensions fields are estimates by rule and exempt), no shipping/returns boilerplate.
+- Fill EVERY required item specific. When a specific provides a list of allowed values, you MUST output the closest-matching value FROM THAT LIST — map the item to the best fit (e.g. an external SSD → "Portable External SSD", a hand tool → its closest "Type"). Never leave a required specific blank, never output "N/A" when the list has any reasonable match, and never invent a value that is not in the provided list. Only use "N/A" for a free-text specific (no allowed list) you genuinely cannot determine.
+- Cardinality: each specific carries "cardinality". For "SINGLE" output exactly one value. For "MULTI" (e.g. Features, Connectivity, Compatible Model) output an array of EVERY value from its allowed list that applies to this item — cross-check the scan's features list and the photos; a MULTI specific with one value when several apply is wrong. Fill a MULTI specific even when it is not required if any listed value applies.
+- Description: 150–300 words, plain text (no HTML, special characters, emoji, or all-caps), written by the seller in the first person, sections in this order each starting with its label on its own line — Overview (2–3 sentences that stand alone: type, brand, exact model/part number, defining specs, condition in a few words, what is included), Condition (specific per-surface wear from the photos; "No scratches, dents, or wear." if none), Function (stated as fact; a Used item is fully operational per eBay's condition definition), Included (everything visible; note what is normally included but absent), Specs (4–8 "- " bullets of the specs a buyer searches for on this model; category extras: electronics storage/firmware/battery health/unlock; audio gear serial/year/mods; cameras mount/shutter count/fungus/haze; tools corded-cordless/battery platform/each battery and charger). Never: hedging, "untested", "as-is", "no returns", shipping/return terms, marketing adjectives, keyword lists, competitor brands, copied manufacturer copy, URLs, contact details, other marketplaces, invented specs (the packaged weight/dimensions fields are estimates by rule and exempt).
 - Condition description is written by the seller in the first person ("I", "my") as statements of fact about physical condition and function: specific wear visible in photos (scratches, scuffs, dents, patina, missing parts) and what works. Never hedge — never "appears to be", "looks", "seems", "may", "likely". Never "untested", "functionality unknown", "as-is", or any similar disclaimer.
 - If no wear is visible, say "No scratches, dents, or wear."
 - Price suggestion should target slightly below sold median for faster sale
@@ -437,7 +463,7 @@ export async function identifyItemsMulti(
   const { text, provider, model, fallbacks } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, {
     temperature: 0,
     // See identifyItemDetailed: headroom for 3 full-description candidates.
-    maxTokens: 4096,
+    maxTokens: 6144,
     validate: schemaValidator([
       { name: 'detailed', schema: DetailedVisionResultSchema },
       { name: 'single', schema: VisionResultSchema },
@@ -497,6 +523,25 @@ export async function fetchPhotosAsBase64(urls: string[], limit: number): Promis
   }
 
   return results;
+}
+
+// Closed-list aspects (values present) keep only eBay's own values, in eBay's
+// casing; open aspects (values: null) pass through; an aspect with nothing
+// left is dropped so the pick pass can refill it if required.
+export function filterAspectsToAllowed(
+  aspects: Record<string, string[]>,
+  requiredAspects: Record<string, { values: string[] | null }>,
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [name, vals] of Object.entries(aspects)) {
+    const allowed = requiredAspects[name]?.values;
+    if (!allowed || allowed.length === 0) { out[name] = vals; continue; }
+    const kept = vals
+      .map((v) => allowed.find((a) => a.toLowerCase() === v.trim().toLowerCase()))
+      .filter((v): v is string => Boolean(v));
+    if (kept.length > 0) out[name] = kept;
+  }
+  return out;
 }
 
 export async function generateListingFields(
@@ -563,7 +608,9 @@ Generate all listing fields as JSON.`;
   // "Type" routinely come back unfilled from the single-shot call. Never throws.
   if (fields.ebay) {
     fields.ebay.aspects = await pickMissingRequiredAspects({
-      aspects: fields.ebay.aspects ?? {},
+      // Closed-list aspects only accept eBay's own values: drop anything the
+      // model invented (or drifted in casing) before it can reach Revise.
+      aspects: filterAspectsToAllowed(fields.ebay.aspects ?? {}, input.requiredAspects),
       requiredAspects: input.requiredAspects,
       itemContext: {
         brand: input.scanData.brand,

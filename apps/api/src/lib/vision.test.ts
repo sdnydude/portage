@@ -72,13 +72,13 @@ describe('identifyItem', () => {
 
   it('clamps an over-long description to what POST /items will accept (fuller descriptions, 2026-09-05)', async () => {
     vi.mocked(analyzeImage).mockResolvedValue({
-      text: JSON.stringify({ ...VALID_VISION_JSON, description: 'D'.repeat(2500) }),
+      text: JSON.stringify({ ...VALID_VISION_JSON, description: 'D'.repeat(4500) }),
       provider: 'gemini', model: 'gemini-3.5-flash-lite', inputTokens: 100, outputTokens: 50, fallbacks: 0,
     });
 
     const result = await identifyItem('base64data', 'image/jpeg');
 
-    expect(result.description).toHaveLength(2000);
+    expect(result.description).toHaveLength(4000);
   });
 
   it('clamps an over-long conditionNotes to what POST /items will accept', async () => {
@@ -553,8 +553,12 @@ describe('identifyItemsMulti', () => {
     await identifyItemsMulti(mockImages);
 
     const systemPrompt = vi.mocked(analyzeImages).mock.calls[0][1];
-    expect(systemPrompt).toMatch(/description: .*60.*120 words/s);
+    // eBay-description spec (research 2026-09-06): length, section order, summary-first, policy don'ts.
+    expect(systemPrompt).toMatch(/description: .*150.*300 words/s);
+    expect(systemPrompt).toMatch(/Overview.*Condition.*Function.*Included.*Specs/s);
+    expect(systemPrompt).toMatch(/first (two|2).*sentences.*stand alone/is);
     expect(systemPrompt).toMatch(/no invented specs/i);
+    expect(systemPrompt).toMatch(/other marketplaces/i);
   });
 
   it('asks for condition notes in the seller\'s first-person voice with no hedging or "untested" disclaimers', async () => {
@@ -604,6 +608,42 @@ describe('generateListingFields', () => {
     const fields = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
 
     expect(fields.provenance).toEqual({ provider: 'gemini', model: 'gemini-2.5-flash', fallbacks: 1 });
+  });
+
+  it('asks for EVERY applicable value on MULTI-cardinality aspects (Features) instead of a single pick — live: 84/84 items carried one Features value', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Features: ['Active Noise Cancellation', 'Bluetooth'] } } }),
+      provider: 'gemini', model: 'gemini-3.5-flash-lite', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    const fields = await generateListingFields({
+      ...baseInput,
+      images: [{ base64: 'b64', mediaType: 'image/jpeg' }],
+      requiredAspects: { Features: { required: false, values: ['Active Noise Cancellation', 'Bluetooth', 'Wired'], cardinality: 'MULTI' } } as never,
+    });
+
+    const systemPrompt = vi.mocked(analyzeImages).mock.calls[0][1];
+    expect(systemPrompt).toMatch(/cardinality.*MULTI.*every.*value/is);
+    expect(fields.ebay?.aspects.Features).toEqual(['Active Noise Cancellation', 'Bluetooth']);
+  });
+
+  it('drops aspect values outside eBay\'s allowed list and canonicalizes casing — a hallucinated value never reaches Revise', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: { Features: ['active noise cancellation', 'Levitation'], Color: ['Sky Blue'], MPN: ['MGYL3AM/A'] } } }),
+      provider: 'gemini', model: 'gemini-3.5-flash-lite', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    const fields = await generateListingFields({
+      ...baseInput,
+      images: [{ base64: 'b64', mediaType: 'image/jpeg' }],
+      requiredAspects: {
+        Features: { required: false, values: ['Active Noise Cancellation', 'Wireless'], cardinality: 'MULTI' },
+        Color: { required: false, values: ['Silver', 'Space Gray'], cardinality: 'SINGLE' },
+        MPN: { required: false, values: null, cardinality: 'SINGLE' },
+      } as never,
+    });
+
+    expect(fields.ebay?.aspects).toEqual({ Features: ['Active Noise Cancellation'], MPN: ['MGYL3AM/A'] });
   });
 
   it('uses provided images via the vision path instead of fetching from photoUrls', async () => {

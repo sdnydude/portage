@@ -6,17 +6,22 @@ const logger = createLogger('aspect-pick');
 export interface MissingEnumAspect {
   name: string;
   values: string[];
+  cardinality: 'SINGLE' | 'MULTI';
 }
 
 export interface PickAspectsInput {
   aspects: Record<string, string[]>;
-  requiredAspects: Record<string, { required: boolean; values: string[] | null }>;
+  requiredAspects: Record<string, { required: boolean; values: string[] | null; cardinality?: 'SINGLE' | 'MULTI' }>;
   itemContext: { brand: string; model: string; category: string; title: string };
 }
 
+// Cardinality parity with the listing-fields prompt: SINGLE aspects take one
+// value, MULTI aspects (Features, Connectivity…) take every applicable one.
 const PICK_SYSTEM_PROMPT = `You classify a product into marketplace item-specific values.
-For EVERY aspect listed, pick EXACTLY ONE value from that aspect's ALLOWED VALUES — the closest match for the item. Never invent a value, never leave one out.
-Reply with ONLY a JSON object mapping each aspect name to the chosen value string. No markdown, no explanation.`;
+For EVERY aspect listed, choose from that aspect's ALLOWED VALUES only — never invent a value, never leave an aspect out.
+Aspects marked SINGLE: reply with exactly one value string — the closest match for the item.
+Aspects marked MULTI: reply with an array of EVERY allowed value that applies to the item.
+Reply with ONLY a JSON object mapping each aspect name to its value (string for SINGLE, array for MULTI). No markdown, no explanation.`;
 
 // Enums beyond this size (e.g. Brand with 844 suggested values) aren't a
 // classification task — sending them bloats the prompt and starves thinking
@@ -36,9 +41,9 @@ export async function pickMissingRequiredAspects(
 ${JSON.stringify(input.itemContext, null, 2)}
 
 ASPECTS TO CLASSIFY:
-${missing.map((m) => `- "${m.name}" — ALLOWED VALUES: ${JSON.stringify(m.values)}`).join('\n')}
+${missing.map((m) => `- "${m.name}" (${m.cardinality}) — ALLOWED VALUES: ${JSON.stringify(m.values)}`).join('\n')}
 
-Pick one allowed value per aspect. JSON object only.`;
+SINGLE → one value; MULTI → array of every applicable value. JSON object only.`;
 
   let text: string;
   try {
@@ -60,19 +65,23 @@ Pick one allowed value per aspect. JSON object only.`;
   if (typeof parsed !== 'object' || parsed === null) return input.aspects;
 
   const filled = { ...input.aspects };
-  for (const { name, values } of missing) {
+  for (const { name, values, cardinality } of missing) {
     const raw = (parsed as Record<string, unknown>)[name];
-    if (typeof raw !== 'string') continue;
+    const picks = Array.isArray(raw) ? raw : [raw];
     // Map back to the canonical enum casing; drop picks outside the enum.
-    const canonical = values.find((v) => v.toLowerCase() === raw.trim().toLowerCase());
-    if (canonical) filled[name] = [canonical];
+    const canonical = picks
+      .filter((p): p is string => typeof p === 'string')
+      .map((p) => values.find((v) => v.toLowerCase() === p.trim().toLowerCase()))
+      .filter((v): v is string => Boolean(v));
+    if (canonical.length === 0) continue;
+    filled[name] = cardinality === 'MULTI' ? [...new Set(canonical)] : [canonical[0]];
   }
   return filled;
 }
 
 export function findMissingEnumAspects(
   aspects: Record<string, string[]>,
-  requiredAspects: Record<string, { required: boolean; values: string[] | null }>,
+  requiredAspects: Record<string, { required: boolean; values: string[] | null; cardinality?: 'SINGLE' | 'MULTI' }>,
 ): MissingEnumAspect[] {
   const missing: MissingEnumAspect[] = [];
   for (const [name, spec] of Object.entries(requiredAspects)) {
@@ -81,7 +90,7 @@ export function findMissingEnumAspects(
     const filled = aspects[name];
     const hasValidValue = (filled ?? []).some((v) => allowed.has(v.toLowerCase()));
     if (!hasValidValue) {
-      missing.push({ name, values: spec.values });
+      missing.push({ name, values: spec.values, cardinality: spec.cardinality ?? 'SINGLE' });
     }
   }
   return missing;
