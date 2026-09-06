@@ -9,6 +9,7 @@ import { useListings } from "@/hooks/use-listings";
 import { useAuth } from "@/hooks/use-auth";
 import { WeightDimsInputs, type WeightDimsValue } from "@/components/listing/weight-dims-inputs";
 import { PriceField } from "@/components/listing/price-field";
+import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 import { useScanAspects } from "@/hooks/use-scan-aspects";
 import { getAvailablePortageConditions } from "@/lib/ebay-condition-map";
 
@@ -276,12 +277,12 @@ export default function EditItemPage() {
         </FieldGroup>
 
         <FieldGroup label="Description">
-          <textarea
+          <AutoGrowTextarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={2000}
             rows={4}
-            className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none resize-none"
+            className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
           />
         </FieldGroup>
 
@@ -390,13 +391,13 @@ export default function EditItemPage() {
         </FieldGroup>
 
         <FieldGroup label="Condition Notes">
-          <textarea
+          <AutoGrowTextarea
             value={conditionNotes}
             onChange={(e) => setConditionNotes(e.target.value)}
             maxLength={2000}
             rows={5}
             placeholder="Any scratches, wear, defects..."
-            className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary placeholder:text-text-placeholder border border-transparent focus:border-border-focus focus:outline-none resize-none"
+            className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary placeholder:text-text-placeholder border border-transparent focus:border-border-focus focus:outline-none"
           />
         </FieldGroup>
 
