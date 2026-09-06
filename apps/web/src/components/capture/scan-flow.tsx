@@ -28,6 +28,7 @@ import {
   type PortageCondition,
 } from "@/lib/ebay-condition-map";
 import type { RecognitionCandidate, CompResult, ScanProvenance } from "@portage/shared";
+import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 import { withKeys } from "@/lib/list-keys";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -1373,13 +1374,13 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               {/* Condition Notes */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Condition Notes</label>
-                <textarea
+                <AutoGrowTextarea
                   value={editConditionNotes}
                   onChange={(e) => setEditConditionNotes(e.target.value)}
                   rows={5}
                   maxLength={2000}
                   placeholder="e.g. Minor scuff on left side"
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors resize-none"
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors"
                 />
               </div>
 
@@ -1524,11 +1525,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               {/* Description */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Description</label>
-                <textarea
+                <AutoGrowTextarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={5}
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary resize-y min-h-[7rem] focus:border-border-focus focus:outline-none transition-colors"
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary min-h-[7rem] focus:border-border-focus focus:outline-none transition-colors"
                 />
               </div>
 

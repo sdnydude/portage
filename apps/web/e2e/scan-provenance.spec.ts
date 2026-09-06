@@ -83,4 +83,10 @@ test("real scan → review → Save persists which model answered under marketpl
   await page.goto(`/inventory/${item.id}`);
   await expect(page.getByText(saved.title).first()).toBeVisible({ timeout: 20_000 });
   await shot(page, "02-item-saved.png");
+
+  // Edit page: the description / condition-notes boxes auto-grow to the AI text.
+  await page.goto(`/inventory/${item.id}/edit`);
+  // First textarea in DOM order is the (hidden) Porter dock; the edit form's Description is next.
+  await expect(page.locator('textarea:not([aria-label="Ask Porter"])').first()).toBeVisible({ timeout: 20_000 });
+  await shot(page, "03-item-edit-autogrow.png");
 });
