@@ -122,6 +122,39 @@ describe("useDesktopIngest", () => {
     );
   });
 
+  it("save carries the refine scan provenance onto the /items body", async () => {
+    const provenance = { identification: { provider: "gemini", model: "gemini-3.5-flash-lite", fallbacks: 0 } };
+    apiUploadMock.mockResolvedValue({ image: { url: "https://r2/a.jpg" } });
+    apiMock.mockImplementation((path: string) =>
+      path === "/scan/refine"
+        ? Promise.resolve({
+            identification: { name: "Cam" },
+            detailed: {
+              candidates: [{
+                name: "Cam", description: "", category: "Cameras", condition: "good", conditionNotes: "",
+                brand: null, model: null, features: [], estimatedValueLow: 0, estimatedValueHigh: 0, confidence: 0,
+              }],
+              reasoning: [],
+              provenance,
+            },
+          })
+        : Promise.resolve({ id: "item-1" }),
+    );
+    const { result } = renderHook(() => useDesktopIngest());
+
+    act(() => {
+      result.current.addFiles([makeFile("a.jpg")], "separate");
+    });
+    await waitFor(() => expect(result.current.queue[0].status).toBe("ready"));
+    await act(async () => {
+      await result.current.save(result.current.queue[0].id);
+    });
+
+    const itemsCall = apiMock.mock.calls.find(([path]) => path === "/items");
+    const body = (itemsCall?.[1] as { body: { marketplaceData?: { scan?: { provenance?: unknown } } } }).body;
+    expect(body.marketplaceData?.scan?.provenance).toEqual(provenance);
+  });
+
   it("updateFields merges edits into a ready item's fields", async () => {
     apiUploadMock.mockResolvedValue({ image: { url: "https://r2/a.jpg" } });
     apiMock.mockResolvedValue({

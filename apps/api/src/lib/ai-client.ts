@@ -23,6 +23,16 @@ function getAnthropicClient(config: ProviderConfig): Anthropic {
   return client;
 }
 
+// Per-request ceiling for the OpenAI-compat vision calls. The SDK default is a
+// 10-minute timeout with 2 retries, so a slow provider never failed over — the
+// web proxy's 30s cutoff fired first and threw the work away (51s Flash-Lite
+// call, live 2026-09-05). A timeout here surfaces as a thrown error inside the
+// chain loop, which is exactly the fail-over trigger. No SDK retries: the chain
+// is the retry.
+function visionRequestOptions(): { timeout: number; maxRetries: number } {
+  return { timeout: env().VISION_CALL_TIMEOUT_MS, maxRetries: 0 };
+}
+
 function getOpenAIClient(config: ProviderConfig, purpose?: string): OpenAI {
   // One wrapped client per provider+purpose: observeOpenAI fixes the Langfuse
   // generation name at wrap time, so per-purpose names need distinct wrappers.
@@ -113,6 +123,11 @@ function resolveProvider(name: string): ProviderConfig | null {
   }
 }
 
+// Values the OpenAI-compat reasoning_effort field accepts across the providers we
+// route through it; each model supports its own subset (Gemini 3.x Flash: low+;
+// 3.5 Flash-Lite: minimal+). A typo fails the chain build, not every scan.
+const REASONING_EFFORTS = new Set(['none', 'minimal', 'low', 'medium', 'high']);
+
 function buildChain(envVar: string): ProviderConfig[] {
   const entries = envVar.split(',').map(s => s.trim()).filter(Boolean);
   const chain: ProviderConfig[] = [];
@@ -125,10 +140,22 @@ function buildChain(envVar: string): ProviderConfig[] {
       // "provider:model" overrides the model for this chain entry (lets a chain
       // hold multiple models of one provider, e.g. 3.5-flash → 2.5-flash). Both
       // fields are set; the vision chain reads visionModel, chat reads chatModel.
+      // An optional "@effort" suffix overrides reasoning_effort for the entry:
+      // gemini-3.5-flash-lite rejects the provider default 'none' (400, live
+      // 2026-09-05) and needs 'minimal'. '@' because Ollama tags use ':'.
       if (sep >= 0) {
-        const model = entry.slice(sep + 1).trim();
+        const spec = entry.slice(sep + 1).trim();
+        const at = spec.indexOf('@');
+        const model = at >= 0 ? spec.slice(0, at) : spec;
         provider.visionModel = model;
         provider.chatModel = model;
+        if (at >= 0) {
+          const effort = spec.slice(at + 1);
+          if (!REASONING_EFFORTS.has(effort)) {
+            throw new AppError(503, 'AI_UNAVAILABLE', `Unknown reasoning effort "${effort}" in provider entry "${entry}" — use one of ${[...REASONING_EFFORTS].join(', ')}`);
+          }
+          provider.reasoningEffort = effort;
+        }
       }
       chain.push(provider);
     }
@@ -180,7 +207,7 @@ export async function analyzeImage(
   systemPrompt: string,
   userPrompt: string,
   options?: AIOptions,
-): Promise<{ text: string; provider: string; model: string; inputTokens: number; outputTokens: number }> {
+): Promise<{ text: string; provider: string; model: string; inputTokens: number; outputTokens: number; fallbacks: number }> {
   const chain = visionChain();
   const startTime = Date.now();
 
@@ -203,7 +230,7 @@ export async function analyzeImage(
         fallbacks: i,
       }, 'Vision analysis complete');
 
-      return { ...result, provider: config.name };
+      return { ...result, provider: config.name, fallbacks: i };
     } catch (err) {
       logger.warn({ provider: config.name, error: (err as Error).message }, 'Vision provider failed');
       if (i === chain.length - 1) throw err;
@@ -283,7 +310,7 @@ async function visionOpenAI(
         ],
       },
     ],
-  });
+  }, visionRequestOptions());
 
   return {
     text: response.choices[0]?.message?.content || '',
@@ -305,7 +332,7 @@ export async function analyzeImages(
   systemPrompt: string,
   userPrompt: string,
   options?: AIOptions,
-): Promise<{ text: string; provider: string; model: string; inputTokens: number; outputTokens: number }> {
+): Promise<{ text: string; provider: string; model: string; inputTokens: number; outputTokens: number; fallbacks: number }> {
   const chain = visionChain();
   const startTime = Date.now();
 
@@ -329,7 +356,7 @@ export async function analyzeImages(
         fallbacks: i,
       }, 'Multi-image vision analysis complete');
 
-      return { ...result, provider: config.name };
+      return { ...result, provider: config.name, fallbacks: i };
     } catch (err) {
       logger.warn({ provider: config.name, error: (err as Error).message }, 'Vision provider failed');
       if (i === chain.length - 1) throw err;
@@ -415,7 +442,7 @@ async function visionMultiOpenAI(
         ],
       },
     ],
-  });
+  }, visionRequestOptions());
 
   return {
     text: response.choices[0]?.message?.content || '',

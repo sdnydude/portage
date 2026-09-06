@@ -87,13 +87,27 @@ const reverbCacheEntrySchema = z.object({
   finish: z.string().nullable().default(null),
   cachedAt: z.string().default(() => new Date().toISOString()),
 });
+const visionCallProvenanceSchema = z.object({
+  provider: z.string().max(50),
+  model: z.string().max(100),
+  fallbacks: z.number().int().min(0).optional(),
+});
 const marketplaceDataSchema = z.object({
   ebay: marketplaceCacheEntrySchema.optional(),
   reverb: reverbCacheEntrySchema.optional(),
   // Vision scan's coarse category — read by the category-mismatch guard on the
   // edit page and the publish-time self-heal. The AI field is unbounded
   // (schema-drift class) — truncate, never 400 the item save over it.
-  scan: z.object({ visionCategory: z.string().transform(s => s.slice(0, 50)) }).optional(),
+  scan: z.object({
+    visionCategory: z.string().transform(s => s.slice(0, 50)),
+    // Which provider/model answered each scan call — stamped server-side by
+    // the scan routes, echoed back by the client on save. Bounded so a
+    // drifted client payload can never 400 the save.
+    provenance: z.object({
+      identification: visionCallProvenanceSchema.optional(),
+      aspects: visionCallProvenanceSchema.optional(),
+    }).optional(),
+  }).optional(),
 });
 
 const createItemSchema = z.object({

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { RecognitionCandidate } from "@portage/shared";
+import type { RecognitionCandidate, ScanProvenance } from "@portage/shared";
 import { api, apiUpload } from "@/lib/api";
 import { useAuth } from "./use-auth";
 import {
@@ -15,7 +15,7 @@ const VISION_PHOTO_LIMIT = 3;
 
 interface RefineResponse {
   identification: RecognitionCandidate;
-  detailed: { candidates: RecognitionCandidate[]; reasoning: string[] };
+  detailed: { candidates: RecognitionCandidate[]; reasoning: string[]; provenance?: ScanProvenance };
 }
 
 export type IngestStatus =
@@ -33,6 +33,8 @@ export interface IngestItem {
   status: IngestStatus;
   uploadedUrls: string[];
   fields?: RecognitionCandidate;
+  // Which provider/model answered the refine scan — saved with the item.
+  provenance?: ScanProvenance;
   error?: string;
 }
 
@@ -89,7 +91,7 @@ export function useDesktopIngest() {
           body: { imageUrls: urls.slice(0, VISION_PHOTO_LIMIT) },
         });
         const fields = vision.detailed.candidates[0] ?? vision.identification;
-        patch(item.id, { status: "ready", fields });
+        patch(item.id, { status: "ready", fields, provenance: vision.detailed.provenance });
       } catch (e) {
         patch(item.id, {
           status: "error",
@@ -125,7 +127,7 @@ export function useDesktopIngest() {
         await api("/items", {
           method: "POST",
           token: token ?? undefined,
-          body: candidateToItemBody(item.fields, item.uploadedUrls),
+          body: candidateToItemBody(item.fields, item.uploadedUrls, item.provenance),
         });
         patch(id, { status: "saved" });
         return true;
