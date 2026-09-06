@@ -66,4 +66,14 @@ describe("candidateToItemBody", () => {
       { url: "u2", isPrimary: false },
     ]);
   });
+
+  it("carries the scan provenance (which model answered) under marketplaceData.scan", () => {
+    const provenance = {
+      identification: { provider: "gemini", model: "gemini-3.5-flash-lite", fallbacks: 0 },
+    };
+
+    const body = candidateToItemBody(base, ["u1"], provenance);
+
+    expect(body.marketplaceData).toEqual({ scan: { visionCategory: "c", provenance } });
+  });
 });

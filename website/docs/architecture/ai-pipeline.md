@@ -92,7 +92,7 @@ The `useEnhance` hook wraps this flow.
 
 ## AI Provider Chain
 
-The AI system (`apps/api/src/lib/ai-client.ts`) supports a 5-provider fallback chain, configured per capability via the `VISION_PROVIDERS` and `CHAT_PROVIDERS` env vars (comma-separated, tried in order — Gemini 2.5 primary with Claude fallback in the current configuration):
+The AI system (`apps/api/src/lib/ai-client.ts`) supports a 5-provider fallback chain, configured per capability via the `VISION_PROVIDERS` and `CHAT_PROVIDERS` env vars (comma-separated, tried in order; entry syntax `provider[:model][@reasoning_effort]` — `gemini:gemini-3.5-flash-lite@minimal,gemini:gemini-3.8-flash,anthropic:claude-haiku-4-5` since 2026-09-05; Flash-Lite rejects the gemini default `none`):
 
 | Provider | Default Vision Model | Default Chat Model |
 |----------|---------------------|--------------------|
