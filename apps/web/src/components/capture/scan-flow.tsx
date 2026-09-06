@@ -27,7 +27,8 @@ import {
   nearestAllowedCondition,
   type PortageCondition,
 } from "@/lib/ebay-condition-map";
-import type { RecognitionCandidate, CompResult } from "@portage/shared";
+import type { RecognitionCandidate, CompResult, ScanProvenance } from "@portage/shared";
+import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 import { withKeys } from "@/lib/list-keys";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -46,6 +47,9 @@ interface RefineResponse {
   detailed: {
     candidates: RecognitionCandidate[];
     reasoning: string[];
+    // Which provider/model answered each scan call — persisted on the item so
+    // "which LLM produced this" is a DB query, not log archaeology.
+    provenance?: ScanProvenance;
   };
 }
 
@@ -90,6 +94,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
   // AI results
   const [candidates, setCandidates] = useState<RecognitionCandidate[]>([]);
   const [reasoning, setReasoning] = useState<string[]>([]);
+  const [scanProvenance, setScanProvenance] = useState<ScanProvenance | undefined>(undefined);
   const [selectedCandidateIndex, setSelectedCandidateIndex] = useState(0);
   const [showReasoning, setShowReasoning] = useState(false);
 
@@ -438,6 +443,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
 
       setCandidates(resultCandidates);
       setReasoning(data.detailed.reasoning);
+      setScanProvenance(data.detailed.provenance);
       setSelectedCandidateIndex(0);
       populateFields(resultCandidates[0]);
       setState("review");
@@ -631,11 +637,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
                 ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName },
                 // Vision coarse category persists so the edit page and
                 // publish-time self-heal can re-run the mismatch guard.
-                ...(selectedCandidate?.category ? { scan: { visionCategory: selectedCandidate.category } } : {}),
+                ...(selectedCandidate?.category ? { scan: { visionCategory: selectedCandidate.category, ...(scanProvenance ? { provenance: scanProvenance } : {}) } } : {}),
               },
             }
             : selectedCandidate?.category
-              ? { marketplaceData: { scan: { visionCategory: selectedCandidate.category } } }
+              ? { marketplaceData: { scan: { visionCategory: selectedCandidate.category, ...(scanProvenance ? { provenance: scanProvenance } : {}) } } }
               : {}),
           condition: ["new", "like_new", "good", "fair", "poor"].includes(editCondition) ? editCondition : "good",
           conditionNotes: editConditionNotes,
@@ -674,7 +680,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     token, photos, editName, editDescription, editCategory,
     editCondition, editConditionNotes, editQuantity, editValueLow, editValueHigh,
     editBrand, editModel, candidates, selectedCandidateIndex, onClose, reviewPrice,
-    weightDims, weightEstimated, resolvedCategoryName, buildAspects,
+    weightDims, weightEstimated, resolvedCategoryName, buildAspects, scanProvenance,
   ]);
 
   const handleSaveAndList = useCallback(async (ebayDraft = false) => {
@@ -703,11 +709,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
             ? {
               marketplaceData: {
                 ebay: { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName },
-                ...(selectedCandidate?.category ? { scan: { visionCategory: selectedCandidate.category } } : {}),
+                ...(selectedCandidate?.category ? { scan: { visionCategory: selectedCandidate.category, ...(scanProvenance ? { provenance: scanProvenance } : {}) } } : {}),
               },
             }
             : selectedCandidate?.category
-              ? { marketplaceData: { scan: { visionCategory: selectedCandidate.category } } }
+              ? { marketplaceData: { scan: { visionCategory: selectedCandidate.category, ...(scanProvenance ? { provenance: scanProvenance } : {}) } } }
               : {}),
           // Persist the seller's price so it prefills future publishes.
           ...(price && price > 0 ? { price } : {}),
@@ -744,6 +750,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
     editName, editDescription, editCategory, editCondition, editConditionNotes, editQuantity,
     editBrand, editModel, valueLowNum, valueHighNum, recommendedNum,
     resolvedCategoryId, resolvedCategoryName, buildAspects, onClose, weightDims, weightEstimated,
+    scanProvenance,
   ]);
 
   // ─── Back to capture from review ──────────────────────────────────────────
@@ -1367,13 +1374,13 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               {/* Condition Notes */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Condition Notes</label>
-                <textarea
+                <AutoGrowTextarea
                   value={editConditionNotes}
                   onChange={(e) => setEditConditionNotes(e.target.value)}
                   rows={5}
                   maxLength={2000}
                   placeholder="e.g. Minor scuff on left side"
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors resize-none"
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary placeholder:text-text-placeholder focus:border-border-focus focus:outline-none transition-colors"
                 />
               </div>
 
@@ -1518,11 +1525,11 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
               {/* Description */}
               <div>
                 <label className="block text-text-secondary mb-1" style={{ fontSize: "var(--text-caption)" }}>Description</label>
-                <textarea
+                <AutoGrowTextarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={5}
-                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary resize-y min-h-[7rem] focus:border-border-focus focus:outline-none transition-colors"
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-text-primary min-h-[7rem] focus:border-border-focus focus:outline-none transition-colors"
                 />
               </div>
 
