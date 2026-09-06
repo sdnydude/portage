@@ -280,7 +280,7 @@ export default function EditItemPage() {
           <AutoGrowTextarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            maxLength={2000}
+            maxLength={4000}
             rows={4}
             className="w-full px-3 py-2.5 bg-muted rounded-xl text-sm text-text-primary border border-transparent focus:border-border-focus focus:outline-none"
           />

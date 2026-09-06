@@ -425,6 +425,17 @@ describe('POST /items', () => {
     expect(valuesSpy.mock.calls[0][0].marketplaceData.scan.provenance).toEqual(provenance);
   });
 
+  it('accepts a description up to 4000 chars (fuller AI descriptions, 2026-09-06)', async () => {
+    mockInsertReturns([MOCK_ITEM]);
+
+    const res = await request(app)
+      .post('/items')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: 'Sony WH-1000XM4', description: 'D'.repeat(3500) });
+
+    expect(res.status).toBe(201);
+  });
+
   it('accepts quantity and passes it to the insert', async () => {
     const valuesSpy = vi.fn().mockReturnValue({
       returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, quantity: 5 }]),

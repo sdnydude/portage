@@ -111,7 +111,7 @@ POST /items
 }
 ```
 
-Field constraints: `title` 1–500 chars; `description` max 2000; `condition` one of `new`/`like_new`/`good`/`fair`/`poor`; `features` max 30 entries of 100 chars; `aspects` maps aspect name → string array; `aiConfidenceScore` 0–1; `price` min 0.01 (omit for "unset"); `photos` max 24 entries (`url` required, `key`/`width`/`height`/`isPrimary` optional).
+Field constraints: `title` 1–500 chars; `description` max 4000 (raised from 2000 on 2026-09-06; this text is the eBay listing Description); `condition` one of `new`/`like_new`/`good`/`fair`/`poor`; `features` max 30 entries of 100 chars; `aspects` maps aspect name → string array; `aiConfidenceScore` 0–1; `price` min 0.01 (omit for "unset"); `photos` max 24 entries (`url` required, `key`/`width`/`height`/`isPrimary` optional).
 
 **Response** `201`: the created item.
 

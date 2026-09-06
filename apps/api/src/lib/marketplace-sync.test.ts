@@ -62,6 +62,7 @@ beforeEach(() => {
 describe('syncItemListingRow', () => {
   it('syncs a Reverb row with enriched specifics and returns adapter warnings', async () => {
     mockSelectReturnOnce([{ userId: 'user-1', reverbOffersEnabled: false, reverbDefaultShipping: null }]); // enrichment profile
+    mockSelectReturnOnce([]); // footer read (none)
     mockReverbUpdateListing.mockResolvedValueOnce({
       marketplaceListingId: '87654321', status: 'active',
       warning: 'Listing is sold on Reverb — the update was accepted but the listing is no longer for sale',
@@ -79,6 +80,20 @@ describe('syncItemListingRow', () => {
     expect(input.photos).toBeUndefined(); // includePhotos false
     expect(input.marketplaceSpecific?.offersEnabled).toBe(false); // enrichment applied
     expect(result.warnings.some((w: string) => /sold on Reverb/.test(w))).toBe(true);
+  });
+
+  it('appends the seller\'s default listing footer to the Reverb description too (publish parity)', async () => {
+    mockSelectReturnOnce([{ userId: 'user-1', reverbOffersEnabled: false, reverbDefaultShipping: null }]); // enrichment profile
+    mockSelectReturnOnce([{ footer: 'Smoke-free studio.' }]); // footer read
+    mockReverbUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '87654321', status: 'active' });
+
+    await syncItemListingRow('user-1', ITEM as any, {
+      id: 'row-1', marketplace: 'reverb', status: 'active', marketplaceListingId: '87654321',
+      ebaySku: null, marketplaceSpecificFields: { conditionUuid: 'cu-1', categoryUuid: 'cat-1' }, currency: 'USD',
+    }, { includePhotos: false });
+
+    const [, input] = mockReverbUpdateListing.mock.calls[0];
+    expect(input.description).toBe('Great strat\n\nSmoke-free studio.');
   });
 
   it('surfaces a warning when Reverb enrichment fails instead of reporting a clean success (audit M9)', async () => {
@@ -104,6 +119,7 @@ describe('syncItemListingRow', () => {
 
   it('passes conditionNotes through to the adapter so condition-note edits reach the marketplace', async () => {
     mockSelectReturnOnce([]); // enrichment profile (none)
+    mockSelectReturnOnce([]); // footer read (none)
     mockReverbUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '87654321', status: 'active' });
 
     await syncItemListingRow('user-1', { ...ITEM, conditionNotes: 'small ding on lower bout' } as any, {
@@ -136,6 +152,7 @@ describe('syncItemListingRow', () => {
     const { resolveEbayCategoryId } = await import('../marketplace/ebay-adapter.js');
     vi.mocked(resolveEbayCategoryId).mockResolvedValueOnce({ categoryId: '33034', categoryName: 'Electric Guitars', newlyResolved: false } as any);
     mockSelectReturnOnce([{ userId: 'user-1', shipFromAddress: { zip: '12561' } }]); // applyShipFromOrigin profile
+    mockSelectReturnOnce([]); // footer read (none)
     mockEbayUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '307000000001', status: 'active' });
 
     await syncItemListingRow('user-1', ebayItem as any, {
@@ -153,8 +170,23 @@ describe('syncItemListingRow', () => {
     expect(input.photos).toEqual([{ url: 'https://r2.example/a.jpg' }]);    // eBay always sends photos inline
   });
 
+  it('appends the seller\'s default listing footer to the eBay description (publish parity — live: an item edit stripped the footer from the Epson listing, 2026-09-06)', async () => {
+    mockSelectReturnOnce([]); // applyShipFromOrigin profile (none)
+    mockSelectReturnOnce([{ footer: 'Ships within 1 business day from a smoke free studio.' }]); // footer read
+    mockEbayUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '307000000001', status: 'active' });
+
+    await syncItemListingRow('user-1', ITEM as any, {
+      id: 'row-2', marketplace: 'ebay', status: 'active', marketplaceListingId: '307000000001',
+      ebaySku: 'PRT-X', marketplaceSpecificFields: { categoryId: '33034' }, currency: 'USD',
+    }, { includePhotos: false });
+
+    const [, input] = mockEbayUpdateListing.mock.calls[0];
+    expect(input.description).toBe('Great strat\n\nShips within 1 business day from a smoke free studio.');
+  });
+
   it('passes conditionNotes to the eBay adapter too (ConditionDescription parity)', async () => {
     mockSelectReturnOnce([]); // applyShipFromOrigin profile (none)
+    mockSelectReturnOnce([]); // footer read (none)
     mockEbayUpdateListing.mockResolvedValueOnce({ marketplaceListingId: '307000000001', status: 'active' });
 
     await syncItemListingRow('user-1', { ...ITEM, conditionNotes: 'pickguard scratch' } as any, {
@@ -179,6 +211,7 @@ describe('syncItemListingRow Best Offer pre-flight (BO-3 parity with the listing
 
   it('heals stale thresholds from the live listing and syncs with the healed values (live failure 2026-08-04: price 149 vs stored 240/220)', async () => {
     mockSelectReturnOnce([]);
+    mockSelectReturnOnce([]); // footer read (none)
     mockGetEbayItemVerification.mockResolvedValue({
       found: true, bestOfferEnabled: true, bestOfferAutoAcceptPrice: 140, minimumBestOfferPrice: 120,
     });
@@ -203,6 +236,7 @@ describe('syncItemListingRow Best Offer pre-flight (BO-3 parity with the listing
 
   it('skips the pre-flight entirely when the row has no Best Offer thresholds', async () => {
     mockSelectReturnOnce([]);
+    mockSelectReturnOnce([]); // footer read (none)
     mockEbayUpdateListing.mockResolvedValue({ warning: undefined });
     await syncItemListingRow('user-1', { ...ITEM, price: 149 }, {
       ...EBAY_ROW, marketplaceSpecificFields: { categoryId: '175669' },
