@@ -37,6 +37,11 @@ export const envSchema = z.object({
   ENCRYPTION_KEY: z.string().min(64),
   ANTHROPIC_API_KEY: z.string().optional(),
   VISION_PROVIDERS: z.string().default('anthropic'),
+  // Per-call ceiling for OpenAI-compat vision calls so a slow provider fails
+  // over down the chain instead of running into the web proxy's 30s cutoff
+  // (live: a 51s Flash-Lite call, 2026-09-05). Two calls per refine: 12s
+  // timeout + ~4s fallback call + prefill stays inside the 30s proxy budget.
+  VISION_CALL_TIMEOUT_MS: z.coerce.number().int().positive().default(12000),
   CHAT_PROVIDERS: z.string().default('anthropic'),
   LOCAL_LLM_BASE_URL: z.string().optional(),
   LOCAL_LLM_API_KEY: z.string().default('ollama'),

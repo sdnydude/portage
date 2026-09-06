@@ -73,7 +73,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 
 | Feature | What others do | What Portage does better |
 |---------|---------------|--------------------------|
-| **AI Item Scanning** | Barcode lookup (List Perfectly) or basic image match (Underpriced) | Multi-provider vision chain (Gemini 2.5 primary, Claude fallback) with multi-candidate results, confidence scores, feature extraction, and AI reasoning display |
+| **AI Item Scanning** | Barcode lookup (List Perfectly) or basic image match (Underpriced) | Multi-provider vision chain (Gemini 3.5 Flash-Lite primary, Gemini 3.8 Flash then Claude Haiku fallback) with multi-candidate results, confidence scores, feature extraction, and AI reasoning display |
 | **AI Listing Generation** | Template-fill from image context alone | Generates from comps data + seller profile + marketplace-specific optimization (80-char eBay titles, HTML descriptions) |
 | **Background Removal** | Third-party API (PhotoRoom) with monthly caps (50-200 images) | Self-hosted rembg service — no third-party API fees, tier-gated in-app |
 | **Bulk CSV Export** | Generic CSV download | eBay Seller Hub Reports format with Action headers, numeric category IDs, pipe-delimited photos — ready for direct bulk import |
@@ -92,7 +92,7 @@ These features exist in other tools, but Portage's implementation offers distinc
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| AI Item Scanning | Shipped | Vision provider chain (Gemini 2.5 primary, Claude fallback) identifies items from photos — name, category, brand, model, features, value range, condition |
+| AI Item Scanning | Shipped | Vision provider chain (Gemini 3.5 Flash-Lite primary, Gemini 3.8 Flash then Claude Haiku fallback) identifies items from photos — name, category, brand, model, features, value range, condition |
 | Multi-Candidate Results | Shipped | AI returns ranked candidates with confidence scores; user picks the best match |
 | AI Reasoning Display | Shipped | Collapsible "Why this identification?" showing the AI's reasoning steps |
 | Comp-Grounded Pricing | Shipped | Real eBay sold/active comparable listings feed pricing decisions |

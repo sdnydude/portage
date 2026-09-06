@@ -1,4 +1,4 @@
-import type { RecognitionCandidate } from '@portage/shared';
+import type { RecognitionCandidate, VisionCallProvenance } from '@portage/shared';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { generateListingFields } from './vision.js';
 import { createLogger } from './logger.js';
@@ -14,14 +14,20 @@ const logger = createLogger('aspect-prefill');
  * candidate the user is shown first — other candidates may be different products
  * and must not inherit the top candidate's category aspects. Any failure is
  * non-fatal: the candidates are returned unchanged and review-time aspect
- * resolution is unaffected.
+ * resolution is unaffected. `provenance` names the provider/model that answered
+ * the aspect call (absent when the call was skipped or failed).
  */
+export interface PrefillResult {
+  candidates: RecognitionCandidate[];
+  provenance?: VisionCallProvenance;
+}
+
 export async function prefillCandidateAspects(
   candidates: RecognitionCandidate[],
   imageBase64?: string,
-): Promise<RecognitionCandidate[]> {
+): Promise<PrefillResult> {
   const top = candidates[0];
-  if (!top) return candidates;
+  if (!top) return { candidates };
 
   return traceStep('prefill-aspects', () => runPrefill(candidates, top, imageBase64));
 }
@@ -30,12 +36,12 @@ async function runPrefill(
   candidates: RecognitionCandidate[],
   top: RecognitionCandidate,
   imageBase64?: string,
-): Promise<RecognitionCandidate[]> {
+): Promise<PrefillResult> {
   try {
     const searchQuery = [top.brand, top.model].filter(Boolean).join(' ') || top.name;
 
     const categorySuggestion = await EbayAdapter.getCategorySuggestion(searchQuery);
-    if (!categorySuggestion) return candidates;
+    if (!categorySuggestion) return { candidates };
 
     const requiredAspects = await EbayAdapter.getRequiredAspects(categorySuggestion.categoryId);
 
@@ -64,17 +70,20 @@ async function runPrefill(
 
     const filled = fields.ebay?.aspects;
     if (filled && Object.keys(filled).length > 0) {
-      return candidates.map((c, i) =>
-        i === 0 ? { ...c, aspects: { ...(c.aspects ?? {}), ...filled } } : c,
-      );
+      return {
+        candidates: candidates.map((c, i) =>
+          i === 0 ? { ...c, aspects: { ...(c.aspects ?? {}), ...filled } } : c,
+        ),
+        provenance: fields.provenance,
+      };
     }
 
-    return candidates;
+    return { candidates, provenance: fields.provenance };
   } catch (err) {
     logger.warn(
       { error: (err as Error).message },
       'Aspect prefill failed — returning candidates without prefilled aspects',
     );
-    return candidates;
+    return { candidates };
   }
 }
