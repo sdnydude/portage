@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
+import { installSessionStub } from "./session-stub";
 
 /**
  * Scan provenance proof (2026-09-05). LIVE vision call: the ephemeral e2e API
@@ -41,6 +42,9 @@ test.afterEach(async ({ page, request }) => {
 test("real scan → review → Save persists which model answered under marketplaceData.scan.provenance", async ({ page, request }) => {
   test.setTimeout(180_000);
   expect(PHOTO_URL, "E2E_SCAN_PHOTO_URL").toBeTruthy();
+  // Against the prod-mode stack there is no CF edge: answer the app's mount-time
+  // session exchange from storage state (no-op on the dev-bypass e2e stack).
+  await installSessionStub(page);
 
   await page.route(/\/images$/, async (route) => {
     if (route.request().method() !== "POST") return route.fallback();

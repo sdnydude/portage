@@ -118,6 +118,17 @@ describe('gemini vision: per-entry model override', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
+  it('bounds each vision call with VISION_CALL_TIMEOUT_MS and no SDK retries, so a slow provider fails over (live 51s Flash-Lite call vs 30s proxy, 2026-09-05)', async () => {
+    process.env.VISION_CALL_TIMEOUT_MS = '15000';
+    resetEnv();
+    loadEnv();
+    mockCreate.mockResolvedValue(OK_RESPONSE);
+
+    await analyzeImages(IMG, 'sys', 'user', { maxTokens: 2048 });
+
+    expect(mockCreate.mock.calls[0][1]).toEqual({ timeout: 15000, maxRetries: 0 });
+  });
+
   it('falls back to 2.5-flash (reasoning still off) when 3.5-flash fails', async () => {
     mockCreate
       .mockRejectedValueOnce(new Error('503 high demand'))
