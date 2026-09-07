@@ -36,7 +36,7 @@
     "jose": "^6.2.10",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.3.0",
-    "openai": "^6.46.0",
+    "openai": "^7.10.0",
     "p-limit": "^7.3.1",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
