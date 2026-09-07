@@ -367,7 +367,11 @@ export function buildReviseInventoryStatusXml(
 function itemBody(input: TradingListingInput): string {
   return (
     `<Title>${escapeXml(input.title)}</Title>` +
-    `<Description>${escapeXml(input.description)}</Description>` +
+    // eBay renders Description as HTML, so plain newlines collapse into one
+    // paragraph. The scan description is sectioned plain text (Overview /
+    // Condition / Function / Included / Specs); emit <br> per newline, XML-
+    // escaped so eBay receives the literal tag. Seller text is escaped first.
+    `<Description>${escapeXml(input.description).replace(/\r?\n/g, '&lt;br&gt;')}</Description>` +
     `<PrimaryCategory><CategoryID>${escapeXml(input.categoryId)}</CategoryID></PrimaryCategory>` +
     `<StartPrice currencyID="${input.currency}">${input.price}</StartPrice>` +
     `<Quantity>${input.quantity}</Quantity>` +
