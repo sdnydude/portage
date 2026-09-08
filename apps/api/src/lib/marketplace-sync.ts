@@ -4,8 +4,32 @@ import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { mergeItemShipping, mergeItemAspects, applyShipFromOrigin, applyReverbEnrichment } from '../routes/listings.js';
 import { validateBestOfferThresholds, healBestOfferFromLive } from './best-offer.js';
 import { AppError } from '../middleware/error.js';
+import { db } from '../db/index.js';
+import { sellerProfiles } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
+import { applyFooter, descriptionLimitFor } from './footer.js';
 
 const logger = createLogger('marketplace-sync');
+
+/**
+ * Publish parity: the publish routes append the seller's default listing
+ * footer to the description (listings.ts applyFooter); edit-sync used to send
+ * the raw item description, so any item edit silently stripped the footer
+ * from the live listing (Epson 5050UB, 2026-09-06). Best-effort read — a
+ * failed lookup syncs without the footer rather than blocking the edit.
+ */
+async function loadListingFooter(userId: string): Promise<string | null> {
+  try {
+    const [row] = await db.select({ footer: sellerProfiles.defaultListingFooter })
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.userId, userId))
+      .limit(1);
+    return row?.footer ?? null;
+  } catch (err) {
+    logger.warn({ userId, error: (err as Error).message }, 'Listing footer lookup failed — syncing description without it');
+    return null;
+  }
+}
 
 /** The listings-row slice the executor needs — matches the items.ts edit-sync select. */
 export interface ItemSyncTarget {
@@ -95,9 +119,10 @@ export async function syncItemListingRow(
         if (!boCheck.ok) throw new AppError(422, 'BEST_OFFER_CONFLICT', boCheck.message);
       }
     }
+    const footer = await loadListingFooter(userId);
     const syncResult = await adapter.updateListing(syncId, {
       title: item.title,
-      description: item.description,
+      description: applyFooter(item.description, footer, descriptionLimitFor('ebay')),
       price: item.price ?? undefined,
       currency: listed.currency,
       condition: item.condition,
@@ -130,9 +155,10 @@ export async function syncItemListingRow(
       // defaults) fails to propagate with zero signal anywhere.
       warnings.push('reverb: seller-profile enrichment failed — synced with stored settings, offers/shipping defaults may be stale');
     }
+    const footer = await loadListingFooter(userId);
     const syncResult = await adapter.updateListing(syncId, {
       title: item.title,
-      description: item.description,
+      description: applyFooter(item.description, footer, descriptionLimitFor('reverb')),
       price: item.price ?? undefined,
       currency: listed.currency,
       condition: item.condition,
