@@ -861,7 +861,7 @@ export function ItemDetail({
                 </div>
 
                 {comps.partial && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">Some eBay results could not be loaded</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400">Some eBay results could not be loaded</p>
                 )}
 
                 {comps.stats.sampleSize === 0 ? (
