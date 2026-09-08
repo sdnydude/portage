@@ -257,4 +257,37 @@ describe('search_inventory tool', () => {
     const ids = items.map(i => i.id).sort();
     expect(ids).toEqual(['d1', 'i1']); // merged, deduped
   });
+
+  it('falls back to a trigram-similarity search when word matching finds nothing (typo tolerance)', async () => {
+    mockUserSelect();
+    mockConversationFlow(TEST_CONV_ID);
+
+    const SENNHEISER = { id: 's1', title: 'Sennheiser MKE 600 Shotgun Mic', category: 'audio', condition: 'good', brand: 'Sennheiser', model: 'MKE 600', estimatedValueMin: 150, estimatedValueMax: 250, estimatedValueRecommended: 200, photos: [] };
+
+    function mockSearchSelect3(rows: unknown[]) {
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue(rows) }),
+          }),
+        }),
+      } as never);
+    }
+
+    let toolResult: StreamToolResult | null = null;
+    vi.mocked(chatStream).mockImplementationOnce(async (_msgs, _sys, _tools, execTool, onEvent) => {
+      mockSearchSelect3([]);              // word match — no hits for the typo
+      mockSearchSelect3([SENNHEISER]);    // fuzzy trigram fallback — hits
+      toolResult = await execTool('search_inventory', { query: 'sennal 148' });
+      onEvent({ type: 'done', model: 'm', inputTokens: 1, outputTokens: 1 });
+    });
+
+    await request(app)
+      .post('/porter/stream')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'find my sennal 148', conversationId: TEST_CONV_ID });
+
+    const items = (toolResult!.structured ?? []) as Array<{ id: string }>;
+    expect(items.map(i => i.id)).toEqual(['s1']);
+  });
 });
