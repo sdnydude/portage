@@ -653,6 +653,34 @@ itemsRouter.patch('/:id', async (req, res, next) => {
           ));
       }
 
+      // Gap 5 (2026-09-06 truth table): an eBay listing row's OWN stored
+      // aspects/categoryId/conditionDescription win over item edits on the
+      // next sync merge — item wins instead. Distinct from the null-delete
+      // block above (which targets a specific removed aspect key); this
+      // strips the whole top-level shadow key so the sync merge falls through
+      // to the item's value. categoryId strips ONLY when a new eBay
+      // categoryId was actually sent (body.marketplaceData?.ebay?.categoryId)
+      // — a bare `category` text edit leaves the resolved eBay categoryId on
+      // the row untouched.
+      const shadowKeys: string[] = [];
+      if (body.aspects !== undefined) shadowKeys.push('aspects');
+      if (body.category !== undefined && body.marketplaceData?.ebay?.categoryId !== undefined) shadowKeys.push('categoryId');
+      if (body.conditionNotes !== undefined) shadowKeys.push('conditionDescription');
+      if (shadowKeys.length > 0) {
+        let shadowExpr = sql`coalesce(${listings.marketplaceSpecificFields}, '{}'::jsonb)`;
+        for (const k of shadowKeys) {
+          shadowExpr = sql`${shadowExpr} #- '{${sql.raw(k)}}'::text[]`;
+        }
+        await tx.update(listings)
+          .set({ marketplaceSpecificFields: shadowExpr as unknown as Record<string, unknown>, updatedAt: new Date() })
+          .where(and(
+            eq(listings.itemId, row.id),
+            eq(listings.userId, userId),
+            eq(listings.marketplace, 'ebay'),
+            inArray(listings.status, ['active', 'draft']),
+          ));
+      }
+
       // Price truth (Housekeeping-1): items.price and listings.price are ONE
       // value. The outbox sync pushes the new price to the marketplace but never
       // touched the local listings rows, so the listing card kept showing the

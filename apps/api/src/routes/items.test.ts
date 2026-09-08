@@ -812,7 +812,26 @@ describe('PATCH /items/:id', () => {
       .send({ aspects: { Color: null } });
 
     expect(res.status).toBe(200);
-    expect(db.update).toHaveBeenCalledTimes(2);
+    // item write + nested per-key strip (T3) + top-level aspects shadow strip (gap 5)
+    expect(db.update).toHaveBeenCalledTimes(3);
+    expect(setSpy.mock.calls[1][0]).toHaveProperty('marketplaceSpecificFields');
+  });
+
+  it('strips the listing rows\' marketplaceSpecificFields.aspects before enqueueing the sync — item wins over listing-row shadows (gap 5)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1', aspects: { Brand: ['Sony'] } }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'], Color: ['Red'] } }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectReturnOnce([]); // no syncable listings
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ aspects: { Color: ['Red'] } });
+
+    expect(res.status).toBe(200);
+    expect(db.update).toHaveBeenCalledTimes(2); // item write + listing-row aspects strip
     expect(setSpy.mock.calls[1][0]).toHaveProperty('marketplaceSpecificFields');
   });
 
