@@ -347,6 +347,13 @@ export const sellerProfiles = pgTable('seller_profiles', {
   bestOfferAutoAcceptEnabled: boolean('best_offer_auto_accept_enabled').notNull().default(false),
   gtcAutoEnd: boolean('gtc_auto_end').notNull().default(false),
   defaultListingFooter: text('default_listing_footer'),
+  // eBay sync gap 3 (2026-09-06 truth table): every Portage revise otherwise
+  // overwrites eBay-side Return Policy/DispatchTimeMax with hardcoded
+  // ReturnsNotAccepted/1-day defaults — these seller settings feed the
+  // Trading builder on both Add and Revise.
+  ebayReturnsAccepted: boolean('ebay_returns_accepted').notNull().default(false),
+  ebayReturnDays: integer('ebay_return_days').notNull().default(30),
+  ebayHandlingDays: integer('ebay_handling_days').notNull().default(1),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

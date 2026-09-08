@@ -459,6 +459,11 @@ export interface SellerProfile {
   bestOfferAutoAcceptEnabled: boolean;
   gtcAutoEnd: boolean;
   defaultListingFooter: string | null;
+  // eBay sync gap 3 (2026-09-06 truth table): return policy + handling days,
+  // applied by the Trading builder on both Add and Revise.
+  ebayReturnsAccepted: boolean;
+  ebayReturnDays: 14 | 30 | 60;
+  ebayHandlingDays: number;
   createdAt: Date;
   updatedAt: Date;
 }

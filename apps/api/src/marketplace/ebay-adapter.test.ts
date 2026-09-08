@@ -159,6 +159,17 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
     } as any);
     expect(tradingXml()).toContain('<Quantity>7</Quantity>');
   });
+
+  it('reads the seller return policy and handling days from marketplaceSpecific.sellerReturns (gap 3)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, sellerReturns: { returnsAccepted: true, returnDays: 30, handlingDays: 3 } },
+    } as any);
+    const xml = tradingXml();
+    expect(xml).toContain('<ReturnPolicy><ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption><ReturnsWithinOption>Days_30</ReturnsWithinOption><ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption></ReturnPolicy>');
+    expect(xml).toContain('<DispatchTimeMax>3</DispatchTimeMax>');
+  });
 });
 
 describe('EbayAdapter.createListing — BrandMPN (error 25002) handling', () => {

@@ -57,6 +57,12 @@ export interface TradingListingInput {
   deleteBestOfferAutoAcceptPrice?: boolean;
   deleteMinimumBestOfferPrice?: boolean;
   listingDuration?: string;
+  /** Gap 3 (2026-09-06 truth table): seller-profile return policy — every
+   *  Portage revise otherwise overwrites eBay's stored value with the
+   *  hardcoded ReturnsNotAccepted default below. */
+  returnsAccepted?: boolean;
+  returnDays?: 14 | 30 | 60;
+  handlingDays?: number;
 }
 
 // eBay Trading hard limits on PictureURL (PictureDetailsType): max 24 URLs
@@ -386,10 +392,12 @@ function itemBody(input: TradingListingInput): string {
     '<Country>US</Country>' +
     `<Currency>${input.currency}</Currency>` +
     `<PostalCode>${escapeXml(input.shipping.originPostalCode)}</PostalCode>` +
-    `<DispatchTimeMax>${input.dispatchTimeMax ?? 1}</DispatchTimeMax>` +
+    `<DispatchTimeMax>${input.handlingDays ?? input.dispatchTimeMax ?? 1}</DispatchTimeMax>` +
     pictureDetails(input.pictureUrls) +
     itemSpecifics(input.aspects) +
-    '<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>' +
+    (input.returnsAccepted
+      ? `<ReturnPolicy><ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption><ReturnsWithinOption>Days_${input.returnDays ?? 30}</ReturnsWithinOption><ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption></ReturnPolicy>`
+      : '<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>') +
     inlineShipping(input.shipping, input.currency) +
     shippingPackageDetails(input.shipping) +
     bestOfferDetails(input)

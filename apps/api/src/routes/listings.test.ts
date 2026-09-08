@@ -1077,9 +1077,10 @@ describe('POST /listings', () => {
     }));
   });
 
-  it('keeps a body-provided origin ZIP over the profile (body wins, profile not consulted)', async () => {
+  it('keeps a body-provided origin ZIP over the profile (body wins)', async () => {
     mockSelectOnce([MOCK_ITEM]);
-    mockSelectOnce([]); // footer lookup — ship-from not consulted because body supplied originPostalCode
+    mockSelectOnce([{ shipFromAddress: { zip: '90210' } }]); // profile read (gap 3: always consulted for return policy) — its ZIP must lose to the body's
+    mockSelectOnce([]); // footer lookup
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 
@@ -2039,6 +2040,19 @@ describe('applyReverbEnrichment — additive local pickup (RV-2)', () => {
     });
 
     expect(r.specific.localPickup).toBe(false); // seller's OFF wins over the profile default
+  });
+});
+
+describe('applyShipFromOrigin — seller-profile return policy + handling days ride the same profile read (gap 3)', () => {
+  it('merges ebayReturnsAccepted/ebayReturnDays/ebayHandlingDays into specific.sellerReturns even when the body already carries originPostalCode', async () => {
+    const { applyShipFromOrigin } = await import('./listings.js');
+    mockSelectOnce([{ shipFromAddress: { zip: '12561' }, ebayReturnsAccepted: true, ebayReturnDays: 30, ebayHandlingDays: 3 }]);
+
+    const r = await applyShipFromOrigin('u1', { categoryId: '15032', originPostalCode: '10001' });
+
+    expect(r?.sellerReturns).toEqual({ returnsAccepted: true, returnDays: 30, handlingDays: 3 });
+    expect(r?.originPostalCode).toBe('10001'); // body wins for the ZIP
+    expect(r?.categoryId).toBe('15032');
   });
 });
 
