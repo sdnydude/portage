@@ -59,3 +59,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 **/.claude/tdd-guard/data/
+
+# Playwright root-level artifacts + Claude Code local state
+test-results/
+.claude/artifacts/
+.claude/review-records/
+apps/web/.claude/
