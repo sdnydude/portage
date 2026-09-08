@@ -40,8 +40,10 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 vi.mock("@/hooks/use-enhance", () => ({
   useEnhance: () => ({ isProcessing: h.enhanceProcessing, result: h.enhanceResult, error: null, enhance: vi.fn(), reset: vi.fn() }),
 }));
+import type { CompResult } from "@portage/shared";
+let mockComps: CompResult | null = null;
 vi.mock("@/hooks/use-comps", () => ({
-  useComps: () => ({ comps: null, isLoading: false, error: null, fetchComps: vi.fn() }),
+  useComps: () => ({ comps: mockComps, isLoading: false, error: null, fetchComps: vi.fn() }),
 }));
 import type { Listing } from "@/hooks/use-listings";
 let mockListings: Listing[] = [];
@@ -102,6 +104,7 @@ afterEach(() => {
   mockListings = [];
   mockListingsLoading = false;
   mockListingsError = null;
+  mockComps = null;
   refetchListingsMock.mockClear();
   pushMock.mockClear();
   window.HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
@@ -391,5 +394,17 @@ describe("ItemDetail — photo save serialization (Reverb-published race)", () =
       h.updateItem.mockResolvedValue({});
       h.item.photos = [];
     }
+  });
+});
+
+describe("ItemDetail — light-mode tag contrast (operator: tags unreadable in light mode, 2026-09-06)", () => {
+  it("renders the partial-comps notice on the legible amber-700 shade", async () => {
+    mockComps = {
+      sold: [], active: [],
+      stats: { soldMedian: null, soldAvg: null, activeMedian: null, activeAvg: null, sampleSize: 0 },
+      partial: true,
+    };
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+    expect(await screen.findByText("Some eBay results could not be loaded")).toHaveClass("text-amber-700");
   });
 });

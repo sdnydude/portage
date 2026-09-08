@@ -33,7 +33,7 @@ function UsageBar({ used, limit, label }: { used: number; limit: number | null; 
     <div className="py-2">
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm text-[var(--color-text-secondary)]">{label}</span>
-        <span className={`text-sm font-medium ${isNearLimit ? "text-amber-600" : ""}`}>
+        <span className={`text-sm font-medium ${isNearLimit ? "text-amber-700" : ""}`}>
           {used} / {limit}
         </span>
       </div>

@@ -26,7 +26,7 @@
   --accent-warm: #D4A574;
   --accent-error: #DC3545;
   --accent-error-soft: #FDECEA;   /* error banner / required-missing bg */
-  --accent-warning: #F59E0B;
+  --accent-warning: #92400E;      /* as text: 6.34 on --background, 7.09 on --surface (2026-09-08) */
   --accent-success: #0F9D58;
   --accent-success-soft: #E6F4EE; /* success-tinted bg: comps/money highlight, "Complete" badge */
   --accent-info: #3B82F6;
@@ -165,6 +165,7 @@
 
     --accent-error: #F87171;                          /* legible error fg on dark surfaces */
     --accent-error-soft: rgba(220, 53, 69, 0.16);
+    --accent-warning: #F59E0B;                        /* legible warning fg on dark surfaces (2026-09-08) */
     --accent-success: #2EC27E;
     --accent-success-soft: rgba(46, 194, 126, 0.14);
 
