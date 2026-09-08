@@ -22,8 +22,9 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "i1" }),
   useRouter: () => ({ push: pushMock }),
   useSearchParams: () => mockSearchParams,
+  usePathname: () => "/inventory/i1",
 }));
-vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true, token: "t" }) }));
+vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true, token: "t", user: { email: "s@x.com" } }) }));
 vi.mock("@/hooks/use-item", () => ({
   useItem: () => ({
     item: h.item,
@@ -39,6 +40,9 @@ vi.mock("@/hooks/use-enhance", () => ({
 }));
 vi.mock("@/hooks/use-comps", () => ({
   useComps: () => ({ comps: null, isLoading: false, error: null, fetchComps: vi.fn() }),
+}));
+vi.mock("@/hooks/use-messages", () => ({
+  useUnreadCount: () => ({ count: 0 }),
 }));
 import type { Listing } from "@/hooks/use-listings";
 let mockListings: Listing[] = [];
