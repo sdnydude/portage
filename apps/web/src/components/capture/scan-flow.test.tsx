@@ -69,7 +69,7 @@ const scanAspectsState = {
   isCategoryResolving: false,
   isAspectsLoading: false,
   aspects: {} as Record<string, { required: boolean; values: string[] | null }>,
-  aspectValues: {} as Record<string, string>,
+  aspectValues: {} as Record<string, string[]>,
   setAspectValue: vi.fn(),
   suggestions: {} as Record<string, string[]>,
   confirmSuggestion: vi.fn(),
@@ -524,8 +524,8 @@ describe("ScanFlow review wiring", () => {
 
     await renderInReview();
 
-    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Brand", "Fender");
-    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Model", "Stratocaster");
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Brand", ["Fender"]);
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Model", ["Stratocaster"]);
   });
 
   it("never re-seeds an aspect the seller explicitly cleared or already set", async () => {
@@ -533,8 +533,8 @@ describe("ScanFlow review wiring", () => {
       Brand: { required: true, values: null },
       Model: { required: false, values: null },
     };
-    // Brand cleared by the seller (empty string under the key); Model set by hand.
-    scanAspectsState.aspectValues = { Brand: "", Model: "Custom Shop" };
+    // Brand cleared by the seller (empty array under the key); Model set by hand.
+    scanAspectsState.aspectValues = { Brand: [], Model: ["Custom Shop"] };
 
     await renderInReview();
 
