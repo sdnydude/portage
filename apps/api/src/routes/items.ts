@@ -112,7 +112,10 @@ const marketplaceDataSchema = z.object({
 
 const createItemSchema = z.object({
   title: z.string().min(1).max(500),
-  description: z.string().max(2000).optional(),
+  // 4000 (was 2000): the scan description is the eBay listing Description
+  // verbatim (+ seller footer), and the AI now writes a structured 150–300
+  // word description. Column is text; vision.ts clamps to the same cap.
+  description: z.string().max(4000).optional(),
   category: z.string().max(255).transform(normalizeCategory).optional(),
   condition: z.enum(validConditions).optional(),
   // 2000 to match `description`. Condition notes are resale-honesty content —
