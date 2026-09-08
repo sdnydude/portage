@@ -6,6 +6,8 @@ export interface AspectRequirement {
   name: string;
   /** eBay's allowed values for a constrained aspect, or null for free text. */
   values: string[] | null;
+  /** Whether multiple values may be selected. Defaults to SINGLE. */
+  cardinality?: "SINGLE" | "MULTI";
 }
 
 interface AspectFillSheetProps {
@@ -36,21 +38,23 @@ export function AspectFillSheet({
   onCancel,
   onSave,
 }: AspectFillSheetProps) {
-  const [values, setValues] = useState<Record<string, string>>(() => {
-    const seed: Record<string, string> = {};
+  const [values, setValues] = useState<Record<string, string[]>>(() => {
+    const seed: Record<string, string[]> = {};
     for (const a of missing) {
       const pre = initial?.[a.name];
-      if (pre && pre.length > 0) seed[a.name] = pre[0];
+      if (pre && pre.length > 0) seed[a.name] = pre;
     }
     return seed;
   });
 
-  const allFilled = missing.every((a) => (values[a.name] ?? "").trim().length > 0);
+  const allFilled = missing.every((a) => (values[a.name] ?? []).some((v) => v.trim().length > 0));
 
   const handleSave = () => {
     if (!allFilled || saving) return;
     const out: Record<string, string[]> = {};
-    for (const a of missing) out[a.name] = [values[a.name].trim()];
+    for (const a of missing) {
+      out[a.name] = (values[a.name] ?? []).map((v) => v.trim()).filter((v) => v !== "");
+    }
     onSave(out);
   };
 
@@ -80,12 +84,25 @@ export function AspectFillSheet({
               {a.values && a.values.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {a.values.map((v) => {
-                    const selected = values[a.name] === v;
+                    const isMulti = a.cardinality === "MULTI";
+                    const cur = values[a.name] ?? [];
+                    const selected = cur.includes(v);
                     return (
                       <button
                         key={v}
                         type="button"
-                        onClick={() => setValues((p) => ({ ...p, [a.name]: v }))}
+                        onClick={() =>
+                          setValues((p) => ({
+                            ...p,
+                            [a.name]: isMulti
+                              ? selected
+                                ? cur.filter((existing) => existing !== v)
+                                : [...cur, v]
+                              : selected
+                                ? []
+                                : [v],
+                          }))
+                        }
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                           selected
                             ? "bg-forest-green text-white border-forest-green"
@@ -100,8 +117,8 @@ export function AspectFillSheet({
               ) : (
                 <input
                   type="text"
-                  value={values[a.name] ?? ""}
-                  onChange={(e) => setValues((p) => ({ ...p, [a.name]: e.target.value }))}
+                  value={values[a.name]?.[0] ?? ""}
+                  onChange={(e) => setValues((p) => ({ ...p, [a.name]: [e.target.value] }))}
                   placeholder={`Enter ${a.name}`}
                   className="w-full px-3 py-2 rounded-xl bg-background border border-border text-text-primary text-sm focus:border-border-focus focus:outline-none"
                 />
