@@ -17,6 +17,23 @@ function baseProps() {
 }
 
 describe("ScanAspectsSection", () => {
+  it("MULTI aspects toggle chips independently and show the selected count", () => {
+    const setAspectValue = vi.fn();
+    render(
+      <ScanAspectsSection
+        {...baseProps()}
+        aspects={{ Features: { required: false, values: ["Wireless", "Bluetooth"], cardinality: "MULTI" } }}
+        aspectValues={{ Features: ["Wireless"] }}
+        setAspectValue={setAspectValue}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /eBay item specifics/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Show 1 optional detail/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Bluetooth" }));
+    expect(setAspectValue).toHaveBeenCalledWith("Features", ["Wireless", "Bluetooth"]);
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
   it("auto-expands when required aspects are missing and selects a chip via setAspectValue", () => {
     const props = baseProps();
     props.aspects = { Type: { required: true, values: ["Tube", "Solid State"] } };
@@ -28,7 +45,7 @@ describe("ScanAspectsSection", () => {
     const chip = screen.getByRole("button", { name: "Tube" });
     expect(chip).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(chip);
-    expect(props.setAspectValue).toHaveBeenCalledWith("Type", "Tube");
+    expect(props.setAspectValue).toHaveBeenCalledWith("Type", ["Tube"]);
     expect(screen.getByText("1 required")).toBeInTheDocument();
   });
 
@@ -54,7 +71,7 @@ describe("ScanAspectsSection", () => {
     const input = screen.getByPlaceholderText("Enter Brand");
     expect(input).toHaveAttribute("aria-invalid", "true");
     fireEvent.change(input, { target: { value: "Gibson" } });
-    expect(props.setAspectValue).toHaveBeenCalledWith("Brand", "Gibson");
+    expect(props.setAspectValue).toHaveBeenCalledWith("Brand", ["Gibson"]);
 
     fireEvent.click(screen.getByRole("button", { name: /Fender/ }));
     expect(props.confirmSuggestion).toHaveBeenCalledWith("Brand", "Fender");
@@ -73,7 +90,7 @@ describe("ScanAspectsSection", () => {
       Type: { required: true, values: ["Tube"] },
       Color: { required: false, values: null },
     };
-    props.aspectValues = { Type: "Tube" };
+    props.aspectValues = { Type: ["Tube"] };
 
     render(<ScanAspectsSection {...props} />);
 
@@ -134,13 +151,13 @@ describe("ScanAspectsSection", () => {
   it("shows an explicit clear (✕) on a filled text aspect that empties it via setAspectValue (Housekeeping-1 T3)", () => {
     const props = baseProps();
     props.aspects = { Model: { required: true, values: null } };
-    props.aspectValues = { Model: "AE-1" };
+    props.aspectValues = { Model: ["AE-1"] };
 
     render(<ScanAspectsSection {...props} />);
     fireEvent.click(screen.getByRole("button", { name: /eBay item specifics/i }));
 
     fireEvent.click(screen.getByRole("button", { name: "Clear Model" }));
-    expect(props.setAspectValue).toHaveBeenCalledWith("Model", "");
+    expect(props.setAspectValue).toHaveBeenCalledWith("Model", []);
   });
 
   it("toggles a selected chip off, marks AI-suggested chips, and scrolls focused text inputs into view", () => {
@@ -152,7 +169,7 @@ describe("ScanAspectsSection", () => {
       Type: { required: true, values: ["Tube", "Solid State"] },
       Notes: { required: false, values: null },
     };
-    props.aspectValues = { Type: "Tube" };
+    props.aspectValues = { Type: ["Tube"] };
     props.suggestions = { Type: ["Solid State"] };
 
     render(<ScanAspectsSection {...props} />);
@@ -162,7 +179,7 @@ describe("ScanAspectsSection", () => {
     const selected = screen.getByRole("button", { name: "Tube" });
     expect(selected).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(selected);
-    expect(props.setAspectValue).toHaveBeenCalledWith("Type", "");
+    expect(props.setAspectValue).toHaveBeenCalledWith("Type", []);
 
     // AI-suggested value is visually marked.
     expect(screen.getByRole("button", { name: "✨ Solid State" })).toBeInTheDocument();
