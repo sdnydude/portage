@@ -732,6 +732,12 @@ itemsRouter.patch('/:id', async (req, res, next) => {
             syncWarnings.push(`ebay: listing ${syncId} — ${boCheck.message}`);
           }
         }
+        // Gap 1 (2026-09-06 truth table): Portage allows 500-char titles but
+        // eBay caps ReviseFixedPriceItem's Title at 80 — the sync would
+        // otherwise burn 15 min of "Syncing…" before terminal-failing.
+        if (typeof body.title === 'string' && body.title.length > 80 && listed.marketplace === 'ebay') {
+          syncWarnings.push(`ebay: listing ${syncId} — eBay titles are limited to 80 characters (yours is ${body.title.length}); the sync will fail until you shorten it`);
+        }
         try {
           await enqueueItemSync({
             userId,

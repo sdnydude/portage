@@ -676,6 +676,27 @@ describe('PATCH /items/:id', () => {
     expect(valuesSpy).toHaveBeenCalled(); // job still enqueued — worker terminal-fails with the durable record
   });
 
+  it('warns when a 90-char title is saved with an active eBay listing (gap 1) — eBay caps titles at 80', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    const longTitle = 'T'.repeat(90);
+    mockUpdateReturns([{ ...MOCK_ITEM, title: longTitle }]);
+    mockSelectReturnOnce([{
+      id: 'row-e1', marketplace: 'ebay', status: 'active', marketplaceListingId: '307100136291', ebaySku: 'PRT-X', currency: 'USD',
+      marketplaceSpecificFields: {},
+    }]);
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: longTitle });
+
+    expect(res.status).toBe(200);
+    expect(res.body.syncWarnings?.join(' ')).toMatch(/eBay titles are limited to 80 characters/);
+  });
+
   it('does not leak raw database error text into syncWarnings on enqueue failure (audit m2)', async () => {
     mockSelectReturnOnce([{ id: 'item-1' }]); // existence
     mockUpdateReturns([{ ...MOCK_ITEM, title: 'Saved' }]);
