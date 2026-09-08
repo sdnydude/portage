@@ -290,6 +290,9 @@ export interface EbayItemDetail {
   price: number | null;
   brand: string | null;
   aspects: Record<string, string[]>;
+  // Gap 6 (2026-09-06 truth table): requires buildGetItemXml's
+  // ItemReturnDescription DetailLevel to be populated.
+  description: string | null;
 }
 
 /**
@@ -1024,9 +1027,10 @@ export class EbayAdapter implements MarketplaceAdapter {
         price: price != null && Number.isFinite(price) ? price : null,
         brand: v.brand,
         aspects: v.aspects,
+        description: v.description,
       };
     } catch {
-      return { found: false, title: null, photos: [], price: null, brand: null, aspects: {} };
+      return { found: false, title: null, photos: [], price: null, brand: null, aspects: {}, description: null };
     }
   }
 

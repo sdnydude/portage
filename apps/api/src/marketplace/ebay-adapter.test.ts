@@ -1525,6 +1525,19 @@ describe('EbayAdapter.getItemDetail — GetItem inventory backfill for orphan or
     expect(detail.brand).toBe('Shure');
     expect(detail.aspects.Brand).toEqual(['Shure']);
   });
+
+  it('returns description from Item.Description (gap 6)', async () => {
+    const GET_ITEM_WITH_DESCRIPTION =
+      '<?xml version="1.0"?><GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents">' +
+      '<Ack>Success</Ack><Item><ItemID>306972688941</ItemID><Description>Excellent condition, no scratches.</Description></Item></GetItemResponse>';
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url) ? new Response(GET_ITEM_WITH_DESCRIPTION, { status: 200 }) : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+
+    const detail = await adapter.getItemDetail('306972688941');
+
+    expect(detail.description).toBe('Excellent condition, no scratches.');
+  });
 });
 
 describe('EbayAdapter.getOrders — line-item title for orphan-order backfill', () => {

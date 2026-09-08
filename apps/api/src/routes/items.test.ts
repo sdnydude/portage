@@ -871,10 +871,12 @@ describe('PATCH /items/:id', () => {
       .send({ aspects: { Color: null }, price: 42 });
 
     expect(res.status).toBe(200);
-    expect(db.update).toHaveBeenCalledTimes(3);
+    // item write + nested per-key strip (T3) + top-level aspects shadow strip (gap 5) + price mirror
+    expect(db.update).toHaveBeenCalledTimes(4);
     expect(setSpy.mock.calls[0][0]).toMatchObject({ aspects: { Brand: ['Sony'] }, price: 42 });
     expect(setSpy.mock.calls[1][0]).toHaveProperty('marketplaceSpecificFields');
-    expect(setSpy.mock.calls[2][0]).toMatchObject({ price: 42 });
+    expect(setSpy.mock.calls[2][0]).toHaveProperty('marketplaceSpecificFields');
+    expect(setSpy.mock.calls[3][0]).toMatchObject({ price: 42 });
   });
 
   it('refuses a manual status with 409 STATUS_LOCKED while a listing owns it (active/draft/sold) — the UI lock is not the only guard (review)', async () => {

@@ -309,6 +309,11 @@ describe('buildGetItemXml', () => {
     expect(xml).toContain('<GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">');
     expect(xml).toContain('<ItemID>item-7</ItemID>');
   });
+
+  it('requests ItemReturnDescription so GetItem gets back the live Description (gap 6)', () => {
+    const xml = buildGetItemXml('item-7', 'T');
+    expect(xml).toContain('<DetailLevel>ItemReturnDescription</DetailLevel>');
+  });
 });
 
 describe('parseAddItemResponse', () => {
