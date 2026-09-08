@@ -57,6 +57,12 @@ export interface TradingListingInput {
   deleteBestOfferAutoAcceptPrice?: boolean;
   deleteMinimumBestOfferPrice?: boolean;
   listingDuration?: string;
+  /** Gap 3 (2026-09-06 truth table): seller-profile return policy — every
+   *  Portage revise otherwise overwrites eBay's stored value with the
+   *  hardcoded ReturnsNotAccepted default below. */
+  returnsAccepted?: boolean;
+  returnDays?: 14 | 30 | 60;
+  handlingDays?: number;
 }
 
 // eBay Trading hard limits on PictureURL (PictureDetailsType): max 24 URLs
@@ -242,6 +248,9 @@ export interface GetItemVerification {
   price: string | null;
   title: string | null;
   photos: string[];
+  // Gap 6 (2026-09-06 truth table): populated only when the GetItem call
+  // requested ItemReturnDescription (buildGetItemXml).
+  description: string | null;
   // Live Best Offer state (BO-3) — feeds the conflict-time heal. Parsed from
   // Item.BestOfferDetails / Item.ListingDetails; shape inferred from the
   // StartPrice attr-or-scalar pattern, live-verification pending.
@@ -253,7 +262,7 @@ export interface GetItemVerification {
 /** Read back the live item state from a GetItem response: item specifics (aspects),
  * Brand/MPN, ListingStatus, ItemID and price. Used by the F-GATE verification route. */
 export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification {
-  const empty: GetItemVerification = { found: false, sku: null, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, title: null, photos: [], bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null };
+  const empty: GetItemVerification = { found: false, sku: null, aspects: {}, mpn: null, brand: null, status: null, listingId: null, price: null, title: null, photos: [], description: null, bestOfferEnabled: null, bestOfferAutoAcceptPrice: null, minimumBestOfferPrice: null };
   const item = getPath(parsed, ['GetItemResponse', 'Item']) as Record<string, unknown> | undefined;
   if (!item) return empty;
 
@@ -307,6 +316,7 @@ export function parseGetItemVerification(parsed: ParsedXml): GetItemVerification
     price,
     title: item.Title != null ? String(item.Title) : null,
     photos,
+    description: String(item.Description ?? '') || null,
     bestOfferEnabled: (() => {
       const raw = getPath(item, ['BestOfferDetails', 'BestOfferEnabled']);
       return raw == null ? null : String(raw) === 'true';
@@ -321,6 +331,10 @@ export function buildGetItemXml(itemId: string, token: string): string {
     `${XML_DECL}\n<GetItemRequest xmlns="${NS}">` +
     `<RequesterCredentials><eBayAuthToken>${escapeXml(token)}</eBayAuthToken></RequesterCredentials>` +
     `<ItemID>${escapeXml(itemId)}</ItemID>` +
+    // Gap 6 (2026-09-06 truth table): the default DetailLevel omits
+    // Item.Description — without this, GetItem verification can never read
+    // back the live listing's description text.
+    '<DetailLevel>ItemReturnDescription</DetailLevel>' +
     '</GetItemRequest>'
   );
 }
@@ -386,10 +400,12 @@ function itemBody(input: TradingListingInput): string {
     '<Country>US</Country>' +
     `<Currency>${input.currency}</Currency>` +
     `<PostalCode>${escapeXml(input.shipping.originPostalCode)}</PostalCode>` +
-    `<DispatchTimeMax>${input.dispatchTimeMax ?? 1}</DispatchTimeMax>` +
+    `<DispatchTimeMax>${input.handlingDays ?? input.dispatchTimeMax ?? 1}</DispatchTimeMax>` +
     pictureDetails(input.pictureUrls) +
     itemSpecifics(input.aspects) +
-    '<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>' +
+    (input.returnsAccepted
+      ? `<ReturnPolicy><ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption><ReturnsWithinOption>Days_${input.returnDays ?? 30}</ReturnsWithinOption><ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption></ReturnPolicy>`
+      : '<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>') +
     inlineShipping(input.shipping, input.currency) +
     shippingPackageDetails(input.shipping) +
     bestOfferDetails(input)

@@ -676,6 +676,27 @@ describe('PATCH /items/:id', () => {
     expect(valuesSpy).toHaveBeenCalled(); // job still enqueued — worker terminal-fails with the durable record
   });
 
+  it('warns when a 90-char title is saved with an active eBay listing (gap 1) — eBay caps titles at 80', async () => {
+    mockSelectReturnOnce([{ id: 'item-1' }]); // existence
+    const longTitle = 'T'.repeat(90);
+    mockUpdateReturns([{ ...MOCK_ITEM, title: longTitle }]);
+    mockSelectReturnOnce([{
+      id: 'row-e1', marketplace: 'ebay', status: 'active', marketplaceListingId: '307100136291', ebaySku: 'PRT-X', currency: 'USD',
+      marketplaceSpecificFields: {},
+    }]);
+    const valuesSpy = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesSpy } as any);
+    vi.mocked(db.delete).mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) } as any);
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ title: longTitle });
+
+    expect(res.status).toBe(200);
+    expect(res.body.syncWarnings?.join(' ')).toMatch(/eBay titles are limited to 80 characters/);
+  });
+
   it('does not leak raw database error text into syncWarnings on enqueue failure (audit m2)', async () => {
     mockSelectReturnOnce([{ id: 'item-1' }]); // existence
     mockUpdateReturns([{ ...MOCK_ITEM, title: 'Saved' }]);
@@ -791,7 +812,26 @@ describe('PATCH /items/:id', () => {
       .send({ aspects: { Color: null } });
 
     expect(res.status).toBe(200);
-    expect(db.update).toHaveBeenCalledTimes(2);
+    // item write + nested per-key strip (T3) + top-level aspects shadow strip (gap 5)
+    expect(db.update).toHaveBeenCalledTimes(3);
+    expect(setSpy.mock.calls[1][0]).toHaveProperty('marketplaceSpecificFields');
+  });
+
+  it('strips the listing rows\' marketplaceSpecificFields.aspects before enqueueing the sync — item wins over listing-row shadows (gap 5)', async () => {
+    mockSelectReturnOnce([{ id: 'item-1', aspects: { Brand: ['Sony'] } }]);
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ ...MOCK_ITEM, aspects: { Brand: ['Sony'], Color: ['Red'] } }]) }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectReturnOnce([]); // no syncable listings
+
+    const res = await request(app)
+      .patch('/items/item-1')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ aspects: { Color: ['Red'] } });
+
+    expect(res.status).toBe(200);
+    expect(db.update).toHaveBeenCalledTimes(2); // item write + listing-row aspects strip
     expect(setSpy.mock.calls[1][0]).toHaveProperty('marketplaceSpecificFields');
   });
 
@@ -831,10 +871,12 @@ describe('PATCH /items/:id', () => {
       .send({ aspects: { Color: null }, price: 42 });
 
     expect(res.status).toBe(200);
-    expect(db.update).toHaveBeenCalledTimes(3);
+    // item write + nested per-key strip (T3) + top-level aspects shadow strip (gap 5) + price mirror
+    expect(db.update).toHaveBeenCalledTimes(4);
     expect(setSpy.mock.calls[0][0]).toMatchObject({ aspects: { Brand: ['Sony'] }, price: 42 });
     expect(setSpy.mock.calls[1][0]).toHaveProperty('marketplaceSpecificFields');
-    expect(setSpy.mock.calls[2][0]).toMatchObject({ price: 42 });
+    expect(setSpy.mock.calls[2][0]).toHaveProperty('marketplaceSpecificFields');
+    expect(setSpy.mock.calls[3][0]).toMatchObject({ price: 42 });
   });
 
   it('refuses a manual status with 409 STATUS_LOCKED while a listing owns it (active/draft/sold) — the UI lock is not the only guard (review)', async () => {

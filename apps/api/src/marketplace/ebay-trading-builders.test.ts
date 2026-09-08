@@ -115,6 +115,12 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(xml).not.toContain('<PaymentMethods>');
   });
 
+  it('renders the seller return policy (accepted, 30 days, seller pays not asserted) and handling days from the seller profile (gap 3)', () => {
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, returnsAccepted: true, returnDays: 30, handlingDays: 3 }, 'T');
+    expect(xml).toContain('<ReturnPolicy><ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption><ReturnsWithinOption>Days_30</ReturnsWithinOption><ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption></ReturnPolicy>');
+    expect(xml).toContain('<DispatchTimeMax>3</DispatchTimeMax>');
+  });
+
   it('includes BestOfferDetails only when a floor below price is set (G9), and escapes XML-special chars', () => {
     const withFloor = buildAddFixedPriceItemXml({ ...baseInput, bestOfferAutoAcceptPrice: 150 }, 'T');
     expect(withFloor).toContain('<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>');
@@ -302,6 +308,11 @@ describe('buildGetItemXml', () => {
     const xml = buildGetItemXml('item-7', 'T');
     expect(xml).toContain('<GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">');
     expect(xml).toContain('<ItemID>item-7</ItemID>');
+  });
+
+  it('requests ItemReturnDescription so GetItem gets back the live Description (gap 6)', () => {
+    const xml = buildGetItemXml('item-7', 'T');
+    expect(xml).toContain('<DetailLevel>ItemReturnDescription</DetailLevel>');
   });
 });
 

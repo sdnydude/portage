@@ -103,25 +103,44 @@ function mpnFromAspects(specific: Record<string, unknown> | undefined): string |
 }
 
 /**
- * Inject the seller's ship-from origin ZIP from their profile when the request
- * carries none — a body-provided value wins, the profile only fills the gap. The
- * Trading API needs OriginatingPostalCode for inline calculated shipping; there are
- * no Business-Policy IDs to resolve anymore (the account is opted out of them).
+ * Apply the seller profile to an eBay marketplaceSpecific bag — one profile read
+ * shared by both publish routes and the item-edit revise path (marketplace-sync).
+ *
+ * - Ship-from origin ZIP: filled from the profile when the request carries none;
+ *   a body-provided value wins. The Trading API needs OriginatingPostalCode for
+ *   inline calculated shipping; there are no Business-Policy IDs to resolve
+ *   anymore (the account is opted out of them).
+ * - Return policy + handling days (gap 3, 2026-09-06 truth table): every Portage
+ *   revise otherwise overwrote eBay's stored Return Policy/DispatchTimeMax with
+ *   the Trading builder's hardcoded ReturnsNotAccepted/1-day defaults. The
+ *   profile's settings ALWAYS win here (a stale `sellerReturns` persisted on the
+ *   listing row must not outlive a settings change), read by the Trading builder
+ *   (buildTradingInput) on both Add and Revise.
  */
 export async function applyShipFromOrigin(
   userId: string,
   specific: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown> | undefined> {
   const ms = (specific ?? {}) as Record<string, unknown>;
-  if (ms.originPostalCode) return specific;
   const [profile] = await db.select()
     .from(sellerProfiles)
     .where(eq(sellerProfiles.userId, userId))
     .limit(1);
-  // seller_profiles.shipFromAddress stores the ZIP under `zip` (FE form + schema);
-  // `postalCode` is a fallback for any legacy/eBay-pulled shape.
-  const shipFrom = profile?.shipFromAddress as { zip?: string; postalCode?: string } | null | undefined;
-  return { ...ms, originPostalCode: shipFrom?.zip ?? shipFrom?.postalCode };
+  const out: Record<string, unknown> = { ...ms };
+  if (!ms.originPostalCode) {
+    // seller_profiles.shipFromAddress stores the ZIP under `zip` (FE form + schema);
+    // `postalCode` is a fallback for any legacy/eBay-pulled shape.
+    const shipFrom = profile?.shipFromAddress as { zip?: string; postalCode?: string } | null | undefined;
+    out.originPostalCode = shipFrom?.zip ?? shipFrom?.postalCode;
+  }
+  if (profile) {
+    out.sellerReturns = {
+      returnsAccepted: profile.ebayReturnsAccepted,
+      returnDays: profile.ebayReturnDays,
+      handlingDays: profile.ebayHandlingDays,
+    };
+  }
+  return out;
 }
 
 /**
