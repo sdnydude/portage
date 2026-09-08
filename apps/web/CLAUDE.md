@@ -23,7 +23,7 @@ src/app/
 └── settings/        # 7 settings pages (profile, marketplace, seller-profile, billing, notifications, help, sync-log)
 ```
 
-The root `app/layout.tsx` wraps everything in `AppShell` (route-aware responsive shell: desktop sidebar, iPad breakpoints, mobile floating glass `TabBar`). `(tabs)/layout.tsx` only adds bottom padding (`pb-24`) and `PorterProvider` — `TabBar` mounts once inside `AppShell` for all non-admin routes, not per-layout.
+The root `app/layout.tsx` wraps everything in `AppShell` (route-aware responsive shell: desktop sidebar, iPad breakpoints, mobile floating glass `TabBar`). `(tabs)/layout.tsx` only adds bottom padding (`pb-24`); `PorterProvider` was hoisted to the root `app/layout.tsx` (R3) — `TabBar` mounts once inside `AppShell` for all non-admin routes, not per-layout.
 
 ## Component Organization
 
@@ -43,7 +43,7 @@ Directories mirror feature areas, not component types:
 | `celebration/` | SoldCelebration |
 | `auth/` | AuthProvider |
 
-All components are `"use client"`.
+All components are `"use client"` except `inventory/item-card.tsx` and `auth/logged-out-hero.tsx` (no directive).
 
 ## API Client
 
@@ -59,7 +59,7 @@ const data = await api<MyType>('/path', {
 
 - Bearer token passed per-call (no global interceptor)
 - Throws `ApiError` with `status`, `code`, `details[]` on 4xx/5xx
-- Base URL: `NEXT_PUBLIC_API_URL` env var, falls back to prod domain
+- Base URL: `NEXT_PUBLIC_API_URL` env var, falls back to `"/backend"`
 
 ## Auth
 
@@ -112,7 +112,7 @@ Common path: photos → metadata → marketplace → publish → confetti.
 Tailwind v4 via CSS `@theme` in `globals.css` (not a config file). Key patterns:
 
 - **Glass morphism:** `.glass-thick`, `.glass-regular`, `.glass-thin` (backdrop-filter + rgba bg)
-- **Dark mode:** CSS `prefers-color-scheme` media query on `:root` variables
+- **Dark mode:** `.dark` class on `<html>` (`:root.dark` in globals.css), set before paint by an inline script in `app/layout.tsx` from the localStorage `theme` override, else OS `prefers-color-scheme`; `ThemeToggle` flips it
 - **Safe area:** `env(safe-area-inset-bottom)` on tab bar and modals (notch devices)
 - **Animations:** `slide-up`, `slide-up-full`, `spring-in`, `shimmer`, `confetti-fall`, `check-draw`, `fade-in`
 - **Fonts:** `--font-instrument` (display), `--font-plus-jakarta` (body), `--font-jetbrains` (mono)
@@ -121,7 +121,7 @@ Glass morphism has `@supports` fallback for browsers without `backdrop-filter`.
 
 ## State Management
 
-React Context only — no Zustand/Jotai/Redux. Two providers: `AuthProvider` (app-wide, in app/layout.tsx) and `PorterProvider` (src/hooks/use-porter-context.tsx, Porter feature scope). All other state lives in hooks or component-local `useState`.
+React Context only — no Zustand/Jotai/Redux. Four providers: `AuthProvider`, `PorterProvider` (src/hooks/use-porter-context.tsx), `CurrentItemProvider` (src/hooks/use-current-item.tsx) — all in app/layout.tsx — and `UnreadCountProvider` (src/hooks/use-unread-count.tsx, mounted once in `AppShell`). All other state lives in hooks or component-local `useState`.
 
 ## Gotchas
 
