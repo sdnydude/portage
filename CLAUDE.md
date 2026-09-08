@@ -321,6 +321,19 @@ live-verified), 14 unreferenced verification PNGs removed. Cloudflare writes
 now use `CF_OPS_TOKEN` (Doppler dhg-infra/prd + portage/prd, scope C per the
 2026-06-06 cloudflare-ops spec). Program P1–P8 CLOSED. Residue: `86b12195`
 session_reports KB source.
+PWA/Reverb/deps fixes shipped 2026-08-31→09-05 (PRs #348, #349, #353):
+service worker stopped intercepting non-GET requests (iOS multipart-upload
+500 fix), Reverb public reference-data fetches now send a token (edge-403
+fix), dependabot minor/patch batch merged.
+Scan provenance + vision chain rebuild shipped 2026-09-05/06 (PRs #356-#358):
+per-call provider/model stamped on every scan (see AI section above), 12s
+vision-call timeout with fail-over, seller-voice condition notes, fuller
+descriptions, auto-grow Description/Condition Notes textareas on scan review
+and item edit.
+eBay description spec shipped 2026-09-06 (PR #359, db6b2cd): eBay-spec
+sectioned descriptions (150-300 words), 4000-char cap, `<br>` conversion at
+publish, footer now applied on edit-sync (not just publish), cardinality-aware
+multi-value aspect whitelisting.
 
 Note: `feat/ai-specifics-and-publish-result` is NOT in flight — it merged as
 PR #132 on 2026-06-23. Stale journal syncs can misreport it as open.
