@@ -218,7 +218,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       // Key presence (not truthiness): an explicit clear leaves "" under the
       // key and must never be re-seeded — only never-touched aspects seed.
       if (value && aspects[name] && !(name in aspectValues)) {
-        setAspectValue(name, value);
+        setAspectValue(name, [value]);
       }
     }
   }, [aspects, aspectValues, editBrand, editModel, setAspectValue]);

@@ -47,6 +47,15 @@ afterEach(() => {
 });
 
 describe("useScanAspects", () => {
+  it("toggleAspectValue adds and removes a value on a MULTI aspect and keeps arrays per aspect", () => {
+    const { result } = renderHook(() => useScanAspects("AirPods", "AirPods", undefined, "Headphones"));
+    act(() => result.current.toggleAspectValue("Features", "Wireless"));
+    act(() => result.current.toggleAspectValue("Features", "Bluetooth"));
+    expect(result.current.aspectValues.Features).toEqual(["Wireless", "Bluetooth"]);
+    act(() => result.current.toggleAspectValue("Features", "Wireless"));
+    expect(result.current.aspectValues.Features).toEqual(["Bluetooth"]);
+  });
+
   it("resolves the category after the 500ms debounce, not before", async () => {
     mockRoutes();
     const { result, rerender } = renderHook(
@@ -132,9 +141,9 @@ describe("useScanAspects", () => {
     expect(result.current.aspects).toEqual(ASPECTS);
 
     act(() => {
-      result.current.setAspectValue("Brand", "Fender");
+      result.current.setAspectValue("Brand", ["Fender"]);
     });
-    expect(result.current.aspectValues).toEqual({ Brand: "Fender" });
+    expect(result.current.aspectValues).toEqual({ Brand: ["Fender"] });
 
     suggestion = {
       categoryId: "619",
@@ -173,7 +182,7 @@ describe("useScanAspects", () => {
     act(() => {
       result.current.confirmSuggestion("Brand", "Fender");
     });
-    expect(result.current.aspectValues).toEqual({ Brand: "Fender" });
+    expect(result.current.aspectValues).toEqual({ Brand: ["Fender"] });
     // Confirmed aspect names no longer appear in suggestions.
     expect(result.current.suggestions).toEqual({ Color: ["Black"] });
   });
@@ -194,7 +203,7 @@ describe("useScanAspects", () => {
       await vi.advanceTimersByTimeAsync(500);
     });
     // AI value lands directly in the confirmed values (no tap needed)...
-    expect(result.current.aspectValues.Color).toBe("Red");
+    expect(result.current.aspectValues.Color).toEqual(["Red"]);
     // ...flagged AI-sourced for the [AI] tag...
     expect(result.current.aiFilledNames).toContain("Color");
     // ...and no longer a pending suggestion chip.
@@ -217,7 +226,7 @@ describe("useScanAspects", () => {
     expect(result.current.missingRequired).toEqual(["Brand", "Model"]);
 
     act(() => {
-      result.current.setAspectValue("Brand", "Fender");
+      result.current.setAspectValue("Brand", ["Fender"]);
     });
     expect(result.current.missingRequired).toEqual(["Model"]);
   });
@@ -240,7 +249,7 @@ describe("useScanAspects", () => {
     expect(result.current.aspectsBlockPublish).toBe(true);
 
     act(() => {
-      result.current.setAspectValue("Brand", "Fender");
+      result.current.setAspectValue("Brand", ["Fender"]);
     });
     expect(result.current.aspectsBlockPublish).toBe(false);
   });
@@ -256,9 +265,9 @@ describe("useScanAspects", () => {
     });
     const buildAspectsBefore = result.current.buildAspects;
     act(() => {
-      result.current.setAspectValue("Brand", "  Fender ");
-      result.current.setAspectValue("Color", "   ");
-      result.current.setAspectValue("Model", "");
+      result.current.setAspectValue("Brand", ["  Fender "]);
+      result.current.setAspectValue("Color", ["   "]);
+      result.current.setAspectValue("Model", [""]);
     });
     expect(result.current.buildAspects()).toEqual({ Brand: ["Fender"] });
     // Stable useCallback — same function identity across state updates.
@@ -291,7 +300,7 @@ describe("useScanAspects", () => {
     });
     expect(result.current.resolvedCategoryId).toBe("33034");
     act(() => {
-      result.current.setAspectValue("Brand", "Fender");
+      result.current.setAspectValue("Brand", ["Fender"]);
     });
 
     // Next resolution rejects (network blip); the aspects fetch keeps working.
@@ -314,7 +323,7 @@ describe("useScanAspects", () => {
     // (no match) clears the resolved state.
     expect(result.current.isCategoryResolving).toBe(false);
     expect(result.current.resolvedCategoryId).toBe("33034");
-    expect(result.current.aspectValues).toEqual({ Brand: "Fender" });
+    expect(result.current.aspectValues).toEqual({ Brand: ["Fender"] });
   });
 
   it("a failed initial resolution degrades to unresolved with the spinner stopped", async () => {
