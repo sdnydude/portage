@@ -16,7 +16,7 @@ describe('findMissingEnumAspects', () => {
     const aspects = { Brand: ['Boss'] }; // Type missing entirely
 
     expect(findMissingEnumAspects(aspects, requiredAspects)).toEqual([
-      { name: 'Type', values: ['Overdrive', 'Delay', 'Reverb', 'Fuzz'] },
+      { name: 'Type', values: ['Overdrive', 'Delay', 'Reverb', 'Fuzz'], cardinality: 'SINGLE' },
     ]);
   });
 
@@ -29,7 +29,7 @@ describe('findMissingEnumAspects', () => {
     const aspects = { Type: ['Distortion Pedal'], Color: ['black'] };
 
     expect(findMissingEnumAspects(aspects, requiredAspects)).toEqual([
-      { name: 'Type', values: ['Overdrive', 'Delay'] },
+      { name: 'Type', values: ['Overdrive', 'Delay'], cardinality: 'SINGLE' },
     ]);
   });
 });
@@ -57,6 +57,25 @@ describe('pickMissingRequiredAspects', () => {
 
     expect(result).toEqual({ Brand: ['Boss'], Type: ['Overdrive'] });
     expect(vi.mocked(chatText)).toHaveBeenCalledTimes(1);
+  });
+
+  it('fills a missing MULTI-cardinality aspect with every allowed value the pick returns (SINGLE stays one)', async () => {
+    vi.mocked(chatText).mockResolvedValue({
+      text: '{"Features":["wireless","Bluetooth","Levitation"],"Type":["Overdrive","Delay"]}',
+      provider: 'test',
+      model: 'test',
+    });
+
+    const result = await pickMissingRequiredAspects({
+      aspects: {},
+      requiredAspects: {
+        Features: { required: true, values: ['Wireless', 'Bluetooth', 'Foldable'], cardinality: 'MULTI' },
+        Type: { required: true, values: ['Overdrive', 'Delay'], cardinality: 'SINGLE' },
+      } as never,
+      itemContext: { brand: 'Sony', model: 'WH-1000XM4', category: 'headphones', title: 'Sony WH-1000XM4' },
+    });
+
+    expect(result).toEqual({ Features: ['Wireless', 'Bluetooth'], Type: ['Overdrive'] });
   });
 
   it('drops a pick that is not in the allowed enum instead of merging a hallucination', async () => {
