@@ -37,7 +37,7 @@ export function useScanAspects(
   const resolvedIdRef = useRef<string | null>(null);
   const [isCategoryResolving, setIsCategoryResolving] = useState(false);
   const [resolveError, setResolveError] = useState(false);
-  const [aspectValues, setAspectValues] = useState<Record<string, string>>({});
+  const [aspectValues, setAspectValues] = useState<Record<string, string[]>>({});
   // Names whose current value was auto-filled from the AI scan and not yet edited
   // by the seller — drives the [AI] provenance tag on the filled field.
   const [aiFilledNames, setAiFilledNames] = useState<string[]>([]);
@@ -52,9 +52,19 @@ export function useScanAspects(
     setAiFilledNames([]);
   }, [resolvedCategoryId]);
 
-  const setAspectValue = useCallback((name: string, value: string) => {
-    setAspectValues((prev) => ({ ...prev, [name]: value }));
+  const setAspectValue = useCallback((name: string, values: string[]) => {
+    setAspectValues((prev) => ({ ...prev, [name]: values }));
     // A manual edit makes the value seller-owned — drop its [AI] tag.
+    setAiFilledNames((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : prev));
+  }, []);
+
+  // MULTI-cardinality aspects toggle a single value in/out of the array
+  // instead of replacing the whole selection.
+  const toggleAspectValue = useCallback((name: string, value: string) => {
+    setAspectValues((prev) => {
+      const cur = prev[name] ?? [];
+      return { ...prev, [name]: cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value] };
+    });
     setAiFilledNames((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : prev));
   }, []);
 
@@ -62,9 +72,16 @@ export function useScanAspects(
   // changes; aspect names already confirmed in aspectValues are excluded.
   // Deterministic text-matched seeds remain tap-to-confirm chips for aspects the
   // AI did NOT fill (lower-confidence regex matches); AI values auto-fill above.
+  // aspect-seeding.ts predates multi-value support and still speaks single
+  // strings — project the array state down to its first value (or "") for
+  // that library's "already confirmed" check; it only cares whether the
+  // projected string is non-empty, not its exact content.
   const suggestions = useMemo(() => {
     const seeded = suggestAspectValues(itemText, aspects);
-    return mergeAspectSuggestions(aiAspects, seeded, aspects, aspectValues).suggestions;
+    const confirmedAsStrings = Object.fromEntries(
+      Object.entries(aspectValues).map(([name, values]) => [name, values[0] ?? ""]),
+    );
+    return mergeAspectSuggestions(aiAspects, seeded, aspects, confirmedAsStrings).suggestions;
   }, [itemText, aspects, aspectValues, aiAspects]);
 
   // Ref-backed so buildAspects keeps a stable identity across renders while
@@ -78,16 +95,25 @@ export function useScanAspects(
   // than as tap-to-confirm chips. Idempotent: autoFillFromAi only returns names
   // not already present, so once filled there's nothing to add and it no-ops.
   useEffect(() => {
-    const { values, aiNames } = autoFillFromAi(aiAspects, aspects, aspectValuesRef.current);
+    // Same single-string bridge as the suggestions memo above — autoFillFromAi
+    // only checks key presence ("name in current") to skip seller/seed-set
+    // aspects, so the projected string's content doesn't matter, only its key.
+    const currentAsStrings = Object.fromEntries(
+      Object.entries(aspectValuesRef.current).map(([name, values]) => [name, values[0] ?? ""]),
+    );
+    const { values, aiNames } = autoFillFromAi(aiAspects, aspects, currentAsStrings);
     if (aiNames.length === 0) return;
-    setAspectValues((prev) => ({ ...prev, ...values }));
+    const arrayValues = Object.fromEntries(
+      Object.entries(values).map(([name, value]) => [name, [value]]),
+    );
+    setAspectValues((prev) => ({ ...prev, ...arrayValues }));
     setAiFilledNames((prev) => [...new Set([...prev, ...aiNames])]);
   }, [aspects, aiAspects]);
   const buildAspects = useCallback(() => {
     const built: Record<string, string[]> = {};
-    for (const [name, value] of Object.entries(aspectValuesRef.current)) {
-      const trimmed = value.trim();
-      if (trimmed !== "") built[name] = [trimmed];
+    for (const [name, values] of Object.entries(aspectValuesRef.current)) {
+      const trimmed = values.map((v) => v.trim()).filter((v) => v !== "");
+      if (trimmed.length > 0) built[name] = trimmed;
     }
     return built;
   }, []);
@@ -97,7 +123,7 @@ export function useScanAspects(
       Object.entries(aspects)
         .filter(
           ([name, aspect]) =>
-            aspect.required && (aspectValues[name] ?? "").trim() === "",
+            aspect.required && (aspectValues[name] ?? []).every((v) => v.trim() === ""),
         )
         .map(([name]) => name),
     [aspects, aspectValues],
@@ -107,7 +133,7 @@ export function useScanAspects(
   // above then drops the name automatically (confirmed names are excluded).
   const confirmSuggestion = useCallback(
     (name: string, value: string) => {
-      setAspectValue(name, value);
+      setAspectValue(name, [value]);
     },
     [setAspectValue],
   );
@@ -230,6 +256,7 @@ export function useScanAspects(
     aspects,
     aspectValues,
     setAspectValue,
+    toggleAspectValue,
     suggestions,
     aiFilledNames,
     confirmSuggestion,
