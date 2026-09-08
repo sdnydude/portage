@@ -5,7 +5,11 @@ import { ScanFlow } from "./scan-flow";
 // ─── Heavy children / browser-API hooks mocked; wiring under test is real ───
 
 vi.mock("@/hooks/use-auth", () => ({
-  useAuth: () => ({ token: "test-token" }),
+  useAuth: () => ({ token: "test-token", user: { email: "s@x.com" } }),
+}));
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
 }));
 
 const camHolder = vi.hoisted(() => ({ props: null as null | { onCapture: (f: File) => void; onClose: () => void } }));
@@ -69,7 +73,7 @@ const scanAspectsState = {
   isCategoryResolving: false,
   isAspectsLoading: false,
   aspects: {} as Record<string, { required: boolean; values: string[] | null }>,
-  aspectValues: {} as Record<string, string>,
+  aspectValues: {} as Record<string, string[]>,
   setAspectValue: vi.fn(),
   suggestions: {} as Record<string, string[]>,
   confirmSuggestion: vi.fn(),
@@ -92,7 +96,8 @@ vi.mock("@/hooks/use-scan-aspects", () => ({
 
 const apiMock = vi.fn();
 const apiUploadMock = vi.fn();
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   API_BASE: "http://test-api",
   api: (...args: unknown[]) => apiMock(...args),
   apiUpload: (...args: unknown[]) => apiUploadMock(...args),
@@ -146,6 +151,14 @@ async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: 
   fireEvent.change(screen.getByLabelText("Price (USD)"), { target: { value: "75" } });
   return view;
 }
+
+describe("ScanFlow — header cluster", () => {
+  it("carries the theme toggle and user menu", () => {
+    render(<ScanFlow onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+  });
+});
 
 describe("ScanFlow review wiring", () => {
   beforeEach(() => {
@@ -524,8 +537,8 @@ describe("ScanFlow review wiring", () => {
 
     await renderInReview();
 
-    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Brand", "Fender");
-    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Model", "Stratocaster");
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Brand", ["Fender"]);
+    expect(scanAspectsState.setAspectValue).toHaveBeenCalledWith("Model", ["Stratocaster"]);
   });
 
   it("never re-seeds an aspect the seller explicitly cleared or already set", async () => {
@@ -533,8 +546,8 @@ describe("ScanFlow review wiring", () => {
       Brand: { required: true, values: null },
       Model: { required: false, values: null },
     };
-    // Brand cleared by the seller (empty string under the key); Model set by hand.
-    scanAspectsState.aspectValues = { Brand: "", Model: "Custom Shop" };
+    // Brand cleared by the seller (empty array under the key); Model set by hand.
+    scanAspectsState.aspectValues = { Brand: [], Model: ["Custom Shop"] };
 
     await renderInReview();
 

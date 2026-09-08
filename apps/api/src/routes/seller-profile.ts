@@ -83,6 +83,12 @@ const updateSchema = z.object({
   bestOfferAutoAcceptEnabled: z.boolean().optional(),
   gtcAutoEnd: z.boolean().optional(),
   defaultListingFooter: z.string().max(2000).nullable().optional(),
+  // Gap 3 (2026-09-06 truth table): every Portage revise otherwise overwrites
+  // eBay's stored Return Policy/DispatchTimeMax with the Trading builder's
+  // hardcoded ReturnsNotAccepted/1-day defaults.
+  ebayReturnsAccepted: z.boolean().optional(),
+  ebayReturnDays: z.union([z.literal(14), z.literal(30), z.literal(60)]).optional(),
+  ebayHandlingDays: z.number().int().min(1).max(5).optional(),
 }).refine(data => Object.keys(data).length > 0, { error: 'At least one field required' });
 
 sellerProfileRouter.patch('/', async (req, res, next) => {

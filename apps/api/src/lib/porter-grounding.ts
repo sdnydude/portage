@@ -58,12 +58,17 @@ export function validateGrounding(text: string, titles: string[]): void {
     // must appear in the longer, and a partial match needs ≥2 words — a lone
     // generic word ("guitar") inside a real title must not ground (A5).
     const nameWords = normName.split(' ');
+    // Titles that themselves contain commas ("NEW, never Used, Marshall …")
+    // split into a bare first segment; the whole entry line is the fallback
+    // (live false positive 2026-09-06 discarded a correct reply).
+    const bodyWords = normalize(body.replace(/\*\*|__|\*/g, '')).split(' ');
     const grounded = normTitles.some(t => {
       if (t === normName) return true;
       const titleWords = t.split(' ');
       const nameInTitle = nameWords.length >= 2 && nameWords.every(w => titleWords.includes(w));
       const titleInName = titleWords.length >= 2 && titleWords.every(w => nameWords.includes(w));
-      return nameInTitle || titleInName;
+      const titleInBody = titleWords.length >= 2 && titleWords.every(w => bodyWords.includes(w));
+      return nameInTitle || titleInName || titleInBody;
     });
     if (!grounded) {
       throw new Error(`Ungrounded item in Porter reply: "${name}" not in tool results`);

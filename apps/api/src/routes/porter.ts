@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, desc, and, ilike, sql } from 'drizzle-orm';
+import { inventorySearchConditions, fuzzyTitleCondition, fuzzyTitleOrder } from '../lib/porter-search.js';
 import { createLogger } from '../lib/logger.js';
 import { db } from '../db/index.js';
 import { conversations, items, listings, users } from '../db/schema.js';
@@ -29,6 +30,14 @@ When users ask about items, use the search_inventory tool. When they ask about i
 
 Always be direct and actionable. If you don't know something, say so.
 
+## About Portage (facts you may state; if a question is not covered here, say you don't know)
+- Portage is a personal inventory and multi-marketplace seller app. Bottom bar: Home, Inventory, Porter (you), Orders, with the center Scan button. Listings are reached from Home or Inventory. Settings, seller profile, marketplace connections, billing, and the sync log are under the avatar menu (More).
+- Scan: the seller photographs an item; the AI identifies it (name, brand, model, condition, description, eBay item specifics, packaged weight and box size); the Review screen lets them edit everything; Save stores it in Inventory; Save & List also creates the eBay listing (draft or live per their setting).
+- Marketplaces: eBay (live) and Reverb (music gear). Publish from the item page. Editing an item in Portage (title, description, price, quantity, condition, condition notes, photos, item specifics) syncs to its live listings automatically; the badge on the item's listing card shows Syncing / Synced / Sync failed with Retry; Settings → Sync log has the history.
+- Orders: the Orders tab lists eBay and Reverb sales; shipping labels are created on eBay.
+- Item edit page: title, description, condition, price, status, category (eBay category lookup), condition notes, brand, model, weight and dimensions, item specifics, photos.
+- Porter tools: search the seller's inventory by words in title, brand, model, or description; inventory totals and category counts; a listing suggestion for one item.
+
 Never begin a response with "Thank you", "Thanks for", "Great question", or similar acknowledgments. Start with the answer.
 
 ## Answering inventory searches
@@ -55,7 +64,7 @@ const tools: ToolDef[] = [
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Search query to match against item titles' },
+        query: { type: 'string', description: 'Words to match against item title, brand, model and description (every word must match; use the brand or model number the user gave, not a sentence)' },
         category: { type: 'string', description: 'Filter by category' },
         condition: { type: 'string', enum: ['new', 'like_new', 'good', 'fair', 'poor'], description: 'Filter by condition' },
       },
@@ -97,8 +106,11 @@ async function runToolCall(userId: string, name: string, input: Record<string, u
       const runSearch = async (query: string | undefined) => {
         const conditions = [eq(items.userId, userId)];
         if (query) {
-          const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-          conditions.push(ilike(items.title, `%${escaped}%`));
+          // Word-level match across title/brand/model/description (live
+          // 2026-09-06: the whole-query title substring missed everything
+          // with a hyphen, an extra word, or a brand-only phrasing).
+          const wordMatch = inventorySearchConditions(query);
+          if (wordMatch) conditions.push(wordMatch);
         }
         if (input.category) conditions.push(eq(items.category, input.category as string));
         if (input.condition) conditions.push(eq(items.condition, input.condition as 'new' | 'like_new' | 'good' | 'fair' | 'poor'));
@@ -129,6 +141,36 @@ async function runToolCall(userId: string, name: string, input: Record<string, u
         const singular = await runSearch(query.trim().replace(/s$/i, ''));
         const seen = new Set(results.map(r => r.id));
         results = [...results, ...singular.filter(r => !seen.has(r.id))].slice(0, 10);
+      }
+
+      // Typo tolerance (pg_trgm, operator 2026-09-08): word matching missed
+      // entirely finds a trigram-similarity fallback ordered by closeness.
+      if (query && results.length === 0) {
+        const fuzzy = fuzzyTitleCondition(query);
+        if (fuzzy) {
+          const fuzzyConditions = [eq(items.userId, userId), fuzzy];
+          if (input.category) fuzzyConditions.push(eq(items.category, input.category as string));
+          if (input.condition) fuzzyConditions.push(eq(items.condition, input.condition as 'new' | 'like_new' | 'good' | 'fair' | 'poor'));
+
+          const fuzzyResults = await db.select({
+            id: items.id,
+            title: items.title,
+            category: items.category,
+            condition: items.condition,
+            brand: items.brand,
+            model: items.model,
+            estimatedValueMin: items.estimatedValueMin,
+            estimatedValueMax: items.estimatedValueMax,
+            estimatedValueRecommended: items.estimatedValueRecommended,
+          })
+            .from(items)
+            .where(and(...fuzzyConditions))
+            .orderBy(fuzzyTitleOrder(query))
+            .limit(10);
+
+          const seen = new Set(results.map(r => r.id));
+          results = [...results, ...fuzzyResults.filter(r => !seen.has(r.id))].slice(0, 10);
+        }
       }
 
       if (results.length === 0) return 'No items found matching your criteria.';

@@ -730,7 +730,7 @@ export function ListingCard({ listing, token, onChanged, highlight, itemBrand, i
       {listing.status === "active" && (
         <button
           onClick={() => setShowArchiveConfirm(true)}
-          className="w-full mt-2 py-2 rounded-xl border border-amber-300 text-amber-600 dark:text-amber-400 text-sm font-medium"
+          className="w-full mt-2 py-2 rounded-xl border border-amber-300 text-amber-700 dark:text-amber-400 text-sm font-medium"
         >
           Archive Listing
         </button>

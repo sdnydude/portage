@@ -159,6 +159,17 @@ describe('EbayAdapter.createListing — guards before any eBay API call', () => 
     } as any);
     expect(tradingXml()).toContain('<Quantity>7</Quantity>');
   });
+
+  it('reads the seller return policy and handling days from marketplaceSpecific.sellerReturns (gap 3)', async () => {
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput,
+      marketplaceSpecific: { ...tradingSetup, sellerReturns: { returnsAccepted: true, returnDays: 30, handlingDays: 3 } },
+    } as any);
+    const xml = tradingXml();
+    expect(xml).toContain('<ReturnPolicy><ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption><ReturnsWithinOption>Days_30</ReturnsWithinOption><ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption></ReturnPolicy>');
+    expect(xml).toContain('<DispatchTimeMax>3</DispatchTimeMax>');
+  });
 });
 
 describe('EbayAdapter.createListing — BrandMPN (error 25002) handling', () => {
@@ -1513,6 +1524,19 @@ describe('EbayAdapter.getItemDetail — GetItem inventory backfill for orphan or
     expect(detail.price).toBe(399);
     expect(detail.brand).toBe('Shure');
     expect(detail.aspects.Brand).toEqual(['Shure']);
+  });
+
+  it('returns description from Item.Description (gap 6)', async () => {
+    const GET_ITEM_WITH_DESCRIPTION =
+      '<?xml version="1.0"?><GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents">' +
+      '<Ack>Success</Ack><Item><ItemID>306972688941</ItemID><Description>Excellent condition, no scratches.</Description></Item></GetItemResponse>';
+    fetchMock.mockImplementation(async (url: unknown) =>
+      isTradingCall(url) ? new Response(GET_ITEM_WITH_DESCRIPTION, { status: 200 }) : new Response('{}', { status: 200 }));
+    const adapter = new EbayAdapter('user-1');
+
+    const detail = await adapter.getItemDetail('306972688941');
+
+    expect(detail.description).toBe('Excellent condition, no scratches.');
   });
 });
 

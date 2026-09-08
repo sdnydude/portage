@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 interface Address {
   street1: string;
@@ -92,7 +93,8 @@ export default function ProfilePage() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <h1 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">Profile</h1>
+          <h1 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary flex-1">Profile</h1>
+          <HeaderActions />
         </div>
       </header>
 

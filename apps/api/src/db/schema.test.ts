@@ -87,3 +87,17 @@ describe('schema — sync_jobs outbox (sync refactor P2)', () => {
     expect(syncJobs.lastError.notNull).toBe(false);
   });
 });
+
+// eBay sync gap 3 (2026-09-06 truth table): every Portage revise otherwise
+// overwrites eBay's stored Return Policy/DispatchTimeMax with the Trading
+// builder's hardcoded ReturnsNotAccepted/1-day defaults.
+describe('schema — seller_profiles eBay return policy + handling days (gap 3)', () => {
+  it('adds ebayReturnsAccepted, ebayReturnDays, and ebayHandlingDays columns', () => {
+    expect(sellerProfiles.ebayReturnsAccepted).toBeDefined();
+    expect(sellerProfiles.ebayReturnsAccepted.notNull).toBe(true);
+    expect(sellerProfiles.ebayReturnDays).toBeDefined();
+    expect(sellerProfiles.ebayReturnDays.notNull).toBe(true);
+    expect(sellerProfiles.ebayHandlingDays).toBeDefined();
+    expect(sellerProfiles.ebayHandlingDays.notNull).toBe(true);
+  });
+});

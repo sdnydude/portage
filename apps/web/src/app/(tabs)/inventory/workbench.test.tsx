@@ -19,15 +19,23 @@ vi.mock("@/hooks/use-auth", () => ({
 vi.mock("@/hooks/use-messages", () => ({
   useUnreadCount: () => ({ count: 0 }),
 }));
-const useItemsMock = vi.fn(() => ({
+const useItemsMock = vi.fn<
+  (opts?: { limit?: number; offset?: number }) => {
+    items: typeof h.items;
+    total: number;
+    isLoading: boolean;
+    error: string | null;
+    refetch: () => void;
+  }
+>(() => ({
   items: h.items,
   total: 2,
   isLoading: false,
-  error: null as string | null,
+  error: null,
   refetch: vi.fn(),
 }));
 vi.mock("@/hooks/use-items", () => ({
-  useItems: () => useItemsMock(),
+  useItems: (opts?: { limit?: number; offset?: number }) => useItemsMock(opts),
   useItemCategories: () => ({ categories: [], refetch: vi.fn() }),
 }));
 vi.mock("@/hooks/use-export", () => ({
@@ -250,5 +258,29 @@ describe("Inventory workbench (lg master-detail)", () => {
     const grid = within(workbench).getByRole("button", { name: /strat/i }).parentElement!;
     expect(grid.className).toContain("grid-cols-2");
     expect(grid.className).not.toMatch(/(?:md|xl):grid-cols/);
+  });
+
+  it("passes limit/offset from the pager to useItems and resets to page 1 when the page size changes", () => {
+    useItemsMock.mockReturnValue({ items: [], total: 201, isLoading: false, error: null, refetch: vi.fn() });
+    render(<InventoryPage />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Next page" })[0]);
+    const select = screen.getAllByLabelText("Items per page")[0];
+    fireEvent.change(select, { target: { value: "100" } });
+    const lastCall = useItemsMock.mock.calls.at(-1)?.[0] as { limit?: number; offset?: number };
+    expect(lastCall.limit).toBe(100);
+    expect(lastCall.offset).toBe(0);
+  });
+
+  it("shows the pager in the workbench list pane", () => {
+    useItemsMock.mockReturnValue({ items: h.items, total: 201, isLoading: false, error: null, refetch: vi.fn() });
+    render(<InventoryPage />);
+    const workbench = screen.getByTestId("workbench");
+    expect(within(workbench).getByLabelText("Items per page")).toBeInTheDocument();
+  });
+
+  it("hides the pager when there are no items", () => {
+    useItemsMock.mockReturnValueOnce({ items: [], total: 0, isLoading: false, error: null, refetch: vi.fn() });
+    render(<InventoryPage />);
+    expect(screen.queryByLabelText("Items per page")).not.toBeInTheDocument();
   });
 });

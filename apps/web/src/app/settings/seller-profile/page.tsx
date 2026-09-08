@@ -387,6 +387,49 @@ export default function SellerProfilePage() {
       </section>
 
       <section className="rounded-xl p-4 space-y-3 bg-surface border border-border">
+        <h2 className="text-lg font-semibold">Returns &amp; Handling</h2>
+        <p className="text-xs text-text-placeholder">
+          Every eBay listing edit otherwise resets these to no-returns and 1-day handling — set your defaults here.
+        </p>
+        <label className="flex items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={profile.ebayReturnsAccepted ?? false}
+            onChange={e => updateField("ebayReturnsAccepted", e.target.checked)}
+            className="rounded"
+            aria-label="Returns accepted"
+          />
+          <span>Accept returns on eBay listings</span>
+        </label>
+        <label className="block text-sm">
+          <span className="font-medium mb-1 block">Return window</span>
+          <select
+            value={profile.ebayReturnDays ?? 30}
+            onChange={e => updateField("ebayReturnDays", Number(e.target.value))}
+            aria-label="Return window"
+            className="w-full rounded-lg border border-border bg-background text-text-primary px-3 py-2 text-sm"
+          >
+            <option value={14}>14 days</option>
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="font-medium mb-1 block">Handling time</span>
+          <select
+            value={profile.ebayHandlingDays ?? 1}
+            onChange={e => updateField("ebayHandlingDays", Number(e.target.value))}
+            aria-label="Handling time"
+            className="w-full rounded-lg border border-border bg-background text-text-primary px-3 py-2 text-sm"
+          >
+            {[1, 2, 3, 4, 5].map(d => (
+              <option key={d} value={d}>{d} business day{d > 1 ? "s" : ""}</option>
+            ))}
+          </select>
+        </label>
+      </section>
+
+      <section className="rounded-xl p-4 space-y-3 bg-surface border border-border">
         <h2 className="text-lg font-semibold">Pricing</h2>
         <p className="text-xs text-text-placeholder">
           Suggested prices come from sold-comp percentiles. 50 = market median (with a small undercut); higher aims for top dollar, lower moves items faster.

@@ -28,6 +28,7 @@ import {
   type PortageCondition,
 } from "@/lib/ebay-condition-map";
 import type { RecognitionCandidate, CompResult, ScanProvenance } from "@portage/shared";
+import { HeaderActions } from "@/components/layout/header-actions";
 import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 import { withKeys } from "@/lib/list-keys";
 
@@ -217,7 +218,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
       // Key presence (not truthiness): an explicit clear leaves "" under the
       // key and must never be re-seeded — only never-touched aspects seed.
       if (value && aspects[name] && !(name in aspectValues)) {
-        setAspectValue(name, value);
+        setAspectValue(name, [value]);
       }
     }
   }, [aspects, aspectValues, editBrand, editModel, setAspectValue]);
@@ -882,7 +883,7 @@ export function ScanFlow({ onClose }: ScanFlowProps) {
           {state === "review" && "Review"}
           {state === "saving" && "Saving..."}
         </h2>
-        <div className="w-10" />
+        <HeaderActions />
       </header>
 
       {/* ─── CAPTURE STATE ─────────────────────────────────────────────── */}
