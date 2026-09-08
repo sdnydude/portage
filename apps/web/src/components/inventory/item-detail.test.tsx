@@ -24,8 +24,9 @@ const h = vi.hoisted(() => ({
 const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: vi.fn(), back: vi.fn() }),
+  usePathname: () => "/inventory/i1",
 }));
-vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true, token: "t" }) }));
+vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ isAuthenticated: true, token: "t", user: { email: "s@x.com" } }) }));
 vi.mock("@/hooks/use-item", () => ({
   useItem: () => ({
     item: h.itemError ? null : h.item,
@@ -133,6 +134,25 @@ describe("ItemDetail deep-link highlight timer", () => {
       expect(highlighted()).toBe(false);
     } finally {
       vi.useRealTimers();
+    }
+  });
+});
+
+describe("ItemDetail — header cluster", () => {
+  it("carries the theme toggle and user menu", () => {
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("carries the header cluster on the not-found error page too", () => {
+    h.itemError = "Item not found";
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+    } finally {
+      h.itemError = null;
     }
   });
 });

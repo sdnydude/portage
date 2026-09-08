@@ -5,7 +5,11 @@ import { ScanFlow } from "./scan-flow";
 // ─── Heavy children / browser-API hooks mocked; wiring under test is real ───
 
 vi.mock("@/hooks/use-auth", () => ({
-  useAuth: () => ({ token: "test-token" }),
+  useAuth: () => ({ token: "test-token", user: { email: "s@x.com" } }),
+}));
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
 }));
 
 const camHolder = vi.hoisted(() => ({ props: null as null | { onCapture: (f: File) => void; onClose: () => void } }));
@@ -92,7 +96,8 @@ vi.mock("@/hooks/use-scan-aspects", () => ({
 
 const apiMock = vi.fn();
 const apiUploadMock = vi.fn();
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   API_BASE: "http://test-api",
   api: (...args: unknown[]) => apiMock(...args),
   apiUpload: (...args: unknown[]) => apiUploadMock(...args),
@@ -146,6 +151,14 @@ async function renderInReview(opts?: { onClose?: () => void; listingsResponse?: 
   fireEvent.change(screen.getByLabelText("Price (USD)"), { target: { value: "75" } });
   return view;
 }
+
+describe("ScanFlow — header cluster", () => {
+  it("carries the theme toggle and user menu", () => {
+    render(<ScanFlow onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+  });
+});
 
 describe("ScanFlow review wiring", () => {
   beforeEach(() => {

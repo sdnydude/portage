@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { TUTORIAL_TOPICS } from "@/lib/tutorials";
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 const TOPIC_ICONS: Record<string, React.ReactNode> = {
   setup: (
@@ -71,7 +72,8 @@ export default function TutorialsHubPage() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <h1 className="font-[family-name:var(--font-instrument)] text-lg font-semibold text-text-primary">Tutorials</h1>
+          <h1 className="font-[family-name:var(--font-instrument)] text-lg font-semibold text-text-primary flex-1">Tutorials</h1>
+          <HeaderActions />
         </div>
       </header>
 

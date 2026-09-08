@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getTopic, TUTORIAL_TOPICS } from "@/lib/tutorials";
 import { TutorialPlayer } from "@/components/tutorials/tutorial-player";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 export function generateStaticParams() {
   return TUTORIAL_TOPICS.map((t) => ({ topic: t.slug }));
@@ -25,9 +26,10 @@ export default async function TutorialTopicPage({
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </Link>
-          <h1 className="font-[family-name:var(--font-instrument)] text-lg font-semibold text-text-primary">
+          <h1 className="font-[family-name:var(--font-instrument)] text-lg font-semibold text-text-primary flex-1">
             {topic.title}
           </h1>
+          <HeaderActions />
         </div>
       </header>
       <TutorialPlayer topic={topic} />

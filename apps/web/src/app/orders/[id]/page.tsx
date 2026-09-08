@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -179,7 +180,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <h1 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">
             Order Details
           </h1>
-          <div className="w-12" />
+          <HeaderActions />
         </div>
       </header>
 

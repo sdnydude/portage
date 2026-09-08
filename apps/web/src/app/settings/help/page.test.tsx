@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 
-vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ token: "t" }) }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ back: vi.fn(), push: vi.fn() }) }));
+vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ token: "t", user: { email: "s@x.com" } }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ back: vi.fn(), push: vi.fn() }), usePathname: () => "/settings/help" }));
 
 const apiMock = vi.fn();
 vi.mock("@/lib/api", () => ({ api: (...args: unknown[]) => apiMock(...args), ApiError: class extends Error {} }));
@@ -10,6 +10,17 @@ vi.mock("@/lib/api", () => ({ api: (...args: unknown[]) => apiMock(...args), Api
 import HelpPage from "./page";
 
 beforeEach(() => apiMock.mockReset());
+
+describe("HelpPage — header cluster", () => {
+  it("carries the theme toggle and user menu", async () => {
+    apiMock.mockResolvedValue({ faqs: [] });
+    await act(async () => {
+      render(<HelpPage />);
+    });
+    expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+  });
+});
 
 describe("HelpPage — FAQs from the API", () => {
   it("renders FAQs fetched from GET /faqs instead of a hardcoded list", async () => {

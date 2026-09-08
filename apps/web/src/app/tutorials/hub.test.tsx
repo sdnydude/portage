@@ -5,7 +5,20 @@ import TutorialsHubPage from "./page";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ back: vi.fn(), push: vi.fn() }),
+  usePathname: () => "/tutorials",
 }));
+
+vi.mock("@/hooks/use-auth", () => ({
+  useAuth: () => ({ user: { email: "s@x.com" } }),
+}));
+
+describe("Tutorials hub — header cluster", () => {
+  it("carries the theme toggle and user menu", () => {
+    render(<TutorialsHubPage />);
+    expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+  });
+});
 
 describe("Tutorials hub", () => {
   it("renders a card linking to every tutorial topic", () => {

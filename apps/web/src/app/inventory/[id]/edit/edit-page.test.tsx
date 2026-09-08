@@ -3,13 +3,15 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import EditItemPage from "./page";
 
 const routerBack = vi.fn();
+const routerReplace = vi.fn();
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "i1" }),
-  useRouter: () => ({ push: vi.fn(), back: routerBack, replace: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), back: routerBack, replace: routerReplace }),
+  usePathname: () => "/inventory/i1/edit",
 }));
 
 vi.mock("@/hooks/use-auth", () => ({
-  useAuth: () => ({ isAuthenticated: true, token: "t" }),
+  useAuth: () => ({ isAuthenticated: true, token: "t", user: { email: "s@x.com" } }),
 }));
 
 const updateItemMock = vi.fn().mockResolvedValue({});
@@ -34,11 +36,13 @@ const ITEM = {
   weightEstimated: false,
   photos: [],
 };
+let mockEditItem: typeof ITEM | null = ITEM;
+let mockEditItemError: string | null = null;
 vi.mock("@/hooks/use-item", () => ({
   useItem: () => ({
-    item: ITEM,
+    item: mockEditItem,
     isLoading: false,
-    error: null,
+    error: mockEditItemError,
     updateItem: updateItemMock,
   }),
 }));
@@ -77,6 +81,35 @@ beforeEach(() => {
   updateItemMock.mockClear();
   updateItemMock.mockResolvedValue({});
   routerBack.mockClear();
+  routerReplace.mockClear();
+  mockEditItem = ITEM;
+  mockEditItemError = null;
+});
+
+describe("EditItemPage — header cluster", () => {
+  it("edit page header carries the theme toggle and user menu", () => {
+    render(<EditItemPage />);
+    expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("shows the header cluster on the item-not-found error page too", () => {
+    mockEditItem = null;
+    mockEditItemError = "Item not found";
+    render(<EditItemPage />);
+    expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+  });
+});
+
+describe("EditItemPage — sync gap 2", () => {
+  it("after a save that queued a marketplace sync, goes to the item page (where the sync badge is) instead of back", async () => {
+    updateItemMock.mockResolvedValueOnce({ ...ITEM, price: 80, syncQueued: ["row-1"] });
+    render(<EditItemPage />);
+    fireEvent.change(screen.getByLabelText("Price (USD)"), { target: { value: "80" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/inventory/i1"));
+  });
 });
 
 describe("EditItemPage — marketplace sync warnings (P3 T4)", () => {
