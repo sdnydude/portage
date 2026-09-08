@@ -254,9 +254,13 @@ Analyze the image and return a JSON object with:
     (scratches, scuffs, dents, discoloration, missing or damaged parts) and what
     works. Never hedge — never write "appears to be", "looks", "seems", "may", or
     "likely". Never write "untested", "functionality unknown", "as-is", or any
-    similar disclaimer. If no wear is visible: "No scratches, dents, or wear."
+    similar disclaimer. Never open with "I am selling" or any announcing phrase.
+    If no wear is visible: "No scratches, dents, or wear."
   - description: this text is published verbatim as the eBay listing description,
-    written by the seller in the first person. 150–300 words, plain text (no HTML,
+    written by the seller in the first person. No set length — fully inform the
+    buyer: the key features, the specifications, and a useful summary, as long as
+    that takes, no padding. Hard ceiling 4,000 characters — the field is truncated
+    beyond that, so finish the Specs section well inside it. Plain text (no HTML,
     no special characters, no emoji, no all-caps), short paragraphs, "- " bullets
     for lists. Sections in this order, each starting with its label on its own line:
       Overview — 2–3 sentences: product type, brand, exact model/part number, the
@@ -279,10 +283,12 @@ Analyze the image and return a JSON object with:
         if legible, year/country, mods or repairs; cameras/lenses — mount, shutter
         count if visible, fungus/haze/dust; tools — corded/cordless, battery
         platform, each battery and charger listed.
-    Never: hedging ("appears", "seems", "may"), "untested", "as-is", "no returns",
-    shipping or return terms, marketing adjectives, keyword lists, competitor brand
-    names, copied manufacturer copy, URLs, email, phone, other marketplaces, and
-    no invented specs — if a spec is not visible and not certain for this model, leave it out
+    Never: announcing openers — "I am selling", "I'm selling", "This listing includes",
+    "This listing is for", "Up for sale", "You are looking at" — state the item directly
+    ("Apple AirPods Max, model A2096, in Sky Blue…"); hedging ("appears", "seems", "may"),
+    "untested", "as-is", "no returns", shipping or return terms, marketing adjectives,
+    keyword lists, competitor brand names, copied manufacturer copy, URLs, email, phone,
+    other marketplaces, and no invented specs — if a spec is not visible and not certain for this model, leave it out
     (the packaged weight/dimensions fields below are estimates by rule and exempt).
   - brand (string|null), model (string|null), features (string[])
   - mpn (string|null): the Manufacturer Part Number — the real part/SKU number printed on
@@ -318,10 +324,11 @@ export async function identifyItemDetailed(imageBase64: string, mediaType: strin
     'Identify this item with multiple candidates and reasoning.',
     {
       temperature: 0,
-      // 3 candidates × 150–300-word sectioned descriptions + reasoning ≈ 2–3k
-      // tokens; headroom so a long answer never truncates the JSON
+      // 3 candidates × up-to-4,000-char descriptions (the prompt states the
+      // hard character ceiling) ≈ 3k tokens + other fields + reasoning; 8192
+      // leaves headroom so a long answer never truncates the JSON
       // (truncation = 502 + fail-over). Billed on tokens used, not the cap.
-      maxTokens: 6144,
+      maxTokens: 8192,
       validate: schemaValidator([
         { name: 'detailed', schema: DetailedVisionResultSchema },
         { name: 'single', schema: VisionResultSchema },
@@ -361,7 +368,7 @@ RULES:
 - eBay title must be ≤80 characters. Pack keywords: Brand + Model + Key Attributes + Condition hint
 - Fill EVERY required item specific. When a specific provides a list of allowed values, you MUST output the closest-matching value FROM THAT LIST — map the item to the best fit (e.g. an external SSD → "Portable External SSD", a hand tool → its closest "Type"). Never leave a required specific blank, never output "N/A" when the list has any reasonable match, and never invent a value that is not in the provided list. Only use "N/A" for a free-text specific (no allowed list) you genuinely cannot determine.
 - Cardinality: each specific carries "cardinality". For "SINGLE" output exactly one value. For "MULTI" (e.g. Features, Connectivity, Compatible Model) output an array of EVERY value from its allowed list that applies to this item — cross-check the scan's features list and the photos; a MULTI specific with one value when several apply is wrong. Fill a MULTI specific even when it is not required if any listed value applies.
-- Description: 150–300 words, plain text (no HTML, special characters, emoji, or all-caps), written by the seller in the first person, sections in this order each starting with its label on its own line — Overview (2–3 sentences that stand alone: type, brand, exact model/part number, defining specs, condition in a few words, what is included), Condition (specific per-surface wear from the photos; "No scratches, dents, or wear." if none), Function (stated as fact; a Used item is fully operational per eBay's condition definition), Included (everything visible; note what is normally included but absent), Specs (4–8 "- " bullets of the specs a buyer searches for on this model; category extras: electronics storage/firmware/battery health/unlock; audio gear serial/year/mods; cameras mount/shutter count/fungus/haze; tools corded-cordless/battery platform/each battery and charger). Never: hedging, "untested", "as-is", "no returns", shipping/return terms, marketing adjectives, keyword lists, competitor brands, copied manufacturer copy, URLs, contact details, other marketplaces, invented specs (the packaged weight/dimensions fields are estimates by rule and exempt).
+- Description: no set length — fully inform the buyer: the key features, the specifications, and a useful summary, as long as that takes, no padding. Hard ceiling 4,000 characters — the field is truncated beyond that, so finish the Specs section well inside it. Plain text (no HTML, special characters, emoji, or all-caps), written by the seller in the first person, sections in this order each starting with its label on its own line — Overview (2–3 sentences that stand alone: type, brand, exact model/part number, defining specs, condition in a few words, what is included), Condition (specific per-surface wear from the photos; "No scratches, dents, or wear." if none), Function (stated as fact; a Used item is fully operational per eBay's condition definition), Included (everything visible; note what is normally included but absent), Specs (4–8 "- " bullets of the specs a buyer searches for on this model; category extras: electronics storage/firmware/battery health/unlock; audio gear serial/year/mods; cameras mount/shutter count/fungus/haze; tools corded-cordless/battery platform/each battery and charger). Never: announcing openers ("I am selling", "I'm selling", "This listing includes", "This listing is for", "Up for sale", "You are looking at" — state the item directly), hedging, "untested", "as-is", "no returns", shipping/return terms, marketing adjectives, keyword lists, competitor brands, copied manufacturer copy, URLs, contact details, other marketplaces, invented specs (the packaged weight/dimensions fields are estimates by rule and exempt).
 - Condition description is written by the seller in the first person ("I", "my") as statements of fact about physical condition and function: specific wear visible in photos (scratches, scuffs, dents, patina, missing parts) and what works. Never hedge — never "appears to be", "looks", "seems", "may", "likely". Never "untested", "functionality unknown", "as-is", or any similar disclaimer.
 - If no wear is visible, say "No scratches, dents, or wear."
 - Price suggestion should target slightly below sold median for faster sale
@@ -462,8 +469,9 @@ export async function identifyItemsMulti(
 
   const { text, provider, model, fallbacks } = await analyzeImages(images, DETAILED_SYSTEM_PROMPT, prompt, {
     temperature: 0,
-    // See identifyItemDetailed: headroom for 3 full-description candidates.
-    maxTokens: 6144,
+    // Same shape as identifyItemDetailed: 3 candidates × up-to-4,000-char
+    // descriptions (the prompt states the hard character ceiling) + reasoning.
+    maxTokens: 8192,
     validate: schemaValidator([
       { name: 'detailed', schema: DetailedVisionResultSchema },
       { name: 'single', schema: VisionResultSchema },
