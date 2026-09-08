@@ -8,6 +8,7 @@ import { ViewControls } from "@/components/inventory/view-controls";
 import { ItemCard } from "@/components/inventory/item-card";
 import { BulkActionBar } from "@/components/inventory/bulk-action-bar";
 import { ExportActionSheet } from "@/components/inventory/export-action-sheet";
+import { Pager, type PageSize } from "@/components/inventory/pager";
 import { useItems, useItemCategories } from "@/hooks/use-items";
 import type { Item } from "@/hooks/use-items";
 import { useAuth } from "@/hooks/use-auth";
@@ -199,6 +200,8 @@ export default function InventoryPage() {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState<PageSize>(50);
+  const [page, setPage] = useState(1);
 
   // Category update modal state
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -207,7 +210,16 @@ export default function InventoryPage() {
   // Export action sheet state
   const [showExportSheet, setShowExportSheet] = useState(false);
 
-  const { items, total, isLoading, error, refetch } = useItems({ search, category, status });
+  // Filters change → back to page 1.
+  useEffect(() => { setPage(1); }, [search, category, status]);
+
+  const { items, total, isLoading, error, refetch } = useItems({
+    search,
+    category,
+    status,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  });
   const { categories, refetch: refetchCategories } = useItemCategories();
   const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<typeof items[number]>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -425,6 +437,9 @@ export default function InventoryPage() {
               onToggle={toggle}
             />
           )}
+          {!isLoading && !error && total > 0 && (
+            <Pager page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} />
+          )}
         </div>
       </div>
 
@@ -570,6 +585,9 @@ export default function InventoryPage() {
                 selectedId={selectedId}
                 pane
               />
+            )}
+            {!isLoading && !error && total > 0 && (
+              <Pager page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} />
             )}
           </div>
           </DesktopIngestPanel>
