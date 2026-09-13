@@ -1,4 +1,4 @@
-import { identifyItem, identifyItemDetailed, identifyItemsMulti, generateListingFields } from './vision.js';
+import { identifyItem, identifyItemDetailed, identifyItemsMulti, generateListingFields, filterAspectsToAllowed } from './vision.js';
 import { AppError } from '../middleware/error.js';
 
 vi.mock('./ai-client.js', () => ({
@@ -891,5 +891,29 @@ describe('generateListingFields', () => {
     });
 
     expect(result.ebay?.aspects).toEqual({ Brand: ['Sony'], Type: ['Canal Earbud (In Ear Canal)'] });
+  });
+});
+
+describe('filterAspectsToAllowed', () => {
+  // Adapter review 2026-09-13: FREE_TEXT aspects ship aspectValues as
+  // suggestions; only SELECTION_ONLY lists are closed. Same rule as the
+  // Trading gate in ebay-adapter.ts so the prefill path cannot diverge.
+  it('filters SELECTION_ONLY values to eBay casing but leaves FREE_TEXT values alone even when suggestions exist', () => {
+    const out = filterAspectsToAllowed(
+      { Brand: ['Cloud Microphones'], 'Preamp Type': ['tube', 'Hybrid'] },
+      {
+        Brand: { values: ['Shure', 'Sony'], mode: 'FREE_TEXT' },
+        'Preamp Type': { values: ['Tube', 'Solid State'], mode: 'SELECTION_ONLY' },
+      },
+    );
+    expect(out).toEqual({ Brand: ['Cloud Microphones'], 'Preamp Type': ['Tube'] });
+  });
+
+  it('matches SELECTION_ONLY values across Unicode composition (decomposed input, composed eBay value)', () => {
+    const out = filterAspectsToAllowed(
+      { Country: ['Curaçao'] },                 // c + combining cedilla (NFD)
+      { Country: { values: ['Curaçao'], mode: 'SELECTION_ONLY' } }, // ç precomposed (NFC)
+    );
+    expect(out).toEqual({ Country: ['Curaçao'] });
   });
 });

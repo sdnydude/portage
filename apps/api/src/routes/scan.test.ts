@@ -236,6 +236,24 @@ describe('POST /scan/refine', () => {
     expect(res.status).toBe(400);
   });
 
+  // Rescan-from-inventory: eBay-imported items carry i.ebayimg.com photos
+  // (146 in prod on 2026-09-13). Fixed-host allowlist keeps the SSRF posture.
+  it('accepts eBay-hosted photo URLs (i.ebayimg.com) alongside R2', async () => {
+    mockUserSelect();
+    mockUpdateReturns();
+    vi.mocked(fetchPhotosAsBase64).mockResolvedValue([{ base64: 'img1', mediaType: 'image/jpeg' }]);
+    vi.mocked(identifyItemsMulti).mockResolvedValue({ candidates: [candidate()], reasoning: [] });
+    vi.mocked(prefillCandidateAspects).mockImplementation(async (c) => ({ candidates: c }));
+
+    const res = await request(app)
+      .post('/scan/refine')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ imageUrls: ['https://i.ebayimg.com/images/g/abc/s-l1600.jpg'] });
+
+    expect(res.status).toBe(201);
+    expect(vi.mocked(fetchPhotosAsBase64)).toHaveBeenCalledWith(['https://i.ebayimg.com/images/g/abc/s-l1600.jpg'], 3);
+  });
+
   it('rejects empty imageUrls array', async () => {
     const res = await request(app)
       .post('/scan/refine')

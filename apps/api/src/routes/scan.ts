@@ -175,10 +175,14 @@ function buildRefineSchema() {
       ).min(1).max(3),
     });
   }
+  // Fixed-host allowlist (SSRF guard): our R2 origin plus eBay's image CDN,
+  // which eBay-imported items carry in items.photos. Rescan-from-inventory
+  // must read those too.
+  const allowedPrefixes = [r2Prefix, 'https://i.ebayimg.com/'];
   return z.object({
     imageUrls: z.array(
       z.url().refine(
-        (url) => url.startsWith(r2Prefix),
+        (url) => allowedPrefixes.some((p) => url.startsWith(p)),
         { error: 'Image URLs must reference the application storage origin' },
       ),
     ).min(1).max(3),
