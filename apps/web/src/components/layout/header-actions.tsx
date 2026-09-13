@@ -5,12 +5,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { useUnreadCount } from "@/hooks/use-messages";
 import { ThemeToggle } from "@/components/theme-toggle";
 
-/** The always-present header cluster: theme toggle + user menu (avatar → /more). */
+/**
+ * The always-present header cluster: theme toggle + user menu (avatar → /more).
+ * Mobile/tablet only: above lg AppShell's TopBar already carries both controls
+ * on every page, so rendering here too doubled them (advisor 2026-09-13).
+ */
 export function HeaderActions() {
   const { user } = useAuth();
   const { count: unreadCount } = useUnreadCount();
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 lg:hidden">
       <ThemeToggle className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-text-primary" />
       {user && (
         <Link

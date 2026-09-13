@@ -274,6 +274,23 @@ describe("useScanAspects", () => {
     expect(result.current.buildAspects).toBe(buildAspectsBefore);
   });
 
+  // Advisor finding 2026-09-13 (lane E gap): only single-element arrays were
+  // pinned; a MULTI aspect must keep every toggled value, trimmed, blanks dropped.
+  it("buildAspects keeps several values for a MULTI aspect, trimming each and dropping blanks", async () => {
+    mockRoutes();
+    const { result } = renderHook(
+      ({ name, text }) => useScanAspects(name, text),
+      { initialProps: { name: "Sony WH-1000XM4", text: "" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    act(() => {
+      result.current.setAspectValue("Features", [" Wireless", "Bluetooth ", "  ", "Noise Cancelling"]);
+    });
+    expect(result.current.buildAspects()).toEqual({ Features: ["Wireless", "Bluetooth", "Noise Cancelling"] });
+  });
+
   it("degrades gracefully on a null suggestion — nulls, empty conditionIds, no error state", async () => {
     mockRoutes(null);
     const { result } = renderHook(

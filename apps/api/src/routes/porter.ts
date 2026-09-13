@@ -152,24 +152,32 @@ async function runToolCall(userId: string, name: string, input: Record<string, u
           if (input.category) fuzzyConditions.push(eq(items.category, input.category as string));
           if (input.condition) fuzzyConditions.push(eq(items.condition, input.condition as 'new' | 'like_new' | 'good' | 'fair' | 'poor'));
 
-          const fuzzyResults = await db.select({
-            id: items.id,
-            title: items.title,
-            category: items.category,
-            condition: items.condition,
-            brand: items.brand,
-            model: items.model,
-            estimatedValueMin: items.estimatedValueMin,
-            estimatedValueMax: items.estimatedValueMax,
-            estimatedValueRecommended: items.estimatedValueRecommended,
-          })
-            .from(items)
-            .where(and(...fuzzyConditions))
-            .orderBy(fuzzyTitleOrder(query))
-            .limit(10);
+          // The fallback needs pg_trgm. A DB without it (fresh install, the
+          // ephemeral e2e stack) throws on word_similarity — degrade to the
+          // word-match result instead of failing the whole turn (advisor
+          // 2026-09-13). Typo tolerance is best-effort, not load-bearing.
+          try {
+            const fuzzyResults = await db.select({
+              id: items.id,
+              title: items.title,
+              category: items.category,
+              condition: items.condition,
+              brand: items.brand,
+              model: items.model,
+              estimatedValueMin: items.estimatedValueMin,
+              estimatedValueMax: items.estimatedValueMax,
+              estimatedValueRecommended: items.estimatedValueRecommended,
+            })
+              .from(items)
+              .where(and(...fuzzyConditions))
+              .orderBy(fuzzyTitleOrder(query))
+              .limit(10);
 
-          const seen = new Set(results.map(r => r.id));
-          results = [...results, ...fuzzyResults.filter(r => !seen.has(r.id))].slice(0, 10);
+            const seen = new Set(results.map(r => r.id));
+            results = [...results, ...fuzzyResults.filter(r => !seen.has(r.id))].slice(0, 10);
+          } catch (err) {
+            logger.warn({ err: (err as Error).message, query }, 'Porter trigram fallback failed — returning word-match results only');
+          }
         }
       }
 

@@ -271,6 +271,19 @@ describe("Inventory workbench (lg master-detail)", () => {
     expect(lastCall.offset).toBe(0);
   });
 
+  // Advisor finding 2026-09-13: a bulk delete on page 2 that shrinks total below
+  // the page start left "51–40 of 40" with an empty page and no way back but
+  // Previous. The page must clamp into range when total shrinks.
+  it("clamps the page back into range when total shrinks below the current page start", () => {
+    useItemsMock.mockReturnValue({ items: [], total: 201, isLoading: false, error: null, refetch: vi.fn() });
+    const { rerender } = render(<InventoryPage />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Next page" })[0]);
+    expect((useItemsMock.mock.calls.at(-1)?.[0] as { offset?: number }).offset).toBe(50);
+    useItemsMock.mockReturnValue({ items: [], total: 40, isLoading: false, error: null, refetch: vi.fn() });
+    rerender(<InventoryPage />);
+    expect((useItemsMock.mock.calls.at(-1)?.[0] as { offset?: number }).offset).toBe(0);
+  });
+
   it("shows the pager in the workbench list pane", () => {
     useItemsMock.mockReturnValue({ items: h.items, total: 201, isLoading: false, error: null, refetch: vi.fn() });
     render(<InventoryPage />);

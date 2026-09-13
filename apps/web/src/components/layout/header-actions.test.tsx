@@ -11,4 +11,12 @@ describe("HeaderActions", () => {
     expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Settings, 2 unread messages" })).toHaveAttribute("href", "/more");
   });
+
+  // Advisor finding 2026-09-13: AppShell renders the desktop TopBar (own theme
+  // toggle + avatar) on every page above lg, so page-owned headers must hide
+  // this cluster there or desktop shows two of each control.
+  it("hides itself at the desktop breakpoint where TopBar already carries the same controls", () => {
+    const { container } = render(<HeaderActions />);
+    expect(container.firstElementChild).toHaveClass("lg:hidden");
+  });
 });

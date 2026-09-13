@@ -400,7 +400,10 @@ function itemBody(input: TradingListingInput): string {
     '<Country>US</Country>' +
     `<Currency>${input.currency}</Currency>` +
     `<PostalCode>${escapeXml(input.shipping.originPostalCode)}</PostalCode>` +
-    `<DispatchTimeMax>${input.handlingDays ?? input.dispatchTimeMax ?? 1}</DispatchTimeMax>` +
+    // Per-listing choice (publish sheet) wins; the seller-profile default only
+    // fills the gap. The profile value is always present (NOT NULL column), so
+    // the reverse order made the per-listing control dead (advisor 2026-09-13).
+    `<DispatchTimeMax>${input.dispatchTimeMax ?? input.handlingDays ?? 1}</DispatchTimeMax>` +
     pictureDetails(input.pictureUrls) +
     itemSpecifics(input.aspects) +
     (input.returnsAccepted

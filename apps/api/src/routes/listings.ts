@@ -113,9 +113,13 @@ function mpnFromAspects(specific: Record<string, unknown> | undefined): string |
  * - Return policy + handling days (gap 3, 2026-09-06 truth table): every Portage
  *   revise otherwise overwrote eBay's stored Return Policy/DispatchTimeMax with
  *   the Trading builder's hardcoded ReturnsNotAccepted/1-day defaults. The
- *   profile's settings ALWAYS win here (a stale `sellerReturns` persisted on the
- *   listing row must not outlive a settings change), read by the Trading builder
- *   (buildTradingInput) on both Add and Revise.
+ *   profile's `sellerReturns` is re-stamped on every call (a stale copy persisted
+ *   on the listing row must not outlive a settings change) and read by the
+ *   Trading builder (buildTradingInput) on both Add and Revise. Precedence in
+ *   the builder: return policy comes from the profile; handling days is
+ *   per-listing-overridable — `ebayShipping.handlingDays` (publish sheet) maps
+ *   to `dispatchTimeMax` and wins, the profile's `handlingDays` only fills the
+ *   gap (see `itemBody` in ebay-trading-builders.ts, 2026-09-13).
  */
 export async function applyShipFromOrigin(
   userId: string,
@@ -988,7 +992,13 @@ listingsRouter.patch('/:id', async (req, res, next) => {
         const syncStartedAt = Date.now();
         try {
           const adapter = getAdapter(userId, updated.marketplace);
-          const [profileRow] = await db.select({ footer: sellerProfiles.defaultListingFooter, shipFromAddress: sellerProfiles.shipFromAddress })
+          const [profileRow] = await db.select({
+            footer: sellerProfiles.defaultListingFooter,
+            shipFromAddress: sellerProfiles.shipFromAddress,
+            ebayReturnsAccepted: sellerProfiles.ebayReturnsAccepted,
+            ebayReturnDays: sellerProfiles.ebayReturnDays,
+            ebayHandlingDays: sellerProfiles.ebayHandlingDays,
+          })
             .from(sellerProfiles)
             .where(eq(sellerProfiles.userId, userId))
             .limit(1);
@@ -1009,6 +1019,20 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             const shipFrom = profileRow?.shipFromAddress as { zip?: string; postalCode?: string } | null | undefined;
             const zip = shipFrom?.zip ?? shipFrom?.postalCode;
             if (zip) syncSpecific = { ...syncSpecific, originPostalCode: zip };
+          }
+          // Gap 3 parity with the item-edit sync (applyShipFromOrigin): a full
+          // Trading revise rebuilds ReturnPolicy/DispatchTimeMax, so the LIVE
+          // profile's return policy + handling days must ride every eBay revise
+          // or a price edit here reverts them to the builder defaults.
+          if (updated.marketplace === 'ebay' && profileRow) {
+            syncSpecific = {
+              ...syncSpecific,
+              sellerReturns: {
+                returnsAccepted: profileRow.ebayReturnsAccepted,
+                returnDays: profileRow.ebayReturnDays,
+                handlingDays: profileRow.ebayHandlingDays,
+              },
+            };
           }
           // Re-enrich on every reverb sync: the LIVE profile owns offersEnabled,
           // so a Settings change after publish propagates on the next edit

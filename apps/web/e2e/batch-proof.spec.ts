@@ -15,7 +15,7 @@ type Theme = "light" | "dark";
 const THEME = (process.env.E2E_THEME === "dark" ? "dark" : "light") as Theme;
 
 /** Force the theme before the app's theme-init script runs (it honours the stored override). */
-async function useTheme(page: Page, theme: Theme) {
+async function forceTheme(page: Page, theme: Theme) {
   await page.addInitScript((t) => {
     try { localStorage.setItem("theme", t); } catch { /* ignore */ }
   }, theme);
@@ -35,10 +35,16 @@ async function expectHeaderCluster(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await installSessionStub(page);
-  await useTheme(page, THEME);
+  await forceTheme(page, THEME);
 });
 
+// The pagination and header walks need the 201-item seed (Task 2.3 harness); the
+// CI stack seeds one item and its auth limiter cannot absorb the extra page
+// loads, so they run only when the orchestrator sets E2E_BATCH_SEED=1.
+const SEEDED = process.env.E2E_BATCH_SEED === "1";
+
 test(`inventory paginates 201 items: page 2 at 25/page, page 3 at 100/page (${THEME})`, async ({ page }) => {
+  test.skip(!SEEDED, "needs the 201-item seed (E2E_BATCH_SEED=1)");
   await page.goto("/inventory");
   const select = page.getByLabel("Items per page").first();
   await expect(select).toBeVisible();
@@ -58,6 +64,7 @@ test(`inventory paginates 201 items: page 2 at 25/page, page 3 at 100/page (${TH
 });
 
 test(`header cluster on inventory, item detail, edit, settings profile, Porter (${THEME})`, async ({ page }) => {
+  test.skip(!SEEDED, "needs the 201-item seed (E2E_BATCH_SEED=1)");
   await page.goto("/inventory");
   await expectHeaderCluster(page);
   await shot(page, `header-inventory-${THEME}.png`);

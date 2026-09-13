@@ -2012,6 +2012,27 @@ describe('PATCH /listings/:id — price change syncs to the live eBay listing', 
     const [, inputArg] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
     expect(inputArg.marketplaceSpecific?.ebayShipping).toEqual(ebayShipping);
   });
+
+  // Advisor finding 2026-09-13: this revise path skipped the gap-3 enrichment,
+  // so a price edit from the Listings page reverted a live listing to
+  // ReturnsNotAccepted / 1-day handling once the seller had enabled returns.
+  it('carries the seller-profile return policy + handling days on a price-change revise (gap 3 parity with item-edit sync)', async () => {
+    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebaySku: 'PRT-000009', currency: 'USD' }]);
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebaySku: 'PRT-000009', price: 162, currency: 'USD', itemId: ITEM_ID, marketplaceSpecificFields: null }]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+    mockSelectOnce([{ ...MOCK_ITEM, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectOnce([{ footer: null, shipFromAddress: { zip: '10001' }, ebayReturnsAccepted: true, ebayReturnDays: 60, ebayHandlingDays: 3 }]); // seller profile
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307022414462', status: 'active' });
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 162 });
+
+    expect(res.status).toBe(200);
+    const [, inputArg] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
+    expect(inputArg.marketplaceSpecific?.sellerReturns).toEqual({ returnsAccepted: true, returnDays: 60, handlingDays: 3 });
+  });
 });
 
 describe('applyReverbEnrichment — additive local pickup (RV-2)', () => {

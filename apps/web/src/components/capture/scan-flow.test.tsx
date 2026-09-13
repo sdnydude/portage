@@ -427,6 +427,24 @@ describe("ScanFlow review wiring", () => {
     expect((itemsCall?.[1] as { body: { price?: number } }).body.price).toBe(65);
   });
 
+  // Advisor finding 2026-09-13 (lane E gap): nothing asserted that a MULTI
+  // aspect's several values reach POST /items intact — a regression that
+  // flattened arrays before the POST passed every test.
+  it("Save sends multi-value aspects to POST /items as arrays, values intact", async () => {
+    scanAspectsState.buildAspects.mockReturnValueOnce({ Features: ["Wireless", "Bluetooth", "Noise Cancelling"], Brand: ["Sony"] });
+    await renderInReview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const itemsCall = await vi.waitFor(() => {
+      const call = apiMock.mock.calls.find(([path]) => path === "/items");
+      expect(call).toBeDefined();
+      return call;
+    });
+    expect((itemsCall?.[1] as { body: { aspects?: Record<string, string[]> } }).body.aspects)
+      .toEqual({ Features: ["Wireless", "Bluetooth", "Noise Cancelling"], Brand: ["Sony"] });
+  });
+
   it("Save persists the vision coarse category under marketplaceData.scan (Tier-2 mismatch guard data)", async () => {
     await renderInReview();
 

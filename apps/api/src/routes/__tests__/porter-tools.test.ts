@@ -290,4 +290,32 @@ describe('search_inventory tool', () => {
     const items = (toolResult!.structured ?? []) as Array<{ id: string }>;
     expect(items.map(i => i.id)).toEqual(['s1']);
   });
+
+  // Advisor finding 2026-09-13: the trigram fallback depends on pg_trgm. If the
+  // extension is missing (a fresh DB, the ephemeral e2e stack) the fuzzy query
+  // throws "function word_similarity does not exist" — that must degrade to
+  // "No items found", not an Internal error on every miss.
+  it('degrades to "No items found" when the trigram fallback query itself fails (pg_trgm missing)', async () => {
+    mockUserSelect();
+    mockConversationFlow(TEST_CONV_ID);
+
+    let toolResult: StreamToolResult | null = null;
+    vi.mocked(chatStream).mockImplementationOnce(async (_msgs, _sys, _tools, execTool, onEvent) => {
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }) }) }),
+      } as never);              // word match — no hits
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockRejectedValue(new Error('function word_similarity(unknown, text) does not exist')) }) }) }),
+      } as never);              // fuzzy fallback — extension missing
+      toolResult = await execTool('search_inventory', { query: 'sennal 148' });
+      onEvent({ type: 'done', model: 'm', inputTokens: 1, outputTokens: 1 });
+    });
+
+    await request(app)
+      .post('/porter/stream')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'find my sennal 148', conversationId: TEST_CONV_ID });
+
+    expect(toolResult!.text).toBe('No items found matching your criteria.');
+  });
 });

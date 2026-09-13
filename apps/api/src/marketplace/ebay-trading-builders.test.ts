@@ -121,6 +121,14 @@ describe('buildAddFixedPriceItemXml', () => {
     expect(xml).toContain('<DispatchTimeMax>3</DispatchTimeMax>');
   });
 
+  // Advisor finding 2026-09-13: the profile default is always present (NOT NULL
+  // column), so it must not silently override the per-listing choice the seller
+  // made in the publish sheet (PRs #274-#278).
+  it('per-listing handling time (dispatchTimeMax) beats the seller-profile default (handlingDays)', () => {
+    const xml = buildAddFixedPriceItemXml({ ...baseInput, dispatchTimeMax: 5, handlingDays: 1 }, 'T');
+    expect(xml).toContain('<DispatchTimeMax>5</DispatchTimeMax>');
+  });
+
   it('includes BestOfferDetails only when a floor below price is set (G9), and escapes XML-special chars', () => {
     const withFloor = buildAddFixedPriceItemXml({ ...baseInput, bestOfferAutoAcceptPrice: 150 }, 'T');
     expect(withFloor).toContain('<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>');

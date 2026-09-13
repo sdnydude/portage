@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
+import fs from "node:fs";
 import path from "node:path";
 import { installSessionStub } from "./session-stub";
 
@@ -54,9 +55,16 @@ async function deleteSentinelItems() {
 
 test.beforeAll(async ({ playwright }) => {
   api = await playwright.request.newContext({ ignoreHTTPSErrors: true });
-  const sess = await api.get(`${API_BASE}/auth/session`);
-  expect(sess.ok(), `session exchange failed: ${sess.status()}`).toBeTruthy();
-  token = (await sess.json()).token;
+  // Reuse the token auth.setup minted for the run (15-min JWT, run is ~2 min)
+  // instead of a fresh exchange: this spec sorts last, so it was the first
+  // casualty whenever earlier page loads exhausted the auth limiter, failing
+  // with a 429 that looked unrelated to whatever spec was added.
+  const state = JSON.parse(fs.readFileSync(path.join(__dirname, ".auth", "user.json"), "utf8")) as {
+    origins: { localStorage: { name: string; value: string }[] }[];
+  };
+  const stored = state.origins.flatMap((o) => o.localStorage).find((e) => e.name === "portage_token")?.value;
+  expect(stored, "auth.setup storage state has no portage_token").toBeTruthy();
+  token = stored!;
   authHeaders = { Authorization: `Bearer ${token}` };
 
   // Self-heal leftovers from a crashed prior run before seeding.

@@ -220,6 +220,11 @@ export default function InventoryPage() {
     limit: pageSize,
     offset: (page - 1) * pageSize,
   });
+  // Total shrank below this page's start (bulk delete / recategorize on a later
+  // page) → clamp to the last real page instead of showing "51–40 of 40".
+  useEffect(() => {
+    if (total > 0 && (page - 1) * pageSize >= total) setPage(Math.max(1, Math.ceil(total / pageSize)));
+  }, [total, page, pageSize]);
   const { categories, refetch: refetchCategories } = useItemCategories();
   const { selectedIds, isSelecting, toggle, selectAll, clearSelection, toggleSelecting, selectedCount } = useBulkSelect<typeof items[number]>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
