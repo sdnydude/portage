@@ -103,25 +103,48 @@ function mpnFromAspects(specific: Record<string, unknown> | undefined): string |
 }
 
 /**
- * Inject the seller's ship-from origin ZIP from their profile when the request
- * carries none — a body-provided value wins, the profile only fills the gap. The
- * Trading API needs OriginatingPostalCode for inline calculated shipping; there are
- * no Business-Policy IDs to resolve anymore (the account is opted out of them).
+ * Apply the seller profile to an eBay marketplaceSpecific bag — one profile read
+ * shared by both publish routes and the item-edit revise path (marketplace-sync).
+ *
+ * - Ship-from origin ZIP: filled from the profile when the request carries none;
+ *   a body-provided value wins. The Trading API needs OriginatingPostalCode for
+ *   inline calculated shipping; there are no Business-Policy IDs to resolve
+ *   anymore (the account is opted out of them).
+ * - Return policy + handling days (gap 3, 2026-09-06 truth table): every Portage
+ *   revise otherwise overwrote eBay's stored Return Policy/DispatchTimeMax with
+ *   the Trading builder's hardcoded ReturnsNotAccepted/1-day defaults. The
+ *   profile's `sellerReturns` is re-stamped on every call (a stale copy persisted
+ *   on the listing row must not outlive a settings change) and read by the
+ *   Trading builder (buildTradingInput) on both Add and Revise. Precedence in
+ *   the builder: return policy comes from the profile; handling days is
+ *   per-listing-overridable — `ebayShipping.handlingDays` (publish sheet) maps
+ *   to `dispatchTimeMax` and wins, the profile's `handlingDays` only fills the
+ *   gap (see `itemBody` in ebay-trading-builders.ts, 2026-09-13).
  */
 export async function applyShipFromOrigin(
   userId: string,
   specific: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown> | undefined> {
   const ms = (specific ?? {}) as Record<string, unknown>;
-  if (ms.originPostalCode) return specific;
   const [profile] = await db.select()
     .from(sellerProfiles)
     .where(eq(sellerProfiles.userId, userId))
     .limit(1);
-  // seller_profiles.shipFromAddress stores the ZIP under `zip` (FE form + schema);
-  // `postalCode` is a fallback for any legacy/eBay-pulled shape.
-  const shipFrom = profile?.shipFromAddress as { zip?: string; postalCode?: string } | null | undefined;
-  return { ...ms, originPostalCode: shipFrom?.zip ?? shipFrom?.postalCode };
+  const out: Record<string, unknown> = { ...ms };
+  if (!ms.originPostalCode) {
+    // seller_profiles.shipFromAddress stores the ZIP under `zip` (FE form + schema);
+    // `postalCode` is a fallback for any legacy/eBay-pulled shape.
+    const shipFrom = profile?.shipFromAddress as { zip?: string; postalCode?: string } | null | undefined;
+    out.originPostalCode = shipFrom?.zip ?? shipFrom?.postalCode;
+  }
+  if (profile) {
+    out.sellerReturns = {
+      returnsAccepted: profile.ebayReturnsAccepted,
+      returnDays: profile.ebayReturnDays,
+      handlingDays: profile.ebayHandlingDays,
+    };
+  }
+  return out;
 }
 
 /**
@@ -969,7 +992,13 @@ listingsRouter.patch('/:id', async (req, res, next) => {
         const syncStartedAt = Date.now();
         try {
           const adapter = getAdapter(userId, updated.marketplace);
-          const [profileRow] = await db.select({ footer: sellerProfiles.defaultListingFooter, shipFromAddress: sellerProfiles.shipFromAddress })
+          const [profileRow] = await db.select({
+            footer: sellerProfiles.defaultListingFooter,
+            shipFromAddress: sellerProfiles.shipFromAddress,
+            ebayReturnsAccepted: sellerProfiles.ebayReturnsAccepted,
+            ebayReturnDays: sellerProfiles.ebayReturnDays,
+            ebayHandlingDays: sellerProfiles.ebayHandlingDays,
+          })
             .from(sellerProfiles)
             .where(eq(sellerProfiles.userId, userId))
             .limit(1);
@@ -990,6 +1019,20 @@ listingsRouter.patch('/:id', async (req, res, next) => {
             const shipFrom = profileRow?.shipFromAddress as { zip?: string; postalCode?: string } | null | undefined;
             const zip = shipFrom?.zip ?? shipFrom?.postalCode;
             if (zip) syncSpecific = { ...syncSpecific, originPostalCode: zip };
+          }
+          // Gap 3 parity with the item-edit sync (applyShipFromOrigin): a full
+          // Trading revise rebuilds ReturnPolicy/DispatchTimeMax, so the LIVE
+          // profile's return policy + handling days must ride every eBay revise
+          // or a price edit here reverts them to the builder defaults.
+          if (updated.marketplace === 'ebay' && profileRow) {
+            syncSpecific = {
+              ...syncSpecific,
+              sellerReturns: {
+                returnsAccepted: profileRow.ebayReturnsAccepted,
+                returnDays: profileRow.ebayReturnDays,
+                handlingDays: profileRow.ebayHandlingDays,
+              },
+            };
           }
           // Re-enrich on every reverb sync: the LIVE profile owns offersEnabled,
           // so a Settings change after publish propagates on the next edit

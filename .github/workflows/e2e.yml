@@ -73,6 +73,17 @@ jobs:
           # stack) — auto-provisions e2e@portage.app and returns the token.
           TOKEN=$(curl -fsS http://10.0.0.251:8998/auth/session \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          # 200 pager-walk items (batch-proof.spec pagination + header-cluster
+          # walks, E2E_BATCH_SEED=1 below). POST /items has no rate limiter;
+          # ~10-20 s on the LAN. Seeded BEFORE the named seed item so that one
+          # stays the newest card for every spec that clicks the first item.
+          PHOTO='{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==","key":"e2e-seed-photo"}'
+          for i in $(seq -w 1 200); do
+            curl -fsS -o /dev/null -X POST http://10.0.0.251:8998/items \
+              -H "Authorization: Bearer $TOKEN" \
+              -H 'Content-Type: application/json' \
+              -d "{\"title\":\"E2E Item $i\",\"condition\":\"good\",\"brand\":\"SeedBrand\",\"photos\":[$PHOTO]}"
+          done
           curl -fsS -X POST http://10.0.0.251:8998/items \
             -H "Authorization: Bearer $TOKEN" \
             -H 'Content-Type: application/json' \
@@ -85,6 +96,9 @@ jobs:
           # Ephemeral stack runs a dev-bypass API behind the app, so the
           # env-bound orders-sync login-trigger spec can pass here (and only here).
           E2E_ORDERS_SYNC: "1"
+          # The 201-item seed above is present, so the batch-proof pagination
+          # and header-cluster walks run here (they skip without it).
+          E2E_BATCH_SEED: "1"
           # Run the live Reverb taxonomy cascade spec only when the service
           # token is configured; skip it (green) when the secret is absent.
           E2E_REVERB_LIVE: ${{ secrets.REVERB_API_TOKEN != '' && '1' || '' }}

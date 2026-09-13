@@ -17,4 +17,10 @@ describe("PageHeader avatar", () => {
     expect(link).toHaveAttribute("href", "/more");
     expect(link).toHaveTextContent("S");
   });
+
+  it("always renders the theme toggle and avatar, even without showAvatar", () => {
+    render(<PageHeader title="Orders" />);
+    expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+  });
 });

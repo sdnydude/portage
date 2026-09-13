@@ -12,6 +12,12 @@ describe('validateGrounding', () => {
     expect(() => validateGrounding(text, titles)).toThrow(/Gibson Flying V/);
   });
 
+  it('does not flag a real title whose first comma segment is a bare word like "NEW" (live false positive 2026-09-06 discarded a correct reply)', () => {
+    const titles = ['NEW, never Used, Marshall ST112 Studio Lead 1x12" 65W 16 Ohm Guitar Speaker Cabinet'];
+    const text = '1. **NEW, never Used, Marshall ST112 Studio Lead 1x12" 65W 16 Ohm Guitar Speaker Cabinet**, good, $250';
+    expect(() => validateGrounding(text, titles)).not.toThrow();
+  });
+
   it('is a no-op when no titles were collected (no inventory tools ran)', () => {
     const text = '- Gibson Flying V — excellent, $1200';
     expect(() => validateGrounding(text, [])).not.toThrow();

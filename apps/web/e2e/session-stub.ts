@@ -17,7 +17,12 @@ export async function installSessionStub(page: Page): Promise<void> {
       ?.localStorage ?? [];
   const token = ls.find((e) => e.name === "portage_token")?.value;
   const user = ls.find((e) => e.name === "portage_user")?.value;
-  await page.route("**/backend/auth/session", (route) =>
+  // `**/auth/session` covers both the same-origin /backend rewrite and the
+  // direct NEXT_PUBLIC_API_URL host the CI build uses. The old
+  // `**/backend/auth/session` glob never matched in CI, so every page load
+  // spent a real auth exchange and the 120/15-min limiter tripped the suite
+  // (advisor 2026-09-13).
+  await page.route("**/auth/session", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

@@ -12,6 +12,7 @@ import { PriceField } from "@/components/listing/price-field";
 import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 import { useScanAspects } from "@/hooks/use-scan-aspects";
 import { getAvailablePortageConditions } from "@/lib/ebay-condition-map";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 const conditions = [
   { value: "new", label: "New" },
@@ -144,7 +145,8 @@ export default function EditItemPage() {
                 <path d="M19 12H5M12 19l-7-7 7-7" />
               </svg>
             </button>
-            <span className="ml-3 text-lg font-semibold text-text-primary">Error</span>
+            <span className="ml-3 text-lg font-semibold text-text-primary flex-1">Error</span>
+            <HeaderActions />
           </div>
         </header>
         <div className="px-4 py-16 text-center">
@@ -192,6 +194,10 @@ export default function EditItemPage() {
         setIsSaving(false);
         return;
       }
+      if (saved?.syncQueued?.length) {
+        router.replace(`/inventory/${item.id}`);
+        return;
+      }
       router.back();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
@@ -231,13 +237,16 @@ export default function EditItemPage() {
               Edit Item
             </span>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={!hasChanges || isSaving || !title.trim()}
-            className="px-4 py-1.5 rounded-lg bg-forest-green text-white text-sm font-medium disabled:opacity-40 transition-opacity"
-          >
-            {isSaving ? "Saving..." : "Save"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSave}
+              disabled={!hasChanges || isSaving || !title.trim()}
+              className="px-4 py-1.5 rounded-lg bg-forest-green text-white text-sm font-medium disabled:opacity-40 transition-opacity"
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+            <HeaderActions />
+          </div>
         </div>
       </header>
 

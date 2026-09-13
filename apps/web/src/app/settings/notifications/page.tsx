@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 const NOTIFICATION_TYPES = [
   { key: "sale", label: "Sales", description: "When an item sells on any marketplace" },
@@ -70,7 +71,8 @@ export default function NotificationsPage() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <h1 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">Notifications</h1>
+          <h1 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary flex-1">Notifications</h1>
+          <HeaderActions />
         </div>
       </header>
 

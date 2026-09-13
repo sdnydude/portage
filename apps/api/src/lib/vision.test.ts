@@ -224,6 +224,18 @@ describe('identifyItemDetailed', () => {
     expect(result.reasoning).toEqual(['Black over-ear design', 'Sony branding visible']);
   });
 
+  it('requests enough headroom for 3 uncapped-length (up to 4,000-char) descriptions (review finding 2026-09-08)', async () => {
+    vi.mocked(analyzeImage).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    await identifyItemDetailed('base64data', 'image/jpeg');
+
+    const options = vi.mocked(analyzeImage).mock.calls[0][4] as { maxTokens?: number };
+    expect(options?.maxTokens).toBeGreaterThanOrEqual(8192);
+  });
+
   it('parses AI-estimated weight and dimensions on a candidate', async () => {
     vi.mocked(analyzeImage).mockResolvedValue({
       text: JSON.stringify({
@@ -369,6 +381,18 @@ describe('identifyItemsMulti', () => {
     expect(result.candidates[0].name).toBe('Sony WH-1000XM4 Headphones');
     expect(result.candidates[0].confidence).toBe(0.92);
     expect(result.reasoning).toEqual(['Black over-ear design', 'Sony branding visible']);
+  });
+
+  it('requests enough headroom for 3 uncapped-length (up to 4,000-char) descriptions (review finding 2026-09-08)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'anthropic', model: 'claude-sonnet-4', inputTokens: 200, outputTokens: 100, fallbacks: 0,
+    });
+
+    await identifyItemsMulti(mockImages);
+
+    const options = vi.mocked(analyzeImages).mock.calls[0][3] as { maxTokens?: number };
+    expect(options?.maxTokens).toBeGreaterThanOrEqual(8192);
   });
 
   it('accepts null conditionNotes from the model (Gemini sends null, live 502 2026-07-10)', async () => {
@@ -553,12 +577,38 @@ describe('identifyItemsMulti', () => {
     await identifyItemsMulti(mockImages);
 
     const systemPrompt = vi.mocked(analyzeImages).mock.calls[0][1];
-    // eBay-description spec (research 2026-09-06): length, section order, summary-first, policy don'ts.
-    expect(systemPrompt).toMatch(/description: .*150.*300 words/s);
+    // eBay-description spec (operator 2026-09-08): no word-count band, section order, summary-first, policy don'ts.
+    expect(systemPrompt).not.toMatch(/150.*300 words/s);
     expect(systemPrompt).toMatch(/Overview.*Condition.*Function.*Included.*Specs/s);
     expect(systemPrompt).toMatch(/first (two|2).*sentences.*stand alone/is);
     expect(systemPrompt).toMatch(/no invented specs/i);
     expect(systemPrompt).toMatch(/other marketplaces/i);
+  });
+
+  it('pairs "no set length" with the hard 4,000-character technical ceiling (review finding 2026-09-08)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'gemini', model: 'gemini-3.5-flash-lite', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    await identifyItemsMulti(mockImages);
+
+    const systemPrompt = vi.mocked(analyzeImages).mock.calls[0][1];
+    expect(systemPrompt).toMatch(/No set length/i);
+    expect(systemPrompt).toMatch(/4,?000 characters/);
+  });
+
+  it('bans the "I am selling" opener and other announcing phrases in description and condition notes (operator: AI slop, 2026-09-06)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify(VALID_DETAILED_JSON),
+      provider: 'gemini', model: 'gemini-3.5-flash-lite', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    await identifyItemsMulti(mockImages);
+
+    const systemPrompt = vi.mocked(analyzeImages).mock.calls[0][1];
+    expect(systemPrompt).toMatch(/never .*"I am selling"/is);
+    expect(systemPrompt).toMatch(/"This listing includes"/i);
   });
 
   it('asks for condition notes in the seller\'s first-person voice with no hedging or "untested" disclaimers', async () => {
@@ -608,6 +658,30 @@ describe('generateListingFields', () => {
     const fields = await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
 
     expect(fields.provenance).toEqual({ provider: 'gemini', model: 'gemini-2.5-flash', fallbacks: 1 });
+  });
+
+  it('carries no word-count band on the description (operator 2026-09-08: fully inform the buyer, no set length)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    const systemPrompt = vi.mocked(analyzeImages).mock.calls[0][1];
+    expect(systemPrompt).not.toMatch(/150.*300 words/s);
+  });
+
+  it('carries the hard 4,000-character ceiling on the description (review finding 2026-09-08)', async () => {
+    vi.mocked(analyzeImages).mockResolvedValue({
+      text: JSON.stringify({ title: 't', description: 'd', ebay: { title: 'et', aspects: {} } }),
+      provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 50, fallbacks: 0,
+    });
+
+    await generateListingFields({ ...baseInput, images: [{ base64: 'b64', mediaType: 'image/jpeg' }] });
+
+    const systemPrompt = vi.mocked(analyzeImages).mock.calls[0][1];
+    expect(systemPrompt).toMatch(/4,?000 characters/);
   });
 
   it('asks for EVERY applicable value on MULTI-cardinality aspects (Features) instead of a single pick — live: 84/84 items carried one Features value', async () => {

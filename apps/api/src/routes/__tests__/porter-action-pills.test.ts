@@ -29,4 +29,10 @@ describe('parseActionPills', () => {
     expect(PORTER_SYSTEM).toContain('never add prices up yourself');
     expect(PORTER_SYSTEM).toContain('get_inventory_stats');
   });
+
+  it('system prompt carries the About Portage facts so app questions get answers instead of "I don\'t know" (operator 2026-09-06)', () => {
+    expect(PORTER_SYSTEM).toContain('## About Portage');
+    expect(PORTER_SYSTEM).toContain('Scan button');
+    expect(PORTER_SYSTEM).toContain('sync log');
+  });
 });

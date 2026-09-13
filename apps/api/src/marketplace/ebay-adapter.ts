@@ -290,6 +290,9 @@ export interface EbayItemDetail {
   price: number | null;
   brand: string | null;
   aspects: Record<string, string[]>;
+  // Gap 6 (2026-09-06 truth table): requires buildGetItemXml's
+  // ItemReturnDescription DetailLevel to be populated.
+  description: string | null;
 }
 
 /**
@@ -559,6 +562,8 @@ export class EbayAdapter implements MarketplaceAdapter {
     // the builder floors weight and the dimension tags are omitted when unknown.
     const { weightMajor, weightMinor } = splitOunces(weightOk ? (rawWeight!.value as number) : 0);
     const ebayShipping = specific.ebayShipping as EbayListingShipping | undefined;
+    // Gap 3 (2026-09-06 truth table): populated by applySellerPolicies (listings.ts).
+    const sellerReturns = specific.sellerReturns as { returnsAccepted?: boolean; returnDays?: 14 | 30 | 60; handlingDays?: number } | undefined;
     return {
       title: input.title,
       description: input.description,
@@ -615,6 +620,11 @@ export class EbayAdapter implements MarketplaceAdapter {
         minimumBestOfferPrice: undefined,
         deleteBestOfferAutoAcceptPrice: true,
         deleteMinimumBestOfferPrice: true,
+      } : {}),
+      ...(sellerReturns ? {
+        returnsAccepted: sellerReturns.returnsAccepted,
+        returnDays: sellerReturns.returnDays,
+        handlingDays: sellerReturns.handlingDays,
       } : {}),
     };
   }
@@ -1017,9 +1027,10 @@ export class EbayAdapter implements MarketplaceAdapter {
         price: price != null && Number.isFinite(price) ? price : null,
         brand: v.brand,
         aspects: v.aspects,
+        description: v.description,
       };
     } catch {
-      return { found: false, title: null, photos: [], price: null, brand: null, aspects: {} };
+      return { found: false, title: null, photos: [], price: null, brand: null, aspects: {}, description: null };
     }
   }
 

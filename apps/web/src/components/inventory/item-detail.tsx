@@ -26,6 +26,7 @@ import { movePhoto, removePhotoAt } from "@/lib/photos";
 import { formatCondition } from "@/lib/format";
 import { resolvePublishPriceWithSource } from "@/lib/price";
 import { withKeys } from "@/lib/list-keys";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 const conditionColors: Record<string, string> = {
   new: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -463,7 +464,8 @@ export function ItemDetail({
                 </svg>
               </button>
             )}
-            <span className="ml-3 text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">Not Found</span>
+            <span className="ml-3 text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary flex-1">Not Found</span>
+            <HeaderActions />
           </div>
         </header>
         <div className="px-4 py-16 text-center content-container">
@@ -552,6 +554,7 @@ export function ItemDetail({
                 <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
               </svg>
             </button>
+            <HeaderActions />
           </div>
         </div>
       </header>
@@ -858,7 +861,7 @@ export function ItemDetail({
                 </div>
 
                 {comps.partial && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">Some eBay results could not be loaded</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400">Some eBay results could not be loaded</p>
                 )}
 
                 {comps.stats.sampleSize === 0 ? (

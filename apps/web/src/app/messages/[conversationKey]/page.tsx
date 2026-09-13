@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useConversationMessages, useReply } from "@/hooks/use-messages";
 import { useAuth } from "@/hooks/use-auth";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 function formatTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -93,6 +94,7 @@ export default function ConversationPage() {
               <p className="text-xs text-text-secondary truncate">{itemTitle}</p>
             )}
           </div>
+          <HeaderActions />
         </div>
       </header>
 

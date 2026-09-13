@@ -6,8 +6,9 @@ vi.mock("html-to-image", () => ({ toBlob: (...args: unknown[]) => toBlobMock(...
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "i1" }),
   useRouter: () => ({ back: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => "/inventory/i1/preview",
 }));
-vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ token: "t", isAuthenticated: true }) }));
+vi.mock("@/hooks/use-auth", () => ({ useAuth: () => ({ token: "t", isAuthenticated: true, user: { email: "s@x.com" } }) }));
 vi.mock("@/hooks/use-item", () => ({
   useItem: () => ({
     item: {
@@ -29,6 +30,14 @@ import PreviewPage from "./page";
 
 beforeEach(() => {
   toBlobMock.mockReset();
+});
+
+describe("inventory/[id]/preview — header cluster", () => {
+  it("carries the theme toggle and user menu", () => {
+    render(<PreviewPage />);
+    expect(screen.getByRole("button", { name: /Switch to (light|dark) mode/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+  });
 });
 
 describe("inventory/[id]/preview — PNG share", () => {

@@ -7,6 +7,7 @@ import { useItem } from "@/hooks/use-item";
 import { useListings } from "@/hooks/use-listings";
 import { resolvePublishPriceWithSource } from "@/lib/price";
 import { ListingPreviewShareCard } from "@/components/listing/listing-preview-share-card";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 /**
  * Sharable buyer-eye preview (listing-hub Task 5): renders the share card and
@@ -76,14 +77,17 @@ export default function ListingPreviewPage() {
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
           </button>
-          <button
-            onClick={handleShare}
-            disabled={sharing}
-            className="px-4 py-2 rounded-xl bg-forest-green text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2"
-          >
-            {sharing && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-            {sharing ? "Preparing..." : "Share"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleShare}
+              disabled={sharing}
+              className="px-4 py-2 rounded-xl bg-forest-green text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2"
+            >
+              {sharing && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {sharing ? "Preparing..." : "Share"}
+            </button>
+            <HeaderActions />
+          </div>
         </div>
       </header>
 

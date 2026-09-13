@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 interface MarketplaceAccount {
   id: string;
@@ -86,7 +87,8 @@ export default function MarketplacePage() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <h1 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">Marketplace Accounts</h1>
+          <h1 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary flex-1">Marketplace Accounts</h1>
+          <HeaderActions />
         </div>
       </header>
 

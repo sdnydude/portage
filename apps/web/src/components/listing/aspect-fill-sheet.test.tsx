@@ -3,6 +3,22 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { AspectFillSheet } from "./aspect-fill-sheet";
 
 describe("AspectFillSheet", () => {
+  it("MULTI aspect keeps two selected chips", () => {
+    const onSave = vi.fn();
+    render(
+      <AspectFillSheet
+        missing={[{ name: "Features", values: ["Wireless", "Bluetooth"], cardinality: "MULTI" }]}
+        onSave={onSave}
+        onCancel={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Wireless" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bluetooth" }));
+    fireEvent.click(screen.getByRole("button", { name: /save & publish/i }));
+    expect(onSave).toHaveBeenCalledWith({ Features: ["Wireless", "Bluetooth"] });
+  });
+
   it("disables Save until every required specific has a value, then emits eBay-shaped aspects", () => {
     const onSave = vi.fn();
     render(

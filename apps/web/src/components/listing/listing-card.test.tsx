@@ -34,6 +34,13 @@ const LISTING = {
   soldAt: null, itemTitle: "ASUS ROG",
 };
 
+describe("ListingCard — light-mode tag contrast (operator: tags unreadable in light mode, 2026-09-06)", () => {
+  it("renders the Archive Listing button text on the legible amber-700 shade", () => {
+    render(<ListingCard listing={LISTING} token="t" onChanged={() => {}} highlight={false} />);
+    expect(screen.getByRole("button", { name: "Archive Listing" })).toHaveClass("text-amber-700");
+  });
+});
+
 describe("ListingCard (read-only)", () => {
   it("shows marketplace, status pill, and price", () => {
     render(<ListingCard listing={LISTING} token="t" onChanged={() => {}} highlight={false} />);

@@ -164,6 +164,21 @@ describe('PATCH /seller-profile', () => {
     expect(res.status).toBe(200);
     expect(res.body.profile.gtcAutoEnd).toBe(true);
   });
+
+  it('accepts ebayReturnsAccepted, ebayReturnDays and ebayHandlingDays (gap 3)', async () => {
+    mockSelectOnce([{ id: 'sp-1' }]);
+    mockUpdateReturns([{ id: 'sp-1', ebayReturnsAccepted: true, ebayReturnDays: 30, ebayHandlingDays: 3 }]);
+
+    const res = await request(app)
+      .patch('/seller-profile')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ ebayReturnsAccepted: true, ebayReturnDays: 30, ebayHandlingDays: 3 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.profile.ebayReturnsAccepted).toBe(true);
+    expect(res.body.profile.ebayReturnDays).toBe(30);
+    expect(res.body.profile.ebayHandlingDays).toBe(3);
+  });
 });
 
 describe('Business Policies endpoints — REMOVED under inline terms', () => {

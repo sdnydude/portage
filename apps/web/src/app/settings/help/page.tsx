@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { HeaderActions } from "@/components/layout/header-actions";
 
 interface Faq {
   id: string;
@@ -37,7 +38,8 @@ export default function HelpPage() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <h1 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary">Help & Support</h1>
+          <h1 className="text-lg font-semibold font-[family-name:var(--font-instrument)] text-text-primary flex-1">Help & Support</h1>
+          <HeaderActions />
         </div>
       </header>
 

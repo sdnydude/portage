@@ -12,8 +12,8 @@ const CHIP_LIST_MAX = 30;
 
 interface ScanAspectsSectionProps {
   aspects: Record<string, RequiredAspect>;
-  aspectValues: Record<string, string>;
-  setAspectValue: (name: string, value: string) => void;
+  aspectValues: Record<string, string[]>;
+  setAspectValue: (name: string, values: string[]) => void;
   /** Seeded per aspect from the item's scan text (deterministic match against
    *  eBay-allowed values — see aspect-seeding.ts); confirmed names excluded. */
   suggestions: Record<string, string[]>;
@@ -90,7 +90,8 @@ export function ScanAspectsSection({
   }
 
   const renderAspect = (name: string, aspect: RequiredAspect) => {
-    const value = aspectValues[name] ?? "";
+    const values = aspectValues[name] ?? [];
+    const isMulti = aspect.cardinality === "MULTI";
     const isMissing = missingSet.has(name);
     const aspectSuggestions = suggestions[name] ?? [];
     const isAi = aiFilledNames?.includes(name) ?? false;
@@ -110,19 +111,35 @@ export function ScanAspectsSection({
             </span>
           )}
           {isMissing && <span className="sr-only"> (required, not filled)</span>}
+          {isMulti && values.length > 0 && (
+            <span className="ml-1.5 align-middle text-text-secondary font-normal">
+              {values.length} selected
+            </span>
+          )}
         </label>
 
         {aspect.values && aspect.values.length > 0 && aspect.values.length <= CHIP_LIST_MAX ? (
           <div className="flex flex-wrap gap-2" role="group" aria-label={name}>
             {aspect.values.map((v) => {
-              const selected = value === v;
+              const selected = values.includes(v);
               const suggested = !selected && aspectSuggestions.includes(v);
               return (
                 <button
                   key={v}
                   type="button"
                   aria-pressed={selected}
-                  onClick={() => setAspectValue(name, selected ? "" : v)}
+                  onClick={() =>
+                    setAspectValue(
+                      name,
+                      isMulti
+                        ? selected
+                          ? values.filter((existing) => existing !== v)
+                          : [...values, v]
+                        : selected
+                          ? []
+                          : [v],
+                    )
+                  }
                   className={`min-h-[44px] px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                     selected
                       ? "bg-[var(--teal)] text-white border-[var(--teal)]"
@@ -143,14 +160,14 @@ export function ScanAspectsSection({
             <div className="relative">
               <input
                 type="text"
-                value={value}
-                onChange={(e) => setAspectValue(name, e.target.value)}
+                value={values[0] ?? ""}
+                onChange={(e) => setAspectValue(name, [e.target.value])}
                 // iOS: keep the focused field visible above the keyboard.
                 onFocus={(e) => e.target.scrollIntoView?.({ behavior: "smooth", block: "center" })}
                 placeholder={`Enter ${name}`}
                 aria-required={aspect.required}
                 aria-invalid={isMissing}
-                className={`w-full min-h-[44px] px-3 py-2 ${value ? "pr-11" : ""} rounded-xl bg-background border text-text-primary text-sm focus:outline-none ${
+                className={`w-full min-h-[44px] px-3 py-2 ${values[0] ? "pr-11" : ""} rounded-xl bg-background border text-text-primary text-sm focus:outline-none ${
                   isMissing
                     ? "border-[var(--accent-error)] focus:border-[var(--accent-error)]"
                     : "border-border focus:border-border-focus"
@@ -158,18 +175,18 @@ export function ScanAspectsSection({
               />
               {/* Aspect removal (Housekeeping-1): an explicit clear so a wrong
                   AI-filled value can be dropped, not just overtyped. */}
-              {value !== "" && (
+              {(values[0] ?? "") !== "" && (
                 <button
                   type="button"
                   aria-label={`Clear ${name}`}
-                  onClick={() => setAspectValue(name, "")}
+                  onClick={() => setAspectValue(name, [])}
                   className="absolute right-0 top-0 h-full min-w-[44px] flex items-center justify-center text-text-secondary hover:text-text-primary"
                 >
                   ✕
                 </button>
               )}
             </div>
-            {value.trim() === "" && aspectSuggestions.length > 0 && (
+            {(values[0] ?? "").trim() === "" && aspectSuggestions.length > 0 && (
               <div className="flex flex-wrap gap-2" aria-label={`AI suggestions for ${name}`}>
                 {aspectSuggestions.map((s) => (
                   <button

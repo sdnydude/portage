@@ -1,5 +1,6 @@
 import { db } from '../db/index.js';
 import { enqueueItemSync, processDueSyncJobs, startSyncWorker, stopSyncWorker, recoverStaleRunningJobs, runRetentionSweep, runStatusSweepScan, runStuckClaimSweep, processStatusCheckQueue, runOrderSyncCycle } from './sync-worker.js';
+import { EbayTradingError } from '../marketplace/ebay-trading-client.js';
 
 vi.mock('../db/index.js', () => ({
   db: {
@@ -280,6 +281,40 @@ describe('processDueSyncJobs — deterministic aspect failures (Housekeeping-1 r
     const calls = setSpy.mock.calls.map(c => c[0] as Record<string, unknown>);
     expect(calls.find(v => v.status === 'failed')?.lastError).toMatch(/requires: Brand/);
     expect(calls.find(v => v.status === 'pending' && 'attempts' in v)).toBeUndefined();
+  });
+});
+
+describe('processDueSyncJobs — "Title too long." is terminal (gap 1)', () => {
+  it('terminal-fails an eBay "Title too long." revise instead of 5 retries (live 2026-09-04: 15 min of Syncing…)', async () => {
+    mockSelectChainOnce([JOB]);
+    const returningSpy = vi.fn().mockResolvedValue([{ ...JOB, status: 'running' }]);
+    const whereSpy = vi.fn().mockReturnValue({ returning: returningSpy });
+    const setSpy = vi.fn().mockReturnValue({ where: whereSpy });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectChainOnce([ITEM_ROW]);
+    mockSelectChainOnce([LISTING_ROW]);
+    mockSyncItemListingRow.mockRejectedValueOnce(new EbayTradingError('Title too long.', [21916635]));
+
+    await processDueSyncJobs();
+
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', lastError: expect.stringContaining('Title too long') }));
+  });
+
+  it('does NOT terminal-fail a plain Error whose message happens to contain "Title too long" — only an eBay-originated EbayTradingError is deterministic', async () => {
+    mockSelectChainOnce([JOB]);
+    const returningSpy = vi.fn().mockResolvedValue([{ ...JOB, status: 'running' }]);
+    const whereSpy = vi.fn().mockReturnValue({ returning: returningSpy });
+    const setSpy = vi.fn().mockReturnValue({ where: whereSpy });
+    vi.mocked(db.update).mockReturnValue({ set: setSpy } as any);
+    mockSelectChainOnce([ITEM_ROW]);
+    mockSelectChainOnce([LISTING_ROW]);
+    mockSyncItemListingRow.mockRejectedValueOnce(new Error('Title too long.'));
+
+    await processDueSyncJobs();
+
+    const calls = setSpy.mock.calls.map(c => c[0] as Record<string, unknown>);
+    expect(calls.find(v => v.status === 'failed')).toBeUndefined();
+    expect(calls.find(v => v.status === 'pending' && 'attempts' in v)).toMatchObject({ attempts: 1 });
   });
 });
 

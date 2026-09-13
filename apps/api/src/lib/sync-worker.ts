@@ -5,6 +5,7 @@ import { createLogger } from './logger.js';
 import { syncItemListingRow, type ItemSyncSource, type ItemSyncTarget } from './marketplace-sync.js';
 import { logSyncAttempt } from './sync-log.js';
 import { AppError } from '../middleware/error.js';
+import { EbayTradingError } from '../marketplace/ebay-trading-client.js';
 import { EbayAdapter } from '../marketplace/ebay-adapter.js';
 import { ReverbAdapter } from '../marketplace/reverb-adapter.js';
 import { runOrderSync } from './order-sync.js';
@@ -505,9 +506,16 @@ async function processDueSyncJobsInner(limit: number): Promise<void> {
       // (Housekeeping-1 aspect removal): eBay refuses every revise until the
       // seller fills it back in — the badge must say so now, not in 15 min.
       const DETERMINISTIC = new Set(['BEST_OFFER_CONFLICT', 'BEST_OFFER_UNSUPPORTED', 'EBAY_ASPECTS_REQUIRED']);
-      if (err instanceof AppError && DETERMINISTIC.has(err.code)) {
+      // Gap 1 (2026-09-06 truth table): eBay's "Title too long." revise
+      // rejection is deterministic — Portage allows 500 chars, eBay 80, so
+      // retrying never helps. Text-matched (not an AppError code) because it
+      // reaches the worker as a raw EbayTradingError, not a routed AppError.
+      // Scoped to EbayTradingError specifically (review): a coincidental
+      // "title too long" substring in an unrelated error must still retry.
+      const deterministicText = err instanceof EbayTradingError && /title too long/i.test(err.message);
+      if ((err instanceof AppError && DETERMINISTIC.has(err.code)) || deterministicText) {
         await db.update(syncJobs)
-          .set({ status: 'failed', lastError: err.message, updatedAt: new Date() })
+          .set({ status: 'failed', lastError: (err as Error).message, updatedAt: new Date() })
           .where(eq(syncJobs.id, job.id));
         void logSyncAttempt({
           userId: job.userId,
@@ -516,7 +524,7 @@ async function processDueSyncJobsInner(limit: number): Promise<void> {
           marketplace: logMarketplace,
           trigger: job.trigger,
           status: 'failure',
-          message: err.message,
+          message: (err as Error).message,
           durationMs: Date.now() - startedAt,
         });
         continue;

@@ -93,7 +93,7 @@ export function WeightDimsInputs({ value, onChange, estimated }: WeightDimsInput
   return (
     <div className="space-y-4">
       {estimated && (
-        <p className="text-xs font-medium text-amber-600 dark:text-amber-400">{ESTIMATE_HINT}</p>
+        <p className="text-xs font-medium text-amber-700 dark:text-amber-400">{ESTIMATE_HINT}</p>
       )}
 
       <div>

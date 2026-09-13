@@ -1077,9 +1077,10 @@ describe('POST /listings', () => {
     }));
   });
 
-  it('keeps a body-provided origin ZIP over the profile (body wins, profile not consulted)', async () => {
+  it('keeps a body-provided origin ZIP over the profile (body wins)', async () => {
     mockSelectOnce([MOCK_ITEM]);
-    mockSelectOnce([]); // footer lookup — ship-from not consulted because body supplied originPostalCode
+    mockSelectOnce([{ shipFromAddress: { zip: '90210' } }]); // profile read (gap 3: always consulted for return policy) — its ZIP must lose to the body's
+    mockSelectOnce([]); // footer lookup
     mockInsertCapture();
     mockCreateListing.mockResolvedValue({ marketplaceListingId: 'ebay-1', status: 'active' });
 
@@ -2011,6 +2012,27 @@ describe('PATCH /listings/:id — price change syncs to the live eBay listing', 
     const [, inputArg] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
     expect(inputArg.marketplaceSpecific?.ebayShipping).toEqual(ebayShipping);
   });
+
+  // Advisor finding 2026-09-13: this revise path skipped the gap-3 enrichment,
+  // so a price edit from the Listings page reverted a live listing to
+  // ReturnsNotAccepted / 1-day handling once the seller had enabled returns.
+  it('carries the seller-profile return policy + handling days on a price-change revise (gap 3 parity with item-edit sync)', async () => {
+    mockSelectOnce([{ id: LID, userId: 'test-user-id', marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebaySku: 'PRT-000009', currency: 'USD' }]);
+    const setMock = vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: LID, marketplace: 'ebay', status: 'active', marketplaceListingId: '307022414462', ebaySku: 'PRT-000009', price: 162, currency: 'USD', itemId: ITEM_ID, marketplaceSpecificFields: null }]) })) }));
+    vi.mocked(db.update).mockReturnValue({ set: setMock } as any);
+    mockSelectOnce([{ ...MOCK_ITEM, weightOz: 24, lengthIn: 8, widthIn: 6, heightIn: 3 }]);
+    mockSelectOnce([{ footer: null, shipFromAddress: { zip: '10001' }, ebayReturnsAccepted: true, ebayReturnDays: 60, ebayHandlingDays: 3 }]); // seller profile
+    mockUpdateListing.mockResolvedValue({ marketplaceListingId: '307022414462', status: 'active' });
+
+    const res = await request(app)
+      .patch(`/listings/${LID}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ price: 162 });
+
+    expect(res.status).toBe(200);
+    const [, inputArg] = mockUpdateListing.mock.calls[0] as [string, { marketplaceSpecific?: Record<string, unknown> }];
+    expect(inputArg.marketplaceSpecific?.sellerReturns).toEqual({ returnsAccepted: true, returnDays: 60, handlingDays: 3 });
+  });
 });
 
 describe('applyReverbEnrichment — additive local pickup (RV-2)', () => {
@@ -2039,6 +2061,19 @@ describe('applyReverbEnrichment — additive local pickup (RV-2)', () => {
     });
 
     expect(r.specific.localPickup).toBe(false); // seller's OFF wins over the profile default
+  });
+});
+
+describe('applyShipFromOrigin — seller-profile return policy + handling days ride the same profile read (gap 3)', () => {
+  it('merges ebayReturnsAccepted/ebayReturnDays/ebayHandlingDays into specific.sellerReturns even when the body already carries originPostalCode', async () => {
+    const { applyShipFromOrigin } = await import('./listings.js');
+    mockSelectOnce([{ shipFromAddress: { zip: '12561' }, ebayReturnsAccepted: true, ebayReturnDays: 30, ebayHandlingDays: 3 }]);
+
+    const r = await applyShipFromOrigin('u1', { categoryId: '15032', originPostalCode: '10001' });
+
+    expect(r?.sellerReturns).toEqual({ returnsAccepted: true, returnDays: 30, handlingDays: 3 });
+    expect(r?.originPostalCode).toBe('10001'); // body wins for the ZIP
+    expect(r?.categoryId).toBe('15032');
   });
 });
 
