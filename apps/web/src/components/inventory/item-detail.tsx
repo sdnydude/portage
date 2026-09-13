@@ -21,7 +21,9 @@ import { useComps } from "@/hooks/use-comps";
 import { usePublishCurrentItem } from "@/hooks/use-current-item";
 import { api, apiUpload } from "@/lib/api";
 import { MAX_PHOTOS_PER_ITEM } from "@portage/shared";
-import type { CompListing, ItemPhoto } from "@portage/shared";
+import type { CompListing, ItemPhoto, RecognitionCandidate, ScanProvenance } from "@portage/shared";
+import { RescanDiffSheet } from "./rescan-diff-sheet";
+import { diffRescan, buildRescanPatch } from "@/lib/rescan-diff";
 import { movePhoto, removePhotoAt } from "@/lib/photos";
 import { formatCondition } from "@/lib/format";
 import { resolvePublishPriceWithSource } from "@/lib/price";
@@ -83,6 +85,14 @@ export function ItemDetail({
   // commit); state drives the UI, the ref drives the guard.
   const isSavingPhotoRef = useRef(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Rescan result, shown as a per-field diff the seller applies selectively.
+  const [rescanResult, setRescanResult] = useState<{ candidate: RecognitionCandidate; provenance?: ScanProvenance } | null>(null);
+  const [rescanError, setRescanError] = useState<string | null>(null);
+  const [isRescanning, setIsRescanning] = useState(false);
+  const [rescanApplyError, setRescanApplyError] = useState<string | null>(null);
+  const [isApplyingRescan, setIsApplyingRescan] = useState(false);
+  // Ref twin for same-tick reentrancy (double-tap before the state commit).
+  const isApplyingRescanRef = useRef(false);
   const [expandedCompUrl, setExpandedCompUrl] = useState<string | null>(null);
   const { comps, isLoading: compsLoading, error: compsError, fetchComps } = useComps(itemId);
   const isToolProcessing = isRotating || isEnhancing || isRemovingBg || isSavingPhoto;
@@ -498,6 +508,33 @@ export function ItemDetail({
   // (items.price ⇄ listings.price); the AI estimated-value range is retired.
   const valueDisplay = item.price != null ? `$${item.price}` : null;
 
+  const handleRescan = async () => {
+    if (!token || photos.length === 0 || isRescanning) return;
+    setIsRescanning(true);
+    setRescanError(null);
+    try {
+      // /scan/refine accepts at most 3 images per vision call (apps/api scan.ts).
+      const data = await api<{ detailed: { candidates: RecognitionCandidate[]; provenance?: ScanProvenance } }>("/scan/refine", {
+        method: "POST",
+        token,
+        body: { imageUrls: photos.slice(0, 3).map((p) => p.url) },
+      });
+      setRescanResult({ candidate: data.detailed.candidates[0], provenance: data.detailed.provenance });
+    } catch (err) {
+      // 429 LIMIT_REACHED and vision outages arrive here — shown verbatim.
+      // The one exception is the refine allowlist 400 (server text names an
+      // implementation detail), which gets seller-facing wording.
+      const message = err instanceof Error ? err.message : "Rescan failed";
+      setRescanError(
+        message.includes("application storage origin")
+          ? "Rescan can't read these photos yet — they aren't hosted by Portage or eBay."
+          : message,
+      );
+    } finally {
+      setIsRescanning(false);
+    }
+  };
+
   const handleDelete = async () => {
     setIsDeleting(true);
     setDeleteError(null);
@@ -534,6 +571,21 @@ export function ItemDetail({
             </span>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              aria-label={isRescanning ? "Rescanning…" : "Rescan"}
+              onClick={handleRescan}
+              disabled={photos.length === 0 || isToolProcessing || isRescanning}
+              className="p-2 text-text-secondary hover:text-text-primary rounded-lg transition-colors disabled:opacity-40"
+            >
+              {isRescanning ? (
+                <div className="w-5 h-5 border-2 border-[var(--teal)] border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 11-2.64-6.36" />
+                  <polyline points="21 3 21 9 15 9" />
+                </svg>
+              )}
+            </button>
             <button
               onClick={startEdit}
               aria-label="Edit item"
@@ -591,6 +643,11 @@ export function ItemDetail({
           {uploadError && (
             <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
               {uploadError}
+            </div>
+          )}
+          {rescanError && (
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-3 text-sm text-red-700 dark:text-red-300">
+              {rescanError}
             </div>
           )}
           {enhanceError && (
@@ -947,6 +1004,44 @@ export function ItemDetail({
           onClose={() => {
             setDeleteError(null);
             setShowDeleteConfirm(false);
+          }}
+        />
+      )}
+
+      {rescanResult && (
+        <RescanDiffSheet
+          rows={diffRescan(
+            {
+              title: item.title, description: item.description,
+              condition: item.condition, conditionNotes: item.conditionNotes, brand: item.brand,
+              model: item.model, features: item.features, aspects: item.aspects ?? {},
+            },
+            rescanResult.candidate,
+          )}
+          hasLiveListing={itemListings.some((l) => l.status === "active")}
+          busy={isApplyingRescan}
+          error={rescanApplyError}
+          onApply={async (keys) => {
+            if (isApplyingRescanRef.current) return;
+            isApplyingRescanRef.current = true;
+            setIsApplyingRescan(true);
+            setRescanApplyError(null);
+            try {
+              const saved = (await updateItem(buildRescanPatch(keys, rescanResult.candidate, rescanResult.provenance))) as { syncWarnings?: string[] } | null;
+              setRescanResult(null);
+              // syncWarnings must never be discarded (use-item contract).
+              if (saved?.syncWarnings?.length) setUploadError(saved.syncWarnings.join(" · "));
+            } catch (err) {
+              // Keep the sheet open — closing silently reads as success.
+              setRescanApplyError(err instanceof Error ? err.message : "Failed to apply rescan");
+            } finally {
+              isApplyingRescanRef.current = false;
+              setIsApplyingRescan(false);
+            }
+          }}
+          onClose={() => {
+            setRescanApplyError(null);
+            setRescanResult(null);
           }}
         />
       )}

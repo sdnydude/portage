@@ -50,7 +50,15 @@ const logger = createLogger('ebay-adapter');
 // cached so a transient eBay error never poisons the cache for the TTL window.
 const validConditionsCache = new Map<string, { value: string[]; cachedAt: number }>();
 const VALID_CONDITIONS_TTL = 60 * 60 * 1000; // 1h
-const requiredAspectsCache = new Map<string, { value: Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>; cachedAt: number }>();
+/** Per-aspect metadata from the Taxonomy API. `mode` distinguishes a closed
+ *  SELECTION_ONLY enum from a FREE_TEXT aspect that merely ships suggestions. */
+export type RequiredAspectsMap = Record<string, {
+  required: boolean;
+  values: string[] | null;
+  cardinality: 'SINGLE' | 'MULTI';
+  mode?: 'FREE_TEXT' | 'SELECTION_ONLY';
+}>;
+const requiredAspectsCache = new Map<string, { value: RequiredAspectsMap; cachedAt: number }>();
 const REQUIRED_ASPECTS_TTL = 24 * 60 * 60 * 1000; // 24h
 // BO-M: per-category Best Offer support (Metadata API getNegotiatedPricePolicies). Category
 // features change rarely — long TTL; null (unknown) is never cached.
@@ -536,15 +544,32 @@ export class EbayAdapter implements MarketplaceAdapter {
     const canonical: Record<string, string[]> = {};
     for (const [name, meta] of Object.entries(required)) {
       const ourKey = byLower.get(name.toLowerCase());
-      const vals = ourKey ? aspects[ourKey].filter((v) => v && v.trim()) : [];
+      let vals = ourKey ? aspects[ourKey].filter((v) => v && v.trim()) : [];
+      // SELECTION_ONLY aspects keep only eBay's own values, in eBay's casing;
+      // anything else (model-invented, mis-cased) would fail the Add/Revise
+      // (reviewer 2026-09-13). FREE_TEXT aspects pass through even when eBay
+      // ships suggested values — Brand is the common case, and dropping a
+      // brand eBay accepted at publish would 422 every later revise.
+      if (meta.mode === 'SELECTION_ONLY' && meta.values && meta.values.length > 0) {
+        const allowed = meta.values;
+        const fold = (s: string) => s.normalize('NFC').trim().toLowerCase();
+        vals = vals
+          .map((v) => allowed.find((a) => fold(a) === fold(v)))
+          .filter((v): v is string => Boolean(v));
+      }
+      if (ourKey) byLower.delete(name.toLowerCase());
       if (vals.length === 0) {
         if (meta.required) missing.push({ name, values: meta.values });
         continue;
       }
       canonical[name] = meta.cardinality === 'MULTI' ? vals : [vals[0]];
-      byLower.delete(name.toLowerCase());
     }
-    if (missing.length > 0) throw new EbayAspectsRequiredError(missing);
+    if (missing.length > 0) {
+      // The gate hard-blocks on the cached enum; if eBay extended the list
+      // since we cached it, the next attempt must read the live one.
+      requiredAspectsCache.delete(categoryId);
+      throw new EbayAspectsRequiredError(missing);
+    }
     for (const [, key] of byLower) {
       const vals = aspects[key].filter((v) => v && v.trim());
       if (vals.length > 0) canonical[key] = vals;
@@ -1423,7 +1448,7 @@ export class EbayAdapter implements MarketplaceAdapter {
     };
   }
 
-  static async getRequiredAspects(categoryId: string): Promise<Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }>> {
+  static async getRequiredAspects(categoryId: string): Promise<RequiredAspectsMap> {
     const cached = requiredAspectsCache.get(categoryId);
     if (cached && Date.now() - cached.cachedAt < REQUIRED_ASPECTS_TTL) {
       ebayTaxonomyCalls.labels('required_aspects', 'cache_hit').inc();
@@ -1452,17 +1477,21 @@ export class EbayAdapter implements MarketplaceAdapter {
     const data = await response.json() as {
       aspects?: Array<{
         localizedAspectName: string;
-        aspectConstraint?: { aspectRequired?: boolean; itemToAspectCardinality?: string };
+        aspectConstraint?: { aspectRequired?: boolean; itemToAspectCardinality?: string; aspectMode?: string };
         aspectValues?: Array<{ localizedValue: string }>;
       }>;
     };
 
-    const result: Record<string, { required: boolean; values: string[] | null; cardinality: 'SINGLE' | 'MULTI' }> = {};
+    const result: RequiredAspectsMap = {};
     for (const aspect of data.aspects ?? []) {
       result[aspect.localizedAspectName] = {
         required: aspect.aspectConstraint?.aspectRequired ?? false,
         values: aspect.aspectValues?.map(v => v.localizedValue) ?? null,
         cardinality: aspect.aspectConstraint?.itemToAspectCardinality === 'MULTI' ? 'MULTI' : 'SINGLE',
+        // FREE_TEXT aspects ship aspectValues as SUGGESTIONS; only
+        // SELECTION_ONLY lists are closed. Consumers must not filter on
+        // `values` alone (adapter review 2026-09-13).
+        mode: aspect.aspectConstraint?.aspectMode === 'SELECTION_ONLY' ? 'SELECTION_ONLY' : 'FREE_TEXT',
       };
     }
 

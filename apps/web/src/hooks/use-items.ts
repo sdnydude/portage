@@ -32,6 +32,8 @@ export interface Item {
   brand: string;
   model: string;
   features: string[];
+  /** eBay item specifics persisted on the item (name → values). */
+  aspects?: Record<string, string[]>;
   photos: ItemPhoto[];
   estimatedValueMin: number | null;
   estimatedValueMax: number | null;

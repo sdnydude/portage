@@ -301,6 +301,62 @@ describe('EbayAdapter.createListing — required-aspect gate (Trading)', () => {
     } as any)).rejects.toMatchObject({ code: 'EBAY_ASPECTS_REQUIRED', statusCode: 422, missing: [{ name: 'Preamp Type', values: ['Tube', 'Solid State'] }] });
     expect(fetchMock.mock.calls.find(([u]) => isTradingCall(u))).toBeUndefined();
   });
+
+  // Reviewer 2026-09-13 (rescan review): names and cardinality were canonicalized
+  // but closed-list VALUES passed through verbatim, so a model-invented or
+  // mis-cased value (rescan, item edit, AI prefill) reached ReviseFixedPriceItem
+  // and failed the sync. Closed-list values are matched case-insensitively to
+  // eBay's own casing; unmatched values are dropped.
+  // FREE_TEXT aspects (Brand, very commonly) also ship aspectValues — as
+  // SUGGESTIONS, not an enum — so only SELECTION_ONLY lists are closed
+  // (adapter reviewer 2026-09-13: filtering suggestions would drop a brand
+  // eBay accepted at publish and 422 every later revise).
+  it('canonicalizes SELECTION_ONLY aspect values to eBay casing, drops unlisted ones, and leaves FREE_TEXT suggestions alone', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes('get_item_aspects_for_category')) {
+        return new Response(JSON.stringify({ aspects: [
+          { localizedAspectName: 'Brand', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE', aspectMode: 'FREE_TEXT' }, aspectValues: [{ localizedValue: 'Shure' }, { localizedValue: 'Sony' }] },
+          { localizedAspectName: 'Preamp Type', aspectConstraint: { aspectRequired: false, itemToAspectCardinality: 'SINGLE', aspectMode: 'SELECTION_ONLY' }, aspectValues: [{ localizedValue: 'Tube' }, { localizedValue: 'Solid State' }] },
+          { localizedAspectName: 'Polar Pattern', aspectConstraint: { aspectRequired: false, itemToAspectCardinality: 'MULTI', aspectMode: 'SELECTION_ONLY' }, aspectValues: [{ localizedValue: 'Cardioid' }, { localizedValue: 'Omnidirectional' }] },
+        ] }), { status: 200 });
+      }
+      return isTradingCall(url) ? new Response(ADD_ITEM_OK, { status: 200 }) : new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    await adapter.createListing({
+      ...baseInput, brand: 'Cloud Microphones',
+      marketplaceSpecific: { ...tradingSetup, categoryId: '119018', aspects: { 'Preamp Type': ['tube'], 'Polar Pattern': ['cardioid', 'Hypercardioid'] } },
+    } as any);
+    const xml = tradingXml();
+    expect(xml).toContain('<Name>Preamp Type</Name><Value>Tube</Value>');
+    expect(xml).toContain('<Name>Polar Pattern</Name><Value>Cardioid</Value>');
+    expect(xml).not.toContain('Hypercardioid');
+    expect(xml).not.toContain('<Value>tube</Value>');
+    // FREE_TEXT with suggestions: the seller's brand is not in the list and must survive.
+    expect(xml).toContain('<Name>Brand</Name><Value>Cloud Microphones</Value>');
+  });
+
+  // Adapter review 2026-09-13 #5: with the closed-list gate now hard-blocking,
+  // a 24h-cached enum that eBay has since extended would keep rejecting a
+  // valid value. Bust the category's cache entry when the gate throws so the
+  // next attempt re-reads the live list.
+  it('evicts the cached required-aspects for the category when the gate throws EBAY_ASPECTS_REQUIRED', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes('get_item_aspects_for_category')) {
+        return new Response(JSON.stringify({ aspects: [
+          { localizedAspectName: 'Brand', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE', aspectMode: 'FREE_TEXT' } },
+          { localizedAspectName: 'Preamp Type', aspectConstraint: { aspectRequired: true, itemToAspectCardinality: 'SINGLE', aspectMode: 'SELECTION_ONLY' }, aspectValues: [{ localizedValue: 'Tube' }] },
+        ] }), { status: 200 });
+      }
+      return isTradingCall(url) ? new Response(ADD_ITEM_OK, { status: 200 }) : new Response('{}', { status: 200 });
+    });
+    const adapter = new EbayAdapter('user-1');
+    const input = { ...baseInput, brand: 'Cloud Microphones', marketplaceSpecific: { ...tradingSetup, categoryId: '424243', aspects: { 'Preamp Type': ['Hybrid'] } } } as any;
+    await expect(adapter.createListing(input)).rejects.toMatchObject({ code: 'EBAY_ASPECTS_REQUIRED' });
+    await expect(adapter.createListing(input)).rejects.toMatchObject({ code: 'EBAY_ASPECTS_REQUIRED' });
+    const aspectFetches = fetchMock.mock.calls.filter(([u]) => String(u).includes('get_item_aspects_for_category')).length;
+    expect(aspectFetches).toBe(2);
+  });
 });
 
 describe('EbayAdapter.createListing — Best Offer auto-accept', () => {
@@ -628,7 +684,8 @@ describe('eBay taxonomy TTL caches', () => {
       }],
     }), { status: 200 }));
 
-    const expected = { Brand: { required: true, values: null, cardinality: 'SINGLE' } };
+    // `mode` defaults to FREE_TEXT when the Taxonomy response omits aspectMode.
+    const expected = { Brand: { required: true, values: null, cardinality: 'SINGLE', mode: 'FREE_TEXT' } };
     expect(await EbayAdapter.getRequiredAspects('424242')).toEqual(expected);
     expect(await EbayAdapter.getRequiredAspects('424242')).toEqual(expected);
     expect(fetchMock).toHaveBeenCalledTimes(1);

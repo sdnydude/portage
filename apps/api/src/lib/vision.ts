@@ -533,19 +533,26 @@ export async function fetchPhotosAsBase64(urls: string[], limit: number): Promis
   return results;
 }
 
-// Closed-list aspects (values present) keep only eBay's own values, in eBay's
-// casing; open aspects (values: null) pass through; an aspect with nothing
-// left is dropped so the pick pass can refill it if required.
+// Closed-list (SELECTION_ONLY) aspects keep only eBay's own values, in eBay's
+// casing; FREE_TEXT aspects pass through even when eBay ships suggested values
+// (adapter review 2026-09-13 — same rule as the Trading gate in ebay-adapter);
+// an aspect with nothing left is dropped so the pick pass can refill it if
+// required. Legacy callers without `mode` keep the old values-present rule.
 export function filterAspectsToAllowed(
   aspects: Record<string, string[]>,
-  requiredAspects: Record<string, { values: string[] | null }>,
+  requiredAspects: Record<string, { values: string[] | null; mode?: 'FREE_TEXT' | 'SELECTION_ONLY' }>,
 ): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const [name, vals] of Object.entries(aspects)) {
-    const allowed = requiredAspects[name]?.values;
-    if (!allowed || allowed.length === 0) { out[name] = vals; continue; }
+    const meta = requiredAspects[name];
+    const allowed = meta?.values;
+    const closed = meta?.mode ? meta.mode === 'SELECTION_ONLY' : Boolean(allowed && allowed.length > 0);
+    if (!closed || !allowed || allowed.length === 0) { out[name] = vals; continue; }
+    // NFC on both sides: a decomposed accent from a model or keyboard must
+    // still match eBay's precomposed enum value.
+    const fold = (s: string) => s.normalize('NFC').trim().toLowerCase();
     const kept = vals
-      .map((v) => allowed.find((a) => a.toLowerCase() === v.trim().toLowerCase()))
+      .map((v) => allowed.find((a) => fold(a) === fold(v)))
       .filter((v): v is string => Boolean(v));
     if (kept.length > 0) out[name] = kept;
   }

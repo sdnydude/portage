@@ -97,6 +97,12 @@ vi.mock("@/components/listing/listing-optimizer-panel", () => ({
 
 import { ItemDetail } from "./item-detail";
 
+const candidateFixture = {
+  name: "Canon AE-1", description: "d", category: "electronics", condition: "good" as const,
+  conditionNotes: "", brand: "Canon", model: "AE-1", features: [] as string[],
+  estimatedValueLow: 0, estimatedValueHigh: 0, confidence: 0.9,
+};
+
 // jsdom has no scrollIntoView; the deep-link test installs one. Capture
 // whatever is there so every test starts from the same prototype state.
 const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
@@ -392,6 +398,179 @@ describe("ItemDetail — sync badge wiring (P3)", () => {
 
     expect(await screen.findByTestId("sync-badge-l1")).toHaveTextContent(/sync failed/i);
     expect(h.apiMock).toHaveBeenCalledWith("/sync-log/status?listingIds=l1", expect.objectContaining({ token: "t" }));
+  });
+});
+
+describe("ItemDetail — rescan", () => {
+  it("renders a Rescan action that is disabled when the item has no photos", () => {
+    render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Rescan" })).toBeDisabled();
+  });
+
+  it("posts at most the first 3 photo URLs to /scan/refine and opens the diff sheet", async () => {
+    h.item.photos = [1, 2, 3, 4].map((n) => ({ url: `https://img/p${n}.jpg`, key: `p${n}` }));
+    h.apiMock.mockImplementation(async (path: string) =>
+      path === "/scan/refine"
+        ? { identification: { name: "Canon AE-1 Program" }, detailed: { candidates: [{ ...candidateFixture, name: "Canon AE-1 Program" }], reasoning: [] } }
+        : {},
+    );
+    const user = userEvent.setup();
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: "Rescan" }));
+      expect(h.apiMock).toHaveBeenCalledWith("/scan/refine", expect.objectContaining({
+        method: "POST",
+        body: { imageUrls: ["https://img/p1.jpg", "https://img/p2.jpg", "https://img/p3.jpg"] },
+      }));
+      const dialog = await screen.findByRole("dialog", { name: "Rescan results" });
+      expect(within(dialog).getByText("Canon AE-1 Program")).toBeInTheDocument();
+    } finally {
+      h.item.photos = [];
+      h.apiMock.mockReset();
+    }
+  });
+
+  it("Apply PATCHes only the checked fields plus scan provenance, then closes the sheet", async () => {
+    h.item.photos = [{ url: "https://img/p1.jpg", key: "p1" }];
+    const provenance = { identification: { provider: "gemini", model: "gemini-3.8-flash" } };
+    h.apiMock.mockResolvedValue({
+      identification: {},
+      detailed: { candidates: [{ ...candidateFixture, name: "Canon AE-1 Program", model: "AE-1P" }], reasoning: [], provenance },
+    });
+    h.updateItem.mockClear();
+    const user = userEvent.setup();
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: "Rescan" }));
+      const dialog = await screen.findByRole("dialog", { name: "Rescan results" });
+      await user.click(within(dialog).getByRole("checkbox", { name: "Title" }));
+      await user.click(within(dialog).getByRole("button", { name: "Apply 1 change" }));
+      expect(h.updateItem).toHaveBeenCalledWith({
+        title: "Canon AE-1 Program",
+        marketplaceData: { scan: { visionCategory: "electronics", provenance } },
+      });
+      expect(screen.queryByRole("dialog", { name: "Rescan results" })).not.toBeInTheDocument();
+    } finally {
+      h.item.photos = [];
+      h.apiMock.mockReset();
+    }
+  });
+
+  it("shows the refine error inline (e.g. the monthly scan limit) instead of opening a sheet", async () => {
+    h.item.photos = [{ url: "https://img/p1.jpg", key: "p1" }];
+    h.apiMock.mockRejectedValue(new Error("Monthly AI scan limit reached (10). Upgrade to Pro for unlimited scans."));
+    const user = userEvent.setup();
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: "Rescan" }));
+      expect(await screen.findByText(/monthly ai scan limit reached/i)).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    } finally {
+      h.item.photos = [];
+      h.apiMock.mockReset();
+    }
+  });
+
+  it("translates the storage-origin 400 into plain English instead of the raw server text", async () => {
+    h.item.photos = [{ url: "https://picsum.photos/200", key: "p1" }];
+    h.apiMock.mockRejectedValue(new Error("Image URLs must reference the application storage origin"));
+    const user = userEvent.setup();
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: "Rescan" }));
+      expect(await screen.findByText("Rescan can't read these photos yet — they aren't hosted by Portage or eBay.")).toBeInTheDocument();
+      expect(screen.queryByText(/application storage origin/)).not.toBeInTheDocument();
+    } finally {
+      h.item.photos = [];
+      h.apiMock.mockReset();
+    }
+  });
+
+  it("disables Rescan and shows a busy label while the refine call is in flight", async () => {
+    h.item.photos = [{ url: "https://img/p1.jpg", key: "p1" }];
+    h.apiMock.mockReturnValue(new Promise(() => {}));
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
+      fireEvent.click(screen.getByRole("button", { name: "Rescanning…" }));
+      expect(screen.getByRole("button", { name: "Rescanning…" })).toBeDisabled();
+      // Count only the refine call — the header's unread-count hook also goes through api().
+      expect(h.apiMock.mock.calls.filter(([path]) => path === "/scan/refine")).toHaveLength(1);
+    } finally {
+      h.item.photos = [];
+      h.apiMock.mockReset();
+    }
+  });
+
+  it("keeps the sheet open and shows the error when the Apply PATCH fails", async () => {
+    h.item.photos = [{ url: "https://img/p1.jpg", key: "p1" }];
+    h.apiMock.mockResolvedValue({
+      identification: {},
+      detailed: { candidates: [{ ...candidateFixture, name: "Canon AE-1 Program" }], reasoning: [] },
+    });
+    h.updateItem.mockRejectedValueOnce(new Error("eBay rejected the revise"));
+    const user = userEvent.setup();
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: "Rescan" }));
+      const dialog = await screen.findByRole("dialog", { name: "Rescan results" });
+      await user.click(within(dialog).getByRole("checkbox", { name: "Title" }));
+      await user.click(within(dialog).getByRole("button", { name: "Apply 1 change" }));
+      expect(screen.getByRole("dialog", { name: "Rescan results" })).toBeInTheDocument();
+      expect(within(dialog).getByText("eBay rejected the revise")).toBeInTheDocument();
+    } finally {
+      h.item.photos = [];
+      h.apiMock.mockReset();
+      h.updateItem.mockResolvedValue({});
+    }
+  });
+
+  it("surfaces syncWarnings from a 200 Apply after closing the sheet", async () => {
+    h.item.photos = [{ url: "https://img/p1.jpg", key: "p1" }];
+    h.apiMock.mockResolvedValue({
+      identification: {},
+      detailed: { candidates: [{ ...candidateFixture, name: "Canon AE-1 Program" }], reasoning: [] },
+    });
+    h.updateItem.mockResolvedValueOnce({ syncWarnings: ["Reverb sync queued"] });
+    const user = userEvent.setup();
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: "Rescan" }));
+      const dialog = await screen.findByRole("dialog", { name: "Rescan results" });
+      await user.click(within(dialog).getByRole("checkbox", { name: "Title" }));
+      await user.click(within(dialog).getByRole("button", { name: "Apply 1 change" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByText("Reverb sync queued")).toBeInTheDocument();
+    } finally {
+      h.item.photos = [];
+      h.apiMock.mockReset();
+      h.updateItem.mockResolvedValue({});
+    }
+  });
+
+  it("a double-tap on Apply while the PATCH is in flight fires one PATCH", async () => {
+    h.item.photos = [{ url: "https://img/p1.jpg", key: "p1" }];
+    h.apiMock.mockResolvedValue({
+      identification: {},
+      detailed: { candidates: [{ ...candidateFixture, name: "Canon AE-1 Program" }], reasoning: [] },
+    });
+    h.updateItem.mockClear();
+    h.updateItem.mockReturnValue(new Promise(() => {}));
+    try {
+      render(<ItemDetail itemId="i1" onDeleted={vi.fn()} onBack={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
+      const dialog = await screen.findByRole("dialog", { name: "Rescan results" });
+      fireEvent.click(within(dialog).getByRole("checkbox", { name: "Title" }));
+      const apply = within(dialog).getByRole("button", { name: "Apply 1 change" });
+      fireEvent.click(apply);
+      fireEvent.click(apply);
+      expect(h.updateItem).toHaveBeenCalledTimes(1);
+      expect(within(dialog).getByRole("button", { name: "Applying…" })).toBeDisabled();
+    } finally {
+      h.item.photos = [];
+      h.apiMock.mockReset();
+      h.updateItem.mockResolvedValue({});
+    }
   });
 });
 
