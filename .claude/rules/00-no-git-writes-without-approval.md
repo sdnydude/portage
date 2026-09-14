@@ -1,26 +1,44 @@
-# HARD RULE: no git state changes without per-action approval (Stephen, 2026-08-03)
+# Git writes are free; deploy is the checkpoint (Stephen, 2026-09-13)
 
-`git commit`, `git push`, and `gh pr merge` each require Stephen's explicit
-approval for that specific action, every time. "Auto mode", "don't stop
-working", or approval of a plan authorizes BUILDING (edits, tests, local runs,
-read-only ops) — never publication of code.
+**Operator directives 2026-09-13 ("remove the commit and push gates", then
+"remove merge gate"):** `git commit`, `git push`, `gh pr create`, and
+`gh pr merge` need no per-action approval and have no mechanical gate. The
+`git-gate.sh` prompt (removed 09-08, 74e6f1a), `review-before-commit.sh`, and
+`proof-before-push.sh` hook entries are all gone.
 
-**Exempt: `gh pr create`** (operator 2026-08-05, restated 2026-08-10 — "you
-can create pr on auto without approval"). The pr-create ask was removed from
-`git-gate.sh` on 2026-08-05; opening a PR on an already-approved-and-pushed
-branch needs no separate ask. Merge remains gated.
+**Why merge is safe to free:** every merge is a merge commit (`--no-ff` /
+GitHub merge button), so one `git revert -m 1 <merge-sha>` undoes a whole PR;
+branches stay on origin. Merging does not deploy anything.
 
-**Proof waivers are Stephen's alone (added 2026-08-03 PM).** Claude never sets
-`PROOF_WAIVED=` on its own judgment. When proof-before-push fires: produce the
-proof screenshots, or present the waiver request with rationale and wait for
-an explicit yes. `git-gate.sh` raises a dedicated prompt on any command
-containing `PROOF_WAIVED=`.
+**The checkpoint is deploy.** Before any `docker compose up` that recreates
+`portage-api` or `portage-app`:
+1. Tag the running images `portage-{api,app}-rollback:<date>` so rollback is
+   a retag + recreate, not a rebuild.
+2. Push any schema change first (`db:push --verbose`, expect only the intended
+   statements); never let an image that expects new columns go live before
+   them.
+3. Name every service you intend to rebuild with `--build`; record
+   `docker inspect --format '{{.Name}} {{.Image}}'` before and after and diff
+   it. Never `up -d portage-app` alone.
+4. After: health, error count, and the live check on the real app.
+Data written to eBay/Reverb or to item rows is not reversible by git; that is
+why the care sits at deploy and use, not at merge.
 
-Mechanical enforcement: `git-gate.sh` (PreToolUse, Bash) raises a confirmation
-prompt on commit/push/merge and on any `PROOF_WAIVED=` usage. Claude must
-additionally ask in conversation before reaching the prompt — the hook is
-the backstop, not the protocol.
+**What did not change:**
+- Commit by pathspec, never bare `git commit`; work on a branch, land through
+  a PR with CI green.
+- Adversarial review before the PR; findings are FIXED or
+  APPROVED+FILED+SLOTTED (`01-no-deferral-euphemisms.md`). Review records in
+  `.claude/review-records/` remain the audit trail.
+- Definition of Done still requires live-observed proof against real data
+  before anything is called done, shipped, or verified
+  (`feedback_definition_of_done`, `feedback_live_proof_over_tests`). Proof
+  screenshots still go to `apps/web/test-results/proof/` and to the operator.
+- The no-build-without-go rule (`00-no-build-without-go.md`) still governs what
+  gets built; this file only governs how finished work is published.
 
-Violation history: multiple unapproved merges/pushes 2026-08-01 → 2026-08-03
-(PRs auto-merged under an assumed blanket auto mode). This rule supersedes any
-reading of "auto" that includes git writes.
+History: per-action approval for commit/push/merge was imposed 2026-08-03
+after unapproved merges under an assumed blanket auto mode. Retired
+2026-09-13: the asks and proof hook consumed more operator time than they
+protected, while the real incident of the week (a 38h publish outage) came
+from a deploy, not a merge.
